@@ -2,7 +2,7 @@
  * docker/deploy.env 的 feature 开关解析（拓扑的「这台机器开了哪些栈」维度）。
  *
  * 约定来自 docker/lib/config.sh：开关键与依赖目录一一对应（`FENIX_FEATURE_<目录名大写，- 换 _>`），
- * common 的可选服务则用其 compose profile 名（`FENIX_FEATURE_MYSQL` / `_S3` / `_REDIS`）。
+ * 主服务编排里以 profile 门控的可选服务则用其 profile 名（`FENIX_FEATURE_REDIS`）。
  * 这里只读 `FENIX_FEATURE_*` 键：deploy.env 按仓库约定不含密钥，其余键（端口等）与拓扑无关。
  */
 
@@ -57,7 +57,7 @@ export function flagForDirName(dirName: string): string {
   return `FENIX_FEATURE_${dirName.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
 }
 
-/** compose profile 名 → 开关键：`mysql` → `FENIX_FEATURE_MYSQL`。 */
+/** compose profile 名 → 开关键：`redis` → `FENIX_FEATURE_REDIS`。 */
 export function flagForProfile(profile: string): string {
   return flagForDirName(profile);
 }

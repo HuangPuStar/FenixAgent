@@ -10,7 +10,7 @@ import {
   findEnvExampleDrift,
   generateEnvExamples,
 } from "../generate-env-example";
-import { COMMON_FEATURE_SWITCHES, ENV_TEMPLATES } from "../lib/env-example-spec";
+import { ENV_TEMPLATES, MAIN_FEATURE_SWITCHES } from "../lib/env-example-spec";
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "../..");
 const tempRoot = await mkdtemp(join(tmpdir(), "env-example-"));
@@ -115,21 +115,30 @@ test("声明面之外的键带消费方落进各份应用面模板", async () =>
       inProd: true,
     });
   }
-  expect(dev).toContain("消费方：packages/acp-runtime-cli");
-  expect(prod).toContain("消费方：packages/acp-runtime-cli");
-  // 基础服务凭据的消费方是编排，键落在主服务 env：两份应用面模板都要说清这一点。
-  for (const key of ["POSTGRES_PASSWORD", "RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"]) {
+  // `RCS_URL` / `RCS_TENANT_ID` 的消费方是容器里的 `acp-runtime-cli`，主服务进程零消费者：它们**不进**应用面模板，
+  // 键归执行节点目录（`docker/sandbox-*/` 的 `.env` 与编排）。写进主服务 env 既不生效，又让节点误以为可以
+  // 从主服务配置里取值。口径与 `apps/server/src/env.ts` 对 `RCS_CCB_COMMAND` 的既有处理一致。
+  for (const key of ["RCS_URL", "RCS_TENANT_ID"]) {
+    expect({ key, inDev: dev.includes(`# ${key}=`), inProd: prod.includes(`# ${key}=`) }).toEqual({
+      key,
+      inDev: false,
+      inProd: false,
+    });
+  }
+  // 基础服务凭据的消费方是主服务编排本身，键落在主服务 env：两份应用面模板都要说清这一点。
+  // 依赖目录各自自带的实例凭据（LITELLM_DB_PASSWORD / RAGFLOW_* / WORKFLOW_*）不在这里——
+  // 它们写在各自目录的 .env（见该目录 .env.example），不占主服务 env 的键面。
+  for (const key of ["POSTGRES_PASSWORD"]) {
     expect({ key, inDev: dev.includes(`# ${key}=`), inProd: prod.includes(`# ${key}=`) }).toEqual({
       key,
       inDev: true,
       inProd: true,
     });
   }
-  expect(dev).toContain("消费方：docker/common/docker-compose.yml");
+  expect(dev).toContain("消费方：docker-compose.yml（dev）、docker/main/docker-compose.yml（生产）");
 
   // 部署模板只列键与去处：由主服务 env 提供的键不写取值（模板受版本控制）。
   expect(deploy).toContain("# POSTGRES_PASSWORD=");
-  expect(deploy).toContain("# RUSTFS_SECRET_KEY=");
   expect(deploy.split("\n").filter((line) => line.startsWith("# POSTGRES_PASSWORD=")).length).toBe(1);
 });
 
@@ -174,9 +183,9 @@ test("编排插值解析认三种写法，且跳过注释行", () => {
 });
 
 // 部署模板的开关必须与脚本同源：docker/ 下每个带 docker-compose.yml 的依赖目录都有一行开关（与 discover_deps 同规则，
-// 排除名单从脚本的 EXCLUDED_DIRS 解析——common 是基础服务、main 是主服务编排），common 的开关表则是 deploy.sh 里
-// COMMON_OPTIONAL_FEATURES 的镜像——脚本加了服务而模板没跟上，用户就看不到开关。
-test("部署模板为每个依赖目录渲染开关，并与 deploy.sh 的 common 开关表一致", async () => {
+// 排除名单从脚本的 EXCLUDED_DIRS 解析——main 是主服务编排本身），主服务可选服务的开关表则是 deploy.sh 里
+// MAIN_OPTIONAL_FEATURES 的镜像——脚本加了服务而模板没跟上，用户就看不到开关。
+test("部署模板为每个依赖目录渲染开关，并与 deploy.sh 的主服务开关表一致", async () => {
   await generateEnvExamples({ repositoryRoot: tempRoot });
   const deployText = await readFile(join(tempRoot, DEPLOY_TEMPLATE_PATH), "utf8");
 
@@ -193,9 +202,9 @@ test("部署模板为每个依赖目录渲染开关，并与 deploy.sh 的 commo
     expect({ dir, rendered: deployText.includes(`# ${key}=false`) }).toEqual({ dir, rendered: true });
   }
 
-  const declared = /COMMON_OPTIONAL_FEATURES="([^"]*)"/.exec(script)?.[1] ?? "";
+  const declared = /MAIN_OPTIONAL_FEATURES="([^"]*)"/.exec(script)?.[1] ?? "";
   const names = declared.split(/\s+/).filter((name) => name.length > 0);
-  expect(names).toEqual(COMMON_FEATURE_SWITCHES.map((item) => item.name));
+  expect(names).toEqual(MAIN_FEATURE_SWITCHES.map((item) => item.name));
   for (const name of names) expect(deployText).toContain(`# FENIX_FEATURE_${name}=false`);
 });
 

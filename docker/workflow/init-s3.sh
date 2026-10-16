@@ -1,17 +1,16 @@
 #!/bin/sh
 #
-# docker/workflow/init-s3.sh —— 共享对象存储（rustfs）里「属于本栈」的初始化（一次性 job，执行完即退出）。
+# docker/workflow/init-s3.sh —— 本栈对象存储（rustfs）的初始化：建桶 + 播种图标（一次性 job，执行完即退出）。
 #
 # 谁调用：docker-compose.yml 的 `s3-init` 服务，显式覆盖 entrypoint 为 ["/bin/sh", "/init/init-s3.sh"]，
 #         本文件以只读方式挂载到容器内 /init/init-s3.sh（compose 与脚本都不依赖宿主的可执行位）。
 # 为什么单独成文件而不内联进 compose：与本目录的 init-mysql.sh 同一理由——脚本有分支与失败诊断，
 #         内联进 YAML 标量后既难 review，也容易被 YAML 折叠规则悄悄改写（折行会把注释与后续语句并到同一行）。
 # 为什么用 curl 而不是 mc：建桶需要一个 S3 客户端。仓库里唯一自带 mc 的镜像是 MinIO 镜像——用它就等于把
-#         要收敛掉的 MinIO 制品又引回编排里，且「全仓只剩一套对象存储」的检索口径立刻失真。本服务的镜像
-#         rustfs/rustfs:1.0.1 是仓库已有镜像（docker/common/ 的 rustfs 同款 tag），镜像内的 curl 8.22.0
-#         原生支持 --aws-sigv4，不需要新增任何镜像来源。
-# 环境变量（由 compose 显式注入；凭据只来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）的 RUSTFS_*）：S3_ENDPOINT / S3_ACCESS_KEY /
-#         S3_SECRET_KEY / S3_REGION。
+#         要避免的 MinIO 制品又引回编排里，且「全仓只用 RustFS」的检索口径立刻失真。本服务的镜像
+#         rustfs/rustfs:1.0.1 自带 curl 8.22.0，原生支持 --aws-sigv4，不需要新增任何镜像来源。
+# 环境变量（由 compose 显式注入；凭据来自本目录 .env 的 WORKFLOW_S3_*，见 .env.example）：
+#         S3_ENDPOINT / S3_ACCESS_KEY / S3_SECRET_KEY / S3_REGION。
 # 只读输入：/seed/default_icon、/seed/official_plugin_icon（上游 docker/volumes/minio/ 下的静态图标，
 #         由 assets-init 从镜像展开到宿主 ./assets 后挂入；原先由栈内 minio 容器的 entrypoint 用
 #         `mc cp --recursive` 播种）。
@@ -20,17 +19,17 @@
 #   - 建桶是 PUT /<bucket>：200 表示本次创建，409 表示已存在（BucketAlreadyOwnedByYou / BucketAlreadyExists）
 #     ——两者都算通过；重跑走的就是 409 分支。
 #   - 图标播种是 PUT /<bucket>/<key> 覆盖写：同一份源文件重传内容与 Content-Type 都不变，结果与只跑一次相同。
-# 失败可诊断：连不上共享实例 / 建桶被拒 / 自检失败各有独立文案与非零退出码，退出码会被 compose 的
+# 失败可诊断：连不上实例 / 建桶被拒 / 自检失败各有独立文案与非零退出码，退出码会被 compose 的
 #         depends_on: service_completed_successfully 反映到 coze-server 与 milvus 上（它们不会带着半个桶起来）。
 # 例外（有意为之）：图标播种失败**不**阻塞主链路，只告警——对齐上游原行为（那段 `mc cp` 跑在 minio 容器的
 #         后台子 shell 里，失败不影响服务启动）。把「图标少一张」升级成「整个栈起不来」不划算，重跑办法见文末。
 
 set -eu
 
-: "${S3_ENDPOINT:?S3_ENDPOINT 未设置：compose 必须注入共享 rustfs 的容器内地址（写显式服务名，不插值宿主键）}"
-: "${S3_ACCESS_KEY:?S3_ACCESS_KEY 未设置：compose 从主服务 env 的 RUSTFS_ACCESS_KEY 取值}"
-: "${S3_SECRET_KEY:?S3_SECRET_KEY 未设置：compose 从主服务 env 的 RUSTFS_SECRET_KEY 取值}"
-# 签名域（SigV4 credential scope 里的 region）。取 RustFS 的默认 region；共享实例若改了 RUSTFS_REGION，
+: "${S3_ENDPOINT:?S3_ENDPOINT 未设置：compose 必须注入本栈 rustfs 的容器内地址（写显式服务名，不插值宿主键）}"
+: "${S3_ACCESS_KEY:?S3_ACCESS_KEY 未设置：compose 从本目录 .env 的 WORKFLOW_S3_ACCESS_KEY 取值}"
+: "${S3_SECRET_KEY:?S3_SECRET_KEY 未设置：compose 从本目录 .env 的 WORKFLOW_S3_SECRET_KEY 取值}"
+# 签名域（SigV4 credential scope 里的 region）。取 RustFS 的默认 region；实例若改了 RUSTFS_REGION，
 # 这里必须同步，否则所有请求都会被判签名不匹配。
 S3_REGION="${S3_REGION:-us-east-1}"
 
@@ -101,18 +100,19 @@ seed_tree() {
     echo "   ${DST_PREFIX}/ 已播种 ${file_count} 个文件"
 }
 
-echo '① 等待共享 rustfs 可用（最多 300 秒）...'
+echo '① 等待 rustfs 可用（最多 300 秒）...'
 i=0
-# 探 /health 而不是 TCP 端口：端口开放不等于 S3 API 已就绪（RustFS 起来后会先建卷与元数据）。
+# compose 已用 `depends_on: rustfs: service_healthy` 保证过一次，这里的等待是**就绪之后**的二次确认：
+# 它探的是 S3 API 本身（/health），而不是健康检查命令的返回码。
 until curl -fsS --max-time 5 "${S3_URL_BASE}/health" >/dev/null 2>&1; do
     i=$((i + 1))
     if [ "$i" -ge 150 ]; then
-        echo '共享 rustfs 不可用（300 秒内未通过健康检查），按下面两条分别排查：' >&2
+        echo 'rustfs 在 300 秒内未通过健康检查，按下面两条分别排查：' >&2
         # 第二条探测故意不带 -f：它只回答「连得上吗」，与上一条的「健康吗」分开，避免把两种故障混成一句。
         if curl -sS --max-time 5 -o /dev/null "${S3_URL_BASE}/health" 2>/dev/null; then
-            echo '  - 端口可达但健康检查没通过：共享实例还没完成启动，或镜像 tag 与 docker/common/ 的不一致。' >&2
+            echo '  - 端口可达但健康检查没通过：实例还没完成启动，或镜像 tag 与 docker-compose.yml 里那行不一致。' >&2
         else
-            echo '  - 服务器不可达：docker/deploy.env 的 FENIX_FEATURE_S3 是否为 true、顶层项目是否已起、本容器是否在 fenix-server 网络上。' >&2
+            echo '  - 服务器不可达：本栈 rustfs 服务是否在跑（docker compose ps）、数据目录 ./data/rustfs 是否可写。' >&2
         fi
         exit 1
     fi
@@ -138,17 +138,17 @@ for bucket in $BUCKETS; do
         echo "   ${bucket} 已存在，跳过${note}"
         ;;
     403)
-        echo '建桶被拒（HTTP 403）：共享 rustfs 不接受当前凭据。响应体：' >&2
+        echo '建桶被拒（HTTP 403）：rustfs 不接受当前凭据。响应体：' >&2
         cat "$BODY_FILE" >&2 || true
-        echo '判定：RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY（主服务 env）与共享实例启动时用的那份不一致——' >&2
-        echo '      两者同源：common 的 rustfs 容器直接读主服务 env 的同名键，改一处即改两处；不一致只可能来自' >&2
-        echo '      「本次 up 用的 env 文件与上一次不同」（独立部署时漏了主服务 env 那一份：dev 是仓库根 .env、生产是 docker/main/.env）。' >&2
+        echo '判定：WORKFLOW_S3_ACCESS_KEY / WORKFLOW_S3_SECRET_KEY 与实例启动时用的那份不一致——' >&2
+        echo '      两者同源（实例侧与消费侧取自同一对变量），不一致只可能来自「实例的数据目录是另一对凭据' >&2
+        echo '      建的」（.env 被换过、或复用了别处的 ./data/rustfs 数据目录），改回原值后再重跑。' >&2
         exit 1
         ;;
     *)
-        echo "建桶请求失败（HTTP ${code}）：共享 rustfs 不可达或响应异常。响应体：" >&2
+        echo "建桶请求失败（HTTP ${code}）：rustfs 不可达或响应异常。响应体：" >&2
         cat "$BODY_FILE" >&2 || true
-        echo '处理：先按 ① 的两条分支排查共享实例；仍不明时看上面的响应体。' >&2
+        echo '处理：先按 ① 的两条分支排查实例；仍不明时看上面的响应体。' >&2
         exit 1
         ;;
     esac
@@ -164,9 +164,9 @@ for bucket in $BUCKETS; do
         cat "$BODY_FILE" >&2 || true
         echo '处理：' >&2
         echo '  - 403 AccessDenied：该桶由同一实例上的**别的凭据**创建（桶在，但当前凭据读不了）。换桶名，' >&2
-        echo '    或把主服务 env 的 RUSTFS_* 改回创建它的那份；脚本不接管别人的桶。' >&2
+        echo '    或把 .env 的 WORKFLOW_S3_* 改回创建它的那份（脚本不接管别人的桶）。' >&2
         echo '  - 404 NoSuchBucket：第 ② 步的「已存在」是误判（例如请求打到了别的实例）——核对 S3_ENDPOINT。' >&2
-        echo '  - 000：共享实例在两步之间掉了，按第 ① 条重跑。' >&2
+        echo '  - 000：实例在两步之间掉了，按第 ① 条重跑。' >&2
         exit 1
     fi
 done
@@ -183,4 +183,4 @@ if [ "$seed_failed" -ne 0 ]; then
     echo '排查方向：assets-init 是否成功（宿主 ./assets/volumes/minio/ 下应有两棵图标树）、镜像 tag 是否带资产。' >&2
 fi
 
-echo "初始化完成：${BUCKETS} 已就绪，凭据与主服务 env 一致。"
+echo "初始化完成：${BUCKETS} 已就绪，凭据与实例一致。"

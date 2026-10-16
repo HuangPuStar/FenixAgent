@@ -9,7 +9,8 @@
  * 不变量：
  * - code 绑定 user + org + workflow，单次消费，TTL 取 `config.codeTtlSeconds`（默认 60s）；重复兑换、过期、
  *   跨实例未知一律返回 null（不区分原因，避免探测）；
- * - ticket 是 HMAC-SHA256 签名载荷（密钥 `config.ticketSecret`），claims 形状即冻结 §4 的 `TicketClaims`；
+ * - ticket 是 HMAC-SHA256 签名载荷（密钥取 `requireTicketSecret()`，即 `WORKFLOW_V2_TICKET_SECRET`；该键
+ *   在声明侧可选，未配置时签发/校验当场报错），claims 形状即冻结 §4 的 `TicketClaims`；
  * - `jti` 去重表与 `sid` 撤销表都在**进程内存**里：单副本部署自洽，多副本需要共享存储或粘性会话
  *   （设计 §9 待验证清单）；重启即失效，未过期的旧票据不会因此获得第二次生命；
  * - 续期（`/session/refresh`）的新过期时间取「原 `exp`」与「不超过 15 分钟」的较小者，不得凭续期延长会话；
@@ -25,7 +26,7 @@
  */
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { getWorkflowV2Config } from "../config";
+import { getWorkflowV2Config, requireTicketSecret } from "../config";
 
 export interface TicketClaims {
   /** 票据用途标识；固定 `wf-canvas`，防止本包票据被复用到其它协议面。 */
@@ -96,16 +97,14 @@ function sweepExpired(nowMs: number): void {
 }
 
 /**
- * 取签名密钥。
+ * 取签名密钥：直接走模块配置的唯一取用入口（`requireTicketSecret`）。
  *
- * 唯一来源是模块配置 `ticketSecret`（声明侧 `WORKFLOW_V2_TICKET_SECRET` 必填）。这里再断言一次：**不得
- * 退化成内置默认密钥**——那会让所有部署共享同一把可推导的密钥，签署方与验证方都会静默接受伪造票据。
- * 密钥材料只在本函数返回值上流转，调用方、日志与错误文案都不得回显它。
+ * 声明侧 `WORKFLOW_V2_TICKET_SECRET` 是**可选**键（不启用画布的部署不必配置），所以「不得退化成默认密钥或
+ * 进程内随机值」这条断言必须在签发/校验票据的那一刻成立——它的实现与理由都在
+ * `config.ts` 的 `requireTicketSecret`，本文件不再重复一份措辞。
  */
 function getSigningKey(): string {
-  const secret = getWorkflowV2Config().ticketSecret;
-  if (!secret) throw new Error("workflow-v2 画布票据缺少签名密钥：模块配置 ticketSecret 为空");
-  return secret;
+  return requireTicketSecret();
 }
 
 /** HMAC-SHA256（base64url）签名载荷。 */

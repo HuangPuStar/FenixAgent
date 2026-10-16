@@ -26,8 +26,9 @@ services:
             PB_PORT_MIN: 9000
             PB_PORT_MAX: 11000
             MAX_APPS: 50
-            # 共享键：随主服务启动时由主服务 env 提供；独立部署时在本目录 .env 提供（见 .env.example）
-            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:?AGENT_SITES_MASTER_KEY 未设置：请在主服务 env（随主服务启动：生产 docker/main/.env、dev 仓库根 .env）或 docker/agent-sites/.env（独立部署）配置}
+            # 与主服务共值的键：独立部署填本目录 .env（见 .env.example）；随主服务启动时由 deploy.sh
+            # 导出主服务 env 带入同名键，两处同值。本目录不读别的目录的配置。
+            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:?AGENT_SITES_MASTER_KEY 未设置：请填 docker/agent-sites/.env（cp .env.example .env 后填「必需」段）；随主服务启动时由 ./docker/deploy.sh 从主服务 env 带入，两侧必须同值}
         volumes:
             - ./data:/app/data
             - ./public:/app/public

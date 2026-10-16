@@ -38,6 +38,10 @@
 - Node.js
 - Docker 与 Docker Compose
 - PostgreSQL
+- Peri Agent 引擎（本地执行的默认引擎，须在 `PATH` 上）：按 [Peri 安装说明](https://github.com/KonghaYao/peri) 安装
+
+使用其他引擎时需自行安装对应 CLI，并在 `.env` 中通过 `RCS_DEFAULT_ENGINE_TYPE` 显式指定，例如
+`RCS_DEFAULT_ENGINE_TYPE=opencode`；OpenCode 建议使用 `opencode-ai@1.17.12`（更高版本可能有兼容性问题）。
 
 安装项目依赖：
 
@@ -57,11 +61,22 @@ cp .env.example .env
 
 ### 3. 启动依赖服务
 
-本地开发通常先启动基础依赖：
+本地开发默认只起 PostgreSQL：
 
 ```bash
 docker compose up -d postgres
 ```
+
+其余组件（`redis`、`litellm`、`ragflow`、`hindsight`、`agent-sites`、`opensandbox`）是可选依赖，
+按需用 `--profile` 追加启动：
+
+```bash
+docker compose --profile redis up -d                        # 缓存
+docker compose --profile litellm --profile ragflow up -d    # 模型网关 + 知识库
+docker compose config                                       # 只解析、不起容器
+```
+
+组件需要做接入配置，详情见 [`docker/dev/README.md`](docker/dev/README.md)。
 
 ### 4. 初始化数据库
 
@@ -220,3 +235,9 @@ chore(scope): 杂项维护
 6. 如涉及前端，执行 `bun run build:web`
 7. 自查文档、迁移和配置是否需要同步更新
 8. 如可用，执行额外的 AI 审查
+
+## 生产部署
+
+- 部署步骤、必需环境变量与启动后自检：[部署](docs/operations/deployment.md)
+- 编排实现权威（两份形态、网络分层、feature 开关、env 规范、脚本用法）：[Docker 编排体系](docs/operations/docker-topology.md)
+- 升级、备份与恢复、排障：[升级](docs/operations/upgrade.md)、[备份与恢复](docs/operations/backup-and-restore.md)、[排障](docs/operations/troubleshooting.md)

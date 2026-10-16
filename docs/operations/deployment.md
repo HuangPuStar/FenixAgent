@@ -7,7 +7,7 @@
 | 服务 | 必需性 | 依据与默认口径 |
 | --- | --- | --- |
 | PostgreSQL | **必需** | `DATABASE_URL` 在宿主 schema 中是必填且无默认值，缺失即启动失败（`apps/server/src/env.ts`）。本地可用根 `docker-compose.yml` 的 `postgres` 服务（`postgres:16-alpine`，库/用户 `rcs`，宿主 5432）。 |
-| Redis | 可选 | `RCS_REDIS_URL`。未配置时缓存回退进程内 Map（`apps/server/src/services/cache.ts`），且 Y.Doc 快照**不做持久化**（`packages/chat-channel/src/server/services/doc-manager-instance.ts`：`getRedisConnection()` 为 `null` 即跳过）。仓库自带的编排把 redis 放在 `docker/common/`，由 `docker/deploy.env` 的 `FENIX_FEATURE_REDIS` 开关启停。 |
+| Redis | 可选 | `RCS_REDIS_URL`。未配置时缓存回退进程内 Map（`apps/server/src/services/cache.ts`），且 Y.Doc 快照**不做持久化**（`packages/chat-channel/src/server/services/doc-manager-instance.ts`：`getRedisConnection()` 为 `null` 即跳过）。仓库自带的编排在 dev（根 `docker-compose.yml`）与生产（`docker/main/docker-compose.yml`）里都内联 `redis`，由 `docker/deploy.env` 的 `FENIX_FEATURE_REDIS` 开关（`--profile redis`）启停，数据各落编排同级的 `./data/redis`。 |
 | 外部能力（LiteLLM / Hindsight / RagFlow / Agent Sites / Sandbox） | 可选 | 各自独立编排，未部署只代表对应能力不可用，不阻断主服务启动；入口见 [`docker-topology.md`](./docker-topology.md) §6 的 feature 对照表。 |
 
 ## 2. 部署形态
@@ -36,9 +36,9 @@ docker compose up --build -d
 一键入口、配置规范与网络分层见 [`docker-topology.md`](./docker-topology.md)（§6 依赖目录契约、§7 配置、§9 脚本）。最小流程：
 
 ```bash
-./docker/deploy.sh init        # 生成 docker/deploy.env 与各依赖目录的 .env（已存在则跳过，绝不覆盖）
-./docker/deploy.sh validate    # 按提示补齐必填项，直到这一步通过
-./docker/deploy.sh deploy      # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
+./deploy.sh init               # 生成 deploy.env 与各依赖目录的 .env（已存在则跳过，绝不覆盖）
+./deploy.sh validate           # 按提示补齐必填项，直到这一步通过
+./deploy.sh deploy             # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
 ```
 
 - 一套配置描述一台机器：依赖开关与部署参数在 `docker/deploy.env`，应用配置与密钥在主服务 env
@@ -50,22 +50,50 @@ docker compose up --build -d
 - `rcs` 的 `image:` 是固定 tag（当前为 `ghcr.io/huangpustar/fenixagent:sha-da5eb54`），发布时**两份编排的同一行都要改**。
   CI 在 main 与 `v*` tag 上构建并推送镜像（`.github/workflows/docker-publish.yml`，标签含分支名、semver 与 `sha-<commit>`）。
 - 数据一律 bind 到各编排同级的 `./data/`：主服务在 dev 落仓库根的 `data/`、`workflow/`、`workspaces/`，生产落
-  `docker/main/` 下的同名目录；基础服务落 `docker/common/data/**`（含共享的 `mysql`）。备份 = 打包交付目录，搬迁 = 整目录拷走。
+  `docker/main/` 下的同名目录；基础服务（`postgres` / `redis`）落各份编排同级的 `data/{postgres,redis}`，
+  依赖自带的实例落各自目录的 `data/` 下。备份 = 打包交付目录，搬迁 = 整目录拷走。
 - 可选能力按 `docker/deploy.env` 的 `FENIX_FEATURE_<目录名>` 开关启停，每个依赖是独立的 Compose 项目；
-  依赖的对外出口服务接入共享网络 `fenix-server`，栈内辅助服务（数据库、缓存、对象存储等）留在自己的项目网络。
-- `docker/common/` 的四个服务都是**共享实例**（`postgres` / `redis` / `rustfs` / `mysql`，开关 `FENIX_FEATURE_REDIS` /
-  `S3` / `MYSQL`，后三者默认关）：只提供实例，不含任何栈的业务初始化。消费方是 `docker/workflow/`（共享 mysql 的
-  库 `opencoze`、共享 rustfs 的桶 `opencoze` / `milvus`）与 `docker/litellm/`（共享 postgres 的库 `litellm`）；
-  它们都要接入 `fenix-server`、并**在主服务项目之后**启动，库 / 桶由各自的一次性初始化服务创建
-  （[`docker-topology.md`](./docker-topology.md) §5.1、§6）。
-- `docker/ragflow/` 是**部分例外**：库 `rag_flow` 仍在共享 `mysql`（由 `ragflow-mysql-init` 建），
-  **对象存储则是本栈自带实例** `ragflow-rustfs`——它只在项目网络里、不接 `fenix-server`、不受 `FENIX_FEATURE_S3` 影响，
-  桶名由知识库 / 文件目录决定、由 RAGFlow 运行期自建（`ragflow-s3-init` 只做实例能力探测）。
-  理由与四条边界见 [`docker-topology.md`](./docker-topology.md) §5，操作面见 `docker/ragflow/README.md`。
-- 开关之间不自动联动：`FENIX_FEATURE_WORKFLOW=true` 不会替你把 `FENIX_FEATURE_MYSQL` 打开，缺共享实例时由消费方
-  自己的初始化服务报错并指出该打开哪个开关（[`docker-topology.md`](./docker-topology.md) §5.1）。
+  依赖的对外出口服务接入共享网络 `fenix-server`，栈内辅助服务（数据库、缓存、对象存储等）一般留在自己的项目网络
+  （`docker/litellm/` 只有两个服务，`litellm-postgres` 与 `litellm` 同接 `fenix-server`；网络分层见
+  [`docker-topology.md`](./docker-topology.md) §3）。
+- 依赖实例**随组件自带**，不再有 `docker/common/` 那样的共享实例编排：`docker/litellm/` 自带 `litellm-postgres`
+  （库 `litellm`）、`docker/workflow/` 自带 `mysql` 与 `rustfs`（库 `opencoze`、桶 `opencoze` / `milvus`）、
+  `docker/ragflow/` 自带 `ragflow-mysql` 与 `ragflow-rustfs`（库 `rag_flow`，桶由 RAGFlow 运行期按知识库 /
+  文件目录自建）。数据与凭据都只属于各自目录，跨栈互不影响；依赖仍在**主服务项目之后**启动（`fenix-server`
+  由主服务项目创建），库 / 桶的创建由各栈自己承担（镜像初始化时建好，或由它栈内的一次性初始化服务建）。
+- 开关只门控该依赖自己那一套编排：`FENIX_FEATURE_WORKFLOW=true` 起的就是 workflow 项目（连同它的 `mysql` /
+  `rustfs`），不存在另需打开的共享实例开关。
 - 修改主服务 env 或 `docker/deploy.env` 后，`./docker/deploy.sh up` 会声明式收敛；只有依赖目录的
   `docker-compose.yml` 或 `.env` 改动才需要单独重启该项目。
+- 本节的命令都在**交付面**里执行，不在仓库工作区里执行——见 §2.4。
+
+### 2.4 交付面：生产不在仓库工作区里跑
+
+```bash
+./docker/deploy.sh export /opt/fenix        # 在仓库里执行：产出 /opt/fenix/docker
+cd /opt/fenix/docker                        # 之后所有命令在交付面里执行
+./deploy.sh init && ./deploy.sh validate && ./deploy.sh deploy
+```
+
+为什么必须分家：`docker/**/docker-compose.yml`、`deploy.sh`、`lib/config.sh` 全受版本控制，在仓库里起来的那套
+环境会被下一次 `git pull` 就地改写——容器重建时按新编排跑，而配置面（`deploy.env`、各 `.env`）与数据目录还
+停在旧结构上，故障现场很难归因。同一份工作区还常被切分支、`checkout`、`clean`，运行中的环境经不起这些动作。
+
+导出口径：
+
+- 交付面 = **受版本控制文件的快照**（`git ls-files docker/`）。本机配置（各 `.env`、`deploy.env`）、数据目录
+  （`data/`、`main/workflow`、`main/workspaces`）与运行期产物都在 `.gitignore` 里，因此不进交付面，由目标机上的
+  `init` 重新落成。
+- 排除两个只在仓库里成立的目录：`dev/`（dev 形态的编排由仓库根 `docker-compose.yml` `include`）与
+  `compose-explorer/`（读仓库根的本地只读工具）。
+- 目标目录里**已存在的文件一律不覆盖**，内容不同时逐条列出，由人 diff 后决定。升级已部署环境的编排走这一步，
+  而不是让导出直接改生产。
+- 目标目录不能落在仓库内（脚本直接拒绝）。
+- 反过来也拦：`docker/` 在 git 工作区内时，`init` / `validate` / `up` / `deploy` / `config` 被直接拒绝并提示先
+  `export`（`down` / `ps` / `logs` 只告警，应急停止不被挡）。判定用 `git rev-parse --show-toplevel`，部署机上
+  没有 git 即自动放行——`export` 是唯一允许在仓库里执行的命令。
+- `docker/sandbox-dsh/` 无发布镜像、构建上下文是仓库根，交付面里构建不了（见该目录 README）：不用它就让
+  `FENIX_FEATURE_SANDBOX_DSH` 保持关闭。
 
 ## 3. 环境变量与三份模板
 
@@ -73,7 +101,7 @@ docker compose up --build -d
 | --- | --- | --- |
 | `.env.example` | 本地开发（dev）起点 | `cp .env.example .env`；Bun 启动时自动读取仓库根 `.env`，dev 编排（根 `docker-compose.yml`）把它作为 `env_file`。 |
 | `docker/main/.env.example` | 生产应用配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/main/.env`；它就在生产编排同目录，compose 自动加载（不必 `--env-file`）。 |
-| `docker/deploy.env.example` | 部署配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/deploy.env`（依赖开关、common 可选服务、部署参数）。 |
+| `docker/deploy.env.example` | 部署配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/deploy.env`（依赖开关、主服务可选服务、部署参数）。 |
 
 使用口径：
 

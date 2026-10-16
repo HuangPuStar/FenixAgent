@@ -27,7 +27,7 @@
  */
 
 import { createLogger } from "@fenix/logger";
-import { getWorkflowV2Config } from "../config";
+import { getWorkflowV2Config, type PlatformAccountCredentials, requirePlatformAccountCredentials } from "../config";
 import { ensurePlatformAccountLocale } from "./platform-account-locale";
 import {
   getUpstreamSessionStore,
@@ -101,14 +101,21 @@ export interface UpstreamSession {
   probe(): Promise<boolean>;
 }
 
-/** 会话不可用的原因标签；只由 HTTP 状态与上游业务码构成，绝不含凭据。 */
+/** 会话不可用的原因标签；只由 HTTP 状态、上游业务码与本地的部署前提构成，绝不含凭据。 */
 export type UpstreamSessionUnavailableReason =
   | "timeout"
   | "network"
   | "rejected"
   | "missing_session_key"
   /** 另一个副本正在登录且等待窗口内没有发布会话（上游单会话，抢登会互相踢键，故如实失败而不是并发登录）。 */
-  | "busy";
+  | "busy"
+  /**
+   * 本地没配平台账号凭据（两枚能力键在声明侧可选，见 config.ts 的 `requirePlatformAccountCredentials`）。
+   *
+   * 它不是上游状态，但必须与「登录被拒」区别开：前者要部署方去补 env，后者要去查上游账号或密码。单列一档，
+   * 控制台与日志都能直接指出来，而不是落进响应里的 `unknown`。
+   */
+  | "not_configured";
 
 /**
  * 会话不可用：登录被拒、响应缺会话、上游不可达等。
@@ -349,6 +356,23 @@ function readPlatformUserId(payload: unknown): string | null {
 /** 执行一次真实登录，成功时写入共享存储与本地缓存并返回 Cookie 头。 */
 async function login(): Promise<string> {
   const config = getWorkflowV2Config();
+  // 登录是「要用上游账号」的动作之一：凭据缺失在这里点名键（声明侧可选，见 config.ts 的 require* 说明）。
+  // 归成 `not_configured` 而不是让裸 Error 冒泡：上层按 `UpstreamSessionUnavailableError` 取原因标签，裸 Error
+  // 只会落成响应与日志里的 `unknown`，把「去补 env」说成「查上游账号」。消息原文已点名缺哪一枚键，不另造措辞。
+  let credentials: PlatformAccountCredentials;
+  try {
+    credentials = requirePlatformAccountCredentials(config);
+  } catch (error) {
+    lastErrorCode = "not_configured";
+    logger.warn("上游平台账号登录失败：平台账号凭据未配置", {
+      missing: error instanceof Error ? error.message : String(error),
+    });
+    throw new UpstreamSessionUnavailableError(
+      "not_configured",
+      error instanceof Error ? error.message : String(error),
+      error,
+    );
+  }
   const startedAt = Date.now();
 
   let response: { status: number; headers: Headers; text: string };
@@ -357,7 +381,7 @@ async function login(): Promise<string> {
       path: LOGIN_PATH,
       baseUrl: config.upstreamBaseUrl,
       cookieHeader: null,
-      body: { email: config.accountEmail, password: config.accountPassword },
+      body: { email: credentials.email, password: credentials.password },
       timeoutMs: config.upstreamTimeoutMs,
     });
   } catch (error) {

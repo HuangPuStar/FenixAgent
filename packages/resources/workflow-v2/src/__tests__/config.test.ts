@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { loadDeclaredEnv } from "@fenix/platform-sdk";
 import { initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { moduleManifest } from "../../fenix.module";
-import { getWorkflowV2Config } from "../server/config";
+import { getWorkflowV2Config, requirePlatformAccountCredentials, requireTicketSecret } from "../server/config";
 import { createWorkflowV2ModuleConfig, initializeWorkflowV2ModuleConfig } from "../server/testing";
 
 /**
@@ -16,6 +16,10 @@ import { createWorkflowV2ModuleConfig, initializeWorkflowV2ModuleConfig } from "
  *
  * 用真实的 manifest 而不是 fixture 声明：默认值写在 manifest 里，用 fixture 等于把同一批字面量抄第二遍，
  * 抄错时测试与实现一起错。
+ *
+ * 账号凭据与票据密钥（2026-10-16 起）是**可选**键：不启用 workflow 的部署不必配置，缺失只在调用点判定
+ * （`requirePlatformAccountCredentials` / `requireTicketSecret`）。因此这里同时守住两面：「没配不阻塞加载」
+ * 与「用到时报错点名键」——只改一面会让失败在部署上退化成静默的 undefined 请求。
  */
 
 /**
@@ -42,14 +46,14 @@ const DECLARED_KEYS = [
   "WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE",
 ] as const;
 
-/** 无默认值的三枚必填键。 */
-const REQUIRED_KEYS = [
+/** 只在用到 workflow 能力时才需要的三枚键（声明侧可选、无默认值）。 */
+const CAPABILITY_KEYS = [
   "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL",
   "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD",
   "WORKFLOW_V2_TICKET_SECRET",
 ] as const;
 
-/** 必填键的最小可用取值；测试不读进程环境，全部经入参注入。 */
+/** 三枚能力键的最小可用取值；测试不读进程环境，全部经入参注入。 */
 const requiredInput: Record<string, string> = {
   WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "account@example.invalid",
   WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: "fixture-password",
@@ -98,12 +102,62 @@ test("存储出站基址显式配置时原样解析", () => {
   expect(env.WORKFLOW_V2_STORAGE_UPSTREAM_URL).toBe("http://workflow-entry.internal:18080");
 });
 
-// 必填键缺失必须在启动期失败（消息含键名，部署才知道该配哪个），且失败点与配置了哪些键无关。
-test("三枚必填键缺失时逐个失败且消息含键名", () => {
-  for (const key of REQUIRED_KEYS) {
-    const input = Object.fromEntries(Object.entries(requiredInput).filter(([candidate]) => candidate !== key));
-    expect(() => loadDeclaredEnv(moduleManifest.envDefinitions, input)).toThrow(key);
+// 三枚能力键未配置不阻塞启动：只用到控制面的部署不必配 workflow 的键，缺失落成 `undefined` 交给调用点判定。
+test("三枚能力键未配置时不阻塞加载，落成 undefined", () => {
+  const env = loadDeclaredEnv(moduleManifest.envDefinitions, {});
+
+  for (const key of CAPABILITY_KEYS) {
+    expect(env[key]).toBeUndefined();
   }
+});
+
+// 空串与「没配」同形：部署面写 `KEY=` 时不能落成空串——空串会被调用点当成已配置，一路拼进上游请求体。
+test("三枚能力键的空串按未配置归一", () => {
+  const blank = Object.fromEntries(CAPABILITY_KEYS.map((key) => [key, ""]));
+  const env = loadDeclaredEnv(moduleManifest.envDefinitions, blank);
+
+  for (const key of CAPABILITY_KEYS) {
+    expect(env[key]).toBeUndefined();
+  }
+});
+
+// 缺失的判定落在调用点，且消息必须点名键名——部署据此知道该配哪一枚（与原先启动期校验的定位能力等价）。
+test("用到上游账号或票据时缺配置即报错并点名键", () => {
+  initializeWorkflowV2ModuleConfig({
+    accountEmail: undefined,
+    accountPassword: undefined,
+    ticketSecret: undefined,
+  });
+
+  expect(() => requirePlatformAccountCredentials()).toThrow("WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL");
+  expect(() => requirePlatformAccountCredentials()).toThrow("WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD");
+  expect(() => requireTicketSecret()).toThrow("WORKFLOW_V2_TICKET_SECRET");
+});
+
+// 只缺一枚时消息只点名那一枚：两枚都报会让部署重配一遍已经配好的键。
+test("只缺一枚凭据时消息只点名缺失的那一枚", () => {
+  initializeWorkflowV2ModuleConfig({ accountPassword: undefined });
+
+  let message = "";
+  try {
+    requirePlatformAccountCredentials();
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  expect(message).toContain("WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD");
+  expect(message).not.toContain("WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL");
+});
+
+// 配置齐备时取用入口原样返回凭据：入口只做判定，不做任何归一或加密。
+test("凭据齐备时按配置原样返回", () => {
+  initializeWorkflowV2ModuleConfig({
+    accountEmail: requiredInput.WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL,
+    accountPassword: requiredInput.WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD,
+  });
+
+  const credentials = requirePlatformAccountCredentials();
+  expect(credentials.email).toBe(requiredInput.WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL);
+  expect(credentials.password).toBe(requiredInput.WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD);
 });
 
 // 数值旋钮经声明 schema 归一：部署面给字符串（env 只能是字符串）也要落成 number。

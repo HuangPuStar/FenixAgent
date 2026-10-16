@@ -2,7 +2,7 @@
  * 拓扑构建：compose 文件 → 图（节点 = compose 文件，边 = 结构关系）。
  *
  * 边的四类来源，各自对应一种「Compose 能表达 / 不能表达」的现实：
- *   - include      顶层 include 引入（本仓只有 root → docker/common）
+ *   - include      顶层 include 引入（本仓只有 dev 根编排 → docker/dev/*）
  *   - network      服务接入别的编排创建的 external 网络（跨项目 DNS 的唯一通路，文档 §3）
  *   - service      值里引用了别项目的服务名（跨项目 depends_on 表达不了，只能这样体现；已按网络可达性校验）
  *   - depends_on   同一文件内的服务依赖
@@ -36,7 +36,7 @@ export type TopologyEdge = {
   label: string;
   /** 目标在当前开关下是否可用（profile 未打开的服务 = 依赖实际不成立） */
   satisfied: boolean;
-  /** 未满足时给出原因键（如 FENIX_FEATURE_MYSQL） */
+  /** 未满足时给出原因键（如 FENIX_FEATURE_REDIS） */
   blockedBy?: string;
   evidence: EdgeEvidence[];
   /** 同名服务命中多个编排时列出候选，UI 提示需要人工确认 */
@@ -94,7 +94,7 @@ export type Topology = {
   warnings: TopologyWarning[];
 };
 
-/** 网络名解析：文件内声明的用 name（缺省即 key），未声明的（如 common 里只写服务侧）按 key 处理。 */
+/** 网络名解析：文件内声明的用 name（缺省即 key），只写服务侧、文件内未声明的按 key 处理。 */
 function resolvedNetworkName(doc: ComposeDoc, key: string): string {
   const declared = doc.networks.find((network) => network.key === key);
   return declared?.name ?? key;
@@ -225,8 +225,8 @@ export function buildTopology(docs: ComposeDoc[], flags: FeatureFlags, repoRoot:
 
   const nameIndex = buildNameIndex(docs);
 
-  // depends_on 的合法性按 include 闭包判断：docker-compose.yml 的 rcs 依赖 docker/common 的 postgres，
-  // 在 Compose 里是同项目服务（顶层 include 合并），只有分开看文件时才会误判成「未定义服务」。
+  // depends_on 的合法性按 include 闭包判断：dev 根编排的 rcs 依赖被 include 的组件服务，
+  // 在 Compose 里是同项目服务（include 合并），只有分开看文件时才会误判成「未定义服务」。
   const projectServiceNames = new Map<string, Set<string>>();
   for (const doc of docs) {
     const group = groups.get(doc.id) ?? doc.id;
@@ -351,7 +351,7 @@ export function buildTopology(docs: ComposeDoc[], flags: FeatureFlags, repoRoot:
         }
       }
 
-      // ④ 文件内 depends_on（目标可能落在同项目的另一个文件里，如顶层 rcs → common 的 postgres）
+      // ④ 文件内 depends_on（目标可能落在同项目的另一个文件里，如 dev 根编排的 rcs → 被 include 的组件服务）
       for (const dependency of service.dependsOn) {
         if (!(projectServiceNames.get(projectGroup) ?? new Set<string>()).has(dependency.service)) {
           warnings.push({
@@ -405,7 +405,7 @@ export function buildTopology(docs: ComposeDoc[], flags: FeatureFlags, repoRoot:
    */
   const featureFlagOf = (doc: ComposeDoc): string | null => {
     if (doc.dirRel === ".") return null;
-    // 被顶层 include 的基础服务（docker/common）不是可开关的依赖目录，不给它造开关名。
+    // 被顶层 include 进来的文件（docker/dev/*）与根编排同属一个项目，不是可开关的依赖目录，不给它造开关名。
     if (rootGroup !== null && (groups.get(doc.id) ?? doc.id) === rootGroup) return null;
     const segments = doc.dirRel.split("/");
     const dependencyDir = segments[1] ?? segments[0];

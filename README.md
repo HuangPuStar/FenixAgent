@@ -86,11 +86,20 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 ### Docker Compose（推荐）
 
 ```bash
-# 创建本地配置，并至少为 RCS_API_KEYS 填入随机值
+# 创建本地配置；容器全栈开箱可起（DATABASE_URL 由编排注入），bun run dev 直跑源码需自行填它
 cp .env.example .env
 
+# 默认只起 PostgreSQL 与 rcs；组件按需用 --profile 追加，起服务前不再需要为组件准备 .env
 docker compose up --build -d
 ```
+
+按需追加组件（litellm / ragflow / hindsight / agent-sites / opensandbox）：
+
+```bash
+docker compose --profile litellm --profile ragflow up -d
+```
+
+组件需要做接入配置，详情见 [docker/dev/README.md](docker/dev/README.md)。
 
 默认服务地址为 <http://localhost:3001/>，并内置 Peri Agent 引擎（本地执行的默认引擎）。
 
@@ -101,7 +110,7 @@ docker compose up --build -d
 
 ### 本地开发
 
-前置要求：Bun、Docker 与 Docker Compose，以及可用的 Peri Agent 引擎（本地执行的默认引擎，须在 `PATH` 上）。使用其他引擎时需自行安装对应 CLI：OpenCode 建议 `opencode-ai@1.17.12`（更高版本可能有兼容性问题）。
+前置要求：Bun、Docker 与 Docker Compose，以及可用的 Peri Agent 引擎（本地执行的默认引擎，须在 `PATH` 上）。请按 [Peri 安装说明](https://github.com/KonghaYao/peri) 安装。使用其他引擎时需自行安装对应 CLI，并在 `.env` 中通过 `RCS_DEFAULT_ENGINE_TYPE` 显式指定，例如 `RCS_DEFAULT_ENGINE_TYPE=opencode`；OpenCode 建议使用 `opencode-ai@1.17.12`（更高版本可能有兼容性问题）。
 
 ```bash
 # 仅启动 PostgreSQL

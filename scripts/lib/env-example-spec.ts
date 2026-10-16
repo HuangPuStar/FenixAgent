@@ -9,6 +9,8 @@
  * 与多写的后果都是静默的，把维护动作压成一次明确失败，而不是无声漂移。
  */
 
+import { ENGINE_TYPES } from "../../apps/server/src/services/config/types";
+
 /** 模板里一个声明键的渲染输入。 */
 export interface EnvEntry {
   readonly key: string;
@@ -62,7 +64,11 @@ export interface EnvTemplate {
  */
 export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: string; readonly secret?: boolean }>> = {
   DATABASE_URL: { description: "PostgreSQL 连接串；缺失即启动失败。", secret: true },
-  RCS_API_KEYS: { description: "skill 下载 token 的 HMAC 签名密钥；逗号分隔多把，首个用于签名。", secret: true },
+  RCS_API_KEYS: {
+    description:
+      "skill 下载 token 的 HMAC 签名密钥；逗号分隔多把，首个用于签名；未设置时用本地兜底值（公开值，生产必须覆盖）。",
+    secret: true,
+  },
   RCS_SYSTEM_API_KEYS: {
     description: "/api/system/* 管理端点（建用户、建组织、签发用户级 API Key）使用的系统级密钥；逗号分隔。",
     secret: true,
@@ -89,7 +95,10 @@ export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: str
   RCS_FILE_WS_MAX_PAYLOAD_MB: { description: "file-ws 单帧最大载荷（MB）；须容纳远程上传的 base64 帧。" },
   RCS_DISABLE_SIGNUP: { description: "关闭前端自助注册：隐藏注册入口并拒绝新用户注册。" },
   RCS_DEFAULT_MACHINE_ID: { description: "默认远端执行节点 ID（mach_ 前缀）；agent config 未绑定 machineId 时使用。" },
-  RCS_DEFAULT_ENGINE_TYPE: { description: "本地执行的默认引擎类型；未设置时按 peri。" },
+  // 取值清单来自 `ENGINE_TYPES`（引擎槽位的唯一真相在 `services/config/types.ts`），不手抄，避免增删引擎时静默漂移。
+  RCS_DEFAULT_ENGINE_TYPE: {
+    description: `本地执行的默认引擎类型；可选：${ENGINE_TYPES.join("、")}；未设置时按 peri。`,
+  },
   RCS_DISABLE_LOCAL_EXECUTION: { description: "禁用 local-default 本地节点；true 后所有实例必须路由到远端 machine。" },
   RCS_REDIS_URL: { description: "Redis 连接串；未设置时缓存回退为进程内 Map。", secret: true },
   RCS_REDIS_PASSWORD: { description: "Redis 密码。", secret: true },
@@ -119,71 +128,28 @@ export const LOGGER_UNDECLARED: readonly UndeclaredKey[] = [
 ];
 
 /**
- * 基础服务与共享实例凭据：键落在主服务 env（生产 `docker/main/.env`；dev 是仓库根 `.env`，容器编排与
- * 本地源码开发共用同一份）。消费方不限于基础服务编排本身：消费共享实例的依赖编排（docker/litellm/、
- * docker/ragflow/、docker/workflow/）也读这里的键——这类凭据只定义在主服务 env，放到依赖目录就会与
- * 实例里的账号漂移。
+ * 主服务自带的基础服务凭据：键落在主服务 env（生产 `docker/main/.env`；dev 是仓库根 `.env`，容器编排与
+ * 本地源码开发共用同一份）。基础服务内联在主服务编排里，只有主服务一个消费方——依赖目录各自自带实例
+ * （docker/litellm/ 的 litellm-postgres、docker/ragflow/ 的 ragflow-mysql、docker/workflow/ 的 mysql），
+ * 凭据写在各自目录的 `.env`。
  */
 export const BASE_SERVICE_UNDECLARED: readonly UndeclaredKey[] = [
   {
     key: "POSTGRES_PASSWORD",
     description: "基础服务 PostgreSQL 的口令；编排用它拼容器内连接串，改这里也要改已初始化数据库的口令。",
-    consumer:
-      "docker/common/docker-compose.yml、docker-compose.yml（dev）、docker/main/docker-compose.yml、docker/litellm/docker-compose.yml（litellm-db-init 用它建库与角色）",
-  },
-  {
-    key: "LITELLM_DB_PASSWORD",
-    description:
-      "共享 postgres 里 litellm 角色的口令；由 docker/litellm/ 的一次性初始化服务建角色时写入，与它的 DATABASE_URL 必须同值（改这里后重跑初始化服务会同步到库内，不必手工改库）。",
-    consumer: "docker/litellm/docker-compose.yml（litellm-db-init 建角色、litellm 拼连接串）",
-  },
-  {
-    key: "RUSTFS_ACCESS_KEY",
-    description:
-      "RustFS 对象存储（S3 兼容）的访问键；未设置时用编排里的本地缺省值。消费方按「共享实例的用户」签约，一把键对应全实例。docker/ragflow/ 不再消费共享实例（改为本栈自带实例、用自己的 RAGFLOW_S3_ACCESS_KEY，见 docker/ragflow/.env.example）。",
-    consumer: "docker/common/docker-compose.yml（docker/workflow/ 的 s3-init 用它建桶并播种图标）",
-  },
-  {
-    key: "RUSTFS_SECRET_KEY",
-    description: "RustFS 对象存储的密钥；与访问键同属共享实例的一对凭据——拿到就能读写共享实例上的任何桶，消费方同上。",
-    consumer: "docker/common/docker-compose.yml（docker/workflow/ 的 s3-init 用它建桶并播种图标）",
-  },
-  {
-    key: "MYSQL_ROOT_PASSWORD",
-    description:
-      "共享 MySQL 的 root 口令；只在数据目录为空时写入数据库，已有数据时改这里不会改库里的账号（要改口令得同时改库或重建数据目录）。",
-    consumer:
-      "docker/common/docker-compose.yml（docker/workflow/ 读上游 docker/.env 的同名键、两处必须同值；docker/ragflow/ 的 ragflow-mysql-init 取主服务 env，经部署脚本导出）",
-  },
-  {
-    key: "MYSQL_DATABASE",
-    description:
-      "共享 MySQL 首次初始化时创建的库名；只在数据目录为空时生效，只有 workflow 的库（opencoze）与它同值——ragflow 的库（rag_flow）由 ragflow-mysql-init 自建。",
-    consumer: "docker/common/docker-compose.yml（docker/workflow/ 的 DSN 与它一致）",
-  },
-  {
-    key: "MYSQL_USER",
-    description:
-      "共享 MySQL 首次初始化时创建的应用账号；只在数据目录为空时生效，只有 workflow 用它——ragflow 用自己的一次性服务建的库级账号（ragflow）。",
-    consumer: "docker/common/docker-compose.yml（docker/workflow/ 的 DSN 与它一致）",
-  },
-  {
-    key: "MYSQL_PASSWORD",
-    description:
-      "共享 MySQL 应用账号的口令；消费方 DSN 里的口令必须与它一致（上游 docker/.env 同名键）。ragflow 用自己的一次性服务建的账号口令（RAGFLOW_MYSQL_PASSWORD）。",
-    consumer: "docker/common/docker-compose.yml（docker/workflow/ 的 DSN 与它一致）",
+    consumer: "docker-compose.yml（dev）、docker/main/docker-compose.yml（生产）",
   },
 ];
 
-/** 部署模板分组标题（同时是渲染顺序）：开关 → common 可选服务 → 部署参数 → 主服务 env 提供的键。 */
+/** 部署模板分组标题（同时是渲染顺序）：开关 → 主服务可选服务 → 部署参数 → 主服务 env 提供的键。 */
 export const DEPLOY_OWNER_SWITCHES = "依赖开关（docker/deploy.env）";
-export const DEPLOY_OWNER_COMMON = "common 可选服务（随主服务启动）";
+export const DEPLOY_OWNER_MAIN_SERVICES = "主服务可选服务（随主服务启动）";
 export const DEPLOY_OWNER_PARAMS = "部署参数（docker/deploy.env）";
 export const DEPLOY_OWNER_MAIN_ENV = "由主服务 env 提供（生产 docker/main/.env、dev 仓库根；本文件不写取值）";
 
 export const DEPLOY_OWNER_ORDER: readonly string[] = [
   DEPLOY_OWNER_SWITCHES,
-  DEPLOY_OWNER_COMMON,
+  DEPLOY_OWNER_MAIN_SERVICES,
   DEPLOY_OWNER_PARAMS,
   DEPLOY_OWNER_MAIN_ENV,
 ];
@@ -197,8 +163,9 @@ export interface DeployKeyNote {
 }
 
 /**
- * 部署面键的注记表。键集合由主服务的两份编排（dev / 生产）与 common 的变量插值发现（生成器两个方向都会报错：
- * compose 新增键而表里没有、表里的键已不在编排中），因此这里只回答「这个键写在哪、干什么用」，不维护键集合本身。
+ * 部署面键的注记表。键集合由主服务的生产编排（docker/main/docker-compose.yml）的变量插值发现
+ * （生成器两个方向都会报错：compose 新增键而表里没有、表里的键已不在编排中），
+ * 因此这里只回答「这个键写在哪、干什么用」，不维护键集合本身。
  */
 export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
   FENIX_HTTP_PORT: {
@@ -209,53 +176,15 @@ export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
     owner: DEPLOY_OWNER_PARAMS,
     description: "PostgreSQL 宿主端口，只绑回环，供本地源码开发与运维工具连接；编排缺省 5432。",
   },
-  MYSQL_HOST_PORT: {
-    owner: DEPLOY_OWNER_PARAMS,
-    description: "共享 MySQL 的宿主端口，只绑回环（mysqldump / 客户端排障用）；编排缺省 3306。",
-  },
   POSTGRES_PASSWORD: {
     owner: DEPLOY_OWNER_MAIN_ENV,
     secret: true,
-    description:
-      "基础服务 PostgreSQL 的口令；与 DATABASE_URL 中的口令必须一致；docker/litellm/ 的初始化服务也用它建库与角色。",
-  },
-  MYSQL_ROOT_PASSWORD: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description:
-      "共享 MySQL 的 root 口令；消费方 docker/workflow/ 读的是上游 docker/.env 里的同名键（两处必须同值）、docker/ragflow/ 的初始化服务取主服务 env（经部署脚本导出），不一致时初始化会以「认证失败」停下。",
-  },
-  MYSQL_DATABASE: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description:
-      "共享 MySQL 首次初始化时创建的库名（只在实例数据目录为空时生效）；必须与 workflow DSN 里的库名一致（当前用 opencoze）。",
-  },
-  MYSQL_USER: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description:
-      "共享 MySQL 首次初始化时创建的应用账号（只在实例数据目录为空时生效）；必须与 workflow DSN 里的账号一致。",
-  },
-  MYSQL_PASSWORD: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description:
-      "共享 MySQL 应用账号的口令；必须与 workflow DSN 里的口令一致（上游 docker/.env 同名键）；ragflow 有自己的库级账号，口令见 docker/ragflow/.env。",
-  },
-  RUSTFS_ACCESS_KEY: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description:
-      "RustFS 对象存储的访问键；编排缺省 fenix；只有 docker/workflow/ 的初始化服务用它建桶。docker/ragflow/ 自带实例、用本目录 .env 的 RAGFLOW_S3_ACCESS_KEY。",
-  },
-  RUSTFS_SECRET_KEY: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description:
-      "RustFS 对象存储的密钥；与访问键同属共享实例的一对凭据（各消费方都能读写实例上的任何桶，因此当前只有 docker/workflow/ 在用）。",
+    description: "基础服务 PostgreSQL 的口令；与 DATABASE_URL 中的口令必须一致。",
   },
   RCS_API_KEYS: {
     owner: DEPLOY_OWNER_MAIN_ENV,
     secret: true,
-    description: "应用必填；编排对该键没有兜底值，缺失即启动失败。",
+    description: "skill 下载令牌的签名密钥；编排缺省为本地下发值（公开值），生产必须覆盖为长随机值。",
   },
   REGISTRY_SECRET: {
     owner: DEPLOY_OWNER_MAIN_ENV,
@@ -282,44 +211,30 @@ export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
 };
 
 /**
- * common 的可选服务开关。这是 docker/deploy.sh 里 `COMMON_OPTIONAL_FEATURES` 的镜像——后者是开关名到
- * `--profile` 的实际接线处，改一处必须改两处；`scripts/__tests__/env-example-generator.test.ts` 逐项比对两边。
+ * 主服务编排里以 compose profile 门控的可选服务开关。这是 docker/deploy.sh 里 `MAIN_OPTIONAL_FEATURES`
+ * 的镜像——后者是开关名到 `--profile` 的实际接线处，改一处必须改两处；
+ * `scripts/__tests__/env-example-generator.test.ts` 逐项比对两边。
  */
-export const COMMON_FEATURE_SWITCHES: readonly { readonly name: string; readonly description: string }[] = [
+export const MAIN_FEATURE_SWITCHES: readonly { readonly name: string; readonly description: string }[] = [
   {
     name: "REDIS",
     description: "Redis 缓存与 Y.Doc 快照持久化（消费方只有主服务 rcs）；未启用时缓存回退进程内 Map。",
-  },
-  {
-    name: "S3",
-    description:
-      "RustFS 对象存储（S3 兼容）；消费方只有 docker/workflow/（桶 opencoze、milvus，由它的一次性初始化服务建）。docker/ragflow/ 不消费它——对象存储是 docker/ragflow/ 自带的特例，与这个开关无关。",
-  },
-  {
-    name: "MYSQL",
-    description:
-      "共享 MySQL（消费方：docker/workflow/ 的库 opencoze 与 docker/ragflow/ 的库 rag_flow）；业务 schema 由消费方自己的初始化服务应用，不由本服务承担。",
   },
 ];
 
 /** 三份产出的场景差异；覆盖键是否正确由 {@link assertTemplateOverrides} 兜住，拼错键名不会静默失效。 */
 
 /**
- * 声明面之外、两份应用面模板共用的键：日志族、基础服务凭据，以及只被 acp-runtime-cli 读取的两个键。
+ * 声明面之外、两份应用面模板共用的键：日志族与基础服务凭据。
  * 两份模板（本地开发 `.env.example` 与主服务生产 `docker/main/.env.example`）的 undeclared 必须一致，
  * 共用一个常量避免逐份抄写后漂移。声明面补上这些键时，{@link assertTemplateOverrides} 会当场报错。
+ *
+ * `RCS_URL` / `RCS_TENANT_ID` **刻意不在此列**：唯一读取点是节点容器里的 `acp-runtime-cli`，主服务进程零
+ * 消费者，列在主服务 env 里既不生效，又让节点误以为可以从主服务配置取值。两个键归执行节点目录
+ * （`docker/sandbox-*` 各自的 `.env` 与编排）。口径与 `apps/server/src/env.ts` 对 `RCS_CCB_COMMAND` 的既有
+ * 处理一致：容器侧部署配置不进宿主 env 声明面，也不进主服务 env 模板。
  */
-const APP_UNDECLARED: readonly UndeclaredKey[] = [
-  ...LOGGER_UNDECLARED,
-  ...BASE_SERVICE_UNDECLARED,
-  {
-    key: "RCS_URL",
-    description:
-      "Agent 侧回连主服务的 WebSocket 基址；daemon 按它改写 skill 下载链接（宿主生成的地址在容器内不可达）。",
-    consumer: "packages/acp-runtime-cli（读入后经 ServerConfig 交给 packages/plugin-*/*-handler.ts）",
-  },
-  { key: "RCS_TENANT_ID", description: "远端运行时注册时携带的租户标识。", consumer: "packages/acp-runtime-cli" },
-];
+const APP_UNDECLARED: readonly UndeclaredKey[] = [...LOGGER_UNDECLARED, ...BASE_SERVICE_UNDECLARED];
 
 export const ENV_TEMPLATES: readonly EnvTemplate[] = [
   {
@@ -339,8 +254,9 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
     overrides: {
       DATABASE_URL:
         "本地开发可用 `docker compose up -d postgres` 起的实例（库/用户/口令见仓库根 docker-compose.yml）；本模板不写连接串样例。",
-      RCS_API_KEYS: "本地开发任意非空串即可启动；生产必须是长随机值，且不得提交。",
+      RCS_API_KEYS: "未设置时用本地兜底值（公开值，只够本地跑起来）；生产必须是长随机值，且不得提交。",
       RCS_BASE_URL: "本地开发通常填 http://localhost:3000。",
+      RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
     },
     undeclared: APP_UNDECLARED,
   },
@@ -361,8 +277,10 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
     overrides: {
       DATABASE_URL:
         "容器部署时由编排的 `environment` 显式给出（`postgres://rcs:…@postgres:5432/rcs`，优先级高于本文件），本键只在绕过容器直跑源码时才需要。",
-      RCS_API_KEYS: "生产必须是长随机值（`openssl rand -hex 32`）；缺失或为空即启动失败，且不得提交。",
+      RCS_API_KEYS:
+        "生产必须是长随机值（`openssl rand -hex 32`）——编排的缺省值是公开的本地兜底值，不得带进生产；空串按校验失败处理，且不得提交。",
       RCS_BASE_URL: "填部署方可达的对外地址（如 https://agent.example.com）：影响生成的回链与 skill 下载链接。",
+      RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL:
         "docker 部署由 `./docker/deploy.sh` 在 init / up / deploy 时按主机名生成并固化（写入本文件、之后不再改动）；" +
         "独立部署须自行填部署方可控的邮箱，并登记为保留账号（见 docker/workflow/README.md §5）。",
@@ -378,9 +296,9 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       "本文件由 `bun run scripts/generate-env-example.ts` 生成，勿手改（`precheck` 的 env-example 步骤按字节比对）。",
       "",
       "覆盖范围 = docker/deploy.sh 的配置面：依赖开关（按 docker/ 下带 docker-compose.yml 的目录发现，与脚本的",
-      "目录发现同源）、common 的可选服务开关、部署参数（主服务与 common 编排里变量插值形式的键），以及这些编排会",
-      "从主服务 env 读取的键——最后一段只列键与去处：取值请写进主服务 env（生产 docker/main/.env、dev 仓库根 .env），",
-      "本文件进版本控制，密钥不得落在里面。",
+      "目录发现同源）、主服务编排里以 profile 门控的可选服务开关、部署参数（主服务编排里变量插值形式的键），",
+      "以及这些编排会从主服务 env 读取的键——最后一段只列键与去处：取值请写进主服务 env（生产 docker/main/.env、",
+      "dev 仓库根 .env），本文件进版本控制，密钥不得落在里面。",
       "",
       "键行一律是注释行：不写就等于用脚本与 compose 的缺省行为（未列出的依赖不启动），要改再取消注释。",
       "镜像版本不在这里：所有镜像固定版本、写在各自 compose 文件里（主服务 rcs 的 image 行随发布更新，dev 与生产两份编排同步）。",

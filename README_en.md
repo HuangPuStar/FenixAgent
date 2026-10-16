@@ -86,11 +86,21 @@ Besides the built-in engines, other ACP-compatible engines can be integrated by 
 ### Docker Compose (recommended)
 
 ```bash
-# Create local configuration and set RCS_API_KEYS to at least a random value.
+# Create local configuration; the container stack boots as-is (the compose file injects
+# DATABASE_URL) — running the source directly with `bun run dev` requires it in .env.
 cp .env.example .env
 
+# Starts PostgreSQL and rcs only; components are added with --profile and need no .env of their own.
 docker compose up --build -d
 ```
+
+Add optional components (litellm / ragflow / hindsight / agent-sites / opensandbox) on demand:
+
+```bash
+docker compose --profile litellm --profile ragflow up -d
+```
+
+Components need access configuration — see [docker/dev/README.md](docker/dev/README.md).
 
 The service is available at <http://localhost:3001/> by default, with the built-in Peri agent engine as the default for local execution.
 
@@ -100,7 +110,7 @@ For production deployment, where the target host does not need source code or Do
 
 ### Local development
 
-Prerequisites: Bun, Docker, Docker Compose, and a usable Peri agent engine (the default for local execution) on your `PATH`. To use another engine, install its CLI yourself; OpenCode version `opencode-ai@1.17.12` is recommended because newer versions may have compatibility issues.
+Prerequisites: Bun, Docker, Docker Compose, and a usable Peri agent engine (the default for local execution) on your `PATH`. Install it using the [Peri installation guide](https://github.com/KonghaYao/peri). To use another engine, install its CLI and explicitly set `RCS_DEFAULT_ENGINE_TYPE` in `.env`, for example `RCS_DEFAULT_ENGINE_TYPE=opencode`; OpenCode version `opencode-ai@1.17.12` is recommended because newer versions may have compatibility issues.
 
 ```bash
 # Start only PostgreSQL.

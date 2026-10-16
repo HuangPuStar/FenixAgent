@@ -74,14 +74,14 @@ async function assemble(contributions: readonly ModuleContribution[]): Promise<v
 }
 
 /**
- * 真实 profile 装配所需的必填键：宿主 `env.ts` 两枚（DATABASE_URL / RCS_API_KEYS）+ workflow-v2 三枚；
- * 值与 `assembly-env.test.ts` 的 `baseInput` 同口径，只为通过 schema，不参与任何断言。
+ * 真实 profile 装配的输入：宿主 `env.ts` 必填的 `DATABASE_URL`、有本地兜底值的 `RCS_API_KEYS`，以及
+ * workflow-v2 三枚（可选）。值与 `assembly-env.test.ts` 的 `baseInput` 同口径，只为让取值确定，不参与断言。
  *
- * 「不读进程环境」是刻意的：本仓的 `.env` 不保证含上游账号（联调方自己注入），宿主必填键也可能只在本机
- * 存在。依赖进程环境会让门禁的通过与否取决于开发者本机文件——`bun test` 在本机自动读 `.env`、CI 没有，
+ * 「不读进程环境」是刻意的：本仓的 `.env` 不保证含上游账号（联调方自己注入），宿主 `DATABASE_URL` 也可能只在
+ * 本机存在。依赖进程环境会让门禁的通过与否取决于开发者本机文件——`bun test` 在本机自动读 `.env`、CI 没有，
  * 同一份代码两边得出相反结论。
  */
-const REQUIRED_ASSEMBLY_ENV = {
+const ASSEMBLY_ENV_INPUT = {
   DATABASE_URL: "postgres://127.0.0.1:5432/fenix",
   RCS_API_KEYS: "test-api-keys",
   WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "workflow-v2@example.test",
@@ -177,7 +177,7 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
   // 注入（fixture 在后，覆盖进程环境里的同名值），其余键仍取真实进程环境。
   await bootstrapServerAssembly({
     mountContribution: mountServerRouteContribution,
-    loadEnv: (definitions) => loadServerEnv(definitions, { ...process.env, ...REQUIRED_ASSEMBLY_ENV }),
+    loadEnv: (definitions) => loadServerEnv(definitions, { ...process.env, ...ASSEMBLY_ENV_INPUT }),
   });
 
   // 直接检查真实装配后的路由表，防止已退役端点从其它贡献重新挂入。

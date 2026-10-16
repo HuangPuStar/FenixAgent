@@ -136,7 +136,9 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     },
     // Workflow V2 模块配置：九枚键全部是本模块自己声明的部署键（`fenix.module.ts` 的 envDefinitions，
     // 冻结 §2.2），宿主只做透传。2F 起模块已在 `deploy/assembly/ce.json` 的 `resources` 列表里，
-    // `loadServerEnv` 因此聚合了这九枚键，三枚必填项已在启动期由声明方 schema 校验，这里取到的都是已解析值。
+    // `loadServerEnv` 因此聚合了这九枚键，这里取到的都是已解析值。账号凭据与票据密钥在声明侧是**可选**的
+    // （不启用 workflow 的部署不必配置，缺失由包内 `config.ts` 的 require* 在调用点判定），因此这里透传
+    // 的可能就是 `undefined`——宿主不得替它们补值。
     // `nodeWhitelist` 传逗号分隔**字符串**（声明面的形状），拆成类型名数组是包内 `getWorkflowV2Config()`
     // 的职责：节点类型名是 workflow-v2 的领域知识，宿主不解释它。
     "workflow-v2": {
@@ -145,9 +147,9 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       // 可选键（2026-10-12）：未配置即 `undefined`＝存储出站直连直链 origin。不给默认值、不做空串归一——
       // 「空串」在模块 schema 里是非法地址而不是「未配置」，两者不能混成一个形状。
       storageUpstreamUrl: readDeclaredEnv<string | undefined>(env, "WORKFLOW_V2_STORAGE_UPSTREAM_URL"),
-      accountEmail: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL"),
-      accountPassword: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD"),
-      ticketSecret: readDeclaredEnv<string>(env, "WORKFLOW_V2_TICKET_SECRET"),
+      accountEmail: readDeclaredEnv<string | undefined>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL"),
+      accountPassword: readDeclaredEnv<string | undefined>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD"),
+      ticketSecret: readDeclaredEnv<string | undefined>(env, "WORKFLOW_V2_TICKET_SECRET"),
       codeTtlSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_IFRAME_CODE_TTL_SECONDS"),
       ticketTtlSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_IFRAME_TICKET_TTL_SECONDS"),
       upstreamTimeoutMs: readDeclaredEnv<number>(env, "WORKFLOW_V2_UPSTREAM_TIMEOUT_MS"),

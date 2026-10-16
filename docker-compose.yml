@@ -1,4 +1,4 @@
-# dev 编排 — FenixAgent 主服务（本地构建）+ 基础服务
+# dev 编排 — FenixAgent 主服务（本地构建）+ 基础服务 + 可选组件
 # 权威文档：docs/operations/docker-topology.md
 #
 # 本文件是 **dev 形态**：`rcs` 声明 `build:`，`docker compose up -d --build` 本地构建，
@@ -9,32 +9,90 @@
 # `./docker/deploy.sh deploy`，它操作的是 docker/main 那份。
 #
 # 用法：
-#   dev（容器全栈）  docker compose up -d --build
-#   dev（仅数据库）  docker compose up -d postgres            # 配合 bun run dev
-#   dev（附加服务）  docker compose --profile s3 --profile redis up -d
+#   dev（容器全栈）  docker compose up -d --build                 # postgres + rcs
+#   dev（仅数据库）  docker compose up -d postgres               # 配合 bun run dev
+#   dev（加缓存）    docker compose --profile redis up -d
+#   dev（加组件）    docker compose --profile litellm --profile ragflow up -d
+#   dev（停单组）    docker compose stop litellm litellm-postgres    # 容器留着；要连容器一起删用 rm -sf 同参数
 #
-# 镜像一律固定版本、不用环境变量插值：发布新版本时同时更新本文件与 docker/main/ 的 image 行。
-# dev 用 `--build` 构建出的镜像会占用同一个 tag，之后走生产入口时 deploy.sh 会先 pull 覆盖回发布镜像。
-# 基础服务（PostgreSQL / Redis / RustFS）在 docker/common/，经 include 引入。
+# 可选组件在 docker/dev/（见 docker/dev/README.md）：每个组件一份 docker-compose.<组件>.yml，
+# 全部经下方 include 复制进**同一个项目**，服务间按服务名直连；各自用 --profile <组件名> 启动。
+# 组件的变量一律在编排里写 ${VAR:-默认值}（**没有** .env.<组件> 文件）：想改默认值就在**仓库根 .env**
+# 写同名键——它既是本文件（含 rcs）的插值来源，也覆盖全部组件的默认值。
+#
+# 镜像不用环境变量插值：本文件的 rcs 跟 CI 在 main 分支上发布的滚动 tag（`main`），要的是最新代码；
+# 生产形态（docker/main/）写固定发布 tag（`sha-<commit>`），要的是可回滚的确定版本。两者不再共用同一个 tag，
+# 因此 dev 用 `--build` 构建出的镜像不会占掉生产要跑的版本。
+# 基础服务（postgres / redis）就地内联在下方：它们随本文件恒启动。生产形态同样内联自己的一套
+# （docker/main/），两边各存各的数据，互不影响。
 
 include:
-    - path: docker/common/docker-compose.yml
+    - path: docker/dev/docker-compose.litellm.yml
+    - path: docker/dev/docker-compose.hindsight.yml
+    - path: docker/dev/docker-compose.agent-sites.yml
+    - path: docker/dev/docker-compose.ragflow.yml
+    - path: docker/dev/docker-compose.opensandbox.yml
 
-# 固定项目名（不做插值）：命名卷与容器名都带项目名前缀，若让它随目录名变化，
-# 换一个交付目录就会指向一套空卷，看起来像“数据丢了”。同名项目无法在同一台机器并存，
-# 这由网络名 fenix-server 已经限定，所以固定项目名不额外缩小使用场景。
 name: fenix
 
 networks:
-    # 主服务网络：由顶层项目创建，各依赖目录以 external 方式接入（文档 §3）
+    # 主服务网络：由顶层项目创建（文档 §3 的拓扑契约）。
+    # dev 的可选组件与 rcs 同属**本项目**，按服务名直连，因此双方都只写 `name`、**都不写 `external`**
+    # ——生产里的 `external: true` 是给「独立项目」用的，写进被 include 的文件会原样保留下来，
+    # 让 `up` 报 `declared as external, but could not be found`（已实测，见各子编排文件末尾注释）。
     fenix-server:
         name: fenix-server
 
 services:
 
+    postgres:
+        # 必需：DATABASE_URL 在宿主 schema 中必填且无默认值（apps/server/src/env.ts），缺失即应用启动失败。
+        # 与 docker/main/docker-compose.yml 的同名服务逐字同参，差异只有数据落点（dev 落仓库根，
+        # 生产落 docker/main/data/）——这也是 dev 与生产分开存 postgres 数据的一步。
+        image: postgres:16-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: rcs
+            POSTGRES_DB: rcs
+            # 默认值只服务本地，生产必须覆盖。
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rcs}
+        ports:
+            # 只绑回环：本地源码开发（bun run dev）需要，不对外暴露。
+            - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+        volumes:
+            # 相对本文件解析 = 仓库根 ./data/postgres。
+            - ./data/postgres:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U rcs"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
+    redis:
+        # 可选（--profile redis）：未启用时缓存回退进程内 Map（apps/server/src/services/cache.ts），
+        # Y.Doc 快照不做持久化。与 docker/main/ 的同名服务逐字同参。
+        # **起它不等于接上**：本块刻意不内联 `RCS_REDIS_URL`——给了默认值会让「没起 redis」的默认启动
+        # 也拿到 `redis://redis:6379` 去连一个不存在的服务。要用缓存，在仓库根 .env 写
+        # `RCS_REDIS_URL=redis://redis:6379`。
+        image: redis:7-alpine
+        profiles: ["redis"]
+        restart: unless-stopped
+        command: ["redis-server", "--appendonly", "yes"]
+        volumes:
+            - ./data/redis:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
     rcs:
-        # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）
-        image: ghcr.io/huangpustar/fenixagent:sha-da5eb54
+        # main 分支的滚动 tag：跟着 main 走，不用手工更新；禁止改成环境变量插值（文档 §4.2）
+        image: ghcr.io/huangpustar/fenixagent:main
         # 仅服务 dev：`docker compose up -d --build` 本地构建，tag 即上面的 image 行。
         # 生产形态（docker/main/）不声明 build，只用 pull 下来的发布镜像。
         build:
@@ -61,7 +119,9 @@ services:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
-            RCS_API_KEYS: ${RCS_API_KEYS:?RCS_API_KEYS 未设置：请在仓库根 .env 配置（见 .env.example）}
+            # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：本地零配置可起，生产必须换成
+            # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
+            RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}
             # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
             RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
             # 与 sandbox / 控制台共享的密钥；默认值只服务本地，生产必须用 .env 覆盖。
@@ -72,6 +132,20 @@ services:
             APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
+            # —— 组件接线：地址由「同项目同网络」决定（组件与 rcs 同属本项目、同一张 fenix-server 网，
+            #    按服务名直连），不属于部署配置，故写显式值；
+            #    密钥用与组件侧**同一个插值键名**，两处自动同值、零人工同步。
+            RCS_MODEL_GATEWAY_BASE_URL: http://litellm:4000/litellm
+            RCS_MODEL_GATEWAY_ADMIN_KEY: ${LITELLM_MASTER_KEY:-litellm-master-key-123}
+            AGENT_SITES_BASE_URL: http://agent-sites:3000
+            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:-agent-sites-master-key-123}
+            # GOTENBERG_URL 与 RAGFLOW_API_URL 同属 knowledge 的文档链路（先转 PDF、再解析），一并写容器内地址：
+            # 若留给 .env 的宿主默认值 http://127.0.0.1:3200，容器里的 127.0.0.1 会指向 rcs 自己。
+            RAGFLOW_API_URL: http://ragflow:9380
+            GOTENBERG_URL: http://gotenberg:3000
+            HINDSIGHT_MCP_URL: http://hindsight:8888
+            RCS_SANDBOX_CLUSTER_URL: http://opensandbox-cluster:8080
+            RCS_SANDBOX_CLUSTER_API_KEY: ${CLUSTER_SERVICE_API_KEY:-clustersvc123}
         volumes:
             # dev 数据落点：bind 到本文件同级的 ./ 下（不用命名卷），随目录整体搬迁/备份。
             # 生产形态（docker/main/）用 docker/main/ 下的同名目录，两套数据互不影响。

@@ -1,0 +1,34 @@
+[server]
+# Server 在容器内监听的地址和端口，通常不需要修改。
+host = "0.0.0.0"
+port = 8080
+# Cluster 创建 opensandbox_server 记录时，api_key 必须填写同一个值。
+# 本地开发用固定值；要换值时记得在 Cluster 控制台「新建节点」表单里填同一个。
+api_key = "opensandbox-api-key-123"
+
+[runtime]
+# 当前使用 Docker Runtime。
+type = "docker"
+# OpenSandbox 注入每个沙盒的执行代理镜像，负责 exec、文件读写等操作。
+# 它不是用户沙盒镜像，也不是 OpenSandbox Server 镜像；需确保节点可以拉取该镜像。
+execd_image = "opensandbox/execd:v1.0.18"
+
+[docker]
+# 沙盒容器使用的 Docker 网络模式。
+network_mode = "host"
+# Cluster 和沙盒调用方可以访问的**节点**地址——从消费方容器看必须可达，所以不能写 127.0.0.1
+# （容器内的 127.0.0.1 指向容器自己）。按组网形态选值：
+#   · macOS / Windows 的 Docker Desktop 与 OrbStack：host.docker.internal
+#   · Linux：宿主在容器网络内的地址（如 172.17.0.1）或宿主实际 IP
+#   · 节点与调用方同处一张容器网络：节点服务名（本编排里是 opensandbox-server）
+# 本机在用的节点用的是 host.docker.internal 配 network_mode = "host"；端到端创建沙盒的路径
+# 在 dev 编排下**尚未验证**（见 docker/dev/README.md 排障段）。
+host_ip = "host.docker.internal"
+# 沙盒端口范围；必须与 docker/dev/docker-compose.opensandbox.yml 发布的端口范围
+# （SANDBOX_PORT_MIN / SANDBOX_PORT_MAX，默认 10000-10100）保持一致。
+port_range_min = 10000
+port_range_max = 10100
+
+[storage]
+# DinD 中 Cluster 的 workspace_root 使用 /workspace。
+allowed_host_paths = ["/workspace"]

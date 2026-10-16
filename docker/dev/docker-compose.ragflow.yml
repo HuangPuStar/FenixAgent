@@ -1,0 +1,269 @@
+# docker/dev/ —— RAGFlow 检索栈 + Office 转 PDF（knowledge 模块使用）
+#
+# 本文件是**本地开发编排**，由仓库根 docker-compose.yml 通过 include 复制进同一个项目（fenix），
+# 用 `docker compose --profile ragflow up -d` 启动。生产形态是 docker/ragflow/。
+#
+# 与生产形态的差异（都为「零配置文件准备」，不改业务语义）：
+#   1. 自带 `ragflow-mysql` 实例，删掉 `ragflow-mysql-init`：库与账号由 mysql 镜像的 MYSQL_DATABASE /
+#      MYSQL_USER 在实例初始化时直接建好，一次性服务确实多余。
+#      `ragflow-s3-init` **保留**：它不建资源，是实例能力探测（见该服务上的注释），`service_healthy`
+#      替代不了它——rustfs 健康不等于 RAGFlow 的 minio 客户端能跟它通话。
+#   2. 不开栈内网络 `ragflow-net`：dev 全部服务同处 fenix-server，按服务名直连。
+#      （服务名 `ragflow-redis` / `ragflow-rustfs` 仍带前缀：它们不得与保留名 redis / rustfs 撞车。）
+#   3. 全部键写成 ${VAR:-默认值}，**没有** docker/dev/.env.ragflow；要改就在**仓库根 .env** 写同名键。
+#   4. infinity_conf.toml 不复制，只读挂载生产目录里的那一份。
+#   5. 每个服务加 `profiles: ["ragflow"]`：生产里这栈是独立项目、恒启动，dev 里靠 profile 按需拉起。
+#   6. 数据落点从 docker/ragflow/ 下的散点（./data/rustfs、./ragflow_logs、./ragflow_data、
+#      ./ragflow_redis_data、./ragflow_infinity_data）统一到 ./data/ragflow/<子目录>，并删掉 `expose:` 段：
+#      dev 全部服务同处 fenix-server，栈内网络里才需要的 expose 声明多余。
+#
+# 网络：ragflow 与 gotenberg 接入 fenix-server（rcs 按 http://ragflow:9380 与 http://gotenberg:3000 访问）。
+# 宿主端口只绑回环（18080 / 19380 / 3200），仅供本地源码调试。
+#
+# 镜像 tag 一律固定版本、写在文件里，不经环境变量插值（文档 §13 硬约束 7）。
+
+services:
+
+    ragflow-mysql:
+        # 本栈私有实例（生产形态同样自带 ragflow-mysql，两边只是数据落点不同）。服务名带组件前缀，
+        # 免得与 fenix-server 上的保留名 postgres / redis 混在一起（文档 §13 硬约束 1）。
+        # 字符集参数与生产实例一致。
+        image: mysql:8.4.5
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+        environment:
+            # 只服务本地，生产必须覆盖。
+            MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_ROOT_PASSWORD:-ragflow123}
+            MYSQL_DATABASE: rag_flow
+            MYSQL_USER: ragflow
+            MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow123}
+        volumes:
+            - ./data/ragflow/mysql:/var/lib/mysql
+        healthcheck:
+            # 用真实查询而不是 `mysqladmin ping`：ping 在口令不对时同样返回成功（服务器活着就算通过），
+            # 那样「口令改了但数据目录还是旧的」这类漂移不会暴露；这里连不上就直接 unhealthy。
+            # `$$` 是容器内 shell 展开（CMD-SHELL 形式），与生产实例的写法一致。
+            test:
+                [
+                    "CMD-SHELL",
+                    "mysql -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' >/dev/null 2>&1",
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
+        networks:
+            - fenix-server
+
+    ragflow-redis:
+        # 栈内 Valkey：镜像与上游 valkey:8 一致。RAGFlow 用自己的实例（生产形态同样自带 ragflow-redis），
+        # 不与其他组件共用一份缓存，maxmemory 策略也只作用在本栈数据上；理由见 docker/ragflow/README.md。
+        image: valkey/valkey:8
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        command:
+            - redis-server
+            - --requirepass
+            # compose 插值：command 是 exec 形式（无 shell），不能用 `$$`——那会变成字面口令。
+            # healthcheck 里的 -a 参数同理。
+            - ${RAGFLOW_REDIS_PASSWORD:-ragflow123}
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
+        volumes:
+            - ./data/ragflow/redis:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "-a", "${RAGFLOW_REDIS_PASSWORD:-ragflow123}", "ping"]
+            interval: 10s
+            timeout: 10s
+            retries: 120
+        networks:
+            - fenix-server
+
+    ragflow-rustfs:
+        # 本栈自带的对象存储（生产形态同样是特例，理由见 docker/ragflow/README.md 与拓扑 §5）。
+        # 只用 RustFS（不得引回 MinIO），版本与生产形态一致，便于两处对照排障。
+        image: rustfs/rustfs:1.0.1
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        environment:
+            RUSTFS_VOLUMES: /data
+            # 默认值只服务本地，生产必须覆盖。
+            RUSTFS_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+            RUSTFS_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow123}
+            RUSTFS_CONSOLE_ENABLE: "true"
+        volumes:
+            - ./data/ragflow/rustfs:/data
+        healthcheck:
+            # 与生产形态的 rustfs 逐字同参：镜像行为已在生产编排上被实测过，不引入未验证的取值差异。
+            test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+        networks:
+            - fenix-server
+
+    # 一次性初始化：探测本栈 rustfs 实例的能力（建桶 / 读写 / 删对象）。
+    # 为什么保留（生产也是同一个理由，见 docker/ragflow/README.md 与拓扑 §5）：它**不建资源**，是
+    # fail-fast 的**兼容性验证**——rustfs 健康只说明它自己活着，说明不了 RAGFlow 的 minio 客户端能跟它
+    # 通话（path-style 寻址、SigV4 签名、region 协商、建桶权限），这些必须在上传文档之前先炸出来，
+    # 不能拖到用户传文件时才报。多桶模式下本栈的桶由 RAGFlow 运行期自建，所以它建的是自己的探测桶。
+    ragflow-s3-init:
+        # 复用本栈已有的 ragflow 镜像：不新增镜像来源，且它自带的正是运行期用的 minio 客户端。
+        image: infiniflow/ragflow:v0.26.0
+        # 上游只发布 amd64，同 ragflow 服务；上游补发 arm64 后一并删本行（文档 §13 硬约束 14）。
+        platform: linux/amd64
+        profiles: ["ragflow"]
+        restart: "no"
+        entrypoint: ["python3", "/init/init-s3.py"]
+        environment:
+            # 容器内地址写显式值：dev 里 ragflow-rustfs 与它同在 fenix-server。
+            S3_ENDPOINT: ragflow-rustfs:9000
+            # 必须与上面 ragflow-rustfs 的 RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY 用同一组默认值，
+            # 否则探测连不上、ragflow 卡在启动前。
+            S3_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+            S3_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow123}
+        volumes:
+            # 脚本不复制，只读挂载生产目录里的那一份（相对本文件解析 = docker/ragflow/init-s3.py）。
+            # 用长格式 + create_host_path: false：脚本缺失时直接失败，而不是悄悄建个空目录再跑空脚本。
+            - type: bind
+              source: ../ragflow/init-s3.py
+              target: /init/init-s3.py
+              read_only: true
+              bind:
+                  create_host_path: false
+        depends_on:
+            ragflow-rustfs:
+                condition: service_healthy
+        networks:
+            - fenix-server
+
+    infinity:
+        image: infiniflow/infinity:v0.7.0
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        command: ["-f", "/infinity_conf.toml"]
+        volumes:
+            - ./data/ragflow/infinity:/var/infinity
+            # 配置文件不复制：只读挂载生产目录里的那一份（相对本文件解析 = docker/ragflow/infinity_conf.toml）。
+            - ../ragflow/infinity_conf.toml:/infinity_conf.toml:ro
+        ulimits:
+            nofile:
+                soft: 500000
+                hard: 500000
+        healthcheck:
+            test: ["CMD", "curl", "http://localhost:23820/admin/node/current"]
+            interval: 10s
+            timeout: 10s
+            retries: 120
+        networks:
+            - fenix-server
+
+    # Office 文档转 PDF。由 knowledge 模块按 GOTENBERG_URL 直连，是「文档先转 PDF、再交给 RAGFlow 解析」
+    # 这条链路上的上游；并入本栈的理由就是它与 ragflow 同属一个能力的两个环节，共用一次启停。
+    gotenberg:
+        image: gotenberg/gotenberg:8
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        networks:
+            - fenix-server
+        ports:
+            # 只供本地源码调试（GOTENBERG_URL 指向 http://localhost:3200）。
+            - "127.0.0.1:${GOTENBERG_PORT:-3200}:3000"
+        healthcheck:
+            test: ["CMD", "curl", "--silent", "--fail", "http://localhost:3000/health"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+
+    ragflow:
+        # 上游只发布 amd64（Docker Hub 上无 arm64 变体）：写死平台让 arm64 主机（Mac）走模拟运行，
+        # 否则拉取直接报 no matching manifest（文档 §13 硬约束 14）；
+        # 上游补发 arm64 后与 docker/ragflow/ 的同名服务一起删除本行。
+        image: infiniflow/ragflow:v0.26.0
+        platform: linux/amd64
+        profiles: ["ragflow"]
+        restart: unless-stopped
+        command:
+            - --enable-adminserver
+        ports:
+            # RAGFlow Web 页面：只绑回环，用浏览器拿 API key、建知识库
+            - "127.0.0.1:${RAGFLOW_WEB_PORT:-18080}:80"
+            # RAGFlow HTTP API：只绑回环，供本地源码运行（bun run dev）的 RAGFLOW_API_URL 使用
+            - "127.0.0.1:${RAGFLOW_API_PORT:-19380}:9380"
+        environment:
+            TZ: Asia/Shanghai
+            DEVICE: cpu
+            DOC_ENGINE: infinity
+            API_PROXY_SCHEME: python
+
+            # 本栈自带的 MySQL（服务名 ragflow-mysql）：库与账号由实例初始化时直接建好。
+            MYSQL_HOST: ragflow-mysql
+            MYSQL_PORT: 3306
+            MYSQL_USER: ragflow
+            MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow123}
+            MYSQL_DBNAME: rag_flow
+            MYSQL_MAX_PACKET: 1073741824
+
+            # 栈内 Valkey（服务名带前缀，避开保留名 redis）
+            REDIS_HOST: ragflow-redis
+            REDIS_PORT: 6379
+            REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD:-ragflow123}
+
+            # 本栈自带的对象存储。**刻意不设桶名** —— 这是多桶模式，不是漏配：RAGFlow 的「逻辑桶」
+            # （知识库 kb_id、文件目录 parent_id）会成为实例上的真实桶，由 RAGFlow 首次写入时自建，
+            # 桶名是运行期 UUID，任何初始化服务都无法事先建出来。
+            # 警告：事后擅自设回 `MINIO_BUCKET` 会把键布局改成 `<逻辑桶>/<对象名>`（use_prefix_path 生效），
+            # 使已有对象全部读不到——那是数据可见性回归，不要只加一行环境变量。
+            MINIO_HOST: ragflow-rustfs
+            MINIO_PORT: 9000
+            MINIO_USER: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+            MINIO_PASSWORD: ${RAGFLOW_S3_SECRET_KEY:-ragflow123}
+
+            INFINITY_HOST: infinity
+            INFINITY_THRIFT_PORT: 23817
+            INFINITY_HTTP_PORT: 23820
+            INFINITY_PSQL_PORT: 5432
+
+            SVR_WEB_HTTP_PORT: 80
+            SVR_WEB_HTTPS_PORT: 443
+            SVR_HTTP_PORT: 9380
+            ADMIN_SVR_HTTP_PORT: 9381
+            SVR_MCP_PORT: 9382
+            GO_HTTP_PORT: 9384
+            GO_ADMIN_PORT: 9383
+
+            REGISTER_ENABLED: 1
+            DOC_BULK_SIZE: 4
+            EMBEDDING_BATCH_SIZE: 16
+            DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
+        volumes:
+            - ./data/ragflow/logs:/ragflow/logs
+            - ./data/ragflow/data:/ragflow/data
+        depends_on:
+            # 库、缓存、检索引擎与对象存储实例就绪即放行：本栈自带实例，健康检查就能保证
+            # （不再需要生产形态里的跨项目等待）。
+            ragflow-mysql:
+                condition: service_healthy
+            ragflow-rustfs:
+                condition: service_healthy
+            ragflow-redis:
+                condition: service_healthy
+            infinity:
+                condition: service_healthy
+            # 例外：这个不是等它「就绪」，是等它「跑完并成功」——探测失败就不该放行 ragflow。
+            ragflow-s3-init:
+                condition: service_completed_successfully
+        networks:
+            - fenix-server
+
+networks:
+    # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
+    # `name` 却没声明 `external`，子文件里的 `external: true` 会原样保留下来，`up` 直接报
+    # `network fenix-server declared as external, but could not be found`（已实测）。
+    # 本写法两边都成立：合并进根文件时与根文件的定义等价，单独解析时自己创建这张网。
+    fenix-server:
+        name: fenix-server

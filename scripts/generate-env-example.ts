@@ -25,16 +25,16 @@ import { z } from "zod/v4";
 import { generatedModuleManifests } from "../apps/generated/module-registry";
 import { parseEnv } from "../apps/server/src/env";
 import {
-  COMMON_FEATURE_SWITCHES,
   DEPLOY_KEY_NOTES,
-  DEPLOY_OWNER_COMMON,
   DEPLOY_OWNER_MAIN_ENV,
+  DEPLOY_OWNER_MAIN_SERVICES,
   DEPLOY_OWNER_ORDER,
   DEPLOY_OWNER_SWITCHES,
   ENV_TEMPLATES,
   type EnvEntry,
   type EnvTemplate,
   HOST_ENV_NOTES,
+  MAIN_FEATURE_SWITCHES,
   type UndeclaredKey,
 } from "./lib/env-example-spec";
 
@@ -61,8 +61,12 @@ function probeHostSchema(fill: (key: string) => unknown): { keys: string[]; pars
     },
     has: (_target, property) => typeof property === "string" && fill(property) !== undefined,
   });
+  // 先解析再快照键集合：对象字面量的值按书写顺序求值，写成 `{ keys: [...keys], parsed: parseEnv(probe) }`
+  // 会在解析之前就取走一个空集合。这条顺序只有在宿主 schema 存在必填键时才被掩盖（那时解析抛出，
+  // `catch` 分支的快照求值发生在解析之后），因此是无必填键的 schema 才能暴露的隐患。
   try {
-    return { keys: [...keys], parsed: parseEnv(probe) };
+    const parsed = parseEnv(probe);
+    return { keys: [...keys], parsed };
   } catch (error) {
     return { keys: [...keys], error };
   }
@@ -179,20 +183,18 @@ export function collectEnvEntries(): EnvEntry[] {
 }
 
 /**
- * 部署面的发现来源：主服务的两份编排（dev 用仓库根文件、生产用 docker/main/）与 common。
- * 依赖目录的键走各自 .env，不在部署模板的范围内。两份主服务编排的插值键必须一致（同一应用）。
+ * 部署面的发现来源：主服务的生产编排（基础服务 postgres / redis 内联其中）。
+ * dev 形态（仓库根 `docker-compose.yml`）**不在扫描面内**：它带 `build:` 并 include `docker/dev/` 下的
+ * 可选组件，插值语义与生产不同（内联默认值、含组件专用键），
+ * 「两份主服务编排的插值键必须一致」这一前提不成立。dev 面的键因此不受本生成器约束。
  */
-const DEPLOY_SURFACE_FILES = [
-  "docker-compose.yml",
-  "docker/main/docker-compose.yml",
-  "docker/common/docker-compose.yml",
-] as const;
+const DEPLOY_SURFACE_FILES = ["docker/main/docker-compose.yml"] as const;
 
 /**
  * 不参与依赖发现的目录，与 docker/deploy.sh 的 EXCLUDED_DIRS 同一规则：
- * common 是基础服务（随主服务编排 include）、main 是主服务编排本身（不是依赖单元）。
+ * main 是主服务编排本身（不是依赖单元）。
  */
-const DEPLOY_EXCLUDED_DIRS = new Set(["common", "main"]);
+const DEPLOY_EXCLUDED_DIRS = new Set(["main"]);
 
 /** 目录名 → 开关变量名：sandbox-peri → FENIX_FEATURE_SANDBOX_PERI（同 docker/deploy.sh 的 feature_var）。 */
 function featureVarFor(name: string): string {
@@ -229,7 +231,7 @@ export function collectComposeKeys(text: string): Map<string, { required: boolea
   return keys;
 }
 
-/** docker/ 下带 docker-compose.yml 的目录（除 common），与 docker/deploy.sh 的 discover_deps 同一规则。 */
+/** docker/ 下带 docker-compose.yml 的依赖目录，与 docker/deploy.sh 的 discover_deps 同一规则。 */
 async function discoverDependencyDirs(): Promise<string[]> {
   const entries = await readdir(resolve(REPOSITORY_ROOT, "docker"), { withFileTypes: true });
   const dirs = entries
@@ -248,7 +250,7 @@ async function discoverDependencyDirs(): Promise<string[]> {
 }
 
 /**
- * 部署面条目：依赖开关（按目录发现）+ common 可选服务开关 + 编排插值键（归属决定它写在哪份文件里）。
+ * 部署面条目：依赖开关（按目录发现）+ 主服务编排的可选服务开关 + 编排插值键（归属决定它写在哪份文件里）。
  *
  * 发现始终相对仓库根——部署面就是本仓库的 docker/ 与 compose 文件，注入的 `repositoryRoot` 只影响产出写到哪。
  * 键集合两个方向都报错：编排新增键而注记表没写、注记表里的键已不在编排中，都在这里当场失败。
@@ -290,14 +292,14 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
       description: `启动依赖 docker/${dir}/；该目录的必填键见它的 README 与 .env.example。`,
     });
   }
-  for (const item of COMMON_FEATURE_SWITCHES) {
+  for (const item of MAIN_FEATURE_SWITCHES) {
     const key = `FENIX_FEATURE_${item.name}`;
     if (switchKeys.has(key)) {
-      throw new Error(`common 的可选服务开关 ${key} 与依赖目录开关重名：两者只能有一个（改目录名或服务名）`);
+      throw new Error(`主服务编排的可选服务开关 ${key} 与依赖目录开关重名：两者只能有一个（改目录名或服务名）`);
     }
     entries.push({
       key,
-      owner: DEPLOY_OWNER_COMMON,
+      owner: DEPLOY_OWNER_MAIN_SERVICES,
       required: false,
       defaultValue: "false",
       multilineDefault: false,
@@ -310,7 +312,7 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
     const note = DEPLOY_KEY_NOTES[key];
     const info = composeKeys.get(key);
     if (note === undefined || info === undefined) {
-      throw new Error(`部署键 ${key} 已不在主服务 / common 编排中：请从 DEPLOY_KEY_NOTES 删除`);
+      throw new Error(`部署键 ${key} 已不在主服务编排中：请从 DEPLOY_KEY_NOTES 删除`);
     }
     entries.push({
       key,
@@ -395,7 +397,7 @@ function compareOwners(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-/** 部署模板不按字典序，按部署者的阅读顺序：开关 → common 可选服务 → 部署参数 → 主服务 env 的键。 */
+/** 部署模板不按字典序，按部署者的阅读顺序：开关 → 主服务可选服务 → 部署参数 → 主服务 env 的键。 */
 function compareDeployOwners(left: string, right: string): number {
   return DEPLOY_OWNER_ORDER.indexOf(left) - DEPLOY_OWNER_ORDER.indexOf(right);
 }

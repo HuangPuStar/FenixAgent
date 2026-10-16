@@ -71,7 +71,7 @@ check_compose_requirements() {
         if [[ "$env_dir" == "$SCRIPT_DIR/main" ]]; then
             where="docker/main/.env"
         else
-            where="docker/${env_dir#"$SCRIPT_DIR"/}/.env（共享键写在 docker/main/.env，由脚本带入环境）"
+            where="docker/${env_dir#"$SCRIPT_DIR"/}/.env（该依赖自己的配置；与主服务同值的键若已在主服务 env 中，脚本启动前已带入环境，不会报到这里）"
         fi
         missing="${missing}    - ${var} → 填在 ${where}"$'\n'
         hint="$(required_var_hint "$compose" "$var")"
@@ -88,9 +88,11 @@ has_required_key() {
 }
 
 # 依赖启动前的运行态注入：RCS_URL（地址）与 RCS_SECRET（共享密钥）。
-# 为什么单列：这两个键要由**主服务的部署配置**派生，不能从主服务 env 的同名键直接取——
-#   RCS_URL：主服务 env 的同名键是主服务**自用地址**（源码运行时指向本机 localhost），节点要的是
-#            「主服务可达地址」，同名不同义，且 export 后会被 compose 读到，所以这里必须无条件给出正确值。
+# 为什么单列：这两个键都**不由主服务 env 供给**，要在这里按同机语义给出——
+#   RCS_URL：节点侧的键，唯一读取点是容器内的 acp-runtime-cli，主服务进程不消费它，因此不在主服务 env 模板里
+#            （见 scripts/lib/env-example-spec.ts）。节点要的是「主服务可达地址」，同机时即 ws://rcs:3000
+#            （依赖 fenix-server 的 DNS）；shell 环境里若残留同名值会被这里的 export 覆盖，独立部署则由该
+#            依赖自己的 .env 提供真实地址。
 #   RCS_SECRET：节点侧的键名与主服务侧的 REGISTRY_SECRET 不同名，而注册是否通过由后者决定；
 #            主服务 env 模板也不声明 RCS_SECRET，缺省时从 REGISTRY_SECRET 派生，避免两处手抄漂移。
 # 取值优先级：该依赖自己的 .env ＞ 已导出的 shell 环境（主服务 env） ＞ 注入值。
@@ -120,13 +122,13 @@ apply_dep_runtime_env() {
     fi
 }
 
-# 校验将要启动的全部项目（主服务 + common + 已启用依赖）；返回 1 表示有未填写的必填项（报告写到 stderr）。
+# 校验将要启动的全部项目（主服务 + 已启用依赖）；返回 1 表示有未填写的必填项（报告写到 stderr）。
+# 基础服务（postgres / redis）内联在主服务编排里，随 PROJECT 一并校验。
 validate_required_env() {
     local name
     MISSING_REQUIRED=0
     REQUIRED_REPORT=""
     check_compose_requirements "主服务 docker/main/docker-compose.yml" "$TOP_COMPOSE" "$SCRIPT_DIR/main"
-    check_compose_requirements "基础服务 docker/common/" "$SCRIPT_DIR/common/docker-compose.yml" "$SCRIPT_DIR/main"
     for name in $(discover_deps); do
         feature_enabled "$name" || continue
         apply_dep_runtime_env "$name"
@@ -160,9 +162,10 @@ materialize_env_file() {
 
 # 平台上游账号邮箱（WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL）的部署期生成：缺失时派生一个值写进主服务 env。
 #
-# 为什么需要这一步：该键由 workflow-v2 模块声明为必填（`fenix.module.ts`，无默认值，缺失即 rcs 启动失败），
-# 但它**不是编排里的 `${VAR:?}` 键**——上面的必填项扫描看不见模块声明键，于是「没填」只会在容器启动时以
-# zod 报错的形式炸出来，而不是在启动前被拦下（docs/operations/docker-topology.md §9）。
+# 为什么需要这一步：该键是**身份**，一旦被上游用作账号就是该账号的所有权，晚了就没法在不换号的前提下补上
+# ——而它又不是编排里的 `${VAR:?}` 键，上面的必填项扫描（只看编排插值键）看不见它。因此由脚本在部署期一次定下。
+# 注：2026-10-16 起它与另两枚能力键在声明侧都是**可选**（缺失不再阻塞 rcs 启动），本步因此不再是「补必填」，
+# 而是「免去人工填身份」——删除它只会让启用画布的部署多一步手填，不会让部署失败。
 # 为什么由脚本取值而不是留空要求人工填：它是**身份**不是密钥（不能随机生成后即弃），但部署期也不需要预知——
 # 上游账号由平台在首次引导时自助注册（`platform-account-registration.ts`），上游只校验邮箱格式、不发信
 # （workflow-v2 账号供给设计 §2.3）。

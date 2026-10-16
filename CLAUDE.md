@@ -253,7 +253,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 环境变量的类型、默认值和必填性有两处真相来源：**宿主自有变量与多模块共享键**以 `apps/server/src/env.ts` 为准；**有唯一模块 owner 的部署变量**以其 owner 模块的 `fenix.module.ts` 里的 `envDefinitions` 为准（如 agent-runtime 的运行态旋钮与 `WORKSPACE_ROOT`、knowledge 的 RAGFlow/Gotenberg、sandbox 与 model-management 的整族配置）。同名键不得两处声明——`assertNoHostKeyOverride()` 会在启动期直接拒绝。新增变量必须同步 schema、部署配置和相关文档，并改在它的 owner 模块。`RCS_YJS_SNAPSHOT_*` 三项由 agent-runtime 模块的 `envDefinitions` 声明，经宿主装配投影与 `ChatChannelDependencies.snapshotPersist` 注入 chat-channel 持久层；包内不再直读 `process.env`，也不再自带默认值（Redis 模式下缺注入即失败）。关键变量：
 
-- 必填：`DATABASE_URL`、`RCS_API_KEYS`。
+- 必填：`DATABASE_URL`。`RCS_API_KEYS` 有本地兜底值（`apps/server/src/env.ts` 的 `LOCAL_DEV_API_KEY`），未设置不阻塞启动；生产必须换成 `openssl rand -hex 32` 类的长随机值，公开兜底值可伪造 skill 下载令牌。
 - 系统 API：`RCS_SYSTEM_API_KEYS`。
 - 存储与密钥引用：`SKILL_DIR`（默认 `./data/skills`）、`WORKSPACE_ROOT`（默认运行目录下的 `workspaces`）、`RCS_REDIS_URL`；provider 等配置通过 `{env:RCS_SECRET_<name>}` 引用环境密钥。
 - 系统管理：`RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `./data/password.txt`）。

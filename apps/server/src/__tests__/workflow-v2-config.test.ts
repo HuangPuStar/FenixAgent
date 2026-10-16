@@ -23,7 +23,7 @@ const baseInput = {
   RCS_API_KEYS: "test-api-keys",
 };
 
-/** 三枚必填键的 fixture 取值（占位值，不是任何环境的真实凭据）。 */
+/** 三枚能力键（账号凭据、票据密钥）的 fixture 取值（占位值，不是任何环境的真实凭据）。 */
 const requiredInput = {
   WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "workflow-v2-fixture@example.invalid",
   WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: "fixture-password",
@@ -115,4 +115,14 @@ test("对账与限流旋钮显式配置时透传（含禁用值 0）", () => {
   expect(projected.bffRateLimitPerMinute).toBe(600);
   expect(projected.sessionRateLimitPerMinute).toBe(30);
   expect(projected.apiRateLimitPerMinute).toBe(10);
+});
+
+// 三枚能力键未配置时启动不受影响（不启用 workflow 的部署不必配置）：投影成 `undefined`，由包内调用点判定。
+// 宿主**不得**给它们补空串或占位值——那会让包内「未配置」的判定失效，把问题推到上游请求上。
+test("未配置三枚能力键时不做任何补值", () => {
+  const projected = projectWorkflowV2Config({}) as WorkflowV2ModuleConfigInput;
+
+  expect(projected.accountEmail).toBeUndefined();
+  expect(projected.accountPassword).toBeUndefined();
+  expect(projected.ticketSecret).toBeUndefined();
 });

@@ -24,7 +24,7 @@
 import { createLogger } from "@fenix/logger";
 import { workflowV2PlatformAccount } from "@fenix/resource-workflow-v2/db";
 import { asc, eq } from "drizzle-orm";
-import { getWorkflowV2Config } from "../config";
+import { getWorkflowV2Config, type PlatformAccountCredentials, requirePlatformAccountCredentials } from "../config";
 import { getWorkflowV2Database } from "../repositories/database";
 import { type PlatformAccountRegistrationOutcome, registerPlatformAccount } from "./platform-account-registration";
 import { callUpstream } from "./upstream-client";
@@ -74,7 +74,12 @@ export type PlatformAccountBootstrapReason =
   /** 空间列表请求失败，或响应里没有可用的个人空间。 */
   | "space_unavailable"
   /** 账号行写入失败。 */
-  | "persist_failed";
+  | "persist_failed"
+  /**
+   * 部署前提没给：三枚能力键在声明侧可选，本步要用上游账号时必须先拿到凭据。单列一档是为了让上层按
+   * 「配置缺失」处理（路由回 503、日志原文点名缺哪一枚键），而不是被归成 `persist_failed` 那个 500。
+   */
+  | "not_configured";
 
 export class PlatformAccountBootstrapError extends Error {
   readonly code = "PLATFORM_ACCOUNT_BOOTSTRAP_FAILED";
@@ -240,6 +245,19 @@ function describeLoginFailure(registration: PlatformAccountRegistrationOutcome):
  */
 export async function bootstrapPlatformAccount(): Promise<PlatformAccountSnapshot> {
   const config = getWorkflowV2Config();
+  // 引导的产物是「账号身份 + 个人空间」的台账行，全程要用上游账号（注册与登录各一次），所以凭据在入口先
+  // 判定：缺失即点名键报错，而不是等到注册返回 failed、登录把 undefined 邮箱拼进请求体（声明侧这三枚键
+  // 可选，见 config.ts 的 requirePlatformAccountCredentials）。归成 `not_configured` 而不是让它以裸 Error
+  // 冒泡：上层按 `PlatformAccountBootstrapError` 分档，裸 Error 会被当成持久化失败回 500，把「没配键」
+  // 说成「写库失败」。消息原文已点名缺哪一枚键，不另造措辞。
+  let credentials: PlatformAccountCredentials;
+  try {
+    credentials = requirePlatformAccountCredentials(config);
+  } catch (error) {
+    throw new PlatformAccountBootstrapError("not_configured", error instanceof Error ? error.message : String(error), {
+      cause: error,
+    });
+  }
 
   const registration = await registerPlatformAccount();
   // 四种结果都在这里留痕（日志只含结果标签与业务码 / 传输类别，不含邮箱与密码）；被禁与未完成按告警记，
@@ -300,7 +318,7 @@ export async function bootstrapPlatformAccount(): Promise<PlatformAccountSnapsho
   const values = {
     platformUserId,
     platformSpaceId,
-    email: config.accountEmail,
+    email: credentials.email,
     status: "active" as const,
     lastLoginAt: now,
     lastError: null,

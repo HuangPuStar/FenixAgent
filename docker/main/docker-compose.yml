@@ -4,7 +4,8 @@
 #
 # 与仓库根 `docker-compose.yml`（dev 形态，带 `build:`）的关系：
 #   - 两者同项目名 `fenix`、同网络 `fenix-server`：**二选一运行**，同时执行会互相接管容器；
-#   - dev（本地构建）：仓库根文件 `docker compose up -d --build`；
+#   - dev（本地构建）：仓库根文件 `docker compose up -d --build`。它就地内联 `postgres` / `redis`，
+#     并 include `docker/dev/` 下的可选组件（各用 `--profile <组件名>` 启动，见 docker/dev/README.md）；
 #   - 生产/模拟生产：本文件，镜像一律来自 GHCR 固定 tag，不构建。
 #
 # 用法（官方入口，/部署到目标机时随 `docker/` 目录整体交付）：
@@ -16,11 +17,12 @@
 #   docker compose -f docker/main/docker-compose.yml up -d
 # 经 deploy.sh 时读的是同一份文件（脚本读入后导出，值一致）；`.env` 缺失时缺的必填键会在启动前报错。
 #
+# 基础服务（postgres 恒启动，redis 由 FENIX_FEATURE_REDIS 经 `--profile redis` 拉起）**就地内联在本文件**：
+# 每个组件自带依赖实例、互不影响，跨组件不共用一份数据库或缓存。服务名 postgres / redis 是
+# fenix-server 上的保留名（§3 规则 7）——依赖目录不得使用同名服务，因为本文件是该网络的创建方。
+#
 # 数据落点：本目录下的 ./data、./workflow、./workspaces（随交付面搬迁/备份），与 dev 形态
-# （仓库根同名目录）分开。基础服务数据在 docker/common/data/（由 include 引入的编排决定）。
-
-include:
-    - path: ../common/docker-compose.yml
+# （仓库根同名目录）分开；基础服务的数据是 ./data 下的 postgres / redis 两个子目录。
 
 # 固定项目名（不做插值）：与根文件一致——容器名和网络名都带项目名前缀，换名字等于换一套空数据。
 name: fenix
@@ -31,6 +33,51 @@ networks:
         name: fenix-server
 
 services:
+
+    postgres:
+        # 必需：DATABASE_URL 在宿主 schema 中必填且无默认值（apps/server/src/env.ts），缺失即应用启动失败。
+        # 与 dev（仓库根 docker-compose.yml）的同名服务逐字同参，差异只有数据落点（dev 落仓库根，
+        # 生产落本目录）——这是两套形态各存各的 postgres 数据的那一步。
+        image: postgres:16-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: rcs
+            POSTGRES_DB: rcs
+            # 默认值只服务本地，生产必须用本目录 .env 覆盖。
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rcs}
+        ports:
+            # 只绑回环：本地源码开发（bun run dev）需要，不对外暴露。
+            - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+        volumes:
+            # 相对本文件解析 = docker/main/data/postgres。
+            - ./data/postgres:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U rcs"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
+    redis:
+        # 可选（FENIX_FEATURE_REDIS=true → deploy.sh 传 --profile redis）：未启用时缓存回退进程内 Map
+        # （apps/server/src/services/cache.ts），Y.Doc 快照不做持久化。与 dev 的同名服务逐字同参。
+        # **起它不等于接上**：本块刻意不内联 `RCS_REDIS_URL`——给了默认值会让「没起 redis」的默认部署
+        # 也拿到 `redis://redis:6379` 去连一个不存在的服务。要用缓存，在 docker/main/.env 写
+        # `RCS_REDIS_URL=redis://redis:6379`。
+        image: redis:7-alpine
+        profiles: ["redis"]
+        restart: unless-stopped
+        command: ["redis-server", "--appendonly", "yes"]
+        volumes:
+            - ./data/redis:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
 
     rcs:
         # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）。
@@ -57,7 +104,9 @@ services:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
-            RCS_API_KEYS: ${RCS_API_KEYS:?RCS_API_KEYS 未设置：请在 docker/main/.env 配置（模板 docker/main/.env.example）}
+            # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：生产必须用本目录 .env 换成
+            # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
+            RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}
             # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
             RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
             # 与 sandbox / 控制台共享的密钥；默认值只服务本地，生产必须用本目录 .env 覆盖。
