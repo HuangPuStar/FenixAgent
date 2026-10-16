@@ -36,9 +36,9 @@ docker compose up --build -d
 一键入口、配置规范与网络分层见 [`docker-topology.md`](./docker-topology.md)（§6 依赖目录契约、§7 配置、§9 脚本）。最小流程：
 
 ```bash
-./docker/deploy.sh init        # 生成 docker/deploy.env 与各依赖目录的 .env（已存在则跳过，绝不覆盖）
-./docker/deploy.sh validate    # 按提示补齐必填项，直到这一步通过
-./docker/deploy.sh deploy      # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
+./deploy.sh init               # 生成 deploy.env 与各依赖目录的 .env（已存在则跳过，绝不覆盖）
+./deploy.sh validate           # 按提示补齐必填项，直到这一步通过
+./deploy.sh deploy             # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
 ```
 
 - 一套配置描述一台机器：依赖开关与部署参数在 `docker/deploy.env`，应用配置与密钥在主服务 env
@@ -65,6 +65,35 @@ docker compose up --build -d
   `rustfs`），不存在另需打开的共享实例开关。
 - 修改主服务 env 或 `docker/deploy.env` 后，`./docker/deploy.sh up` 会声明式收敛；只有依赖目录的
   `docker-compose.yml` 或 `.env` 改动才需要单独重启该项目。
+- 本节的命令都在**交付面**里执行，不在仓库工作区里执行——见 §2.4。
+
+### 2.4 交付面：生产不在仓库工作区里跑
+
+```bash
+./docker/deploy.sh export /opt/fenix        # 在仓库里执行：产出 /opt/fenix/docker
+cd /opt/fenix/docker                        # 之后所有命令在交付面里执行
+./deploy.sh init && ./deploy.sh validate && ./deploy.sh deploy
+```
+
+为什么必须分家：`docker/**/docker-compose.yml`、`deploy.sh`、`lib/config.sh` 全受版本控制，在仓库里起来的那套
+环境会被下一次 `git pull` 就地改写——容器重建时按新编排跑，而配置面（`deploy.env`、各 `.env`）与数据目录还
+停在旧结构上，故障现场很难归因。同一份工作区还常被切分支、`checkout`、`clean`，运行中的环境经不起这些动作。
+
+导出口径：
+
+- 交付面 = **受版本控制文件的快照**（`git ls-files docker/`）。本机配置（各 `.env`、`deploy.env`）、数据目录
+  （`data/`、`main/workflow`、`main/workspaces`）与运行期产物都在 `.gitignore` 里，因此不进交付面，由目标机上的
+  `init` 重新落成。
+- 排除两个只在仓库里成立的目录：`dev/`（dev 形态的编排由仓库根 `docker-compose.yml` `include`）与
+  `compose-explorer/`（读仓库根的本地只读工具）。
+- 目标目录里**已存在的文件一律不覆盖**，内容不同时逐条列出，由人 diff 后决定。升级已部署环境的编排走这一步，
+  而不是让导出直接改生产。
+- 目标目录不能落在仓库内（脚本直接拒绝）。
+- 反过来也拦：`docker/` 在 git 工作区内时，`init` / `validate` / `up` / `deploy` / `config` 被直接拒绝并提示先
+  `export`（`down` / `ps` / `logs` 只告警，应急停止不被挡）。判定用 `git rev-parse --show-toplevel`，部署机上
+  没有 git 即自动放行——`export` 是唯一允许在仓库里执行的命令。
+- `docker/sandbox-dsh/` 无发布镜像、构建上下文是仓库根，交付面里构建不了（见该目录 README）：不用它就让
+  `FENIX_FEATURE_SANDBOX_DSH` 保持关闭。
 
 ## 3. 环境变量与三份模板
 

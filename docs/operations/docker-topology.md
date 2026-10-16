@@ -549,6 +549,7 @@ TZ=Asia/Shanghai
 | 命令 | 行为 |
 | --- | --- |
 | `./docker/deploy.sh init` | 初始化配置：把各 `.env.example` 落成 `.env`（已存在一律跳过、不覆盖），生成缺失的部署期身份键（见下），随后报告还缺哪些必填项 |
+| `./docker/deploy.sh export <目标目录>` | 导出交付面：把受版本控制的 `docker/` 拷到该目录下（排除 `dev/`、`compose-explorer/`；不含本机 `.env` 与 `data/`；已存在文件一律不覆盖，内容不同只逐条列出）。生产不在仓库工作区里跑，理由与目标机后续步骤见 [`deployment.md`](./deployment.md) §2.4 |
 | `./docker/deploy.sh validate` | 只跑启动前的必填项校验（与 `up` / `deploy` 同一套，可反复自检） |
 | `./docker/deploy.sh up`（默认） | 启动前校验 → 起主服务项目（创建 `fenix-server`）→ 按开关逐个起依赖 → 汇总状态 |
 | `./docker/deploy.sh deploy` | 发布顺序（§10）：校验 → 拉镜像 → DDL 迁移 → 数据迁移 → `up` |
@@ -556,8 +557,15 @@ TZ=Asia/Shanghai
 | `./docker/deploy.sh ps` / `./docker/deploy.sh logs [name]` | 状态与日志 |
 | `./docker/deploy.sh config` | dry-run：打印将执行的完整命令（审计与排障）；必填项未填只告警、不拦 |
 
+交付面守卫：脚本目录（`docker/`）落在 git 工作区内时，只放行 `export`——`init` / `validate` / `up` /
+`deploy` / `config` 直接拒绝并提示先 `export` 到仓库外（理由见 [`deployment.md`](./deployment.md) §2.4），
+`down` / `ps` / `logs` 只告警，免得应急停止被挡在门外。判定是 `git -C <脚本目录> rev-parse --show-toplevel`：
+worktree / submodule 的 `.git` 是文件而非目录、脚本也可能落在仓库深处，所以问 git 而不是看外层有没有 `.git`；
+部署机上通常没有 git，这条守卫自动放行。
+
 脚本随 `docker/` 目录一起交付（不进镜像、不装到 PATH）：它需要与 `docker/` 下的依赖目录同级才能发现它们；
-自定位（`BASH_SOURCE`），因此可在任意工作目录下用 `./docker/deploy.sh` 或绝对路径调用。
+自定位（`BASH_SOURCE`），因此可在任意工作目录下用 `./docker/deploy.sh` 或绝对路径调用（交付面里是
+`./deploy.sh`）。
 
 配置文件解析：默认读**与脚本同目录**的 `docker/deploy.env`（`init` 生成的那个）；它不存在而同目录恰好只有一份
 `*.env` 时就用那一份（并打印用了哪份）；多份则报错列出候选、要求 `--config` 指定。`--config` 显式指定后不再自动发现。
@@ -619,7 +627,8 @@ TZ=Asia/Shanghai
   `deploy.sh` 会先 `pull` 覆盖回发布镜像）。
 
 **升级与回滚都改同一行**：把 `docker/main/docker-compose.yml` 的 `rcs` `image:` 改成目标 tag（进版本控制、经评审合入；
-仓库根 dev 编排的同一行同步更新）→ 把 `docker/` 目录交付到目标机 → `./docker/deploy.sh deploy`。直接改目标机上的
+仓库根 dev 编排的同一行同步更新）→ `./docker/deploy.sh export <目标目录>` 把交付面同步到目标机（已存在文件不覆盖，
+diff 核对后手工替换）→ 在交付面的 `docker/` 里 `./deploy.sh deploy`。直接改目标机上的
 这份文件也能跑，但它会让「本机实际版本」脱离仓库记录，只在应急回滚时使用，并要求事后把同一 tag 回写仓库；
 核对本机实际版本用 `./docker/deploy.sh ps`（镜像 tag/digest 可见）。
 
@@ -653,9 +662,11 @@ TZ=Asia/Shanghai
 ### 11.2 单机 prod
 
 ```bash
-./docker/deploy.sh init                        # 生成 docker/deploy.env 与各 .env（已存在则跳过）
-./docker/deploy.sh validate                    # 按提示补齐必填项，直到这一步通过
-./docker/deploy.sh deploy
+./docker/deploy.sh export /opt/fenix           # 在仓库里执行：产出交付面 /opt/fenix/docker
+# 下面三条在交付面里执行（仓库里会被守卫拒绝，见 §9 与 部署 §2.4）
+./deploy.sh init                               # 生成 deploy.env 与各 .env（已存在则跳过）
+./deploy.sh validate                           # 按提示补齐必填项，直到这一步通过
+./deploy.sh deploy
 ```
 
 最小交付面（目标机**无需源码与 bun、无需 Dockerfile**）：

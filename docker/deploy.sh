@@ -12,6 +12,8 @@
 #   ./docker/deploy.sh ps                  查看主服务与已启用依赖的状态
 #   ./docker/deploy.sh logs <rcs|目录名> [--follow]
 #   ./docker/deploy.sh config              干跑：只打印将执行的命令，不启动任何容器
+#   ./docker/deploy.sh export <目标目录>    导出交付面：把受版本控制的 docker/ 拷到该目录下（不含 .env 与 data，已存在文件一律不覆盖）
+#   （交付面守卫：在 git 工作区内只放行 export；init / validate / up / deploy / config 被拒，down / ps / logs 只告警）
 #   ./docker/deploy.sh --config <路径> <命令>
 #
 # 配置：默认读同目录的 deploy.env（首次使用：./docker/deploy.sh init）；同目录只有一份别的 *.env 时用它，
@@ -50,6 +52,10 @@ MAIN_OPTIONAL_FEATURES="REDIS"
 # main 是主服务编排本身（compose_top 直接操作，不是依赖单元）。
 EXCLUDED_DIRS="main"
 
+# 交付面（export）排除的目录：dev/ 只服务仓库内的 dev 形态（它的变量由仓库根编排 include），
+# compose-explorer/ 是读仓库根的本地只读工具——两者都不随交付面外发。
+EXPORT_EXCLUDED_DIRS="dev compose-explorer"
+
 log() { printf '[deploy] %s\n' "$*"; }
 warn() { printf '[deploy] 警告：%s\n' "$*" >&2; }
 die() {
@@ -58,7 +64,7 @@ die() {
 }
 
 usage() {
-    sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # 统一执行入口：config 干跑时只打印命令，便于审计与排障。
@@ -182,6 +188,77 @@ cmd_init() {
 
 cmd_validate() {
     validate_required_env || die "必填项校验未通过：见上面的清单"
+}
+
+# 交付面清单：受版本控制的 docker/ 文件（`git ls-files`）。本机配置（各 .env、deploy.env）、数据目录
+# （data/、main/workflow 等）与运行期产物都在 .gitignore 里，因此天然不进交付面——交付面是编排的快照，
+# 不是本机状态的副本。
+export_file_list() {
+    local file prefix skip
+    while IFS= read -r file; do
+        skip=0
+        for prefix in $EXPORT_EXCLUDED_DIRS; do
+            if [[ "$file" == "docker/$prefix/"* ]]; then
+                skip=1
+                break
+            fi
+        done
+        [[ "$skip" == "1" ]] || printf '%s\n' "$file"
+    done < <(git -C "$REPO_ROOT" ls-files -- docker)
+}
+
+# 导出交付面：生产部署不在仓库工作区里跑——编排与脚本都受版本控制，下一次 `git pull` 会就地改写它们，
+# 而配置面与数据还停在旧结构上，容器重建时故障现场很难归因。交付面拷到仓库外，由那份副本启动。
+cmd_export() {
+    local target="${1:-}" file dest copied=0 same=0 dirty drifted=""
+    [[ -n "$target" && "$target" != -* ]] ||
+        die "用法：./docker/deploy.sh export <目标目录>（把受版本控制的 docker/ 拷到该目录下）"
+    git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 ||
+        die "导出交付面需要 git：清单取自版本控制，而 $REPO_ROOT 不是 git 工作区"
+
+    # 先规范化路径再判是否落在仓库内：顺序不能反，否则「拒绝导出」会先在仓库里留下一个空目录。
+    # 目标目录自身可能还不存在，因此靠它已存在的父目录解析（尾斜杠先归一，basename 才取对）。
+    target="${target%/}"
+    local parent
+    parent="$(dirname "$target")"
+    [[ -d "$parent" ]] || mkdir -p "$parent" || die "无法创建目标目录的父目录：$parent"
+    target="$(cd "$parent" && pwd)/$(basename "$target")"
+    # 变量一律写 `${var}` 花括号形式：紧跟全角标点时（如 `（${target}）`），bash 3.2 会把多字节字符
+    # 当成变量名的一部分，`set -u` 下直接报 unbound variable（macOS 自带的就是 3.2）。
+    case "$target/" in
+        "$REPO_ROOT"/*) die "目标目录不能落在仓库内（${target}）：交付面必须与工作区隔离，否则拉取代码一样会牵着生产跑" ;;
+    esac
+    [[ -d "$target" ]] || mkdir -p "$target"
+
+    dirty="$(git -C "$REPO_ROOT" status --porcelain -- docker)"
+    [[ -z "$dirty" ]] || warn "docker/ 下有未提交改动：导出的是当前工作区内容，与来源 commit 不一致"
+
+    while IFS= read -r file; do
+        dest="$target/$file"
+        mkdir -p "$(dirname "$dest")"
+        if [[ ! -e "$dest" ]]; then
+            cp "$REPO_ROOT/$file" "$dest"
+            copied=$((copied + 1))
+        elif cmp -s "$REPO_ROOT/$file" "$dest"; then
+            same=$((same + 1))
+        else
+            # 一律不覆盖：目标里那份可能正被运行中的部署使用，静默覆盖等于替部署方改生产。
+            drifted="$drifted$file"$'\n'
+        fi
+    done < <(export_file_list)
+
+    log "交付面已导出：$target/docker（来源 $(git -C "$REPO_ROOT" rev-parse --short HEAD)）"
+    log "  新增 $copied 个文件，内容一致跳过 $same 个；排除目录：${EXPORT_EXCLUDED_DIRS// /、}"
+    if [[ -n "$drifted" ]]; then
+        warn "以下文件已存在且内容不同，均未覆盖——请 diff 后手工决定是否替换："
+        while IFS= read -r file; do
+            [[ -n "$file" ]] && printf '[deploy]   %s\n' "$file" >&2
+        done <<<"$drifted"
+    fi
+    # 该组件无发布镜像、构建上下文是仓库根：交付面里既拉不到也构建不了（见该目录 README）。
+    [[ -d "$target/docker/sandbox-dsh" ]] &&
+        warn "交付面含 docker/sandbox-dsh/：它没有发布镜像、构建上下文是仓库根，在交付面里构建不了；不用它就保持 FENIX_FEATURE_SANDBOX_DSH=false"
+    log "下一步（部署机上）：cd $target/docker && ./deploy.sh init && ./deploy.sh validate && ./deploy.sh deploy"
 }
 
 check_prerequisites() {
@@ -388,6 +465,25 @@ cmd_logs() {
     fi
 }
 
+# 交付面守卫：`docker/` 落在 git 工作区里时，配置与发布一律拒做。编排与脚本都受版本控制，在仓库里起来的
+# 那套环境会被下一次 `git pull` / 切分支 / `git clean` 就地改写——容器按新编排重建，而配置面（deploy.env、
+# 各 .env）与数据目录还停在旧结构上，故障现场很难归因。交付面由 `./docker/deploy.sh export <目标目录>` 产
+# 出到仓库外，之后所有命令都在那份副本里执行。
+# 判定直接问 git（`rev-parse --show-toplevel`）而不是看外层有没有 `.git`：worktree / submodule 的 `.git`
+# 是文件不是目录，且脚本可能落在仓库深处，git 给出的答案对两者都成立。部署机上通常没有 git，此时判定自动
+# 放行。停止与查看（down / ps / logs）只告警不阻塞：应急时不该被守卫挡在门外。
+guard_worktree() {
+    local cmd="$1" mode="$2" top_level message
+    top_level="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n "$top_level" ]] || return 0
+    message="docker/ 位于 git 工作区（${top_level}）内：${cmd} 必须在交付面里执行，先在仓库里跑 ./docker/deploy.sh export <目标目录>，再到 <目标目录>/docker 下执行同一命令——在仓库工作区里部署会被下一次拉取、切分支或 clean 就地改写运行中的编排"
+    if [[ "$mode" == "warn" ]]; then
+        warn "$message"
+        return 0
+    fi
+    die "$message"
+}
+
 main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -408,11 +504,24 @@ main() {
     local cmd="${1:-up}"
     shift || true
 
-    # init 是唯一不需要 docker 与既有配置的命令：它负责把配置模板落成实文件。
-    if [[ "$cmd" == "init" ]]; then
-        cmd_init "$@"
-        return 0
-    fi
+    # 交付面守卫（见 guard_worktree）：配置与发布阻塞，停止与查看只告警。
+    case "$cmd" in
+        init | validate | up | deploy | config) guard_worktree "$cmd" block ;;
+        down | ps | logs) guard_worktree "$cmd" warn ;;
+    esac
+
+    # init / export 是仅有的两条不需要 docker 与既有配置的命令：前者把配置模板落成实文件，后者产出交付面
+    # （部署机上的第一份文件就来自它，不能反过来要求先有配置）。
+    case "$cmd" in
+        init)
+            cmd_init "$@"
+            return 0
+            ;;
+        export)
+            cmd_export "$@"
+            return 0
+            ;;
+    esac
 
     resolve_config_file || die "缺少部署配置 ${CONFIG_FILE}（首次使用：./docker/deploy.sh init）"
     check_prerequisites

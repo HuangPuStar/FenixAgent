@@ -297,6 +297,7 @@ flowchart LR
   `docker/workflow/data/{mysql,rustfs}`——workflow 的库 `opencoze`、ragflow 的库 `rag_flow` 与各自的桶都在
   各自实例里；ES 落在 `docker/workflow/data/elasticsearch`），都随交付面一起备份与搬迁。全部 bind 挂载。
 - 交付面 = `docker/main/`（生产主服务编排 + 同目录 `.env`）+ `docker/deploy.sh` + `docker/lib/` + `docker/deploy.env` + 启用的依赖目录（各自带实例与数据）；运行期数据就在这份目录里。
+- 交付面由 `./docker/deploy.sh export <目标目录>` 产出：受版本控制文件的快照，落在**仓库之外**，本机配置与数据不进交付面（由目标机上的 `init` 落成）。部署与升级都在那份副本里执行——在仓库工作区里跑会被下一次拉取、切分支或 `clean` 就地改写运行中的编排，因此 `docker/deploy.sh` 守卫在工作区内只放行 `export`：配置与发布（`init` / `validate` / `up` / `deploy` / `config`）直接拒绝，停止与查看（`down` / `ps` / `logs`）只告警。判据是 `git rev-parse --show-toplevel`（部署机上没有 git，自动放行）。
 - 备份 = 打包交付目录（跳过容器与镜像）；搬迁 = 整目录拷走；`data/`、`workspaces/` 等必须进 `.gitignore`。
 
 ## 7. 发布与升级
