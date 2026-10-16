@@ -30,6 +30,13 @@ export interface ActionAck {
   commandId: string;
   status: ActionAckStatus;
   turnId?: string;
+  /**
+   * create_session 的创建回执：本次请求在 Agent 侧确实创建出的 ACP session id。
+   *
+   * 只有发起该 create 的连接会收到它（Ack 按 sinks 定向投递），因此调用方可以据此把
+   * 「点击后的归属」绑定到本页本次创建，而不必猜「共享 active session 为什么变了」。
+   */
+  sessionId?: string;
   committedProjectionVersion?: number;
 }
 
@@ -55,6 +62,8 @@ export interface Command {
 /** 命令执行结果：committed Ack 的补充信息 */
 export interface CommandOutcome {
   turnId?: string;
+  /** create_session 成功创建出的 ACP session id（Agent 响应回执，未拿到时缺省） */
+  sessionId?: string;
 }
 
 /** Ack / Error 发送目标（通常为发起 Action 的连接） */

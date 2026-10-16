@@ -63,6 +63,11 @@ export interface SessionConnection {
   registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
   /** 登记会话变更响应；relay 断开或超时时以 false 完成。 */
   awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
+  /**
+   * 登记 create_session 的创建回执：resolve 为 Agent 实际创建出的 session id
+   * （超时 / relay 断开 / agent 拒绝时为 null）。可选注入，宿主由 gateway 提供。
+   */
+  awaitSessionCreation?: (rpcId: number | string) => { completed: Promise<string | null>; cancel: () => void };
 }
 
 export interface SessionChannelDependencies {
@@ -272,6 +277,11 @@ export class SessionChannel {
     if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
       connection.registerSessionSyncRpcId?.(rpc.id as number | string);
     }
+    // 创建回执登记必须在 sendToRelay **之前**：Agent 可能在登记前就把 session/new 结果回传，
+    // 晚登记的调用方会白白等到超时。只有 create_session 需要回执（load/resume 的会话 id
+    // 由调用方自己给定，见 KNOWN_ACTION_TYPES 语义）。
+    const createReceipt =
+      command.type === "create_session" ? connection.awaitSessionCreation?.(rpc.id as number | string) : undefined;
     // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/
     // -32603），relay 按 id 匹配登记收敛 turn_failed，否则 turn 永久卡 accepting、
     // 前端 loading 永不消失（R1：发送后完全无输出、仅刷新恢复）。
@@ -287,6 +297,8 @@ export class SessionChannel {
     try {
       await connection.sendToRelay(rpc);
     } catch (err) {
+      // 回执登记随发送失败一起撤销：否则它会留到超时才退场，而这次创建根本没发出去。
+      createReceipt?.cancel();
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
       throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
@@ -302,6 +314,15 @@ export class SessionChannel {
         content: null,
       });
       this.armCancelTimeout(connection.rcsSessionId);
+    }
+
+    // create_session 等 Agent 的 session/new 结果：committed Ack 必须携带真实 session id，
+    // 否则调用方拿不到「本次创建出了哪个会话」的回执，只能靠共享投影变化去猜（多标签页下会猜错）。
+    // 拿不到回执（超时 / relay 断开 / agent 拒绝）时不带 sessionId 提交——命令已发出，
+    // 失败面由调用方按「无回执」处理，不把未确认的创建当成成功回执。
+    if (createReceipt) {
+      const createdSessionId = await createReceipt.completed;
+      return createdSessionId ? { turnId, sessionId: createdSessionId } : { turnId };
     }
 
     return { turnId };

@@ -11,7 +11,7 @@ import type { ClientConnection, SharedRelay, WsConnection } from "./connection-t
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
-import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
+import { failPendingSessionMutations, waitForSessionCreation, waitForSessionMutation } from "./session-mutation";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -475,6 +475,11 @@ export class Gateway {
       awaitSessionMutation: (rpcId) => {
         if (!shared) return { completed: Promise.resolve(false), cancel: () => {} };
         return waitForSessionMutation(shared, rpcId);
+      },
+      awaitSessionCreation: (rpcId) => {
+        // 没有共享 relay 就没有「谁来结算回执」的一方，直接以空回执完成，避免调用方挂到超时。
+        if (!shared) return { completed: Promise.resolve(null), cancel: () => {} };
+        return waitForSessionCreation(shared, rpcId);
       },
     };
   }

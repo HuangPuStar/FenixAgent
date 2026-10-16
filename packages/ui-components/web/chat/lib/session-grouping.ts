@@ -19,6 +19,20 @@ export interface SessionGroup<T = SessionSummary> {
 }
 
 /**
+ * 按 `updatedAt` 降序排列（"最近优先"），返回新数组、不修改入参。
+ *
+ * 缺失或非法的 `updatedAt` 视为最早。时间分组（今天/昨天/更早）与 space 分组共用这一条排序规则，
+ * 因此实现只此一份：两处各写一遍会让"最近优先"的边界语义（缺失值、非法日期）在不同视图里分叉。
+ */
+export function sortByRecencyDesc<T extends { updatedAt?: string | null }>(sessions: readonly T[]): T[] {
+  return [...sessions].sort((a, b) => {
+    const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return (Number.isFinite(dateB) ? dateB : 0) - (Number.isFinite(dateA) ? dateA : 0);
+  });
+}
+
+/**
  * 将会话列表按"今天 / 昨天 / 更早"三档分组。
  *
  * 输入无需预排序，函数内部按 updatedAt 降序排列后再分组。
@@ -42,12 +56,7 @@ export function groupByRecency<T extends { updatedAt?: string | null }>(
     { label: labels.earlier, sessions: [] },
   ];
 
-  // 按 updatedAt 降序排列，使每个分组内的会话呈现"最近优先"
-  const sorted = [...sessions].sort((a, b) => {
-    const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-    const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-    return dateB - dateA;
-  });
+  const sorted = sortByRecencyDesc(sessions);
 
   for (const session of sorted) {
     const date = session.updatedAt ? new Date(session.updatedAt) : new Date(0);

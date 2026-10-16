@@ -44,6 +44,10 @@
       "types": "./web/agent-panel/chat-area-lifecycle.ts",
       "default": "./web/agent-panel/chat-area-lifecycle.ts"
     },
+    "./web/api/chat-spaces": {
+      "types": "./web/api/chat-spaces.ts",
+      "default": "./web/api/chat-spaces.ts"
+    },
     "./web/api/environments": {
       "types": "./web/api/environments.ts",
       "default": "./web/api/environments.ts"
@@ -59,6 +63,10 @@
     "./web/hooks/chat-visible-reconnect": {
       "types": "./web/hooks/chat-visible-reconnect.ts",
       "default": "./web/hooks/chat-visible-reconnect.ts"
+    },
+    "./web/hooks/use-chat-spaces": {
+      "types": "./web/hooks/use-chat-spaces.ts",
+      "default": "./web/hooks/use-chat-spaces.ts"
     },
     "./web/i18n": {
       "types": "./web/i18n/index.ts",

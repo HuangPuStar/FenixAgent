@@ -903,6 +903,8 @@
       "name": "@fenix/ui-components",
       "version": "0.1.0",
       "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/utilities": "^3.2.2",
         "@hookform/resolvers": "^5.4.0",
         "@open-file-viewer/core": "^0.1.17",
         "@open-file-viewer/react": "^0.1.17",

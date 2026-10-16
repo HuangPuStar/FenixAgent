@@ -182,6 +182,7 @@ export class CommandCoordinator {
         commandId: command.commandId,
         status: "committed",
         ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
+        ...(outcome.sessionId ? { sessionId: outcome.sessionId } : {}),
         ...(version !== null ? { committedProjectionVersion: version } : {}),
       };
       this.recordCommitted(rcsSessionId, command.commandId, committed);

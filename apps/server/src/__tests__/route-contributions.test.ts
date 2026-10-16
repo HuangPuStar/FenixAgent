@@ -220,6 +220,12 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /instances/:id/stop",
     "POST /instances/:id/restart",
     "DELETE /instances/:id",
+    // agent-runtime（会话分组，2026-10-15 chat space 批次新增贡献）
+    "GET /chat-spaces",
+    "POST /chat-spaces",
+    "PATCH /chat-spaces/:id",
+    "PUT /chat-spaces/:id/sessions/:sessionId",
+    "DELETE /chat-spaces/sessions/:sessionId",
     // knowledge
     "GET /knowledgeBases",
     "POST /knowledgeBases",

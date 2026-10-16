@@ -13,7 +13,7 @@ import { Button } from "../../../ui/button";
 import { ScrollArea } from "../../../ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../../ui/sheet";
 import type { SessionSummary } from "../../types";
-import type { ChatNotice } from "../chat-interface-types";
+import type { ChatNotice, ChatSpaceItem } from "../chat-interface-types";
 import { SidebarSessionList } from "../sidebar-session-list";
 
 /** 移动端会话抽屉属性。 */
@@ -29,6 +29,17 @@ export interface AcpMainMobileSidebarProps {
   onDeleteSession: (sessionId: string) => void;
   /** 会话重命名 / 删除失败的提示出口（源实现在 `SidebarSessionList` 内直连 sonner） */
   onNotice?: (notice: ChatNotice) => void;
+  // ── space 分组（与 `SidebarSessionList` / `ACPMain` 同名同义，逐项透传）──
+  spaces?: readonly ChatSpaceItem[];
+  spacesLoaded?: boolean;
+  spacesError?: boolean;
+  onRefreshSpaces?: () => void;
+  onCreateSpace?: (name: string) => void | Promise<void>;
+  onRenameSpace?: (spaceId: string, name: string) => void | Promise<void>;
+  onAssignSession?: (spaceId: string, sessionId: string) => void | Promise<void>;
+  onUnassignSession?: (sessionId: string) => void | Promise<void>;
+  /** 在指定分组内新建会话（默认分组传 null） */
+  onCreateSessionInSpace?: (spaceId: string | null) => void | Promise<void>;
 }
 
 /** 窄屏（`md:hidden`）会话抽屉：标题 + 新建入口 + 会话列表。复制自 `ACPMain.tsx` 的 Sheet 分支。 */
@@ -42,6 +53,15 @@ export function AcpMainMobileSidebar({
   onRenameSession,
   onDeleteSession,
   onNotice,
+  spaces,
+  spacesLoaded,
+  spacesError,
+  onRefreshSpaces,
+  onCreateSpace,
+  onRenameSpace,
+  onAssignSession,
+  onUnassignSession,
+  onCreateSessionInSpace,
 }: AcpMainMobileSidebarProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
@@ -75,6 +95,15 @@ export function AcpMainMobileSidebar({
               onRenameSession={onRenameSession}
               onDeleteSession={onDeleteSession}
               onNotice={onNotice}
+              spaces={spaces}
+              spacesLoaded={spacesLoaded}
+              spacesError={spacesError}
+              onRefreshSpaces={onRefreshSpaces}
+              onCreateSpace={onCreateSpace}
+              onRenameSpace={onRenameSpace}
+              onAssignSession={onAssignSession}
+              onUnassignSession={onUnassignSession}
+              onCreateSessionInSpace={onCreateSessionInSpace}
             />
           </ScrollArea>
         </div>

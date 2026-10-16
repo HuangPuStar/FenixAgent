@@ -19,7 +19,7 @@ import { prepareImageContent } from "../../composer/chat-image-content";
 import type { CompressImage } from "../../composer/composer-file-processing";
 import { buildPromptText } from "../../composer/composer-prompt";
 import type { ChatInputMessage, ContentBlock } from "../../types";
-import type { ChatNotice } from "../chat-interface-types";
+import type { ChatNotice, SessionCreateReceipt } from "../chat-interface-types";
 
 /** 待发送缓存超时（毫秒）：会话创建失败时清理缓存，避免 prompt 永久挂起。 */
 const PENDING_SEND_TIMEOUT_MS = 10_000;
@@ -45,7 +45,8 @@ export interface ChatInputSubmitOptions {
    * 体积仍可能越过 2MiB 阈值，缺这一步就失去源实现「发出图片 ≤2MiB」的保证。未提供时不压缩。
    */
   compressImage?: CompressImage;
-  onCreateSession: () => Promise<void>;
+  /** 懒创建会话；返回值是创建回执（本提交链路不消费，见 `ChatInterfaceProps.onCreateSession`） */
+  onCreateSession: () => SessionCreateReceipt | Promise<SessionCreateReceipt>;
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
   /** 图片准备失败时的提示出口（替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;

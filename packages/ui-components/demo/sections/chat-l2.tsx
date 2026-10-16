@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { DEMO_NS } from "../i18n";
 import { ChatComposerExamples } from "./internal/chat-demo-composer";
 import { ChatMessagesExamples } from "./internal/chat-demo-messages";
-import { ChatSessionListExamples } from "./internal/chat-demo-sessions";
+import { ChatSessionListExamples, ChatSessionSpaceExamples } from "./internal/chat-demo-sessions";
 
 /**
  * Chat L2 分区：会话主区层 —— 会话列表、消息流与输入岛三块「整块区域」。
@@ -31,6 +31,7 @@ export function ChatL2Section() {
       <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.chatL2")}</p>
 
       <ChatSessionListExamples />
+      <ChatSessionSpaceExamples />
       <ChatMessagesExamples />
       <ChatComposerExamples />
     </section>
