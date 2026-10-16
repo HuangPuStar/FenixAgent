@@ -7,7 +7,7 @@
 
 | 键 | 位置 | 必需性 | 说明 |
 | --- | --- | --- | --- |
-| `AGENT_SITES_MASTER_KEY` | 主服务 env（随主服务启动；生产 `docker/main/.env`、dev 仓库根 `.env`）/ 本目录 `.env`（独立部署） | 必需 | 与控制台一致的站点部署密钥 |
+| `AGENT_SITES_MASTER_KEY` | 本目录 `.env`（独立部署）/ 随主服务启动时由 `deploy.sh` 从主服务 env 带入同名同值 | 必需 | 站点部署密钥，与主服务的同名键**必须同值**，否则发布站点一律 401 |
 | `AGENT_SITES_PORT` | 本目录 `.env` | 默认值 26778 | 站点访问端口，对外发布 |
 
 容器内连接地址固定 `http://agent-sites:3000`（经 `fenix-server`）；主服务用 `AGENT_SITES_BASE_URL` 指向它。

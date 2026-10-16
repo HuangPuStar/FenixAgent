@@ -22,8 +22,8 @@
 #
 # 镜像一律固定版本、不用环境变量插值：发布新版本时同时更新本文件与 docker/main/ 的 image 行。
 # dev 用 `--build` 构建出的镜像会占用同一个 tag，之后走生产入口时 deploy.sh 会先 pull 覆盖回发布镜像。
-# 基础服务（postgres / redis）就地内联在下方：它们随本文件恒启动，不再经 docker/common/ include
-# （docker/common/ 此后只被 docker/main/ include）。
+# 基础服务（postgres / redis）就地内联在下方：它们随本文件恒启动。生产形态同样内联自己的一套
+# （docker/main/），两边各存各的数据，互不影响。
 
 include:
     - path: docker/dev/docker-compose.litellm.yml
@@ -46,8 +46,8 @@ services:
 
     postgres:
         # 必需：DATABASE_URL 在宿主 schema 中必填且无默认值（apps/server/src/env.ts），缺失即应用启动失败。
-        # 与 docker/common/docker-compose.yml 的同名服务逐字同参，差异只有数据落点（dev 落仓库根，
-        # 生产落 docker/common/data/）——这也是 dev 与生产终于分开存 postgres 数据的一步。
+        # 与 docker/main/docker-compose.yml 的同名服务逐字同参，差异只有数据落点（dev 落仓库根，
+        # 生产落 docker/main/data/）——这也是 dev 与生产分开存 postgres 数据的一步。
         image: postgres:16-alpine
         restart: unless-stopped
         environment:
@@ -71,7 +71,7 @@ services:
 
     redis:
         # 可选（--profile redis）：未启用时缓存回退进程内 Map（apps/server/src/services/cache.ts），
-        # Y.Doc 快照不做持久化。与 docker/common/ 的同名服务逐字同参。
+        # Y.Doc 快照不做持久化。与 docker/main/ 的同名服务逐字同参。
         # **起它不等于接上**：本块刻意不内联 `RCS_REDIS_URL`——给了默认值会让「没起 redis」的默认启动
         # 也拿到 `redis://redis:6379` 去连一个不存在的服务。要用缓存，在仓库根 .env 写
         # `RCS_REDIS_URL=redis://redis:6379`。

@@ -4,8 +4,8 @@
 # 项目（fenix），用 `docker compose --profile litellm up -d` 启动。生产形态是 docker/litellm/。
 #
 # 与生产形态的两处差异（只为少敲命令，不改任何业务语义）：
-#   1. 自带 `litellm-postgres` 实例（生产消费 docker/common/ 的共享 postgres，并靠一次性服务
-#      litellm-db-init 建库建角色）。自带实例后库与角色由 postgres 镜像初始化时直接建好。
+#   1. 自带 `litellm-postgres` 实例（生产同样自带一套 litellm-postgres，两边只是数据落点不同；
+#      库与角色由 postgres 镜像初始化时直接建好）。
 #   2. 全部键写成 ${VAR:-默认值}，**没有** docker/dev/.env.litellm；要改就在**仓库根 .env** 写同名键。
 #      默认值只服务本地，生产必须覆盖（生产走 docker/litellm/.env，键名与必填性见该目录 .env.example）。
 #

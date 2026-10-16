@@ -16,7 +16,8 @@
 #
 # 配置：默认读同目录的 deploy.env（首次使用：./docker/deploy.sh init）；同目录只有一份别的 *.env 时用它，
 #       有多份则用 --config 指定。主服务的应用配置与密钥读 docker/main/.env——与它的编排同目录，compose
-#       自己也读这一份（同一份文件，不两处维护）；共享键（POSTGRES_PASSWORD 等）由它提供给依赖编排。
+#       自己也读这一份（同一份文件，不两处维护）；脚本还把它导出给依赖编排，供两侧共用的键（如
+#       LITELLM_MASTER_KEY 与主服务的 RCS_MODEL_GATEWAY_ADMIN_KEY）取到同一个值。
 #       模块声明键不在 compose 的 ${VAR:?} 扫描面上：WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL 由本脚本在
 #       init / up / deploy 时按主机名生成并固化（validate 与 config 干跑只读；见 docker-topology.md §9）。
 # 镜像：一律固定版本、写在各 compose 文件里；本脚本不做任何镜像变量插值。
@@ -41,12 +42,13 @@ CONFIG_EXPLICIT=""
 
 DRY_RUN=0
 
-# common 的可选服务：保留名，不对应 docker/ 下的目录（见 docker/common/docker-compose.yml）
-# 这套名字必须与 scripts/lib/env-example-spec.ts 的 COMMON_FEATURE_SWITCHES 一致（生成器测试逐项比对）
-COMMON_OPTIONAL_FEATURES="REDIS S3 MYSQL"
+# 主服务编排里以 profile 门控的可选服务：名字是 compose 的 profile 名，不对应 docker/ 下的目录
+# （见 docker/main/docker-compose.yml）。这套名字必须与 scripts/lib/env-example-spec.ts 的
+# MAIN_FEATURE_SWITCHES 一致（生成器测试逐项比对）
+MAIN_OPTIONAL_FEATURES="REDIS"
 # 不参与依赖发现的目录（与 scripts/generate-env-example.ts 的 DEPLOY_EXCLUDED_DIRS 同一规则）：
-# common 是基础服务（随主服务编排 include）；main 是主服务编排本身（compose_top 直接操作，不是依赖单元）。
-EXCLUDED_DIRS="common main"
+# main 是主服务编排本身（compose_top 直接操作，不是依赖单元）。
+EXCLUDED_DIRS="main"
 
 log() { printf '[deploy] %s\n' "$*"; }
 warn() { printf '[deploy] 警告：%s\n' "$*" >&2; }
@@ -127,7 +129,7 @@ validate_config() {
     local var name reserved dir
     while IFS= read -r var; do
         name="${var#FENIX_FEATURE_}"
-        for reserved in $COMMON_OPTIONAL_FEATURES; do
+        for reserved in $MAIN_OPTIONAL_FEATURES; do
             [[ "$name" == "$reserved" ]] && continue 2
         done
         dir="$(printf '%s' "$name" | tr '[:upper:]_' '[:lower:]-')"
@@ -188,10 +190,9 @@ check_prerequisites() {
     local version
     version="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
     if [[ -n "$version" ]] && ! version_ge "$version" "2.20.0"; then
-        die "Compose 版本为 ${version}：主服务编排使用 include，需要 ≥ 2.20.0"
+        die "Compose 版本为 ${version}：编排使用服务 profile 与 depends_on 健康条件，需要 ≥ 2.20.0"
     fi
     [[ -f "$TOP_COMPOSE" ]] || die "缺少主服务编排：$TOP_COMPOSE"
-    [[ -f "$SCRIPT_DIR/common/docker-compose.yml" ]] || die "缺少基础服务编排：docker/common/docker-compose.yml"
     [[ -f "$MAIN_ENV_FILE" ]] ||
         warn "缺少 ${MAIN_ENV_FILE#"$REPO_ROOT"/}（应用配置与密钥）：跑 ./docker/deploy.sh init 生成模板，缺失的必填键会在启动前报错"
 }
@@ -235,7 +236,7 @@ resolve_config_file() {
 
 load_config() {
     load_env_file "$CONFIG_FILE"
-    # 主服务 env（docker/main/.env）同时导出：依赖编排的共享键（POSTGRES_PASSWORD 等）由此提供，保证
+    # 主服务 env（docker/main/.env）同时导出：与依赖编排两处同值的键（LITELLM_MASTER_KEY 等）由此提供，保证
     # 「随主服务启动」与「独立部署」两条路径取值一致（文档 §8.5）。RCS_URL / RCS_SECRET 不靠这里传：
     # 它们由 apply_dep_runtime_env 按主服务配置派生（同名不同义 / 与 REGISTRY_SECRET 同值，见 lib/config.sh）。
     load_env_file "$MAIN_ENV_FILE"
@@ -259,11 +260,9 @@ cmd_up() {
             warn "必填项校验未通过（干跑继续）：上面的键在真正启动前必须补齐" ||
             die "启动前校验未通过：见上面的必填项清单"
     fi
-    if feature_enabled S3; then profiles="--profile s3"; fi
-    if feature_enabled REDIS; then profiles="$profiles --profile redis"; fi
-    # 共享基础设施（mysql）：消费方（如 workflow）按服务名访问它，
-    # 因此这个开关必须在**主服务项目**上生效——消费方自己的 up 不带这个 profile。
-    if feature_enabled MYSQL; then profiles="$profiles --profile mysql"; fi
+    # 只剩 redis 一个：postgres 恒启动，S3 / MYSQL 两个开关已退役——对它们的依赖改由各组件自带实例
+    # （docker/workflow/、docker/ragflow/）满足，不再需要主服务项目提供共享实例。
+    if feature_enabled REDIS; then profiles="--profile redis"; fi
 
     log "启动主服务项目：主服务 + 基础服务"
     # shellcheck disable=SC2086  # profiles 为空时不传参数，为空格分隔的固定值
@@ -309,7 +308,6 @@ data_dirs() {
     for name in $(discover_deps); do
         [[ -d "$SCRIPT_DIR/$name/data" ]] && printf '%s\n' "$SCRIPT_DIR/$name/data"
     done
-    printf '%s\n' "$SCRIPT_DIR/common/data"
     return 0
 }
 
@@ -354,11 +352,11 @@ cmd_down() {
     done
 
     log "停止主服务项目"
-    # 一律带上 common 的全部 profile：`down` 的语义是「停掉这个项目」，而 profile 门控的服务
-    # （redis / rustfs / mysql）在开关已关闭时不会随裸 `down` 停掉，会留下来占用
-    # fenix-server 网络（网络删不掉、名字仍被解析）。带全 profile 让 down 与 up 可停的集合一致。
+    # 一律带上全部 profile：`down` 的语义是「停掉这个项目」，而 profile 门控的服务（redis）在开关已关闭时
+    # 不会随裸 `down` 停掉，会留下来占用 fenix-server 网络（网络删不掉、名字仍被解析）。带全 profile
+    # 让 down 与 up 可停的集合一致。
     # shellcheck disable=SC2086  # profile 参数是空格分隔的固定值
-    compose_top --profile s3 --profile redis --profile mysql down
+    compose_top --profile redis down
 
     if [[ "$purge" == "1" ]]; then
         purge_data_dirs "$confirmed"

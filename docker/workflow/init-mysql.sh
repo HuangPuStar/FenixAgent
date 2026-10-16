@@ -1,12 +1,13 @@
 #!/bin/sh
 #
-# docker/workflow/init-mysql.sh —— 共享 MySQL 里「属于本栈」的对象初始化（一次性 job，执行完即退出）。
+# docker/workflow/init-mysql.sh —— 本栈 mysql 实例的对象初始化：建库 / 账号 / 应用上游 schema.sql
+#         （一次性 job，执行完即退出）。
 #
 # 谁调用：docker-compose.yml 的 `mysql-init` 服务，显式覆盖 entrypoint 为 ["/bin/sh", "/init/init-mysql.sh"]，
 #         本文件以只读方式挂载到容器内 /init/init-mysql.sh（compose 与脚本都不依赖宿主的可执行位）。
 # 为什么单独成文件而不内联进 compose：脚本有分支与失败诊断，内联进 YAML 标量后既难 review 也容易被
 #         YAML 折叠规则悄悄改写（折行会把注释与后续语句并到同一行）。
-# 环境变量（由 compose 显式注入，值来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）/ 部署 env）：
+# 环境变量（由 compose 显式注入；凭据来自本目录 .env 的 WORKFLOW_MYSQL_*，见 .env.example）：
 #         MYSQL_HOST / MYSQL_DATABASE / MYSQL_USER / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
 # 只读输入：/schema.sql（上游 docker/volumes/mysql/schema.sql，由 assets-init 从镜像展开到宿主 ./assets 后挂入）
 #
@@ -25,16 +26,19 @@
 
 set -e
 
-echo '① 等待共享 MySQL 可用并可认证（最多 300 秒）...'
+# compose 已用 `depends_on: mysql: service_healthy` 保证「应用账号能连上」（健康检查走的就是应用账号），
+# 但 root 口令是否与数据目录里的那份一致不在它的判定面上，所以这里仍要自己等一次。
+echo '① 等待 MySQL 可用并可用 root 认证（最多 300 秒）...'
 i=0
 until mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1' >/dev/null 2>&1; do
   i=$((i + 1))
   if [ "$i" -ge 150 ]; then
-    echo '共享 MySQL 不可用（300 秒内未通过认证），按下面两条分别排查：' >&2
+    echo 'MySQL 在 300 秒内未通过 root 认证，按下面两条分别排查：' >&2
     if mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1' 2>&1 | grep -qi 'access denied'; then
-      echo '  - 服务器可达但 root 认证失败：主服务 env 的 MYSQL_ROOT_PASSWORD 与共享实例里的不一致。' >&2
+      echo '  - 服务器可达但 root 认证失败：WORKFLOW_MYSQL_ROOT_PASSWORD 与实例数据目录里那份不一致' >&2
+      echo '    （口令只在数据目录为空时写入；已有数据时改 .env 不会改库里的账号）。' >&2
     else
-      echo '  - 服务器不可达：docker/deploy.env 的 FENIX_FEATURE_MYSQL 是否为 true、顶层项目是否已起、本容器是否在 fenix-server 网络上。' >&2
+      echo '  - 服务器不可达：本栈 mysql 服务是否在跑（docker compose ps）、数据目录 ./data/mysql 是否可写。' >&2
     fi
     exit 1
   fi
@@ -53,7 +57,7 @@ mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'FLUSH PRIVILEGES;'
 echo '③ 用应用账号自检（口令与配置不一致时当场失败，不拖到 coze-server 连不上才查）...'
 if ! mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e 'SELECT 1' >/dev/null 2>&1; then
   echo '应用账号认证失败：账号已存在但口令与 MYSQL_PASSWORD 不一致（本脚本不覆盖已有账号的口令）。' >&2
-  echo '处理：要么把主服务 env 的 MYSQL_PASSWORD 改回实例里的旧口令，要么在实例里 ALTER USER 改口令（会同时影响其他消费方）。' >&2
+  echo '处理：把 .env 的 WORKFLOW_MYSQL_PASSWORD 改回数据目录里的旧口令，或在实例里 ALTER USER 改口令。' >&2
   exit 1
 fi
 

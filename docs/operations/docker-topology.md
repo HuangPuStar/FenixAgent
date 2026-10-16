@@ -7,9 +7,8 @@
 >
 > **状态：阶段 1、2、4 已完成；阶段 3 已跑通「启动 → down」，整机 prod 的迁移/健康自检待复跑**。已建：主服务编排——
 > dev 形态是仓库根 `docker-compose.yml`、生产形态是 `docker/main/docker-compose.yml`（2026-10-08 拆分：dev 带 `build:`，
-> 生产不构建、只用发布镜像、数据自包含；同 `name: fenix` + `fenix-server` + 固定版本镜像，基础服务 dev 就地内联
-> `postgres` / `redis`、生产经 `include` 引入 `docker/common/`）、
-> `docker/common/`（postgres / redis / rustfs / mysql 四个基础服务，全部是共享实例）、
+> 生产不构建、只用发布镜像、数据自包含；同 `name: fenix` + `fenix-server` + 固定版本镜像，基础服务 `postgres` /
+> `redis` 由两份文件各自就地内联，没有 `docker/common/` 一类共享编排）、
 > `docker/deploy.sh` + `docker/lib/config.sh`
 > （含 `init` 与启动前必填项校验）、`docker/deploy.env.example`；`docker/` 下各依赖目录（含 `sandbox-opencode/`、
 > `opensandbox-{cluster,server,server-tunnel}/`）均已补齐 §6 契约。
@@ -17,16 +16,18 @@
 > （`workflow-v2` org-app，要求本地 Postgres 已迁移到 HEAD；本机库当时落后 13 个迁移）外全部通过——属环境状态，
 > 与编排改动无关。
 >
-> **2026-10-08 变更：共享实例成形**。MySQL 从 `docker/workflow/` 上移到 `docker/common/`（开关 `FENIX_FEATURE_MYSQL`），
-> 随后三个依赖栈把各自的辅助服务收敛到 common：LiteLLM 的库进共享 `postgres`、RAGFlow 的库与对象存储进共享
-> `mysql` / `rustfs`、Workflow 的对象存储进共享 `rustfs`（`gotenberg` 另并入 `docker/ragflow/`）。这四个目录因此
-> 都不再自足：它们依赖主服务项目先起，自己的库 / 桶由自己的**一次性初始化服务**负责（`litellm-db-init`、
-> `ragflow-mysql-init` + `ragflow-s3-init`、`mysql-init` + `s3-init`，约定见 §6，操作面见各目录 README）。
-> 其中 RAGFlow 侧**没有可预建的桶**：多桶模式下桶名由知识库 / 文件目录决定（运行期 UUID），由 RAGFlow 自建，
-> 它的 `ragflow-s3-init` 退化为实例能力探测（§5、§5.1）。
-> **同日追加：RAGFlow 的对象存储回退为「本栈自带实例」**（`ragflow-rustfs`，对 §13 规则 1 的例外）——共享实例上
-> 它的隔离边界建不起来（桶名运行期 UUID + 全实例一对凭据 + 实例侧没有按消费方的桶策略），详见 §5；
-> 它的库仍在共享 `mysql` 上，收敛没有全撤。
+> **2026-10-08~14：共享实例收敛（2026-10-16 已整体退役，见下条）**。MySQL 从 `docker/workflow/` 上移到
+> `docker/common/`（开关 `FENIX_FEATURE_MYSQL`），LiteLLM / RAGFlow / Workflow 的辅助服务随后收敛到 common，
+> 库 / 桶由各自的**一次性初始化服务**负责（`litellm-db-init`、`ragflow-mysql-init` + `ragflow-s3-init`、
+> `mysql-init` + `s3-init`）；RAGFlow 的对象存储同日回退为自栈实例（`ragflow-rustfs`——多桶模式下桶名是运行期
+> UUID，共享实例上建不起隔离边界）。
+> **2026-10-16 变更：共享基础设施退役，每个组件自带依赖实例**。`docker/common/`（含 `docker/common/data/`）整体
+> 删除：它原先提供的 postgres（恒启动）与 redis / mysql / rustfs（各带一个 profile）随之退场，`FENIX_FEATURE_S3` /
+> `FENIX_FEATURE_MYSQL` 两个开关与「共享实例」这个概念本身不再存在。现状：`docker/main/docker-compose.yml` 不再
+> `include` 任何文件，**内联** `postgres`（恒启动）与 `redis`（`profiles: ["redis"]`）；`docker/ragflow/` /
+> `docker/litellm/` / `docker/workflow/` 各带齐自己的依赖实例，三个目录重新自足——库 / 桶由本目录实例或本栈的
+> 一次性服务落定，**没有跨项目等待**；`docker/workflow/` 的 `mysql` / `rustfs` 回到本目录但只在项目默认网络内，
+> 因此不构成保留名冲突。细节见 §4、§5、§5.1、§6。
 > **同日追加：`docker/` 下的依赖目录一律只引用发布镜像**——sandbox 的 `peri` / `ccb` / `opencode` 与
 > `opensandbox-{cluster,server}` 之前都带 `build:`（本地/离线自建），现改为写死发布 tag（§6 规则 10、§13.15）；
 > 唯一例外是 `docker/sandbox-dsh/`（GHCR 上没有它的发布镜像），本地自建改走各 README 里的 `docker build` 命令。
@@ -54,10 +55,10 @@
 | dev / prod 分离 | 两份文件同项目名 `fenix`、同网络 `fenix-server`，**二选一运行**；生产入口是 `./docker/deploy.sh`（操作 docker/main 那份），dev 用根文件的裸 `docker compose` 命令 |
 | 镜像 | 固定版本、写在 compose 文件里，不用环境变量插值；发布时同步更新两份编排的 `rcs` `image` 行（§4.2） |
 | 网络 | 两层：依赖各自的**项目内网络** + 唯一的**主服务网络 `fenix-server`**（只让必要服务接入，§3） |
-| 基础服务 | `docker/common/`：PostgreSQL（必需）+ RustFS（S3 兼容，不用 MinIO）+ Redis + MySQL；后三者由开关控制，四者都是**共享实例**（消费方与保留名见 §5.1）；dev 形态只就地内联 `postgres` / `redis`、不引入本目录（§4） |
-| feature 开关 | 配置文件 `docker/deploy.env` 驱动；一个开关对应一个依赖目录（即“sub 插件 docker”） |
+| 基础服务 | `postgres`（必需）+ `redis`（`FENIX_FEATURE_REDIS`）：**内联在主服务编排里**，dev 与生产各一份（数据落各自目录），不再有 `docker/common/`；其余依赖（MySQL / 对象存储等）由**每个组件自带实例**、互不影响（§5） |
+| feature 开关 | 配置文件 `docker/deploy.env` 驱动；一个开关对应一个依赖目录（即“sub 插件 docker”），另有主服务编排里的可选服务开关（只有 `REDIS`） |
 | 一键启动 | `./docker/deploy.sh up`：任意机器，只需要 docker + bash + 一份配置 |
-| env 规范 | **每份编排的 env 就是它自己目录下的 `.env`**（主服务：生产 `docker/main/.env`、dev 仓库根 `.env`），模板 `.env.example` 与它同目录；文件内按「必需 → 可调 → 默认」三段排序；共享键只在主服务 env（§8） |
+| env 规范 | **每份编排的 env 就是它自己目录下的 `.env`**（主服务：生产 `docker/main/.env`、dev 仓库根 `.env`），模板 `.env.example` 与它同目录；文件内按「必需 → 可调 → 默认」三段排序；主服务自己的部署键与基础服务凭据在主服务 env，各依赖自带实例的凭据在该目录 `.env`（§8） |
 | sandbox 执行节点 | 两者都支持：可随主服务一键起（feature 开关），也可按机器独立部署 |
 | 旧体系 | `deploy/compose/`、`deploy/manifests/`、`scripts/release.ts` 的部署面生成、`docker/prod/` 全部退役（§12） |
 
@@ -70,21 +71,20 @@
   ├─ docker/main/.env ── 应用配置与密钥（与主服务编排同目录，不进版本控制）
   │
   └─ ./docker/deploy.sh up
-       ├─ 主服务项目：docker compose -f docker/main/docker-compose.yml [--profile …] up -d
+       ├─ 主服务项目：docker compose -f docker/main/docker-compose.yml [--profile redis] up -d
        │    ├─ rcs                    主服务（生产：发布镜像的固定版本；dev 形态用仓库根 docker-compose.yml + build）
-       │    ├─ include docker/common/  postgres（必需）、rustfs / redis / mysql（开关控制）
+       │    ├─ postgres（必需）、redis（--profile redis）   基础服务，随本文件启动、数据落本目录 data/
        │    └─ 网络 fenix-server       主服务层，唯一共享网络（§3）
        └─ 对每个启用的依赖：
             docker compose -f docker/<name>/docker-compose.yml up -d
-            （独立项目；仅必要服务与共享基础设施的消费方接入 fenix-server）
+            （独立项目，自带依赖实例；只有需要与主服务互通的服务接入 fenix-server）
 
 仓库根
 ├── docker-compose.yml          # dev 形态编排（带 build，本地构建；数据落仓库根 data/ 等）
 ├── .env / .env.example         # dev 形态的应用配置与密钥（根编排 include 的 docker/dev/ 组件也读这一份）
 ├── data/ workflow/ workspaces/ # dev 运行期数据（bind 挂载点，不进版本控制）
 └── docker/
-    ├── main/                   # 生产形态编排（无 build，只用发布镜像；env 为同目录 .env，数据落 main/ 下的同名目录）
-    ├── common/                 # 基础服务：pg / rustfs / redis / mysql；运行期数据在 common/data/
+    ├── main/                   # 生产形态编排（无 build，只用发布镜像；内联 postgres / redis；env 为同目录 .env，数据落 main/ 下的同名目录）
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（开关与参数，见 §7；.example 是生成物）
@@ -116,36 +116,27 @@
 | 层 | 网络 | 成员 | 可见性 |
 | --- | --- | --- | --- |
 | ① 项目内层 | 各 compose 项目的默认网络（Compose 自动创建，随项目名隔离） | 项目声明的全部服务 | 仅同项目内的服务互相可见 |
-| ② 主服务层 | `fenix-server`（具名网络，主服务项目创建） | 主服务 `rcs`、common 的基础服务（含共享的 mysql）、各依赖中**需要与主服务互通或需要访问共享基础设施**的服务 | 网络内全部容器互相可见（跨项目） |
+| ② 主服务层 | `fenix-server`（具名网络，主服务项目创建） | 主服务 `rcs`、主服务自带的 `postgres` / `redis`、各依赖中**需要与主服务互通**的服务 | 网络内全部容器互相可见（跨项目） |
 
-成员判定标准（唯一）：**这个服务是否需要与主服务（或需要访问主服务的执行节点）直接通信，或者是否需要访问 `docker/common/` 提供的共享基础设施。**
+成员判定标准（唯一）：**这个服务是否需要与主服务（或需要访问主服务的执行节点）直接通信。**
 
-- 必须接入 ②：`rcs`；common 的全部基础服务（`postgres` / `redis` / `rustfs` / `mysql`——它们的服务名是跨项目 DNS 名）；
+- 必须接入 ②：`rcs`；主服务自带的两个基础服务 `postgres` / `redis`（它们的服务名是 `fenix-server` 上的跨项目 DNS 名）；
   依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、
   观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、
-  Workflow 的 `coze-web`（唯一出口）；**共享基础设施的消费方**（Workflow 的 `coze-server` / `milvus` 与它的一次性
-  初始化服务 `atlas-init` / `mysql-init` / `s3-init`——同目录的 `assets-init` 只做本地文件拷贝、`network_mode: none`，
-  两张网都不接；RAGFlow 的初始化服务 `ragflow-mysql-init`、LiteLLM 的初始化服务 `litellm-db-init`）；
-  sandbox 节点与 opensandbox 管理面。
-- 不得接入 ②：依赖栈内部的辅助服务——数据库与缓存（RAGFlow 栈内改名后的 `ragflow-redis`、Workflow 的 `redis`）、
-  对象存储（S3 实现，含 `docker/ragflow/` 自带的 `ragflow-rustfs` 与它同项目的 `ragflow-s3-init`）、
-  消息队列（NSQ 类）、搜索引擎（`elasticsearch`）、向量库（`infinity` / `milvus`）等；
-  它们只在 ① 内被本项目的出口服务访问。
-- **共享基础设施是「辅助服务不接入 ②」的例外**：它们要被多个项目按名访问，只能放在 ② 上（容器内没有别的寻址方式：
-  宿主回环端口在容器里不可达，`host.docker.internal` 还得每个消费方单独加 `extra_hosts`）。代价有两条，都必须接受：
-  ① 消费方容器随之暴露在 ② 里（它对网络上的每个服务可见）；② 消费方同时挂在两个网络上，**同名服务会造成 DNS 歧义**（见规则 7）。
-- 共享基础设施**不带任何栈的业务初始化**：common 只建实例与账号（`mysql` 的库 / 账号只在数据目录首次初始化时
-  生效）。建库、建能预建的桶与 schema 迁移属于持有它们的那一方，由消费方自己的一次性服务承担（`atlas-init` /
-  `mysql-init` / `s3-init`、`ragflow-mysql-init` / `ragflow-s3-init`、`litellm-db-init` 都是这种形态）——这样 common 无需引用任何
-  依赖目录，主服务的 `include` 在任何机器上都能解析。`docker/ragflow/` 是唯一不走共享实例的一次性服务组合：
-  `ragflow-mysql-init` 仍跨项目（共享 `mysql`），`ragflow-s3-init` 同项目（自带 `ragflow-rustfs`，`service_healthy` 闸门），
-  见 §5。
+  Workflow 的 `coze-web`（唯一出口；Workflow 的其余服务——`coze-server` / `milvus` / `redis` / `elasticsearch` 与它自带的
+  `mysql` / `rustfs`、以及所有一次性初始化服务——都只在项目默认网络内）；sandbox 节点与 opensandbox 管理面。
+- 不得接入 ②：依赖栈内部的辅助服务——数据库与缓存（RAGFlow 的 `ragflow-mysql` / `ragflow-redis`、Workflow 的
+  `mysql` / `redis`）、对象存储（S3 实现：`docker/ragflow/` 的 `ragflow-rustfs` 与 `docker/workflow/` 的 `rustfs`，
+  以及同项目的一次性服务 `ragflow-s3-init` / `s3-init`）、消息队列（NSQ 类）、搜索引擎（`elasticsearch`）、
+  向量库（`infinity` / `milvus`）等；它们只在 ① 内被本项目的出口服务访问。
+- **每个组件的依赖实例都在它自己的项目里，没有共享实例**：因此没有再需要跨项目按名寻址的辅助服务，两个网络各管各的
+  （每个栈的口令轮换、库空间占用、版本升级都不会外溢到别的组件）。
 
 规则与理由：
 
 1. ② 的成员是**最小必要集**。不让辅助服务进 ② 有三个直接收益：避免跨项目的服务名冲突（多个栈都有 `redis` / 对象存储）、
    收缩主服务的可达面（数据库与缓存不应被主服务或别的依赖直连）、依赖栈内部组件可自由替换（上游换实现不影响 ① 之外的任何人）。
-   共享基础设施（common 提供的服务）与它的消费方是这条规则的**例外**，不是它被否定——共享的东西必须能被跨项目寻址（见上）。
+   这三点也是**每个组件自带依赖实例**的理由：实例不进 ②，就不必为它保留任何跨项目名字（§5.1）。
 2. **网络名唯一：`fenix-server`**。现状两个名字（`fenix-ver-net`、`fenix-server`）统一到后者——`docker/workflow/` 已按
    这套分层实践（只有出口 `coze-web` 显式接入共享网络，其余服务留在项目默认网络），本体系把它上升为所有依赖的通用契约。
 3. 依赖项目里**只有显式声明 `networks` 的服务**进入 ②（以 `external: true` 引用）；未声明的服务自动留在 ①。
@@ -153,18 +144,19 @@
 5. ② 由主服务项目定义并创建；依赖项目只引用，因此**依赖启动前主服务必须已启动**（顺序不变量，见 §9）。
 6. 需要宿主直连的入口（调试端口、管理 UI）用端口发布表达，不通过网络表达。
 7. **同名歧义**：一个容器同时挂在 ① 与 ② 上时，若两边都有同名服务，Docker 的容器 DNS 没有优先级约定（两个网络各自的
-   记录都会被返回，取哪条取决于返回顺序）。所以：**共享基础设施的服务名（`postgres` / `redis` / `rustfs` / `mysql`）
-   是全局保留名，任何依赖栈都不应再在自己的项目网络里使用它们**。现状：`docker/ragflow/` 的栈内 Valkey 与
-   自带对象存储都已按此改名（`ragflow-redis`、`ragflow-rustfs`，后者换掉了随共享化删除的栈内 MinIO；`rustfs`
-   这个名字只在共享实例那一处出现）；仍在用同名角色的只剩
-   `docker/workflow/` 的 `redis`——它同时挂在两张网上，与共享 `redis` 同名，**只在两个开关同时打开时**才有歧义，
-   判定命令与两种处理（同机不要同时启用 / 加唯一别名并同步该栈配置）见 `docker/workflow/README.md` §9
-   （后者属独立变更，本次未做）。
+   记录都会被返回，取哪条取决于返回顺序）。所以：**`fenix-server` 上的保留名只有 `postgres` 与 `redis`**
+   （由内联它们的主服务编排声明：dev 是仓库根 `docker-compose.yml`、生产是 `docker/main/docker-compose.yml`），
+   依赖栈不得在自己的项目网络里占用这两个名字。规则是「**同一个服务名不得同时出现在 ① 与 ② 上**」，
+   而不是某些名字本身被禁止：
+   - `mysql` / `rustfs` **不是保留名**。`docker/workflow/` 的实例就叫 `mysql` / `rustfs`，它们只在项目默认网络内、
+     从不出现在 `fenix-server` 上，因此与主服务的 `postgres` / `redis` 不构成冲突。
+   - `docker/ragflow/` 的栈内实例一律带前缀（`ragflow-mysql` / `ragflow-redis` / `ragflow-rustfs`）：它是同时挂在
+     两张网上的那一个（出口 `ragflow`），带前缀既避开两个保留名，也避开与后续组件同名。
 
 ## 4. 主服务编排（dev：仓库根 `docker-compose.yml`；生产：`docker/main/docker-compose.yml`）
 
-两份文件的差异有三处：`build:` 段（仅 dev，用于本地构建）、基础服务的引入方式（dev 把 `postgres` / `redis`
-就地内联；生产经 `include` 引入 `docker/common/`）、数据挂载路径（dev 落仓库根，生产落 `docker/main/` 下）。
+两份文件的差异有两处：`build:` 段（仅 dev，用于本地构建）、数据挂载路径（dev 落仓库根，生产落 `docker/main/` 下）。
+基础服务 `postgres` / `redis` 两份文件都就地内联（逐字同参、各自一套数据），`docker/main/` 不 `include` 任何文件。
 `env_file` 两边都指向**同目录**的 `.env`（§8）——compose 的项目目录就是编排文件所在目录，所以这类相对
 路径不需要区分 dev / prod。项目名、网络与服务定义保持一致，因此两者**二选一运行**——同项目名会互相接管容器。
 
@@ -176,9 +168,6 @@ opensandbox），每份子文件的服务都带 `profiles: ["<组件名>"]`，�
 ### 4.1 结构（以生产形态 `docker/main/` 为例）
 
 ```yaml
-include:
-  - path: ../common/docker-compose.yml   # 相对本文件（docker/main/）解析
-
 name: fenix   # 固定项目名，不做插值：卷与容器都带项目名前缀，随目录名漂移等于换一套空数据
 
 networks:
@@ -186,24 +175,26 @@ networks:
     name: fenix-server      # 主服务层网络（§3），唯一共享网络
 
 services:
+  postgres:      # 恒启动；数据落 ./data/postgres
+    networks: [fenix-server]
+  redis:         # profiles: ["redis"]；数据落 ./data/redis
+    networks: [fenix-server]
   rcs:
     image: ghcr.io/huangpustar/fenixagent:sha-da5eb54   # 固定版本；发布时更新本行（dev 与生产两份同步）
     networks: [fenix-server]
     # …… 见 §4.3
 ```
 
-- `include` 需要 Compose ≥ 2.20.0；被包含文件的相对路径**相对其自身目录**解析（Docker 官方语义），
-  这是 `common/` 能独立成目录的前提；脚本启动前检查 Compose 版本。
 - `name` 与 `image` 同属「写死在文件里、不做插值」的一类：交付面目录名、环境变量都不应改变数据身份。
-- 同项目内 `depends_on: postgres: { condition: service_healthy }` 直接可用（common 的服务与 rcs 同属主服务项目）。
-- include 是模型复制：命名冲突只告警、不合并 → common 的服务名（`postgres` / `redis` / `rustfs` / `mysql`）是**全局保留名**（§13）。
-- 网络定义在主服务编排（网络属于主服务层）；common 文件内的服务引用同名网络，随主服务编排一起启动，不单独运行。
-- common 里的共享服务**不得引用 `docker/<依赖>/` 下的任何文件**：主服务编排 include 的插值环境在没装依赖的机器上也要成立
-  （在没装任何依赖的机器上，`docker compose -f <主服务编排> config` 必须能跑通）。这条约束决定了「业务初始化归消费方」的形态（§5）。
-- dev 形态的 `include` 引的是 `docker/dev/` 下的组件子编排，方向相反：那些文件**可以**引用 `docker/<依赖>/`
-  下的只读配置文件（`../ragflow/infinity_conf.toml`、`../opensandbox-cluster/frps.toml`），因为 dev 编排
-  本来就只在仓库内使用、不随交付面外发。生产 `include` 的这条约束（本文件解析不依赖任何依赖目录）不受影响：
-  它约束的是 `docker/common/`，那份编排至今未引用任何依赖目录。
+- 基础服务与 `rcs` 同属本项目：`depends_on: postgres: { condition: service_healthy }` 直接可用。
+- **本文件（与 dev 根文件）不 `include` 任何文件**：基础服务内联在其中，主服务编排自身不引用任何依赖目录，
+  因此在没装任何依赖的机器上 `docker compose -f <主服务编排> config` 也能跑通。这条约束决定了
+  「本栈的业务初始化归依赖自己」的形态（§5、§6）。
+- `include` 机制仍被 **dev 根文件**使用：它引的是 `docker/dev/` 下的组件子编排，那些文件**可以**引用
+  `docker/<依赖>/` 下的只读配置文件（`../ragflow/infinity_conf.toml`、`../opensandbox-cluster/frps.toml`），
+  因为 dev 编排本来就只在仓库内使用、不随交付面外发。用过 `include` 的编排需要注意它需要 Compose ≥ 2.20.0，
+  且被包含文件的相对路径**相对其自身目录**解析（Docker 官方语义）；脚本启动前检查 Compose 版本。
+- 保留名只有 `postgres` / `redis`（§3 规则 7）：它们由本文件声明，依赖栈不得在 `fenix-server` 上同名。
 
 ### 4.2 dev / prod 分离机制
 
@@ -234,100 +225,80 @@ services:
   都是 `required: false`）：compose 的项目目录即编排文件所在目录，所以「哪份编排就吃哪份 env」由文件位置决定。
 - 端口 `"${FENIX_HTTP_PORT:-3001}:3000"`。
 
-## 5. `docker/common/`（基础服务）
+## 5. 基础服务与各栈自带的依赖实例
+
+主服务自带的两个基础服务**内联在主服务编排里**（dev 是仓库根 `docker-compose.yml`、生产是 `docker/main/docker-compose.yml`）：
 
 ```yaml
 services:
-  postgres:       # 必需：DATABASE_URL 在宿主 schema 必填且无默认值（apps/server/src/env.ts），缺失即启动失败
-  redis:          # profiles: ["redis"]          RCS_REDIS_URL；缺省时缓存回退进程内 Map、Y.Doc 快照不持久化
-  rustfs:         # profiles: ["s3"]             S3 兼容对象存储（RustFS）；消费方 docker/workflow/
-  mysql:          # profiles: ["mysql"]          共享关系库；消费方 docker/workflow/ 与 docker/ragflow/
+  postgres:       # 恒启动：DATABASE_URL 在宿主 schema 必填且无默认值（apps/server/src/env.ts），缺失即启动失败
+  redis:          # profiles: ["redis"]   RCS_REDIS_URL；缺省时缓存回退进程内 Map、Y.Doc 快照不持久化
 ```
 
-- **消费方只剩 `docker/main/`**：dev 形态（仓库根文件）把 `postgres` / `redis` 就地内联了，不再 include 本目录。
-  因此本目录的改动只影响生产形态。
-- 四个服务都接入 `fenix-server`（§3）：主服务必需，且服务名是跨项目 DNS 名（全局保留名）。
-- `redis` / `rustfs` 默认不发布宿主端口，仅网络内互通；`postgres` 的宿主端口由 `POSTGRES_PORT` 控制（本地源码开发需要，prod 可关）；
-  `mysql` 的宿主端口由 `MYSQL_HOST_PORT`（默认 3306）控制，同样只绑回环、供宿主运维工具与排查用。
-- 凭据（`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`、`MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` /
-  `MYSQL_USER` / `MYSQL_PASSWORD`）从主服务 env 读取（dev 仓库根 `.env`、生产 `docker/main/.env`）；
-  默认值只服务本地，生产必须替换（`docker/workflow/README.md` 中复述）。
-  端口类键属部署参数，与 `FENIX_HTTP_PORT` 一起放 `docker/deploy.env`。
-- 数据一律 bind 到本文件同级的 `./data/`（四个子目录），**不用命名卷**：
-  相对路径相对本文件解析，所以数据落在 `docker/common/data/` 下，随依赖目录一起交付/备份/搬迁；
-  命名卷会落到 docker 全局目录（`/var/lib/docker/volumes/...`），打包交付面时容易漏、也看不出归属。
-- common 随主服务项目启动（`include`），因此它的插值环境是**主服务编排所在的项目**：
-  键取自该编排同目录的 `.env`（dev 自动加载仓库根 `.env`，生产自动加载 `docker/main/.env`）与 `deploy.sh`
-  导出的环境；`docker/common/.env` 这种文件在本体系里不存在，也不要新增——common 不是独立项目，没有自己的 env。
-- 对象存储**只用 RustFS**（团队现网实现，S3 协议兼容），不引入 MinIO：两者都提供 9000/9001 端口与同名 SDK 协议，
-  同时存在只会让「用哪套」变成部署环境的隐性问题。RustFS 服务端 9000、控制台 9001；健康检查用
-  `curl -f http://localhost:9000/health`（本机已实测 200，`/health/ready`、`/health/live` 同样可用）。
-- **对象存储的收敛只完成了一半**：`docker/workflow/` 原先自带的 MinIO 与写在它 entrypoint 里的 `mc` 初始化随本次收敛
-  一起删除，出口服务直接指向共享 `rustfs`（容器内 `rustfs:9000`），建桶由它的一次性 `s3-init` 承担（形态与理由见 §6）。
-  `docker/ragflow/` 的同类服务同样删除过，但**随后回退为本栈自带实例** `ragflow-rustfs`（见下一条）——
-  收敛的目标是「对象存在哪只有一个答案」，代价是共享实例的凭据是全实例一对、各栈能读写彼此的桶；
-  RAGFlow 在共享实例上无法建立有效的隔离边界，因此按用户裁定单独出去（§13 规则 1 的例外）。
-- **`docker/ragflow/` 自带对象存储（例外，理由与边界要照抄）**：栈内服务 `ragflow-rustfs`（`rustfs/rustfs:1.0.1`，
-  与共享实例同版本）只在 `ragflow-net`、不接 `fenix-server`、不发布宿主端口、服务名避开保留名 `rustfs`（命名
-  `ragflow-rustfs`，与栈内 `ragflow-redis` 同一处置）。**为什么**：RAGFlow 用多桶模式，桶名是运行期 UUID
-  （每个知识库 `kb_id` / 每个文件目录 `parent_id` 一个真实桶），而共享实例只有全实例一对凭据、实例侧也给不出
-  「按消费方的桶策略」——两条合起来，在共享实例上它没有可用的隔离边界；隔离到自己的实例后，
-  越权与跨栈桶命名空间两个问题同时消失。它的库仍在共享 `mysql` 上（由 `ragflow-mysql-init` 建），本条只针对对象存储。
+- 两份编排的这两个服务**逐字同参**，差异只有数据落点（dev 落仓库根 `./data/`，生产落 `docker/main/data/`）。
+- 两者都接入 `fenix-server`（§3）：`postgres` 是主服务必需，且两个服务名都是跨项目 DNS 名（保留名，§3 规则 7）。
+- `redis` 默认不发布宿主端口，仅网络内互通；`postgres` 的宿主端口由 `POSTGRES_PORT` 控制（本地源码开发需要，prod 可关）；
+  而且**起 `redis` 不等于接上**：编排刻意不内联 `RCS_REDIS_URL`，要用缓存得在主服务 env 里写 `redis://redis:6379`。
+- 凭据（`POSTGRES_PASSWORD`）从主服务 env 读取（dev 仓库根 `.env`、生产 `docker/main/.env`）：默认值只服务本地、
+  生产必须替换；端口类键（`FENIX_HTTP_PORT` / `POSTGRES_PORT`）属部署参数，放 `docker/deploy.env`。
+- 数据 bind 到各自编排同级的 `./data/`（`./data/postgres`、`./data/redis`），**不用命名卷**：命名卷会落到 docker
+  全局目录（`/var/lib/docker/volumes/...`），打包交付面时容易漏、也看不出归属。
+- 它们随主服务编排启动，插值环境就是该编排所在的项目：键取自该编排同目录的 `.env`（dev 自动加载仓库根 `.env`，
+  生产自动加载 `docker/main/.env`）与 `deploy.sh` 导出的环境。
+- **`redis` 的消费方只有 `rcs`**；两个依赖栈各自的缓存实例留在它们自己的项目里（见下）。
+
+**其余依赖由每个组件自带实例，互不影响**：库 / 桶 / 缓存都随该目录的 compose 启动、只在该目录的网络内被访问，
+一个栈的口令轮换、库空间占用与版本升级都不会外溢到别的组件。因此不再有「共享实例」这类东西，也没有与之配套的
+`FENIX_FEATURE_S3` / `FENIX_FEATURE_MYSQL` 开关，也没有跨项目等待（§6）。
+- **对象存储**：仓库里只有一套 S3 实现（RustFS，团队现网实现、S3 协议兼容），**不引入 MinIO**——两者都提供
+  9000/9001 端口与同名 SDK 协议，同时存在只会让「用哪套」变成部署环境的隐性问题。RustFS 服务端 9000、控制台 9001；
+  健康检查用 `curl -f http://localhost:9000/health`（本机已实测 200，`/health/ready`、`/health/live` 同样可用）。
+  现有两份实例：`docker/workflow/` 的 `rustfs`（服务名就叫 `rustfs`）与 `docker/ragflow/` 的 `ragflow-rustfs`
+  （带前缀，避开 `rustfs` 与后续组件同名）。两栈原先自带的 MinIO 都已在改造中删除（栈内 `mc` 初始化随之退场，
+  建桶改由各自的一次性 `s3-init` 承担，见 §6）；现有实例都**只在本项目网络内**——不接 `fenix-server`、不发布宿主端口，
+  因此不构成保留名冲突（§3 规则 7）。
+- **`docker/ragflow/` 的对象存储为什么自带（理由与边界要照抄）**：栈内服务 `ragflow-rustfs`（`rustfs/rustfs:1.0.1`）
+  只在 `ragflow-net`、不接 `fenix-server`、不发布宿主端口、服务名带 `ragflow-` 前缀（与栈内 `ragflow-redis` 同一处置）。
+  **为什么**：RAGFlow 用多桶模式，桶名是运行期 UUID（每个知识库 `kb_id` / 每个文件目录 `parent_id` 一个真实桶）；
+  若与别的栈共用一套实例，凭据就是全实例一对、实例侧也给不出「按消费方的桶策略」——那等于没有隔离边界。
+  自带实例后，越权与跨栈桶命名空间两个问题同时消失。
 - **两栈的「桶」形态不同，别照抄**：`docker/workflow/` 的桶是**固定名**（`opencoze` / `milvus`，由它的 `s3-init`
-  创建并播种图标，在共享实例上）；`docker/ragflow/` **没有桶可预建**——它不设上游的 `MINIO_BUCKET`（编排里也不再有任何替代键），
+  创建并播种图标）；`docker/ragflow/` **没有桶可预建**——它不设上游的 `MINIO_BUCKET`（编排里也不再有任何替代键），
   桶名由知识库 / 文件目录（`kb_id` / `parent_id`）决定，是运行期才出现的 UUID，由 RAGFlow 首次写入时自建，
   `ragflow-s3-init` 因此只做**实例能力探测**（建自己的探测桶 → 读写 → 删对象 → 只删自己建的桶）。
   **不要给它补回 `MINIO_BUCKET`**：那会把对象键变成 `<逻辑桶>/<对象名>`，既有对象全部读不到——多桶布局与既有
   存量数据一致（升级前的编排**从未**设过它），搬迁时键不用重打。
 
-### 5.1 共享基础设施（`postgres` / `redis` / `rustfs` / `mysql`）
+### 5.1 实例归属与保留名
 
-`docker/common/` 的四个服务都是**共享实例**：同一台机器上的多个栈共用一套，而不是每个栈各起一套。服务名
-（`postgres` / `redis` / `rustfs` / `mysql`）是 `fenix-server` 上的跨项目 DNS 名，属**全局保留名**。
+**保留名只有 `postgres` / `redis`**（主服务编排声明的两个基础服务，§3 规则 7）；`mysql` / `rustfs` **不再是保留名**：
+它们现在只存在于各依赖自己的 Compose 项目里，从不出现在 `fenix-server` 上。逐项归属如下：
 
-| 服务 | 开关 | 容器内地址（宿主端口） | 消费方 | 数据落点 |
+| 实例 | 归属 | 容器内地址（宿主端口） | 消费方 | 数据落点 |
 | --- | --- | --- | --- | --- |
-| `postgres` | 恒启动 | `postgres:5432`（`POSTGRES_PORT`，回环） | `rcs`（`DATABASE_URL`，库 `rcs`）；`docker/litellm/` 的库 `litellm` 与角色 `litellm`（由 `litellm-db-init` 建） | `docker/common/data/postgres`（dev 形态另有一份：仓库根 `./data/postgres`） |
-| `redis` | `FENIX_FEATURE_REDIS` | `redis:6379`（不发布宿主端口） | 只有 `rcs`（`RCS_REDIS_URL`）；两个依赖栈各自保留栈内实例（见下） | `docker/common/data/redis`（dev 形态另有一份：仓库根 `./data/redis`） |
-| `rustfs` | `FENIX_FEATURE_S3` | `rustfs:9000`（S3 API）/ `9001`（控制台），默认不发布宿主端口 | 只有 `docker/workflow/`（桶 `opencoze`、`milvus`，由 `s3-init` 建）。`docker/ragflow/` **已改为自带实例**（`ragflow-rustfs`，只在它的项目网络里，见 §5），不消费本实例、也不受 `FENIX_FEATURE_S3` 影响 | `docker/common/data/rustfs` |
-| `mysql` | `FENIX_FEATURE_MYSQL` | `mysql:3306`（`MYSQL_HOST_PORT`，回环） | `docker/workflow/`（库 `opencoze`，由 `mysql-init` 建）；`docker/ragflow/`（库 `rag_flow`、账号 `ragflow`，由 `ragflow-mysql-init` 建） | `docker/common/data/mysql` |
+| `postgres` | 主服务编排，恒启动 | `postgres:5432`（`POSTGRES_PORT`，回环） | `rcs`（`DATABASE_URL`，库 `rcs`） | `docker/main/data/postgres`（dev 形态另有一份：仓库根 `./data/postgres`） |
+| `redis` | 主服务编排，`FENIX_FEATURE_REDIS` | `redis:6379`（不发布宿主端口） | 只有 `rcs`（`RCS_REDIS_URL`）；未启用时缓存回退进程内 Map、Y.Doc 快照不持久化 | `docker/main/data/redis`（dev 形态另有一份：仓库根 `./data/redis`） |
+| `litellm-postgres` | `docker/litellm/`，随该目录启动 | `litellm-postgres:5432` | 同目录的 `litellm`（库 `litellm`、角色 `litellm`，由镜像的 `POSTGRES_USER` / `POSTGRES_DB` 首启建好） | `docker/litellm/data/postgres` |
+| `ragflow-mysql` | `docker/ragflow/`，随该目录启动 | `ragflow-mysql:3306` | 同目录的 `ragflow`（库 `rag_flow`、账号 `ragflow`，由镜像的 `MYSQL_DATABASE` / `MYSQL_USER` 首启建好） | `docker/ragflow/data/mysql` |
+| `mysql` | `docker/workflow/`，随该目录启动 | `mysql:3306` | 同目录的 `coze-server`（库 `opencoze`，由 `mysql-init` + `atlas-init` 落定） | `docker/workflow/data/mysql` |
+| `rustfs` | `docker/workflow/`，随该目录启动 | `rustfs:9000`（控制台 9001） | 同目录的 `coze-server` / `milvus`（桶 `opencoze` / `milvus`，由 `s3-init` 建） | `docker/workflow/data/rustfs` |
+| `ragflow-rustfs` | `docker/ragflow/`，随该目录启动 | `ragflow-rustfs:9000` | 同目录的 `ragflow`（多桶模式，桶由 RAGFlow 运行期自建） | `docker/ragflow/data/rustfs` |
 
 几个共同点：
 
-- **口径：只提供实例，不提供业务初始化。** 初始化归持有 schema / 桶的那一方，由消费方自己的**一次性服务**承担
-  （`litellm-db-init`、`ragflow-mysql-init`、`ragflow-s3-init`、`assets-init` + `atlas-init` + `mysql-init` + `s3-init`，约定见 §6）。
-  原因见 §4.1：common 不能引用任何依赖目录的文件（否则主服务的 `config` 在没装依赖的机器上就失败），而库名 / 桶名与
-  schema 属于各栈自己的交付面（`docker/ragflow/` 的桶名是例外中的例外：它在运行期由知识库 / 文件目录决定，
-  不在交付面上，且该栈已自带实例，见 §5）。
-- **消费方必须接入 ②**：共享实例只能在 `fenix-server` 上按名寻址，于是消费方的容器也随之暴露在该网络里
-  （§3 规则 7 的同名歧义由此而来）。例外是 `rcs`：它与共享实例同属主服务项目，本就在 ② 上。
-- **共享键只在主服务 env 定义**（生产 `docker/main/.env`、dev 仓库根 `.env`）：`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`、
-  `MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD`（§8）；消费方需要时由脚本导出或
-  用 `${VAR:-…}` 引用，不在自己的 `.env` 里重复定义。
-
-`mysql` 的上移（2026-10-08）与它带来的约束：
-
-- **理由**：同一台机器上多个栈共用一套实例，比每个栈各起一套更省资源、也少一套备份对象；上游栈不再是它的唯一归属
-  （RAGFlow 的知识库元数据随后也落到这里，库名 `rag_flow`）。
-- **消费方不依赖实例的 `MYSQL_DATABASE` / `MYSQL_USER`**：那两个键只在实例的数据目录**首次初始化**时生效，
-  对已经存在的实例（别的栈先起过）无效，靠它们会把「库和账号存在」寄托在别人的首启上。本文件里的
-  `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` 因此只是**首次初始化时的便利项**：取值与 workflow 的默认值
-  一致（`opencoze` / `coze`），换了值也不会改变已存在实例里的对象。
-- **代价**：消费方同时挂在两个网络上（§3 规则 7）；`docker/workflow/` 的 `redis` 与共享 `redis` 在
-  **两个开关同时打开**时同名，判定命令与两种处理写在 `docker/workflow/README.md` §9（本次未改）。
-- **共享与业务的分界**：往共享实例里加**别的栈**的业务库 / 桶时必须走该栈自己的初始化服务，不要写进本文件——
-  本文件一旦引用某个栈的路径，主服务的 `include` 就不再是「任何机器都能解析」的。
-
-**没有收敛的两处**（不要读成「已全部共享化」）：
-
-- **缓存**：共享 `redis` 的消费方只有 `rcs`。`docker/ragflow/` 的栈内 Valkey **改名保留**为 `ragflow-redis`
-  （保留名避让），不换共享实例的三条理由：共享实例**无鉴权**（RAGFlow 的模板渲染拿不到空口令，客户端会对着
-  无口令实例 `AUTH`）、`maxmemory` 与淘汰策略是**服务端属性**（RAGFlow 要可淘汰缓存、RCS 的 Y.Doc 快照不许静默丢，
-  两个消费方的最优策略互相冲突）、**键空间**上 RAGFlow 固定用 `db: 1`（且 `RCS_REDIS_CLUSTER` 形态下只有 db 0）。
-  完整证据与重新评估条件见 `docker/ragflow/README.md`「共享 Redis（为什么不换）」。`docker/workflow/` 的栈内
-  `redis` 未改名，代价同上。
+- **每个实例只由本目录负责**：建库 / 建号 / 建能预建的桶与 schema 收敛都归持有它们的那一方
+  （`docker/workflow/` 的 `assets-init` + `atlas-init` + `mysql-init` + `s3-init`、`docker/ragflow/` 的
+  `ragflow-s3-init`，形态与约定见 §6）。`docker/litellm/` 与 `docker/ragflow/` 的 MySQL 连初始化服务都不需要：
+  库与账号由镜像的 `POSTGRES_USER` / `POSTGRES_DB`、`MYSQL_DATABASE` / `MYSQL_USER` 在数据目录首次初始化时直接建好。
+- **凭据按目录归属**（§8）：主服务自己的部署键与基础服务凭据（`POSTGRES_PASSWORD`）写主服务 env；每个自带实例的
+  凭据是该目录的私有键——`docker/litellm/` 的 `LITELLM_DB_PASSWORD`、`docker/ragflow/` 的 `RAGFLOW_MYSQL_PASSWORD` /
+  `RAGFLOW_MYSQL_ROOT_PASSWORD` / `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY`、`docker/workflow/` 的
+  `WORKFLOW_MYSQL_PASSWORD` / `WORKFLOW_MYSQL_ROOT_PASSWORD` / `WORKFLOW_S3_ACCESS_KEY` / `WORKFLOW_S3_SECRET_KEY`，
+  都定义在各自目录的 `.env`。实例默认不发布宿主端口（`MYSQL_HOST_PORT` 随 `docker/common/` 一起删除）。
+- **没有跨项目依赖**：实例与消费方同属一个 Compose 项目，就绪由 `depends_on: <service>: { condition: service_healthy }`
+  表达，一次性初始化服务用 `service_completed_successfully`（§6）。
 - **Elasticsearch 仍在 `docker/workflow/`**：这是需求方的明确裁定（栈内服务的数据落点、健康检查与上游插件 / 索引
-  模板都在该目录），**不是遗漏**——后续评审不要把它当成待办；共享保留名因此只有 `mysql` 一个新增来源。
+  模板都在该目录），**不是遗漏**——后续评审不要把它当成待办。
 
 ## 6. 依赖目录契约（`docker/<name>/`）
 
@@ -337,9 +308,9 @@ services:
 2. **不与主服务 `-f` 叠加**：脚本以「独立项目」方式启动（`-f docker/<name>/docker-compose.yml` 单文件），
    因此文件内的相对路径相对自身目录解析，语义稳定；跨文件叠加会让相对路径基准变成第一个 `-f` 文件的目录，
    这是本体系明确排除的用法。
-3. **网络按 §3 分层**：需要与主服务互通、或需要访问共享实例（common 的 `postgres` / `redis` / `rustfs` / `mysql`）
-   的服务接入 `fenix-server`（`external: true`），且服务名必须全局唯一；
-   项目内部的辅助服务（数据库、缓存、对象存储、消息队列等）**不声明 `networks`**，留在项目默认网络。
+3. **网络按 §3 分层**：需要与主服务互通的服务接入 `fenix-server`（`external: true`），且服务名必须全局唯一
+   （保留名只有 `postgres` / `redis`）；项目内部的辅助服务（数据库、缓存、对象存储、消息队列等）**不声明
+   `networks`**，留在项目默认网络——自带实例正因为留在这里，才可以继续用 `mysql` / `rustfs` 这样的通用名（§3 规则 7）。
 4. 宿主端口只绑回环（`127.0.0.1:<port>:<port>`）或不发布；只有面向外部用户的入口（如 `agent-sites` 的站点端口）
    才能绑 `0.0.0.0`，且必须可用环境变量覆盖。
 5. 数据一律 bind 到**本文件同级的 `./data/`**（相对路径相对自身 compose 文件解析）；禁止命名卷——
@@ -347,8 +318,8 @@ services:
    已知例外只有 `docker/sandbox-peri/` 的工作区：它多绑了一条 `../../workspaces`，为的是同机开发时
    让节点与平台看到同一份文件（理由与独立部署的注意事项见该目录 README 的「数据与挂载」）。
 6. `README.md`：用途、前置条件、配置项、网络接入清单（哪些服务进 `fenix-server`）、验证命令、升级方式
-   （`docker/workflow/README.md` 是完整范例）。**消费共享基础设施的目录还要写清：启动顺序（主服务先起）、
-   共享实例不可用时的表现与判定命令、数据落点已不在本目录、以及与其他栈同名服务冲突时的处理。**
+   （`docker/workflow/README.md` 是完整范例）。**自带依赖实例的目录还要写清：实例不可用时的表现与判定命令、
+   本栈一次性初始化服务的就绪判据（`Exited (0)` + 日志末行），以及数据落点在本目录的哪个子目录。**
 7. 幂等：重复 `up -d` 不破坏既有数据与状态。
 8. 命名：项目名取目录名（`-f docker/ragflow/docker-compose.yml` → 项目 `ragflow`）；需要显式容器名时统一 `fenix-<name>`
    前缀（旧 prod 的 `fenix-ver` / `fenix-postgres-ver` 已随 `docker/prod/` 退役，主服务不设 `container_name`）。
@@ -360,18 +331,18 @@ services:
     `${<NAME>_VERSION:-<缺省 tag>}`——缺省值仍在 compose 里（git 里看到的就是默认要跑的版本），部署方在**该依赖自己的**
     `.env` 覆盖它，键不进 `docker/deploy.env`（§7）；已登记：`docker/peri-fuse/` 的 `PERIFUSE_VERSION`。
 
-### 一次性初始化服务（消费共享实例的目录必备）
+### 一次性初始化服务（建本栈的库 / 账号 / 桶的目录必备）
 
-共享实例不带业务初始化（§5.1），所以「建本栈的库 / 账号 / 桶，必要时再应用 schema」必须由消费方自己在**栈内的
-一次性服务**里做完。现有七例：`docker/workflow/` 的 `assets-init`（把随 server 镜像交付的初始化资产展开到宿主，见 §13.21）、
-`atlas-init`（固定版本 Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init`（`init-s3.sh`）、
-`docker/ragflow/` 的 `ragflow-mysql-init`（`init-mysql.sh`）与 `ragflow-s3-init`（`init-s3.py`）、
-`docker/litellm/` 的 `litellm-db-init`（`init-db.sh`）。其中两例形态特殊，评审时不要照抄成通例：
-`docker/ragflow/` 的 `ragflow-s3-init`（多桶模式下它**没有可预建的桶**，只建自己的探测桶做实例能力探测、且目标是
-**同项目自带实例**，等待靠 `service_healthy` 而不是跨项目重试，见 §5）与 `docker/ragflow/` 的自带实例本身
-（它是「对象存储一律用共享实例」的例外，见 §5）。**另有两处不挂独立脚本的例外**（2026-10-14 登记）：`assets-init`
-只做「清空 → 拷贝 → 写来源标记」四行文件操作、没有分支诊断，逻辑写在 `docker/workflow/docker-compose.yml` 的
-`command` 里；`atlas-init` 的镜像是 distroless、没有 shell，参数只能直接给（两者理由见 §13.21）。新增或改动这类服务时逐条核对：
+每个组件自带的实例只提供「实例 + 库 / 账号」：`docker/litellm/` 与 `docker/ragflow/` 的 MySQL 由镜像的
+`POSTGRES_USER` / `POSTGRES_DB`、`MYSQL_DATABASE` / `MYSQL_USER` 在数据目录首次初始化时建好，连初始化服务都不需要；
+而**上游 schema 与能预建的桶**必须由该目录自己在**栈内的一次性服务**里落定。现有五例：
+`docker/workflow/` 的 `assets-init`（把随 server 镜像交付的初始化资产展开到宿主，见 §13.21）、`atlas-init`（固定版本
+Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init`（`init-s3.sh`），
+以及 `docker/ragflow/` 的 `ragflow-s3-init`（`init-s3.py`）。其中 `ragflow-s3-init` 形态特殊，评审时不要照抄成通例：
+多桶模式下它**没有可预建的桶**，只建自己的探测桶做实例能力探测（见 §5）。**另有两处不挂独立脚本的例外**
+（2026-10-14 登记）：`assets-init` 只做「清空 → 拷贝 → 写来源标记」四行文件操作、没有分支诊断，逻辑写在
+`docker/workflow/docker-compose.yml` 的 `command` 里；`atlas-init` 的镜像是 distroless、没有 shell，参数只能直接给
+（两者理由见 §13.21）。新增或改动这类服务时逐条核对：
 
 1. **栈内一次性服务 + 独立脚本文件**：服务定义在消费方自己的 compose 里（`restart: "no"`，跑完即退出），
    逻辑放同目录的独立脚本，**不内联进 compose 的 `command` / `entrypoint`**——脚本有分支与失败诊断，内联进 YAML
@@ -384,12 +355,15 @@ services:
    把 409 当通过）。这样「改配置后重跑一次」就是收敛路径，不需要进库手工改。
 4. **阶段化诊断**：每一步有稳定的阶段前缀（各目录用 ①②③…），失败时给出**原始报错 + 判定分支**（认证失败还是
    实例不可达、是配置没打开还是解析不到服务名），并以非零退出码结束；日志末行就是结论，排障不必从堆栈倒推。
-5. **只挂它需要的那张网**：只访问共享实例的初始化服务只接 `fenix-server`，不接项目默认网络——接入面越小，
+5. **只挂它需要的那张网**：只访问本栈实例的初始化服务只需项目默认网络，不接 `fenix-server`——接入面越小，
    跨项目 DNS 名越不容易撞车。
-6. **启动顺序由它自己保证，不能靠 `depends_on`**：**跨项目的 `depends_on` 不成立**——Compose 只允许依赖本项目内
-   已定义的服务名，写共享实例的服务名会直接报 `depends on undefined service …`（`litellm`、`ragflow`、`workflow`
-   三处都实测确认过，加 `required: false` 也一样）。因此 shared 实例的就绪只能由**初始化服务自己等待**（带超时、
-   按错误分支给出判定），再由**栈内的主服务依赖它的完成**：`depends_on: <init>: { condition: service_completed_successfully }`。
+6. **启动顺序全在项目内表达**：实例与它的消费者同属一个项目，因此两层就绪都能直接写——先靠
+   `depends_on: <service>: { condition: service_healthy }` 等实例（健康检查要用真实查询：workflow / ragflow 的
+   MySQL 都用 `SELECT 1` 而不是 `mysqladmin ping`，后者在口令不对时同样返回成功，会让「口令改了但数据目录还是旧的」
+   这类漂移不暴露），再由栈内主服务依赖**初始化服务的完成**：
+   `depends_on: <init>: { condition: service_completed_successfully }`。**跨项目的 `depends_on` 不成立**（Compose 只
+   允许依赖本项目内已定义的服务名，写别的项目的服务名直接报 `depends on undefined service …`，`litellm`、`ragflow`、
+   `workflow` 三处都实测确认过，加 `required: false` 也一样）——本体系因此不再需要跨项目等待，这正是不共享实例的收益之一。
 7. **失败不静默**：初始化服务非零退出 → 依赖它的栈内服务不启动（`docker compose ps` 里缺位或反复重启），
    `up -d` 的退出码本身不足以下结论——判定一律是「`docker ps -a` 里 `Exited (0)` + 日志末行的完成行」。
 
@@ -397,13 +371,13 @@ services:
 
 | 开关（`FENIX_FEATURE_<NAME>`） | 目录 | 平台能力 | 关键配置 |
 | --- | --- | --- | --- |
-| `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL`；**依赖共享实例** `FENIX_FEATURE_MYSQL`；对象存储是**本栈自带**（`ragflow-rustfs`），不依赖 `FENIX_FEATURE_S3`（§5） |
-| `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*` |
+| `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL`；MySQL（`ragflow-mysql`）、Valkey 与对象存储（`ragflow-rustfs`）**都是本栈自带**，不依赖别的目录，也没有对应开关（§5） |
+| `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*`；库是栈内的 `litellm-postgres`（本栈自带，库与角色由镜像首启建好） |
 | `HINDSIGHT` | `docker/hindsight/` | memory：长期记忆 | `HINDSIGHT_MCP_URL`、`DASHSCOPE_API_KEY` |
 | `PERI_FUSE` | `docker/peri-fuse/` | agent-config：Agent 观测透传（Trace 上报；主服务不访问本服务） | `LANGFUSE_BASE_URL` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` |
 | `NPM_REGISTRY` | `docker/npm-registry/` | plugin-market：元数据源 | `PLUGIN_MARKET_REGISTRY_*` |
 | `AGENT_SITES` | `docker/agent-sites/` | agent-config：站点部署 | `AGENT_SITES_MASTER_KEY` 等 |
-| `WORKFLOW` | `docker/workflow/` | workflow-v2 | `WORKFLOW_STUDIO_TAG` / `WEB_LISTEN_ADDR`（单份 `.env`）；初始化资产随 server 镜像交付、由 `assets-init` 展开（§13.21），另有前置条件（见该目录 README）；**依赖共享实例** `FENIX_FEATURE_MYSQL` 与 `FENIX_FEATURE_S3`（§5.1） |
+| `WORKFLOW` | `docker/workflow/` | workflow-v2 | `WORKFLOW_STUDIO_TAG` / `WEB_LISTEN_ADDR`（单份 `.env`）；MySQL 与对象存储（栈内 `mysql` / `rustfs`）**都是本栈自带**，初始化资产随 server 镜像交付、由 `assets-init` 展开（§13.21），另有前置条件（见该目录 README） |
 | `SANDBOX_PERI` / `SANDBOX_DSH` / `SANDBOX_CCB` / `SANDBOX_OPENCODE` | `docker/sandbox-*/` | sandbox 执行节点 | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` |
 | `OPENSANDBOX_CLUSTER` | `docker/opensandbox-cluster/` | sandbox 管理面 | `FRP_PUBLIC_ADDRESS` / `FRP_TOKEN` / `CLUSTER_SERVICE_API_KEY` / `SERVER_API_KEY_ENCRYPTION_KEY` |
 | `OPENSANDBOX_SERVER` | `docker/opensandbox-server/` | sandbox 执行面（DinD 服务端） | `OPENSANDBOX_SERVER_PORT` 等，无必需键 |
@@ -415,13 +389,13 @@ services:
 `docker/opensandbox-cluster/deploy/` 是**另一个部署单元**（独立沙盒机三合一编排），自带 `opensandbox` 网络、
 不接 `fenix-server`，因此不参与本表的 feature 开关。
 
-脚本不编排、也没有开关的目录（有意为之）：`docker/common/`（随主服务 `include`，`redis` / `s3` / `mysql` 走保留开关）。除此之外，**`docker/` 下每个带 `docker-compose.yml` 的目录都应有同名开关**。
+脚本不编排、也没有开关的目录：现在没有。基础服务 `postgres` / `redis` 是主服务编排**内联**的服务（不对应目录），只由主服务可选服务开关 `FENIX_FEATURE_REDIS` 门控 `redis`（`postgres` 恒启动）。除此之外，**`docker/` 下每个带 `docker-compose.yml` 的目录都应有同名开关**。
 
-保留开关与目录开关是同一套语义（都写进 `docker/deploy.env`、都映射到 `--profile`），区别只在「目录不存在」：
-保留开关由 `docker/common/docker-compose.yml` 的 `profiles` 提供，脚本的 `COMMON_OPTIONAL_FEATURES` 与
-`scripts/lib/env-example-spec.ts` 的 `COMMON_FEATURE_SWITCHES` 两处必须同时登记（生成器测试逐项比对）。
-**开关之间不自动联动**：`FENIX_FEATURE_WORKFLOW=true` 不会替你把 `FENIX_FEATURE_MYSQL` 打开——
-消费方缺共享服务时由它自己的就绪判据报错（`docker/workflow/README.md` §7 给出判定命令），而不是由脚本猜。
+主服务可选服务开关与目录开关是同一套语义（都写进 `docker/deploy.env`、都映射到 `--profile`），区别只在「没有
+对应目录」：它由主服务编排里那个服务的 `profiles` 提供（现在只有 `redis` 一个），脚本的 `MAIN_OPTIONAL_FEATURES`
+与 `scripts/lib/env-example-spec.ts` 的 `MAIN_FEATURE_SWITCHES` 两处必须同时登记（生成器测试逐项比对）。
+**开关之间不自动联动**：一个开关只负责它自己那个目录（打开 `FENIX_FEATURE_WORKFLOW` 不会顺带起别的目录）；
+每个目录自带的实例随它一起启动，因此不存在「忘了先打开某个共享服务开关」这类失败模式。
 
 ## 7. `docker/deploy.env`（配置文件）
 
@@ -442,23 +416,20 @@ FENIX_FEATURE_OPENSANDBOX_SERVER=false
 FENIX_FEATURE_OPENSANDBOX_SERVER_TUNNEL=false
 FENIX_FEATURE_PERI_FUSE=false
 
-# ── common 的可选服务（随主服务项目启动，不对应目录）──
+# ── 主服务可选服务（随主服务项目启动，不对应目录）──
 FENIX_FEATURE_REDIS=false
-FENIX_FEATURE_S3=false             # 共享 rustfs：消费方只有 docker/workflow/（docker/ragflow/ 自带实例，不依赖它）
-FENIX_FEATURE_MYSQL=false          # 共享 MySQL：消费方 docker/workflow/ 与 docker/ragflow/ 依赖它先起
 
 # ── 部署参数：有默认值，按部署形态修改 ──
 FENIX_HTTP_PORT=3001
 POSTGRES_PORT=5432
-MYSQL_HOST_PORT=3306          # 只绑回环
 ```
 
 规则：
 
 - 键名规则：目录名转大写、`-` 换 `_`（`sandbox-peri` → `FENIX_FEATURE_SANDBOX_PERI`）。
 - **未知开关是错误**：脚本发现 `FENIX_FEATURE_*` 没有对应目录或保留名时直接报错退出，防止拼写错误静默失效。
-- 默认全部关闭；`postgres` 恒启动，`S3` / `REDIS` / `MYSQL` 归 common 的可选服务。
-  保留开关与目录开关一样只负责「起哪些服务」，**不做消费方与共享服务之间的自动联动**（理由见 §6 末）。
+- 默认全部关闭；`postgres` 恒启动，`redis` 是主服务编排里唯一带 profile 的可选服务（`FENIX_FEATURE_REDIS`）。
+  开关只负责「起哪些服务」，**不做目录之间的自动联动**（理由见 §6 末）。
 - **镜像键不在这里**：版本固定写在各 compose 的 `image:` 行（§4.2）；`docker/deploy.env` 里出现镜像键即视为设计漂移。
   登记例外是**版本键**（§6 规则 10）：`image:` 行可用 `${<NAME>_VERSION:-<缺省 tag>}`，该键写进**依赖自己的** `.env`，仍不进本文件。
 - 密钥**不进** `docker/deploy.env`（它进版本控制，模板为 `docker/deploy.env.example`）；密钥只进主服务 env
@@ -466,8 +437,8 @@ MYSQL_HOST_PORT=3306          # 只绑回环
 - `docker/deploy.env.example` 是**生成物**（`bun run scripts/generate-env-example.ts`，与 `.env.example`、
   `docker/main/.env.example` 同批产出）；开关清单以脚本发现的目录为准，模板只负责把
   清单落成文件，不手工维护。
-  上面这份示例的开关名单与生成物一致（17 个：14 个目录开关 + `REDIS` / `S3` / `MYSQL`），核对方式：
-  `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 与上面的名单逐行相同。
+  上面这份示例的开关名单与生成物一致（15 个：14 个目录开关 + `REDIS`），核对方式：
+  `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 得到的键名集合与上面的名单相同。
 - **配置文件解析**（脚本行为，见 §9）：默认读与脚本同目录的 `docker/deploy.env`；它不存在而同目录恰好只有
   一份 `*.env` 时用那一份（部署方常按机器命名，如 `prod.env`）；有多份则报错列出、要求 `--config` 指定，不替你猜。
   所以「一份配置描述一台机器」= 把那份文件放进 `docker/`。
@@ -487,9 +458,9 @@ compose 的项目目录 = 该 compose 文件所在目录，变量插值与 `env_
 | 位置 | 作用域 | 模板（进版本控制） | 运行时文件 |
 | --- | --- | --- | --- |
 | `docker/deploy.env` | 部署开关与部署参数（端口等，主服务） | `docker/deploy.env.example` | `docker/deploy.env` |
-| `docker/main/.env` | 主服务（rcs）的应用配置与密钥 + **跨服务共享键**（含基础服务凭据 `POSTGRES_PASSWORD`、`MYSQL_*`）；也是主服务编排的插值来源 | `docker/main/.env.example` | `docker/main/.env` |
+| `docker/main/.env` | 主服务（rcs）的应用配置与密钥 + 主服务**自带基础服务**的凭据（`POSTGRES_PASSWORD`）；也是主服务编排的插值来源 | `docker/main/.env.example` | `docker/main/.env` |
 | 根 `.env` | 只服务 dev 形态：根 `docker-compose.yml`（含它 include 的 `docker/dev/` 组件）与 `bun run dev`（Bun 自动读仓库根） | `.env.example` | `.env` |
-| `docker/<name>/.env` | 该依赖的私有键 | `docker/<name>/.env.example` | 同目录 `.env` |
+| `docker/<name>/.env` | 该依赖的私有键，含它**自带实例**的凭据（`LITELLM_DB_PASSWORD`、`WORKFLOW_MYSQL_*` 等） | `docker/<name>/.env.example` | 同目录 `.env` |
 
 **dev 组件（`docker/dev/docker-compose.<组件>.yml`）是上表之外的另一种形态：它不设任何 env 文件。**
 键全部写成 `${VAR:-默认值}` 内联在编排里，
@@ -500,15 +471,14 @@ compose 注释里逐条注明生产必须覆盖。这一形态不适用于依赖
 
 dev 根文件**不在部署面 env 发现范围内**（`scripts/generate-env-example.ts` 的 `DEPLOY_SURFACE_FILES`）：
 它内联默认值、含组件专用键，「两份主服务编排的插值键必须一致」这一前提对它不再成立；
-移出后 dev 面新增、改名、删除键都不需要登记或重新生成。生产面（`docker/main/` + `docker/common/`）
+移出后 dev 面新增、改名、删除键都不需要登记或重新生成。生产面（`docker/main/docker-compose.yml`）
 覆盖 `DEPLOY_KEY_NOTES` 的全量键，`docker/deploy.env.example` 的产出不受影响。
 
-`docker/common/`（基础服务）不设自己的 env 文件：它随主服务 `include` 启动，插值由主服务那一次 `docker compose`
-调用决定（dev 读仓库根 `.env`，生产读 `docker/main/.env`；经 `deploy.sh` 时由脚本把主服务 env 导出为 shell 环境），
-键只能来自主服务 env 与 `docker/deploy.env`（见 §5）。共享键（`MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` /
-`MYSQL_USER` / `MYSQL_PASSWORD`）按同一条规则只在主服务 env 定义；**消费方（如 `docker/workflow/`）不再持有第二份
-拷贝**——它的 `coze-server` 由编排的 `environment` 注入 DSN（`MYSQL_DSN` 与 `atlas-init` 的 `--url` 同源同值），
-取值经 `${VAR:-…}` 插值自主服务 env；服务端的口令由 common 的容器写入数据目录，消费方只是拼 DSN。
+`postgres` / `redis` 内联在主服务编排里、不设自己的 env 文件：插值由主服务那一次 `docker compose` 调用决定
+（dev 读仓库根 `.env`，生产读 `docker/main/.env`；经 `deploy.sh` 时由脚本把主服务 env 导出为 shell 环境），
+键只能来自主服务 env 与 `docker/deploy.env`（见 §5）。各依赖目录**自带的实例**（`docker/litellm/` 的
+`litellm-postgres`、`docker/ragflow/` 的 `ragflow-mysql` / `ragflow-rustfs`、`docker/workflow/` 的 `mysql` /
+`rustfs`）反过来都由它自己目录的 `.env` 插值：实例、凭据、消费方同处一个项目，键不跨目录读。
 
 规则：
 
@@ -523,15 +493,16 @@ dev 根文件**不在部署面 env 发现范围内**（`scripts/generate-env-exa
    - **中部：部署可调项**——有默认值，但按部署形态通常需要改（端口、镜像 tag、对外地址）。
    - **底部：默认项**——有安全默认值，通常不需要改（超时、重试、内部路径、调优参数）。
    - 三段用注释分隔；每个键上方一行注释：用途 + 必需性（必需／默认值）+ 缺失或改错的后果。
-3. **共享键不重复定义**：跨服务共享的键（`POSTGRES_*`、`MYSQL_*`、共享服务的宿主端口等）只在主服务 env
-   （生产 `docker/main/.env`、dev 仓库根 `.env`）与 `docker/deploy.env` 定义；依赖目录只写本依赖私有的键，
-   需要共享键时 compose 用 `${VAR:?}` 引用，由主服务提供。
-   - 上游栈的同名键**不再有第二份拷贝**（2026-10-14 起）：`docker/workflow/` 的 `coze-server` 由本目录编排的
-     `environment` 注入 `MYSQL_*` / `MINIO_*` 等指向键，共享键经 `${VAR:-…}` 取自主服务 env，上游 `docker/.env`
-     不再参与部署；`MYSQL_PASSWORD` 与共享实例不一致时由 `mysql-init` 第 ③ 步当场报错（见 §13.21）。
-   - **两个例外是 `RCS_URL` 与 `RCS_SECRET`**，它们要由主服务侧配置**派生**而不是从主服务 env 同名键取：
-     `RCS_URL` 在主服务 env 里是主服务自用地址（源码运行指向本机 localhost），节点要的是「主服务可达地址」，
-     同名不同义；`RCS_SECRET` 在主服务侧叫 `REGISTRY_SECRET`，注册是否通过由后者决定。
+3. **键不重复定义**：每个键只属于一个所有者——主服务自有部署键与主服务自带基础服务的凭据（`POSTGRES_PASSWORD`）
+   在主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`）与 `docker/deploy.env`；各依赖目录自带实例的凭据
+   （`LITELLM_DB_PASSWORD`、`RAGFLOW_MYSQL_*` / `RAGFLOW_S3_*`、`WORKFLOW_MYSQL_*` / `WORKFLOW_S3_*`）在该目录
+   自己的 `.env`。两侧不交叉，同一个键不出现两份拷贝。
+   - **仍有一类「两侧必须同值」的键**：如 `docker/litellm/.env` 的 `LITELLM_MASTER_KEY` 与主服务 env 的
+     `RCS_MODEL_GATEWAY_ADMIN_KEY`，取值各写各的目录、值必须一致；随主服务启动时由脚本把主服务 env 导出进
+     环境（规则 5），两侧读到同一份。
+   - **两个例外是 `RCS_URL` 与 `RCS_SECRET`**，它们都不由主服务 env 供给：
+     `RCS_URL` 是节点侧的键，唯一读取点是容器里的 `acp-runtime-cli`，主服务进程不消费它，因此不在主服务 env
+     模板里（键归节点目录的 `.env`）；`RCS_SECRET` 在主服务侧叫 `REGISTRY_SECRET`，注册是否通过由后者决定。
      因此脚本对声明这两个键的依赖按同机语义注入 `ws://rcs:3000` 与 `REGISTRY_SECRET`
      （依赖自己的 `.env` 填了则以它为准），独立部署时才在该依赖的 `.env` 里填真实地址与同值密钥。
      注入是脚本行为，所以同机与独立两条路径都能通过同一套 `${VAR:?}` 校验。
@@ -542,12 +513,18 @@ dev 根文件**不在部署面 env 发现范围内**（`scripts/generate-env-exa
    - `docker compose -f <compose 文件>`（单文件）的项目目录 = 该文件所在目录，compose 自动读取同目录 `.env`
      作插值——主服务（root / `docker/main/`）与各依赖目录都由此天然生效、互不干扰，不需要 `--env-file`。
    - `docker/deploy.sh` 启动时把主服务 env（`docker/main/.env`）与 `docker/deploy.env` 导出为 shell 环境：**shell 环境优先于任何 `.env` 文件**，
-     于是「随主服务启动」与「独立部署」两条路径下共享键的取值一致且可预期（依赖目录 `.env` 里的共享键在脚本
-     路径下被主服务导出的值覆盖，这正是不重复定义的原因）。
+     于是「随主服务启动」与「独立部署」两条路径下、「两侧必须同值」的键（规则 3）取值一致且可预期（同名时依赖
+     目录 `.env` 里的值在脚本路径下被主服务导出的值覆盖）。
    - 注意：项目目录的 `.env` 只参与**变量插值**，不会自动注入容器；需要进入容器环境的键必须在 compose 里用
      `environment:` 或 `env_file:` 显式引用。
 6. **独立部署自足**：依赖目录的 `.env.example` 必须能支撑该依赖独立部署——按它填完即可直接
    `docker compose up -d`（sandbox 系列是典型：`RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` 三项独立部署时全部必填）。
+   两条口径由 `scripts/__tests__/component-compose-self-contained.test.ts` 静态强制：
+   - 编排里 `${VAR:?}` 与**无缺省值**的 `${VAR}` 键，在依赖目录的 `.env.example` 里必须是**有效赋值行**（`KEY=`）：
+     只留注释行等于没提供，独立部署在 `config` 阶段就报缺变量——那行注释通常正是「以为主服务 env 会带过来」的痕迹，
+     而独立部署没有主服务。
+   - **生成物模板**（`.env.example`、`docker/main/.env.example`）键行一律是注释行、必填键由 `./docker/deploy.sh validate`
+     汇总点名，因此上面这条只对手写模板的依赖目录成立。
 
 示例（`docker/sandbox-peri/.env.example`，三段式）：
 
@@ -575,7 +552,7 @@ TZ=Asia/Shanghai
 | `./docker/deploy.sh validate` | 只跑启动前的必填项校验（与 `up` / `deploy` 同一套，可反复自检） |
 | `./docker/deploy.sh up`（默认） | 启动前校验 → 起主服务项目（创建 `fenix-server`）→ 按开关逐个起依赖 → 汇总状态 |
 | `./docker/deploy.sh deploy` | 发布顺序（§10）：校验 → 拉镜像 → DDL 迁移 → 数据迁移 → `up` |
-| `./docker/deploy.sh down [--purge-data --yes]` | 逆序停（依赖 → 主服务）；主服务一律带全 profile 停，避免开关已关时 `redis` / `rustfs` 残留占着 `fenix-server`；`--purge-data` 删除数据目录，只列清单、加 `--yes` 才真删 |
+| `./docker/deploy.sh down [--purge-data --yes]` | 逆序停（依赖 → 主服务）；主服务一律带 `--profile redis` 停，避免开关已关时 `redis` 残留；`--purge-data` 删除数据目录，只列清单、加 `--yes` 才真删 |
 | `./docker/deploy.sh ps` / `./docker/deploy.sh logs [name]` | 状态与日志 |
 | `./docker/deploy.sh config` | dry-run：打印将执行的完整命令（审计与排障）；必填项未填只告警、不拦 |
 
@@ -587,8 +564,9 @@ TZ=Asia/Shanghai
 
 ### 必填项校验（`init` / `validate` / `up` / `deploy` 共用）
 
-- **真相来源是 compose 的 `${VAR:?说明}`**，脚本不另维护一份必填清单：扫主服务编排（`docker/main/docker-compose.yml`）、
-  `docker/common/` 与**已启用**依赖的 compose，逐项确认有值；`up` / `deploy` 在动任何容器前先跑这道闸。
+- **真相来源是 compose 的 `${VAR:?说明}`**，脚本不另维护一份必填清单：扫主服务编排（`docker/main/docker-compose.yml`，
+  基础服务 `postgres` / `redis` 内联其中，随它一并校验）与**已启用**依赖的 compose，逐项确认有值；
+  `up` / `deploy` 在动任何容器前先跑这道闸。
 - **模块声明键不在这个扫描面上**：`${VAR:?}` 只覆盖编排插值键，而模块 `envDefinitions` 声明的必填键由 rcs **启动期**
   校验（`apps/server/src/env-loader.ts`）——缺失的后果是容器起不来，而不是启动前被拦下。这类键当前只有
   `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`（workflow-v2 声明、无默认值），所以脚本在 `init` / `up` / `deploy` 时补一道
@@ -600,19 +578,19 @@ TZ=Asia/Shanghai
 - 为什么不用 `docker compose config` 代劳：它一次只报第一个缺失键，而首次部署需要一次看全；
   逐键解析还能把 compose 里写的说明原文回显给用户。
 - 判定顺序与 Compose 一致：shell 环境（脚本已导出主服务 env 与 `deploy.env`）→ **该编排目录自己的** `.env`
-  （主服务与 common 查 `docker/main/.env`，依赖查自己的目录）；空值按未填写处理（与 `${VAR:?}` 语义一致）。
+  （主服务查 `docker/main/.env`，依赖查自己的目录）；空值按未填写处理（与 `${VAR:?}` 语义一致）。
 - 失败输出「键 → 填在哪个文件 → compose 里写的说明」，并提示密钥可用 `openssl rand -hex 32` 生成。
-- 例外只有 `RCS_URL` 与 `RCS_SECRET` 两个键：它们要由主服务侧配置**派生**，不能靠主服务 env 的同名键传
-  （`RCS_URL` 在主服务 env 里是主服务自用地址，同名不同义；`RCS_SECRET` 的对应物在主服务侧叫 `REGISTRY_SECRET`）。
+- 例外只有 `RCS_URL` 与 `RCS_SECRET` 两个键：它们不由主服务 env 供给（`RCS_URL` 是节点侧的键，主服务进程不
+  消费、也不在主服务 env 模板里；`RCS_SECRET` 的对应物在主服务侧叫 `REGISTRY_SECRET`）。
   脚本对声明了这两个键的依赖按「同机」注入 `ws://rcs:3000` 与 `REGISTRY_SECRET`，依赖自己的 `.env` 填了则以其为准
-  （独立部署场景）。判定的取值顺序是「依赖 `.env` ＞ 已导出的 shell 环境（主服务 env）＞ 注入值」。详见 §8 规则 3。
+  （独立部署场景）。判定的取值顺序是「依赖 `.env` ＞ 已导出的 shell 环境 ＞ 注入值」。详见 §8 规则 3。
 
 前置检查（失败即退出，并给出可操作提示）：
 
 1. `docker` 与 `docker compose` 可用，Compose ≥ 2.20；
 2. `docker/deploy.env` 可解析（默认同目录；缺省提示 `./docker/deploy.sh init`，同目录有多份配置时要求 `--config`）；
 3. 主服务 env `docker/main/.env` 存在（缺省只告警，提示 `./docker/deploy.sh init`；必填键由上面的校验兜底）；
-4. 主服务编排（`docker/main/docker-compose.yml`）与 `docker/common/docker-compose.yml` 存在；
+4. 主服务编排（`docker/main/docker-compose.yml`，含内联的基础服务）存在；
 5. 未知 `FENIX_FEATURE_*` 报错。
 
 顺序不变量：**任何依赖项目启动前主服务项目必须已启动**（`fenix-server` 由主服务项目创建，依赖以 `external: true` 引用）。
@@ -683,18 +661,18 @@ TZ=Asia/Shanghai
 最小交付面（目标机**无需源码与 bun、无需 Dockerfile**）：
 
 ```text
-docker/main/            # 主服务编排（无 build）+ 同目录 .env（应用配置与密钥）；运行期出现 data/、workflow/、workspaces/
+docker/main/            # 主服务编排（无 build，内联 postgres / redis）+ 同目录 .env；运行期出现 data/、workflow/、workspaces/
 docker/deploy.sh
 docker/deploy.env
-docker/common/          # 运行期出现 data/（postgres / redis / rustfs / mysql 的数据，bind 挂载）
-docker/<启用的依赖>/
+docker/<启用的依赖>/    # 各自带编排与实例，运行期在各自目录里出现 data/
 ```
 
 **env 与数据都在交付面内**：主服务的 env 是 `docker/main/.env`（模板 `docker/main/.env.example`，`init` 落成），
 各依赖的 env 在自己的目录；仓库根 `.env` 只服务 dev 形态，不随交付面走。
 
-**运行期数据就在这份目录里**：`docker/main/data`、`docker/main/workflow`、`docker/main/workspaces`（主服务）
-与 `docker/common/data/**`（基础服务），都是 bind 挂载。备份 = 打包这份目录（跳过容器与镜像）；搬迁 = 整目录拷走。
+**运行期数据就在这份目录里**：`docker/main/data`、`docker/main/workflow`、`docker/main/workspaces`（主服务与它内联的
+基础服务）与各依赖目录自带的 `docker/<name>/data/**`（如 `docker/litellm/data/postgres`、`docker/ragflow/data/{mysql,rustfs}`、
+`docker/workflow/data/{mysql,rustfs}`），都是 bind 挂载。备份 = 打包这份目录（跳过容器与镜像）；搬迁 = 整目录拷走。
 所以两者都要进 `.gitignore`（`data` / `workspaces/` / `docker/main/workflow/` / `logs` / `/workflow/` 已有规则），
 别把数据提交进仓库。
 
@@ -723,34 +701,34 @@ docker compose up -d
 | --- | --- |
 | 根 `docker-compose.yml` | **已改造**为 dev 形态编排（内联 `postgres` / `redis`、`include` `docker/dev/` 组件、网络统一、固定项目名与镜像；`build:` 只服务 dev） |
 | `docker/main/docker-compose.yml` | **2026-10-08 新增**：主服务**生产形态**编排——无 `build:`、只用发布镜像、数据自包含在 `docker/main/` 下；`docker/deploy.sh` 的操作对象 |
-| `docker/prod/docker-compose.yml` | **已退役并删除**：主服务并入主服务编排，`agent-sites` 落 `docker/agent-sites/`，`postgres` 落 `docker/common/` |
+| `docker/prod/docker-compose.yml` | **已退役并删除**：主服务并入主服务编排，`agent-sites` 落 `docker/agent-sites/`，`postgres` 一度落 `docker/common/`，2026-10-16 起**内联在主服务编排里**（§5） |
 | `docker/prod/docker-compose.{litellm,hindsight,ragflow}.yml` | **已退役并删除**；编排内容搬到 `docker/{litellm,hindsight,ragflow}/` |
 | `docker/prod/docker-compose.opencode.yml` | **已退役并删除**；OpenCode 沙箱以 `docker/sandbox-opencode/` 保留（`docker/sandbox/` 已改名） |
 | `docker/prod/.env.example` 等三份模板 | **已退役并删除**；环境变量模板收敛为根 `.env.example` + `docker/deploy.env.example` |
 | `deploy/compose/base.yml` | **已退役并删除** → 主服务编排 |
 | `deploy/compose/overlays/knowledge.yml` | **已退役并删除** → 由 `docker/gotenberg/` 承接（该目录后续并入 `docker/ragflow/`，见下行） |
 | `docker/gotenberg/` | **已并入** `docker/ragflow/docker-compose.yml`（与 RAGFlow 同一 compose 项目、共用 `FENIX_FEATURE_RAGFLOW` 开关与同一份 `.env`；目录与开关 `FENIX_FEATURE_GOTENBERG` 已删除。理由：两者是 knowledge 文档链路上的一组依赖——先转 PDF、再解析） |
-| `docker/workflow/` 的栈内 `mysql` | **已删除**（2026-10-08）→ 上移到 `docker/common/` 成为共享实例（开关 `FENIX_FEATURE_MYSQL`，§5.1）；库 `opencoze` 与上游 schema 由本目录的 `mysql-init` 建 |
-| `docker/workflow/` 的栈内 `minio` 与它的 `mc` 初始化 | **已删除** → 两个桶 `opencoze` / `milvus` 进共享 `rustfs`；建桶与图标播种由一次性的 `s3-init` 承担（原逻辑写在 minio 容器的 entrypoint 里） |
-| `docker/ragflow/` 的栈内 `mysql` / `minio` | **已删除** → 库 `rag_flow` 进共享 `mysql`（由 `ragflow-mysql-init` 建）；对象存储的栈内 `minio` 先被删、**同日回退为本栈自带实例** `ragflow-rustfs`（同一个 RustFS 镜像，只换实例归属，见 §5）。它**没有「本栈的固定桶」这个对象**——不设上游的 `MINIO_BUCKET`（旧的桶名键已删除、也没有替代键），桶按知识库 / 文件目录（`kb_id` / `parent_id`）在运行期由 RAGFlow 自建，`ragflow-s3-init` 只建探测桶做实例能力探测 |
-| `docker/ragflow/` 的栈内 `redis`（Valkey） | **改名保留**为 `ragflow-redis`：只做保留名避让，不换共享实例——共享 `redis` 无鉴权、`maxmemory` / 淘汰策略是服务端属性（按消费方不可配）、RAGFlow 固定用 `db: 1`，三条证据见 `docker/ragflow/README.md`「共享 Redis（为什么不换）」 |
-| `docker/litellm/` 的栈内 `litellm-postgres` | **已删除** → 库 `litellm` 与角色 `litellm` 进共享 `postgres`，由 `litellm-db-init` 建（口令键 `LITELLM_DB_PASSWORD` 仍在主服务 env） |
+| `docker/workflow/` 的栈内 `mysql` | 2026-10-08 上移到 `docker/common/` 成为共享实例，**2026-10-16 随共享实例退役回到本目录自带**（服务名 `mysql`，只在项目默认网络；凭据 `WORKFLOW_MYSQL_*` 写在本目录 `.env`）；库 `opencoze` 与上游 schema 仍由本目录的 `mysql-init` 建（§5.1） |
+| `docker/workflow/` 的栈内 `minio` 与它的 `mc` 初始化 | **已删除** → 两个桶 `opencoze` / `milvus` 进本目录自带的 `rustfs`；建桶与图标播种由一次性的 `s3-init` 承担（原逻辑写在 minio 容器的 entrypoint 里） |
+| `docker/ragflow/` 的栈内 `mysql` / `minio` | **已删除，2026-10-16 回退为本栈自带实例**：库 `rag_flow` 与账号 `ragflow` 由 `ragflow-mysql` 镜像的 `MYSQL_DATABASE` / `MYSQL_USER` 在数据目录首次初始化时建好（`ragflow-mysql-init` 与 `docker/ragflow/init-mysql.sh` 已删除）；对象存储同样是本栈自带的 `ragflow-rustfs`（同一个 RustFS 镜像，只换实例归属，见 §5）。它**没有「本栈的固定桶」这个对象**——不设上游的 `MINIO_BUCKET`（旧的桶名键已删除、也没有替代键），桶按知识库 / 文件目录（`kb_id` / `parent_id`）在运行期由 RAGFlow 自建，`ragflow-s3-init` 只建探测桶做实例能力探测 |
+| `docker/ragflow/` 的栈内 `redis`（Valkey） | **改名保留**为 `ragflow-redis`：只做保留名避让（`redis` 是主服务实例在 `fenix-server` 上的名字），实例始终是本栈自带的——主服务那个 `redis` 无鉴权、`maxmemory` / 淘汰策略是服务端属性（按消费方不可配）、RAGFlow 固定用 `db: 1`，三条证据见 `docker/ragflow/README.md`「自带 Valkey」 |
+| `docker/litellm/` 的栈内 `litellm-postgres` | 一度删除、库 `litellm` 与角色 `litellm` 进共享 `postgres`（由 `litellm-db-init` 建）；**2026-10-16 回退为本栈自带实例**：库与角色由 postgres 镜像的 `POSTGRES_USER` / `POSTGRES_DB` 在数据目录初始化时建好，不需要一次性初始化服务；口令键 `LITELLM_DB_PASSWORD` 写在本目录 `.env` |
 | `deploy/manifests/`（modules.json / profiles / README） | **已退役并删除**（生成物） |
 | `scripts/release.ts` + `lib/{deploy-artifacts,release-steps,module-dependency-facts}.ts` + `__tests__/release-generator.test.ts` | **已退役并删除** |
 | 模块 `fenix.module.ts` 的 `dependencyServices` | **保留**：继续服务应用启动期校验与探活（`module-manifest.ts` / `host-startup.ts`）；退役的只是「由它生成部署产物」这条链路 |
 | `deploy/assembly/*.json` | **保留**：应用装配 profile，与部署 feature 开关是两层开关（§13） |
 | `deploy/env/rcs.example` | **已删除**（2026-10-08）：它是同一份声明面的第三份渲染且是子集（不含「声明面之外的键」），信息已被两份应用面模板覆盖；生成物收敛为 `.env.example`、`docker/main/.env.example` 与 `docker/deploy.env.example` 三份 |
 | 网络 `fenix-ver-net` / `fenix-server` | 统一为 `fenix-server`（§3） |
-| `docker/workflow/`、`docker/ragflow/` 等现有依赖目录 | 保留；已补齐 §6 契约（网络接入清单、端口、README）。其中消费共享实例的三个目录（`workflow` / `ragflow` / `litellm`）**不再自足**：依赖主服务项目先起，自己的库与可预建的桶由各自的一次性初始化服务建（`docker/ragflow/` 的桶是例外——运行期由 RAGFlow 自建，见 §5；§5.1、§6） |
+| `docker/workflow/`、`docker/ragflow/` 等现有依赖目录 | 保留；已补齐 §6 契约（网络接入清单、端口、README）。三个曾消费共享实例的目录（`workflow` / `ragflow` / `litellm`）**2026-10-16 起恢复自足**：自己的库与桶由各自目录内的实例提供，不依赖主服务项目先起；建库 / 建桶的编排留在各自的一次性初始化服务里（`docker/ragflow/` 的桶是例外——运行期由 RAGFlow 自建，见 §5、§5.1、§6） |
 | `docker/sandbox/` | **已改名**为 `docker/sandbox-opencode/`（与 `sandbox-{peri,dsh,ccb}` 同族） |
 
 已经落地、可直接使用的部分：
 
 | 新资产 | 状态 |
 | --- | --- |
-| 根 `docker-compose.yml`（dev）/ `docker/main/docker-compose.yml`（生产） | 2026-10-08 拆分为两份：dev 带 `build:`（本地构建，数据落仓库根）、生产只用发布镜像且数据自包含在 `docker/main/` 下；两份都 include common、`name: fenix`、`fenix-server`、固定镜像；`docker compose config` 通过 |
-| `docker/common/` | 已建，四个服务都是共享实例（postgres 必需、redis / s3 / mysql 走 profile，消费方见 §5.1）；**已实跑**：`up -d` 后 `postgres` / `rcs` / `redis` / `rustfs` 四容器全部 healthy |
-| 共享实例的消费方（2026-10-08 收敛批次） | `docker/{litellm,ragflow,workflow}/` 各自的库 / 桶已改为共享实例 + 一次性初始化服务（`litellm-db-init`、`ragflow-mysql-init` / `ragflow-s3-init`、`mysql-init` / `s3-init`）；**跨项目 `depends_on` 不成立**与「初始化失败不静默」两条口径在这三处各实测确认（§6）。解析验证：主服务（含 common）与 `docker/ragflow/` 的 `docker compose … config` 通过；`workflow` 与 `litellm` 的解析依赖各自环境里那份不进版本控制的文件（上游 `WORKFLOW_STUDIO_DIR/docker/.env`、本目录 `.env`），属部署环境状态，不是编排缺陷。**同日修正**：`docker/ragflow/` 的对象存储回退为自带实例（`ragflow-rustfs`，§5），库仍在共享 `mysql`。**2026-10-14 更新**：workflow 侧改为「初始化资产随 server 镜像交付 + 单份 `.env`」，不再依赖上游 `WORKFLOW_STUDIO_DIR/docker/.env`，入口收敛为一条 `up -d`（§13.21） |
+| 根 `docker-compose.yml`（dev）/ `docker/main/docker-compose.yml`（生产） | 2026-10-08 拆分为两份：dev 带 `build:`（本地构建，数据落仓库根）、生产只用发布镜像且数据自包含在 `docker/main/` 下；两份都**就地内联** `postgres` / `redis`（`docker/main/` 不 `include` 任何文件，dev 根文件只 `include` `docker/dev/` 组件）、`name: fenix`、`fenix-server`、固定镜像；`docker compose config` 通过 |
+| `docker/common/` | **2026-10-16 整体删除**（含 `docker/common/data/`）：`postgres` / `redis` 内联进主服务编排、数据落 `docker/main/data/`，`mysql` / `rustfs` 回到各依赖目录自带实例；`FENIX_FEATURE_MYSQL` / `FENIX_FEATURE_S3` 与「共享实例」概念一并退场（§5） |
+| 共享实例的消费方（2026-10-08 收敛批次，2026-10-16 撤销） | `docker/{litellm,ragflow,workflow}/` 曾把各自的库 / 桶改为共享实例 + 一次性初始化服务（`litellm-db-init`、`ragflow-mysql-init` / `ragflow-s3-init`、`mysql-init` / `s3-init`），并实测确认「跨项目 `depends_on` 不成立」与「初始化失败不静默」两条口径（§6）。退役后：库 / 桶回到各目录自带实例，跨项目等待随之消失（`depends_on` 在本项目内即可表达）；`litellm-db-init` 与 `ragflow-mysql-init` 已删除（建库建角色交给镜像的初始化），保留的三个一次性初始化服务是 `docker/workflow/` 的 `mysql-init` / `s3-init` 与 `docker/ragflow/` 的 `ragflow-s3-init`。**2026-10-14 更新**：workflow 侧为「初始化资产随 server 镜像交付 + 单份 `.env`」，不再依赖上游 `WORKFLOW_STUDIO_DIR/docker/.env`，入口收敛为一条 `up -d`（§13.21） |
 | `docker/deploy.sh`、`docker/deploy.env.example` | 已建；`init` / `validate` / 必填项拦截 / 未知开关报错 / 干跑均已在真实环境验证 |
 | `docker/agent-sites/` | 已建（含 README 与三段式 `.env.example`），是后续依赖目录的样板；`docker/gotenberg/` 曾以同样形态存在，已按上表并入 `docker/ragflow/` |
 | `docker/sandbox-{peri,dsh,ccb,opencode}/` | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` 走 `.env.example`（同机启动由脚本注入 `RCS_URL`，独立部署填真实地址）；辅助服务一律留在项目网络，只有执行节点接入 `fenix-server`。**2026-10-08 起 peri / ccb / opencode 的 compose 只引用发布镜像**（`ghcr.io/huangpustar/fenixagent-sandbox-<name>:v0.7.0-beta.1-<name>`，与主服务同版本；本地自建见各目录 README）；`dsh` 是唯一例外——GHCR 上没有它的发布镜像，仍从源码构建（§13.15） |
@@ -762,9 +740,9 @@ docker compose up -d
 
 | 阶段 | 内容 | 验证 |
 | --- | --- | --- |
-| 1. 立新 ✅ | 建 `docker/common/`；改造主服务编排（include、image/build 双声明、`fenix-server` 网络、数据 bind 到 `./data`）；写 `docker/deploy.sh`（含 `init` / `validate`）与 `docker/deploy.env(.example)` | 已完成：`docker compose config`、`./docker/deploy.sh config`、`up -d` 实跑（四容器 healthy，数据落在 `docker/common/data/`）、`init` 幂等、必填项拦截与未知开关报错逐项验证 |
+| 1. 立新 ✅ | 建基础服务（当时的 `docker/common/`，2026-10-16 退役并入主服务编排，见 §12.1）；改造主服务编排（include 基础服务、image/build 双声明、`fenix-server` 网络、数据 bind 到 `./data`）；写 `docker/deploy.sh`（含 `init` / `validate`）与 `docker/deploy.env(.example)` | 已完成：`docker compose config`、`./docker/deploy.sh config`、`up -d` 实跑（四容器 healthy，数据落在基础服务数据目录——当时是 `docker/common/data/`，现为 `docker/main/data/`）、`init` 幂等、必填项拦截与未知开关报错逐项验证 |
 | 2. 迁依赖 ✅ | 各依赖目录补齐契约（网络接入清单、端口、README、三段式 `.env.example`）：`sandbox-*`（含 `opencode` 改名）、`ragflow`、`litellm`、`hindsight`、`npm-registry`、`workflow`、`opensandbox-*`（server 改名并补开关） | 已完成：逐个 `docker compose -f docker/<name>/docker-compose.yml config` 通过；起停冒烟留待阶段 3 的整机全流程 |
-| 3. 换入口（在办） | prod 从 `docker/prod/` 切到 `./docker/deploy.sh deploy`；网络名统一为 `fenix-server` | 已完成的两项：入口切换（`docker/prod/` 与旧发布面已删除，`deploy.sh deploy` 是唯一 prod 入口）与网络名统一（§3）。仍待复跑的：整机 prod 全流程（迁移 → 启动 → 健康自检）——2026-10-08 的三次共享化改造新增了三个消费方与五个一次性初始化服务，把「依赖就绪」从隐式顺序变成显式判据，需要一次端到端复跑（当前只跑到「启动 → down」，见文首状态） |
+| 3. 换入口（在办） | prod 从 `docker/prod/` 切到 `./docker/deploy.sh deploy`；网络名统一为 `fenix-server` | 已完成的两项：入口切换（`docker/prod/` 与旧发布面已删除，`deploy.sh deploy` 是唯一 prod 入口）与网络名统一（§3）。仍待复跑的：整机 prod 全流程（迁移 → 启动 → 健康自检）——2026-10-08 的共享化改造曾把「依赖就绪」从隐式顺序变成显式判据，需要一次端到端复跑；2026-10-16 共享实例退役后判据回到各依赖目录内部（保留三个一次性初始化服务，见 §12.1），复跑口径不变（当前只跑到「启动 → down」，见文首状态） |
 | 4. 退役 ✅ | 删除 `docker/prod/`、`deploy/compose/`、`deploy/manifests/` 与 release 链路；同步文档与代码引用 | 删除与文档/代码引用已同步；`bun run docs:build` 通过、`bun run precheck` 除 `package-tests` 中依赖本地已建库的一组用例外通过（见文首状态） |
 
 阶段 2 的验收顺序：先做 `docker/sandbox-*`（有独立部署诉求、契约最完整），再做第三方栈（ragflow / workflow / litellm / hindsight），
@@ -787,8 +765,9 @@ docker compose up -d
 - 发布链：`.github/workflows/docker-publish.yml`（推送 GHCR 的 tag 规则）与 `docker/build-image.sh`（离线 tar）
   需在「固定 tag 写进两份编排的 `image:` 行」后复核，确认 tag 命名与文档写法一致。
 - 环境变量模板：`scripts/generate-env-example.ts` 从声明面同批产出根 `.env.example`、
-  `docker/main/.env.example` 与 `docker/deploy.env.example`；基础服务凭据键（`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`）
-  已补进两份应用面模板。原先的独立清单 `deploy/env/rcs.example` 已删除（信息与两份模板重复）。
+  `docker/main/.env.example` 与 `docker/deploy.env.example`；主服务自带基础服务的凭据键（`POSTGRES_PASSWORD`）
+  已补进两份应用面模板，各依赖自带实例的凭据（`LITELLM_DB_PASSWORD`、`RAGFLOW_*` / `WORKFLOW_*`）只在各目录自己的模板里。
+  原先的独立清单 `deploy/env/rcs.example` 已删除（信息与两份模板重复）。
 
 ## 13. 边界与不变量
 
@@ -806,10 +785,11 @@ docker compose up -d
 
 ### 硬约束（评审与实施时逐条核对）
 
-1. 主服务编排（`docker/main/` 与 dev 根文件）是主服务与基础服务的唯一归属；依赖目录不得再定义 `postgres` / `redis` / `rustfs` / `mysql`
-   （四个都是共享实例的服务名 / 全局保留名，见 §5.1）。**已知例外一处**：`docker/ragflow/` 的 `ragflow-rustfs`
-   （本栈自带对象存储，服务名刻意避开 `rustfs`、也不接 `fenix-server`）——用户裁定，理由与边界见 §5；
-   加新的例外需要同样明确的裁定与理由，不要因为「它俩形态像」就照抄。
+1. 主服务编排（`docker/main/` 与 dev 根文件）是主服务与基础服务（`postgres` / `redis`）的唯一归属，
+   **这两个名字在 `fenix-server` 上是保留名**；`mysql` / `rustfs` 不再是保留名（见 §5.1 / §3 规则 7）。
+   依赖目录可以有同名的服务，但一律**不得接入 `fenix-server`**（同名会造成解析歧义）——`docker/workflow/` 的
+   `mysql` / `rustfs` 就是这种形态。要接入 `fenix-server` 的实例必须换名（`docker/litellm/` 的 `litellm-postgres`、
+   `docker/ragflow/` 的 `ragflow-mysql` / `ragflow-rustfs`），并同时避开 `postgres` / `redis` 与后续可能出现的同名组件。
    dev 形态（仓库根文件）内联了 `postgres` / `redis`，它不是依赖目录、只是保留名的另一个合法归属（§4）。
 2. 网络只有两层（§3）；共享网络名唯一 `fenix-server`；接入它的服务名必须全局唯一，辅助服务不得接入。
    dev 形态的组件子编排（`docker/dev/`）不受本条约束：它们不是依赖目录，与主服务同属一个项目，
@@ -830,14 +810,16 @@ docker compose up -d
    chmod，或节点改为非 DinD 形态。理由与命令同在 `docker/dev/docker-compose.opensandbox.yml` 的 `volumes:` 节。
 9. Compose ≥ 2.20；include 与独立启动文件的相对路径均相对其自身目录解析。
 10. 每个依赖目录必须有 README（含网络接入清单）；新增依赖 = 新目录 + feature 对照表登记 + 契约自检（§6）。
-11. env 按 §8 执行：三段式排序；共享键只在主服务 env 定义；必需项一律 `${VAR:?}`；容器内地址不做同名插值；
-    `docker/common/` 不设自己的 env 文件；dev 组件是例外形态（内联默认值、不设 env 文件，见 §8），且已移出部署面 env 发现。
+11. env 按 §8 执行：三段式排序；每个键只属于一个所有者（§8 规则 3）；必需项一律 `${VAR:?}`；容器内地址不做同名插值；
+    内联在主服务编排里的 `postgres` / `redis` 不设自己的 env 文件；dev 组件是例外形态（内联默认值、不设 env 文件，见 §8），
+    且已移出部署面 env 发现。
 12. 必填项的真相只在 compose 的 `${VAR:?}`（脚本不另存清单）；`up` / `deploy` 在动任何容器前先过这道校验；
     `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。唯一需要脚本落值的是模块声明键
     `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`——compose 里没有它（由 rcs 启动期校验），脚本在缺失时按主机名生成并固化
     （§9）；取值规则与 `init` 一致：**只补缺失、绝不覆盖**。
-13. **消费共享实例的目录必须有一次性初始化服务**（库 / 账号 / 桶的创建与 schema 应用都在那里，形态逐条见 §6）；
-    启动顺序由它自己等待 + 栈内主服务 `depends_on: service_completed_successfully` 表达，不写跨项目 `depends_on`。
+13. **需要建库 / 建账号 / 建桶的目录必须有一次性初始化服务**（库名、账号、schema 应用的创建都在那里，形态逐条见 §6）；
+    启动顺序用**同项目内**的 `depends_on: service_healthy` / `service_completed_successfully` 表达——跨项目的 `depends_on`
+    不成立，本体系也不再需要它（没有跨项目等待，§6）。
 14. **上游未发布 arm64 变体的镜像必须写 `platform: linux/amd64`**：不写时 arm64 主机（Mac）拉取直接报
     `no matching manifest` 装不起来。核对方式 `docker buildx imagetools inspect <image>`；现状六处（4 个镜像）——
     `docker/agent-sites/` 的 `agent-sites`、`docker/ragflow/` 的 `ragflow` 与 `ragflow-s3-init`、
@@ -854,15 +836,16 @@ docker compose up -d
 3. **依赖目录用「独立项目」而非 `-f` 叠加**：规避多文件叠加时相对路径基准漂移的坑；代价是 `down` 需要脚本逆序遍历。
 4. **配置文件用 `KEY=VALUE`（`docker/deploy.env`）而非 YAML/JSON**：目标机零解析依赖，与 Compose 插值同源；
    脚本刻意不用 `source` 读取，避免 `$` / 反引号被展开改写密钥。
-5. **对象存储用 `rustfs`、不用 MinIO**：RustFS 是团队现网实现，两者协议与端口重合，并存只会让「用哪套」变成
-   部署环境的隐性问题。共享实例（`docker/common/` 的 `rustfs`）现在的消费方是 `docker/workflow/`（固定桶
-   `opencoze` / `milvus`，由它的 `s3-init` 建）；`docker/ragflow/` 在 2026-10-08 先随收敛删掉了栈内 MinIO，
-   **同日又回退为自带实例** `ragflow-rustfs`（同一个 `rustfs/rustfs:1.0.1` 镜像、多桶布局不变）——理由与边界见 §5，
-   它是「不用 MinIO」的遵守者、「用共享实例」的例外。仓库里因此仍只有一套 S3 实现（RustFS），
-   被拆开的只是实例的数量与归属。
+5. **对象存储用 RustFS、不用 MinIO**：RustFS 是团队现网实现，两者协议与端口重合，并存只会让「用哪套」变成
+   部署环境的隐性问题。仓库里有**两套 RustFS 实例**，各归各栈：`docker/workflow/` 的 `rustfs`（固定桶
+   `opencoze` / `milvus`，由它的 `s3-init` 建，只在项目默认网络）与 `docker/ragflow/` 的 `ragflow-rustfs`
+   （同一个 `rustfs/rustfs:1.0.1` 镜像、多桶布局，桶按 `kb_id` / `parent_id` 在运行期自建）——理由与边界见 §5。
+   2026-10-08 那轮「收敛到共享 `rustfs`」已随 `docker/common/` 一起退役（2026-10-16）。仓库里因此只有一套 S3
+   实现（RustFS），被拆开的只是实例的数量与归属。
 6. **网络名统一为 `fenix-server`**（而非新造名字）：沿用 Workflow 已实践的出口接入模式，把两个历史名字收敛为一个。
-7. **env 规范**（§8）：每个依赖目录自带 `.env.example`，文件内按「必需 → 可调 → 默认」三段排序；共享键只在根
-   `.env` 定义，由 `docker/deploy.sh` 导出为 shell 环境，保证「随主服务启动」与「独立部署」两条路径取值一致。
+7. **env 规范**（§8）：每个依赖目录自带 `.env.example`，文件内按「必需 → 可调 → 默认」三段排序；键按所有者在
+   主服务 env 与各目录 `.env` 之间分工（§8 规则 3），「两侧必须同值」的键靠 `docker/deploy.sh` 把主服务 env
+   导出为 shell 环境保持一致，于是「随主服务启动」与「独立部署」两条路径取值都一致。
 8. **镜像固定版本写进文件、不经环境变量**（取代本文件早期版本的 `FENIX_RCS_IMAGE` 设计）：部署环境不参与版本
    决策，`git` 里看到的就是要跑的版本。代价是升级/回滚要在目标机更新这份 compose（或重新交付），见 §10。
 9. **脚本放 `docker/` 内**（而非仓库根）：它靠同级目录发现依赖，放在一起才能整体交付；自定位使其可从任意目录调用。
@@ -877,9 +860,9 @@ docker compose up -d
     模块声明键（当前只有 workflow 的平台账号邮箱）用同一套时机补值：脚本在缺失时生成并固化（§9）。
     代价是默认身份由脚本挑（主机名派生；要换成自控邮箱得重新引导并清理上游旧账号），
     换来的是「一个模块必填键不会让新部署起不来、也不会逼部署方预先决定未来才用到的账号」。
-13. **`RCS_URL` / `RCS_SECRET` 由脚本按同机语义注入**：前者与主服务 env 的同名键语义不同（自用地址 vs 可达地址），
-    后者要与主服务的 `REGISTRY_SECRET` 同值——都不适合做成共享键；依赖自己的 `.env` 优先于注入（独立部署），
-    注入只影响脚本启动的那条路径。
+13. **`RCS_URL` / `RCS_SECRET` 由脚本按同机语义注入**：两者都不由主服务 env 供给——前者是节点侧的键（主服务进程不
+    消费，也不在主服务 env 模板里），后者要与主服务的 `REGISTRY_SECRET` 同值；依赖自己的 `.env` 优先于注入
+    （独立部署），注入只影响脚本启动的那条路径。
 14. **env 模板是生成物、不是手写文件**：`scripts/generate-env-example.ts` 从代码里声明的环境变量
     （宿主 `apps/server/src/env.ts` + 各模块 `fenix.module.ts` 的 `envDefinitions`）与 `docker/` 目录扫描
     同批产出根 `.env.example`、`docker/main/.env.example` 与 `docker/deploy.env.example`；新增开关或键先改声明面
@@ -899,39 +882,38 @@ docker compose up -d
     例外）：同机开发时让节点与平台看同一份文件，省去两处同步。代价是整目录交付到独立节点机器时该相对路径
     会落到交付位置之外的目录，所以它的 README 要求在那种场景改成绝对路径或 `./data/workspaces`。
     若要取消这个例外，删掉那一行并改绑 `./data/workspaces` 即可（不再与平台共享文件）。
-18. **MySQL 上移到 common 作为共享基础设施**（2026-10-08）：它从 `docker/workflow/` 的服务定义变成
-    `docker/common/` 的可选服务（profile `mysql`，开关 `FENIX_FEATURE_MYSQL`），workflow 目录降级为消费方。
-    取舍与代价写在这里，评审时按这几条核对：
-    - **只提供实例，不提供业务初始化**：common 不能引用任何依赖目录的文件（否则主服务 `config` 在没装依赖的机器上
-      就失败），所以「幂等建库建号 + schema 迁移」这类上游职责留在消费方，由它自己的**一次性服务**（`mysql-init`）承担。
-      代价：消费方多一个服务、多一层启动顺序（主服务先起 → 初始化成功 → `coze-server` 启动）。账号权限范围由该服务自己声明
-      （当前是 `GRANT ALL ON <库>.*`，与共享实例首次初始化时的授权范围一致）。
-    - **消费方必须接入 ②**：共享实例只能在 ② 上按名寻址，于是 `coze-server` 也进了 ②，并因此拿到了与栈内
-      `redis` 同名的解析歧义（§3 规则 7、`docker/workflow/README.md` §9）。这是本次变更最主要的安全与稳定性代价，
-      换来的收益是「同一台机器多栈共用一套库」，以及数据落点随交付面收进 `docker/common/data/mysql`。
-      范围只限 MySQL：Elasticsearch 仍留在 workflow，避免一次性改动面过大（它的插件与索引模板都依赖上游目录）。
-      这条是**需求方裁定**，不是待办（§5.1 末）。**2026-10-14 追加**：ES 的插件与索引模板资产已随 server 镜像交付、
-      数据收进 `docker/workflow/data/elasticsearch`，该「依赖上游目录」的理由不再成立（§13.21）。
+18. **MySQL 的归属：`docker/workflow/` 自带实例**（2026-10-08 曾上移到 `docker/common/` 作共享基础设施，
+    **2026-10-16 随共享实例退役回到本目录**）。当前形态与理由：
+    - **实例只在项目默认网络**：`mysql` 与 `rustfs` 不接 `fenix-server`（因此可以与保留名同名而不冲突），
+      平台侧只经 `coze-web` 一个出口接入。2026-10-08 那轮「共享实例的消费方必须接入 ②」带来的同名歧义与
+      可达面代价，随实例回到本目录一并消失（§3 规则 7、`docker/workflow/README.md` §9）。
+    - **只提供实例，不提供业务初始化**：建库建号与 schema 应用留在消费方自己的**一次性服务**（`mysql-init`）里，
+      账号权限范围由该服务自己声明（当前是 `GRANT ALL ON <库>.*`）。
+    - **凭据是本目录私有的**：`WORKFLOW_MYSQL_PASSWORD` / `WORKFLOW_MYSQL_ROOT_PASSWORD`（与 `WORKFLOW_S3_*` 一起）
+      写在 `docker/workflow/.env`，不再从主服务 env 取（§8 规则 3）；`mysql-init` 等处的诊断文案与 README 同步于此。
+    - **数据落点随交付面收进 `docker/workflow/data/{mysql,rustfs}`**。
+    - **Elasticsearch 同样留在 workflow**：它一直在本目录，数据收进 `docker/workflow/data/elasticsearch`（§13.21）。
     - **上游资产不复制进本仓库**：`schema.sql` 与 Atlas HCL 仍从 `WORKFLOW_STUDIO_DIR` 挂载（只在 workflow 目录里引用）。
       **2026-10-14 superseded**：资产改随上游 server 镜像交付、由 `assets-init` 展开到 `docker/workflow/assets/`——
       本仓库仍然不落资产文件（这条不变），但也不再需要任何上游源码目录与 `WORKFLOW_STUDIO_DIR` 变量（§13.21）。
     - **数据搬迁两种口径**：生产按「停 → 拷 → 起 → 验收」拷目录，开发可「不迁、从零起」；旧目录在验收通过并
       跑过一个业务周期之前不删（可执行步骤见 `docker/workflow/README.md` §8）。
-19. **开关不自动联动**：`FENIX_FEATURE_WORKFLOW=true` 不会顺带打开 `FENIX_FEATURE_MYSQL`。
-    理由：联动意味着在脚本里维护「哪个目录依赖哪个共享服务」的映射表，而这张表会随目录增删漂移；让消费方在缺依赖时
-    明确报错（就绪判据在消费方自己的初始化服务里，报错文本直接指出该打开哪个开关）比隐式联动更容易排查。
-    代价是首次部署要看一眼消费方 README 的前置条件清单。
-20. **共享实例成形：三个依赖栈把辅助服务收敛到 `docker/common/`**（2026-10-08，LiteLLM → 共享 `postgres`、
-    RAGFlow → 共享 `mysql` + `rustfs`、Workflow → 共享 `rustfs`；清单与消费方见 §5.1）。取舍：
+19. **开关不自动联动**：一个开关只负责它自己那个目录，不做目录之间的联动。
+    理由：联动意味着在脚本里维护「哪个目录依赖哪个别的目录」的映射表，而这张表会随目录增删漂移。
+    2026-10-16 起每个目录自带依赖实例，连需要联动的场景都不存在了（曾经的对偶问题是「忘了打开 `FENIX_FEATURE_MYSQL`
+    导致消费方起不来」）。代价是首次部署要看一眼目标目录 README 的前置条件清单。
+20. **共享实例阶段（2026-10-08 ~ 2026-10-16）：三个依赖栈把辅助服务收敛到 `docker/common/`**（LiteLLM → 共享
+    `postgres`、RAGFlow → 共享 `mysql` + `rustfs`、Workflow → 共享 `rustfs`；当时的清单与消费方见 §5.1）。
+    该形态已于 2026-10-16 整体退役，改回「每个组件自带依赖实例」（§5）。当时的取舍记录在此，供回溯：
     - **收益**：同一台机器上不再为每个栈各起一套关系库与对象存储（省资源、少几套备份对象），数据落点随交付面收进
       `docker/common/data/**`，地址与端口在容器内保持不变（服务名与端口沿用原值，上游配置不必改）。
     - **代价**：消费方容器必须进 ②，于是它与别的栈同处一张网（同名歧义、可达面变大）；共享实例的凭据是**全实例一对**
       （一个栈能读写另一个栈的库 / 桶）；栈内多出一次性初始化服务与一层启动顺序（§6）。
-    - **边界**：只收敛「实例」不收敛「初始化」（§5.1 第 1 条）；**缓存没有收敛**（`ragflow-redis` 改名保留、
-      workflow 的 `redis` 未改名）、**Elasticsearch 留在 workflow**——这两处是评审时最容易被误读成遗漏的地方。
+    - **现状边界**：每个目录的实例、凭据、消费方同处一个项目，键不跨目录读（§8 规则 3）；栈内的口令轮换、库空间占用
+      与版本升级都不外溢到别的组件；初始化仍留在消费方自己的目录里（§5.1 第 1 条那一条原则不变）。
 21. **`docker/workflow/` 收敛为一次启动的自包含交付面**（2026-10-14）。目标：干净机器上
-    `./docker/deploy.sh up`（打开 `FENIX_FEATURE_WORKFLOW` + `MYSQL` + `S3`）一次起全栈，不 clone 上游源码、
-    不手工对齐两份 env、不在运行期联网装工具。四条改动与代价：
+    `./docker/deploy.sh up`（只打开 `FENIX_FEATURE_WORKFLOW`——本栈自带 MySQL / 对象存储 / ES 等实例）一次起全栈，
+    不 clone 上游源码、不手工对齐两份 env、不在运行期联网装工具。四条改动与代价：
     - **初始化资产随 server 镜像交付**：上游 `backend/Dockerfile` 把 `docker/volumes` 与 `docker/atlas` 打进
       `/app/upstream-assets/docker/`（约 6MB / 144 文件，与二进制同 commit 同 tag）；本目录新增一次性服务
       `assets-init` 把它展开到 `docker/workflow/assets/`——docker 不能把镜像内路径直接挂进别的容器，消费方要的是宿主
@@ -944,8 +926,9 @@ docker compose up -d
     - **配置收敛为本目录唯一一份 `.env`**：上游单机形态的 `docker/.env` 不再挂载（镜像内 `/app/.env` 已带上游默认值，
       本目录 `.env` 只是它的叠加层）；`coze-server` 原有的两处挂载（上游 `.env` → `/app/.env`、`backend/conf` →
       `/app/resources/conf`）一并删除，后者本就在镜像里。**指向键**（`MYSQL_DSN` / `MINIO_*` / `REDIS_ADDR` / …）改由
-      compose 的 `environment` 显式注入，避免配置面漂移。**代价**：`init-mysql.sh` / `mysql-init` 等处的诊断文案与
-      README 的启动命令都必须跟着改，且改 `.env` 不再能改「连到哪里」（这是有意为之）。
+      compose 的 `environment` 显式注入，值取自本目录 `.env` 的 `WORKFLOW_MYSQL_*` / `WORKFLOW_S3_*`，避免配置面漂移。
+      **代价**：`init-mysql.sh` / `mysql-init` 等处的诊断文案与 README 的启动命令都必须跟着改，且改 `.env` 不再能改
+      「连到哪里」（这是有意为之）。
     - **栈内数据收进交付面**：ES / redis / etcd / Milvus 从 `${WORKFLOW_STUDIO_DIR}/docker/data/` 迁到
       `docker/workflow/data/`；`WORKFLOW_STUDIO_DIR` 变量与上游源码 clone 一并退场（零引用，由目录契约测试守住）。
       **过渡代价**：存量部署要停机搬一次目录（`docker/workflow/README.md` §8.1），旧目录在验收通过前保留为回滚路径。

@@ -1,7 +1,7 @@
 # compose-explorer —— 本地查看编排依赖关系
 
 一个**本地只读**的小工具：把 `docker/` 下的 compose 编排读成一张依赖图，点节点就能看它对应的
-`docker-compose.yml` / README / 初始化脚本。用来回答「谁依赖谁、谁在用共享的 postgres/mysql/rustfs、
+`docker-compose.yml` / README / 初始化脚本。用来回答「谁依赖谁、谁自带哪些依赖实例、
 哪些栈的开关是关着的」。
 
 ## 启动（本地 bun，不用 docker）
@@ -27,15 +27,15 @@ bun run start        # 打开 http://127.0.0.1:7411/
 
 | 边 | 含义 | 判定口径 |
 | --- | --- | --- |
-| include 引入 | 主服务编排的 `include:` 引入另一个文件 | compose 的 `include.path`（本仓只有两份主服务编排 → `docker/common`） |
+| include 引入 | 顶层编排的 `include:` 引入另一个文件 | compose 的 `include.path`（本仓只有 dev 根 `docker-compose.yml` → `docker/dev/*`） |
 | 共享网络 | 服务接入别的编排创建的 external 网络（跨项目 DNS 的唯一通路） | 非 external 声明网络的文件即创建者；接入方按服务逐个成边 |
 | 服务引用 | 值里出现了别项目的服务名 | 扫 `environment` / `command` / `entrypoint` / `healthcheck` 里的 host 位置（URL、`host:port`、`*_HOST: name`），再按全局服务名索引 + 网络可达性过滤 |
 
 - **`depends_on` 不画成边**：它是同项目内的启动顺序，不是跨项目依赖。同文件内的记为节点角标，
   跨文件（include 闭包内）的记在详情里。
 
-- 红色虚线 = **依赖未满足**：目标服务受 profile 开关控制而当前没打开（例如 `ragflow → mysql` 需要
-  `FENIX_FEATURE_MYSQL=true`）。
+- 红色虚线 = **依赖未满足**：目标服务受 profile 开关控制而当前没打开（开关名由 profile 名推出，如
+  `redis` profile 对应 `FENIX_FEATURE_REDIS`；状态取自 `docker/deploy.env`）。
 - 同属一个 compose 项目（root 及其 include 的文件）之间的引用不画跨项目边——它们本来就是同一项目内的
   服务名解析，用 include 边表达即可。
 

@@ -10,22 +10,23 @@
 
 | 对象 | 默认位置 | 内容 | 丢失后的后果 |
 | --- | --- | --- | --- |
-| PostgreSQL | `DATABASE_URL` 指向的实例；编排里是 bind 目录 `docker/common/data/postgres` | 全部权威状态：身份与组织、资源与权限、Agent 配置、实例、工作流定义与运行、以及 `data_migrate_record` 与 `drizzle."__drizzle_migrations"` 两条迁移进度记录 | 无法从文件重建；迁移进度丢失会导致迁移重跑或错误跳过 |
+| PostgreSQL | `DATABASE_URL` 指向的实例；主服务编排里是 bind 目录 `docker/main/data/postgres`（dev 形态落仓库根 `./data/postgres`） | 全部权威状态：身份与组织、资源与权限、Agent 配置、实例、工作流定义与运行、以及 `data_migrate_record` 与 `drizzle."__drizzle_migrations"` 两条迁移进度记录 | 无法从文件重建；迁移进度丢失会导致迁移重跑或错误跳过 |
 | `SKILL_DIR` | `./data/skills`（容器内 `/app/data/skills`） | 按组织分目录的 skill 源目录与 zip 归档（`data/skills/<orgId>/<name>`） | DB 里只剩元数据，skill 内容不可恢复 |
 | `WORKSPACE_ROOT` | `<运行目录>/workspaces`（容器内 `/app/workspaces`；可由 `WORKSPACE_ROOT` 覆盖） | 每个用户的 Agent 工作区，路径公式 `{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}` | 用户文件与 Agent 产物丢失。注意：DB 的 `workspacePath` 是历史字段，不能用来推导真实目录 |
 | 日志目录 | `LOG_DIR`，默认相对进程 cwd 的 `logs` | `rcs.<yyyy-MM-dd>.log`（全量）与 `rcs.err.<yyyy-MM-dd>.log`（error 及以上），日期为 UTC；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理 | 只影响事后排障，不影响业务数据 |
 | peri 全局目录 | 宿主 `./data/peri-home`（容器内 `/root/.peri`） | peri 插件与 CLI 配置（镜像构建时安装了 hindsight-memory 插件，运行期还会写入） | 容器重建后需要重新安装/配置插件 |
 | `./workflow` 目录 | 两份主服务编排都挂载的 `./workflow`（容器 `/app/workflow`；dev 落仓库根，生产落 `docker/main/workflow`） | `Dockerfile` 与两份编排都创建/挂载它，但当前代码树里没有写入方，内容按代码无从断定（可能为空，也可能被运行期工具使用） | 工作流定义与运行记录都在数据库里，不受影响；备份时保守纳入，避免与运行期外部工具的口径不一致 |
 | 部署输入（主服务 env——生产 `docker/main/.env`、dev 仓库根 `.env`——、`docker/deploy.env`、各依赖目录的 `.env`、`deploy/assembly/*.json`、前端产物） | 仓库/编排目录 | 编排与发布参数。代码与 `apps/web/dist` 可由版本重建，但 **`.env` 与 `docker/deploy.env` 是唯一副本** | 需要重新配置；密钥若未另行保管则要重新签发 |
-| 共享 MySQL（仅在启用 `FENIX_FEATURE_MYSQL` 时） | bind 目录 `docker/common/data/mysql` | Workflow V2 上游栈的定义、版本与运行数据（库 `opencoze`），以及 RAGFlow 的知识库元数据（库 `rag_flow`、文档与切片记录） | 两个栈都不带自己的实例了：这里丢了，上游定义与知识库元数据都不可从别处重建 |
-| 网关库（LiteLLM，共享 PostgreSQL 实例内） | 同一个 `docker/common/data/postgres`（库 `litellm`，角色 `litellm`） | Provider 凭据、Virtual Key、预算与用量——模型网关的事实来源 | 网关需要重新配置；已签发的 Virtual Key 与其用量记录丢失 |
-| 共享对象存储（共享 RustFS，仅在启用 `FENIX_FEATURE_S3` 时） | bind 目录 `docker/common/data/rustfs` | Workflow 的桶 `opencoze`（画布图片 / 附件）与 `milvus`（向量数据） | 工作流画布产物不可从数据库重建（库里只有元数据与桶内路径） |
-| RAGFlow 自带的对象存储（本栈实例 `ragflow-rustfs`，恒随该栈启动） | bind 目录 `docker/ragflow/data/rustfs` | 知识库的桶（每个知识库 / 文件目录一个，桶名即 `kb_id` / `parent_id`，数量随用户行为增长） | 知识库文档与解析产物不可从数据库重建（库里只有元数据与桶内路径） |
-| Redis（仅在配置了 `RCS_REDIS_URL` 时） | 外部 Redis 实例 | Y.Doc 快照（`chat:{rcsSessionId}` / `session:{rcsSessionId}`，滑动 TTL 默认 7 天）与缓存 | 影响有限：快照是 trailing 节流的尽力而为写入，**权威是 Agent 侧 ACP session 历史**，可经 `load_session` 回放重建 |
+| Workflow 栈自带的 MySQL（随 `docker/workflow/` 启停） | bind 目录 `docker/workflow/data/mysql` | Workflow V2 上游栈的定义、版本与运行数据（库 `opencoze`） | 该栈没有别的副本：这里丢了，上游定义与运行数据都不可从别处重建 |
+| RAGFlow 栈自带的 MySQL（随 `docker/ragflow/` 启停） | bind 目录 `docker/ragflow/data/mysql` | RAGFlow 的知识库元数据（库 `rag_flow`、文档与切片记录） | 该栈没有别的副本：这里丢了，知识库元数据不可从别处重建 |
+| 网关库（LiteLLM，本栈自带实例 `litellm-postgres` 内） | bind 目录 `docker/litellm/data/postgres`（库 `litellm`，角色 `litellm`） | Provider 凭据、Virtual Key、预算与用量——模型网关的事实来源 | 网关需要重新配置；已签发的 Virtual Key 与其用量记录丢失 |
+| Workflow 栈自带的对象存储（`docker/workflow/` 的 `rustfs`，恒随该栈启动） | bind 目录 `docker/workflow/data/rustfs` | Workflow 的桶 `opencoze`（画布图片 / 附件）与 `milvus`（向量数据） | 工作流画布产物不可从数据库重建（库里只有元数据与桶内路径） |
+| RAGFlow 栈自带的对象存储（本栈实例 `ragflow-rustfs`，恒随该栈启动） | bind 目录 `docker/ragflow/data/rustfs` | 知识库的桶（每个知识库 / 文件目录一个，桶名即 `kb_id` / `parent_id`，数量随用户行为增长） | 知识库文档与解析产物不可从数据库重建（库里只有元数据与桶内路径） |
+| Redis（仅在配置了 `RCS_REDIS_URL` 时） | `RCS_REDIS_URL` 指向的实例；用编排自带的 `redis`（`FENIX_FEATURE_REDIS`）时落 bind 目录 `docker/main/data/redis`（dev 形态仓库根 `./data/redis`） | Y.Doc 快照（`chat:{rcsSessionId}` / `session:{rcsSessionId}`，滑动 TTL 默认 7 天）与缓存 | 影响有限：快照是 trailing 节流的尽力而为写入，**权威是 Agent 侧 ACP session 历史**，可经 `load_session` 回放重建 |
 
 敏感项：`data/password.txt`（系统管理员初始口令，路径由 `RCS_SYSTEM_ADMIN_PASSWORD_FILE` 指定）与任何含密钥的 `.env`。它们必须按密钥材料保管，不得随普通备份包分发、不得进日志。备份 `./data` 时如需排除，请在打包命令里显式排除。
 
-**旧数据目录（共享化与交付面搬迁之前的落点）**：`docker/ragflow/ragflow_mysql_data`（旧元数据库）、`docker/ragflow/ragflow_minio_data`（旧对象存储）、`<上游源码目录>/docker/data/minio`（Workflow 旧对象存储；`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、LiteLLM 旧自带实例的 bind 目录，以及 **Workflow 栈内服务的旧数据目录**`<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（2026-10-14 起改为 `docker/workflow/data/`，见下一段与 [docker/workflow/README.md](../../docker/workflow/README.md) §8）。它们**不再被任何服务读写**，但在搬迁验收通过并跑过一个业务周期之前**不要删**——那之前的回滚路径依赖它们（[升级](./upgrade.md) §2）。可删条件与各自的操作步骤写在 `docker/ragflow/README.md`「数据搬迁」与 `docker/workflow/README.md` §8；`./docker/deploy.sh down --purge-data` **不会**清理它们（脚本只清各依赖目录的 `./data/`），要删得手动删，删前先 `tar` 留一份。
+**旧数据目录（不再被任何服务读写的落点）**：`docker/common/data/{postgres,mysql,rustfs}`（共享实例时代的落点）、`docker/ragflow/ragflow_mysql_data`（旧元数据库）、`docker/ragflow/ragflow_minio_data`（旧对象存储）、`<上游源码目录>/docker/data/minio`（Workflow 旧对象存储；`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、LiteLLM 旧自带实例的 bind 目录，以及 **Workflow 栈内服务的旧数据目录**`<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（2026-10-14 起改为 `docker/workflow/data/`，见下一段与 [docker/workflow/README.md](../../docker/workflow/README.md) §8）。它们**不再被任何服务读写**，但在搬迁验收通过并跑过一个业务周期之前**不要删**——那之前的回滚路径依赖它们（[升级](./upgrade.md) §2）。可删条件与各自的操作步骤写在 `docker/ragflow/README.md`「数据搬迁」与 `docker/workflow/README.md` §8；`./docker/deploy.sh down --purge-data` **不会**清理它们（脚本只清各依赖目录的 `./data/`），要删得手动删，删前先 `tar` 留一份。
 
 ## 3. 编排实际挂了什么（决定数据是否落在宿主机上）
 
@@ -34,11 +35,8 @@
 
 | 卷 / 目录 | 主服务编排（dev 根文件 / 生产 `docker/main/`） | 宿主落点 |
 | --- | --- | --- |
-| 数据库（含共享实例内的网关库 `litellm`） | 挂载（`docker/common/`，随 include） | `docker/common/data/postgres` |
-| 共享 MySQL（启用 `FENIX_FEATURE_MYSQL` 时；含 workflow 库 `opencoze` 与 ragflow 库 `rag_flow`） | 挂载 | `docker/common/data/mysql` |
-| 共享对象存储 rustfs（启用 `FENIX_FEATURE_S3` 时；含 workflow 的两个固定桶 `opencoze` / `milvus`） | 挂载 | `docker/common/data/rustfs` |
-| RAGFlow 自带的对象存储 `ragflow-rustfs`（随 `docker/ragflow/` 启停；含知识库侧随用户行为增长的桶——每个知识库 / 文件目录一个） | 挂载 | `docker/ragflow/data/rustfs` |
-| `./data`（含 `SKILL_DIR`、口令文件、`peri-home`） | 挂载 | dev `./data`；生产 `docker/main/data` |
+| `./data`（含 `SKILL_DIR`、口令文件、`peri-home`，以及内联在编排里的基础服务数据 `postgres` / `redis`） | 挂载 | dev `./data`；生产 `docker/main/data` |
+| 依赖自带的实例（workflow 的 `mysql` / `rustfs`、litellm 的 `litellm-postgres`、ragflow 的 `ragflow-mysql` / `ragflow-rustfs`） | **不在本编排里**：随各依赖目录启停，相对各自目录解析 | `docker/workflow/data/{mysql,rustfs}`、`docker/litellm/data/postgres`、`docker/ragflow/data/{mysql,rustfs}` |
 | `./workflow` | 挂载 | dev `./workflow`；生产 `docker/main/workflow` |
 | `./workspaces`（`WORKSPACE_ROOT`） | 挂载 | dev `./workspaces`；生产 `docker/main/workspaces` |
 | `./logs`（`LOG_DIR`） | **未挂载** | 容器重建即丢日志；需要保留时自行加一条 bind |
@@ -47,10 +45,7 @@
 对应风险：
 
 - 两份主服务编排都未挂 `logs`：容器重建即丢日志。容器形态下如需保留，给 `rcs` 加一条 `./logs:/app/logs` 并把 `LOG_DIR` 指过去。
-- 依赖目录（`docker/<name>/`）的数据一律在自己的 `./data/` 或 `./ragflow_*` 一类同级目录下，随该目录一起备份；`./docker/deploy.sh down --purge-data` 会删掉这些目录（**包括 `docker/common/data/` 下的共享实例数据**），**不要**在需要保留数据时使用。共享化之后，消费方（`workflow` / `ragflow` / `litellm`）的**库**都在共享实例里（`docker/common/data/**`）；
-  **对象存储分两处**：workflow 的桶在共享实例（`docker/common/data/rustfs`），RAGFlow 的桶在它自带的实例里
-  （`docker/ragflow/data/rustfs`，2026-10-08 由共享实例回退而来，见 [`docker-topology.md`](./docker-topology.md) §5）。
-  备份与 `--purge-data` 的口径都要同时覆盖这两处。
+- 依赖目录（`docker/<name>/`）的数据一律在自己的 `./data/` 或 `./ragflow_*` 一类同级目录下，随该目录一起备份；`./docker/deploy.sh down --purge-data` 会删掉这些目录（`data_dirs()` 的清单 = `docker/main/{data,workflow,workspaces}` 加各依赖目录的 `./data/`），**不要**在需要保留数据时使用。主服务 postgres 与 redis 在 `docker/main/data/{postgres,redis}`（dev 形态在仓库根 `./data/`），各依赖自带的实例在各自目录的 `./data/{mysql,rustfs,postgres}` 下——备份口径要覆盖到每一处。
 - 相对路径按**编排文件所在目录**解析：主服务在 dev 是仓库根、生产是 `docker/main/`，依赖目录各自相对自己的目录。
 
 ## 4. 临时备份口径（仓库暂无脚本）
@@ -66,16 +61,20 @@
 docker compose exec -T postgres pg_dump -U rcs -Fc rcs > rcs-$(date +%Y%m%d).dump
 
 # 2) 文件目录（在数据目录所在机器上执行；按实际 WORKSPACE_ROOT / LOG_DIR / SKILL_DIR 调整路径）
-tar -czf data-$(date +%Y%m%d).tar.gz       -C . data
+tar -czf data-$(date +%Y%m%d).tar.gz       -C . data    # dev 的 ./data 含基础服务数据 ./data/{postgres,redis}
 tar -czf workspaces-$(date +%Y%m%d).tar.gz -C <WORKSPACE_ROOT> .
 tar -czf workflow-$(date +%Y%m%d).tar.gz   -C . workflow
-tar -czf pgdata-$(date +%Y%m%d).tar.gz     -C docker/common/data postgres
 
-# 2b) 共享实例（启用对应开关时；都在 docker/common/data/ 下，与上面的 pgdata 同属一份交付面）
-docker compose --profile mysql exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
-  --databases opencoze rag_flow > mysql-$(date +%Y%m%d).sql     # workflow 与 ragflow 两个库
-tar -czf rustfs-$(date +%Y%m%d).tar.gz     -C docker/common/data rustfs      # workflow 的桶（共享实例）
-tar -czf ragflow-rustfs-$(date +%Y%m%d).tar.gz -C docker/ragflow/data rustfs # 知识库的桶（RAGFlow 自带实例）
+# 2b) 各依赖自带的实例（都在各自目录的 ./data/ 下；随该目录一起交付）
+docker compose -f docker/workflow/docker-compose.yml exec -T mysql \
+  mysqldump -uroot -p"$WORKFLOW_MYSQL_ROOT_PASSWORD" --databases opencoze \
+  > workflow-mysql-$(date +%Y%m%d).sql                                  # workflow 的库
+docker compose -f docker/ragflow/docker-compose.yml exec -T ragflow-mysql \
+  mysqldump -uroot -p"$RAGFLOW_MYSQL_ROOT_PASSWORD" --databases rag_flow \
+  > ragflow-mysql-$(date +%Y%m%d).sql                                   # 知识库元数据
+tar -czf litellm-pgdata-$(date +%Y%m%d).tar.gz -C docker/litellm/data postgres   # 网关库
+tar -czf workflow-rustfs-$(date +%Y%m%d).tar.gz -C docker/workflow/data rustfs   # workflow 的桶
+tar -czf ragflow-rustfs-$(date +%Y%m%d).tar.gz  -C docker/ragflow/data rustfs    # 知识库的桶
 # 对象存储打包同样以停机窗口内取为稳（运行中打包可能取到半写的对象）
 
 # 3) 配置（唯一副本，按密钥材料保管，不要随普通备份分发；生产把 .env 换成 docker/main/.env）
@@ -91,7 +90,7 @@ tar -czf config-$(date +%Y%m%d).tar.gz .env docker/deploy.env
    docker compose exec -T postgres pg_restore -U rcs -d rcs --clean --if-exists < rcs-YYYYmmdd.dump
    ```
 2. **恢复文件目录**：`SKILL_DIR`、`WORKSPACE_ROOT`、`workflow`、peri 目录（按需）。必须在启动应用前完成，否则应用会先读到空目录并可能写入新状态。
-3. **恢复共享实例与自带实例里的依赖数据**（按启用的开关）：把共享 MySQL 的两个库（`opencoze` / `rag_flow`）、共享 rustfs 的数据目录（workflow 的桶）与 `docker/ragflow/data/rustfs`（RAGFlow 自带的桶）按 §4 的备份还原回各自目录。**顺序是先起主服务项目、再起依赖栈**：栈内的一次性初始化服务是幂等的（只建缺失的库 / 桶、只同步口令，不动既有数据；`docker/ragflow/` 的 `ragflow-s3-init` 只对自带实例做能力探测、不建业务桶——多桶模式下桶由 RAGFlow 运行期自建），不会覆盖刚恢复的数据；反过来先起依赖栈会让初始化在空实例上建出新的库 / 固定名桶，与恢复点分叉。
+3. **恢复各依赖自带实例里的数据**：把 workflow 的库（`opencoze`）与知识库元数据（`rag_flow`）的 dump、`docker/litellm/data/postgres`（网关库）、以及两处对象存储（`docker/workflow/data/rustfs`、`docker/ragflow/data/rustfs`）按 §4 的备份还原回各自目录。**顺序是先起主服务项目、再起依赖栈**：依赖必须先接入 `fenix-server`，且栈内的一次性初始化服务是幂等的（只建缺失的库 / 桶、只同步口令，不动既有数据；`docker/ragflow/` 的 `ragflow-s3-init` 只对自带实例做能力探测、不建业务桶——多桶模式下桶由 RAGFlow 运行期自建），不会覆盖刚恢复的数据；反过来先起依赖栈会让初始化在空实例上建出新的库 / 固定名桶，与恢复点分叉。
 4. **核对迁移进度**：比对 `drizzle."__drizzle_migrations"` 与 `data_migrate_record` 的内容是否与该版本代码期望的迁移集合一致；缺的补跑（[升级](./upgrade.md) 的发布顺序），多的必须查明来源后再决定——不要只改记录。
 5. **启动应用**（`up -d rcs`）→ 检查 `/health` 的 `status` 与 `commitId`，再抽查一次交互式 Chat 与文件访问。
 

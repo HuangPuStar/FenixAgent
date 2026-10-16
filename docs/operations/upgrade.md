@@ -45,8 +45,8 @@
 - 核对本机实际版本用 `./docker/deploy.sh ps`（镜像 tag/digest 可见）。
 - 离线交付：`docker/build-image.sh` 构建 runtime 镜像并 `docker save` 成 tar（脚本末尾打印目标机 `docker load` 命令）。
 - 依赖（litellm / hindsight / ragflow / sandbox 节点等）与主服务是独立升级单元：默认只在 `deploy` 时 `pull` 并收敛主服务，依赖按自己的目录单独 `docker compose up -d`。Hindsight 一类需要经 `fenix-server` 访问主服务的依赖，重建顺序仍要先主后附。
-- **共享实例口径**（2026-10-08 起，同日修正一次）：依赖的库已不在自己的目录里——网关库（`litellm`）在共享 `postgres`、workflow 的库（`opencoze`）与 ragflow 的库（`rag_flow`）在共享 `mysql`；**对象存储分两处**：workflow 的桶在共享 `rustfs`（`FENIX_FEATURE_S3`），ragflow 的桶在它**自带**的实例 `ragflow-rustfs`（`docker/ragflow/data/rustfs`，不受该开关影响）。升级这类依赖时会先跑它们各自的一次性初始化服务（幂等：只建缺失的库 / 桶、只同步口令，不动既有数据；ragflow 侧不预建桶——多桶模式下桶由 RAGFlow 按知识库 / 文件目录运行期自建，它的 `ragflow-s3-init` 只对自带实例做能力探测），失败则该栈的主服务不启动；判定看 `docker ps -a` 里的 `Exited (0)` 与日志末行的完成行（[排障](./troubleshooting.md) §15）。**workflow 侧自 2026-10-14 起多两个前置一次性服务**：`assets-init` 先从 server 镜像展开初始化资产（因此 `WORKFLOW_STUDIO_TAG` 不得低于带资产的首个发布），`atlas-init` 再做 schema 收敛——升级时换 tag 后重跑 `up -d` 即可，它的数据目录已随交付面收到 `docker/workflow/data/`（搬迁口径见该目录 README §8、编排体系 §13.21）。
-- **回滚到旧编排要多读一件事**：回退到共享化之前的编排（各栈自带 `litellm-postgres` / `mysql` / `minio`）时，数据仍在**旧数据目录**里（`docker/ragflow/ragflow_mysql_data`、`ragflow_minio_data`、`<上游源码目录>/docker/data/minio`（`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、litellm 旧实例的 bind 目录，以及 Workflow 栈内服务的旧数据目录 `<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（后者自 2026-10-14 起滚进 `docker/workflow/data/`，见 `docker/workflow/README.md` §8）），所以旧目录在那次迁移验收通过并跑过一个业务周期之前不删——删了就只能从备份恢复（保留与可删条件见[备份与恢复](./backup-and-restore.md) §2 与各目录 README）；不存在「把共享实例里的数据搬回去」的自动路径。
+- **依赖实例口径**：每个依赖栈自带依赖实例，库与桶都不在主服务这边——`docker/litellm/` 自带 `litellm-postgres`（库 `litellm`，`DATABASE_URL` 指向 `litellm-postgres:5432`）、`docker/workflow/` 自带 `mysql` 与 `rustfs`（库 `opencoze`、桶 `opencoze` / `milvus`）、`docker/ragflow/` 自带 `ragflow-mysql` 与 `ragflow-rustfs`（库 `rag_flow`，桶由 RAGFlow 运行期按知识库 / 文件目录自建）；数据各落自己目录的 `./data/` 下。升级依赖时按该目录单独 `up -d` 收敛，栈内的一次性初始化服务随它一起跑（幂等：只建缺失的库 / 桶、只同步口令，不动既有数据；ragflow 侧不预建桶，它的 `ragflow-s3-init` 只对自带实例做能力探测），失败则该栈的主服务不启动；判定看 `docker ps -a` 里的 `Exited (0)` 与日志末行的完成行（[排障](./troubleshooting.md) §15）。**workflow 侧自 2026-10-14 起多两个前置一次性服务**：`assets-init` 先从 server 镜像展开初始化资产（因此 `WORKFLOW_STUDIO_TAG` 不得低于带资产的首个发布），`atlas-init` 再做 schema 收敛——升级时换 tag 后重跑 `up -d` 即可，它的数据目录已随交付面收到 `docker/workflow/data/`（搬迁口径见该目录 README §8、编排体系 §13.21）。
+- **回滚到旧编排要多读一件事**：回退到共享实例时代的编排（`docker/common/` 提供 `postgres` / `redis` / `mysql` / `rustfs`，各栈接入消费）时，数据仍在**旧数据目录**里（共享实例的 `docker/common/data/{postgres,mysql,rustfs}`，以及更早的各栈自带实例落点 `docker/ragflow/ragflow_mysql_data`、`ragflow_minio_data`、`<上游源码目录>/docker/data/minio`（`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、litellm 旧实例的 bind 目录，以及 Workflow 栈内服务的旧数据目录 `<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（后者自 2026-10-14 起滚进 `docker/workflow/data/`，见 `docker/workflow/README.md` §8）），所以旧目录在那次迁移验收通过并跑过一个业务周期之前不删——删了就只能从备份恢复（保留与可删条件见[备份与恢复](./backup-and-restore.md) §2 与各目录 README）；不存在「把共享实例里的数据搬回各栈」的自动路径。
 - 回滚同样只改这一行：把 `image:` 改回上一个 tag，再 `./docker/deploy.sh up`（必要时先按 §1 跑迁移回滚口径，见 §5）。
 
 ## 3. 源码升级（本地 / 单机）
@@ -80,7 +80,7 @@ bash restart-server.sh
 
 - 应用镜像 / 代码回滚到上一个 tag 或提交，前提是该版本之后**没有应用过不可逆迁移**，且没有执行过 `compensation: "none"` 的数据迁移。
 - DDL 回滚：靠人工编写补偿 SQL 并核对迁移记录，口径见 `drizzle/README.md` 场景三（先回滚结构，再删记录；伴随数据写入的迁移不能只回滚 DDL）。
-- 依赖编排回滚到共享化之前的版本：把该目录的 compose 与镜像 tag 换回旧版本即可，**前提是旧数据目录还在**（见 §2 的第 3 条）——旧编排读的是自己目录里的数据，与共享实例里的数据互不影响。
+- 依赖编排回滚到共享实例时代的版本：把该目录的 compose 与镜像 tag 换回旧版本即可，**前提是旧数据目录还在**（见 §2 的第 3 条）——旧编排读的是 `docker/common/data/**` 与各目录的旧落点，与新编排各栈自带的实例数据互不影响。
 
 **不可回滚**（本仓现状）：
 
@@ -106,6 +106,6 @@ bash restart-server.sh
 - [ ] 本次迁移链中是否包含不可逆步骤已确认，回滚边界已写明。
 - [ ] DDL 迁移退出码 0；日志含 `[migrate] DDL 迁移已全部应用。`
 - [ ] 数据迁移退出码 0；逐条核对了元信息行（预期数据量 / 锁风险 / 可观测字段）与迁移自己输出的实际影响行数。
-- [ ] 本次升级若重建了消费共享实例的依赖（`ragflow` / `workflow` / `litellm`）：栈内一次性初始化服务是 `Exited (0)`、日志末行是完成行（`docker ps -a`；失败时该栈主服务不会启动）。
+- [ ] 本次升级若重建了依赖栈（`ragflow` / `workflow` / `litellm`）：栈内一次性初始化服务是 `Exited (0)`、日志末行是完成行（`docker ps -a`；失败时该栈主服务不会启动）。
 - [ ] 应用启动后 `/health` 返回 `status: "ok"`，`commitId` 为新版本。
 - [ ] 关键路径抽查：一次交互式 Chat、一次外部 API 调用（或工作流/定时任务，按本次改动范围选择）。

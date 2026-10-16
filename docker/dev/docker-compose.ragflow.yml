@@ -25,8 +25,9 @@
 services:
 
     ragflow-mysql:
-        # 本栈私有实例（生产消费 docker/common/ 的共享 mysql）。服务名带组件前缀，避开全局保留名 mysql
-        # （文档 §13 硬约束 1）。字符集参数与生产实例一致。
+        # 本栈私有实例（生产形态同样自带 ragflow-mysql，两边只是数据落点不同）。服务名带组件前缀，
+        # 免得与 fenix-server 上的保留名 postgres / redis 混在一起（文档 §13 硬约束 1）。
+        # 字符集参数与生产实例一致。
         image: mysql:8.4.5
         profiles: ["ragflow"]
         restart: unless-stopped
@@ -42,7 +43,7 @@ services:
         healthcheck:
             # 用真实查询而不是 `mysqladmin ping`：ping 在口令不对时同样返回成功（服务器活着就算通过），
             # 那样「口令改了但数据目录还是旧的」这类漂移不会暴露；这里连不上就直接 unhealthy。
-            # `$$` 是容器内 shell 展开（CMD-SHELL 形式），照抄 docker/common/ 的既有写法。
+            # `$$` 是容器内 shell 展开（CMD-SHELL 形式），与生产实例的写法一致。
             test:
                 [
                     "CMD-SHELL",
@@ -56,8 +57,8 @@ services:
             - fenix-server
 
     ragflow-redis:
-        # 栈内 Valkey：镜像与上游 valkey:8 一致。生产形态保留它的理由（共享实例无鉴权、maxmemory 策略
-        # 冲突、db 空间）见 docker/ragflow/README.md；dev 形态同构保留，不换共享 redis。
+        # 栈内 Valkey：镜像与上游 valkey:8 一致。RAGFlow 用自己的实例（生产形态同样自带 ragflow-redis），
+        # 不与其他组件共用一份缓存，maxmemory 策略也只作用在本栈数据上；理由见 docker/ragflow/README.md。
         image: valkey/valkey:8
         profiles: ["ragflow"]
         restart: unless-stopped
@@ -83,7 +84,7 @@ services:
 
     ragflow-rustfs:
         # 本栈自带的对象存储（生产形态同样是特例，理由见 docker/ragflow/README.md 与拓扑 §5）。
-        # 只用 RustFS（不得引回 MinIO），版本与 docker/common/ 的共享实例一致，便于两处对照排障。
+        # 只用 RustFS（不得引回 MinIO），版本与生产形态一致，便于两处对照排障。
         image: rustfs/rustfs:1.0.1
         profiles: ["ragflow"]
         restart: unless-stopped
@@ -96,7 +97,7 @@ services:
         volumes:
             - ./data/ragflow/rustfs:/data
         healthcheck:
-            # 逐字照抄 docker/common/ 的 rustfs：镜像行为只在 common 上被实测过，不引入未验证的取值差异。
+            # 与生产形态的 rustfs 逐字同参：镜像行为已在生产编排上被实测过，不引入未验证的取值差异。
             test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
             interval: 30s
             timeout: 10s

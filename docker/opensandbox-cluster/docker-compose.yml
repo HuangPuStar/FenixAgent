@@ -36,6 +36,11 @@ services:
         ports:
             # 只绑回环：供本机运维 curl（scripts/operations/fenix-sandbox-ops.sh）与健康检查；跨项目的调用走 fenix-server 网络。
             - "127.0.0.1:${OPENSANDBOX_CLUSTER_PORT:-8080}:8080"
+        volumes:
+            # 数据落点：bind 到本文件同级的 ./data/（§13.8），随交付面整体打包/搬迁。
+            # 容器内路径必须与上面 DATABASE_PATH 的目录一致；缺了这一行，容器里的 /data 不存在，
+            # 启动期直接以 SQLITE_CANTOPEN 起不来（镜像与编排都在本仓，这一行是唯一的数据落点声明）。
+            - ./data:/data
         networks:
             - default
             - fenix-server

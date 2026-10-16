@@ -5,26 +5,22 @@
 # WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL=<专用上游账号邮箱；经 docker/deploy.sh 部署时缺失会由它按主机名生成并固化>
 # WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD=<专用上游账号密码>
 # WORKFLOW_V2_TICKET_SECRET=<至少 32 字节随机签名材料>
-# 共享基础设施（不再是本目录的服务）：
-#   - MySQL 由顶层项目 docker/common/ 提供，开关是 FENIX_FEATURE_MYSQL（见 docker/common/docker-compose.yml）；
-#   - 对象存储（S3）用共享的 rustfs，开关是 FENIX_FEATURE_S3——**本栈原先自带的 minio 服务已删除**，
-#     建桶与图标播种改由本目录的一次性服务 s3-init 承担（原先写在 minio 容器的 entrypoint 里）。
-# Elasticsearch 仍在**本目录**，数据与初始化方式不变。
-#   - 启动顺序：**先起顶层项目**（./docker/deploy.sh up，或至少
-#     docker compose -f docker-compose.yml --profile mysql --profile s3 up -d），再起本目录；
-#     独立部署时也必须带上 common（见 README §1）。
-#   - 地址不变：容器内仍按服务名 mysql:3306 访问共享实例，因为它保持原服务名与端口；
-#     指向由本文件的 environment 显式注入（Compose 里 environment 优先于 env_file），不需要任何上游配置文件。
-#   - 对象存储地址：容器内按服务名 rustfs:9000 访问（S3 API），凭据取主服务 env
-#     （生产 docker/main/.env、dev 仓库根 .env）的 RUSTFS_*。
-#   - 代价：coze-server、milvus 与 s3-init 必须接入 external 网络 fenix-server 才能解析到共享实例，
-#     因此这三个容器也暴露在该网络里；且当共享 redis（FENIX_FEATURE_REDIS=true）同时启用时，共享网络的
-#     `redis` 与栈内 `redis` 同名，解析会歧义——见 README「已知冲突」。
-#   - 数据落点：MySQL 在 docker/common/data/mysql、对象存储在 docker/common/data/rustfs（都是 bind）；
-#     本栈自己的数据（Elasticsearch / redis / etcd / Milvus）在 `./data/` 下，随本目录交付面搬迁。
+# 基础设施**全部在本目录**：每个栈一套实例，不与别的栈共用，也就没有互相影响的风险。
+#   - `mysql`（mysql:8.4.5；库 opencoze / 账号 coze）：schema.sql 与 Atlas 收敛仍由本目录的一次性服务
+#     mysql-init / atlas-init 承担；数据落 ./data/mysql。
+#   - `rustfs`（rustfs/rustfs:1.0.1，S3 兼容对象存储）：建桶与图标播种由本目录的一次性服务 s3-init 承担
+#     （原先写在栈内 minio 容器的 entrypoint 里，minio 已退役）；数据落 ./data/rustfs。
+#     对象存储**只用 RustFS**，不引回 MinIO。
+#   - 两者都只在本项目网络内：不接 fenix-server、不发布宿主端口。凭据是本栈私有键（WORKFLOW_MYSQL_* /
+#     WORKFLOW_S3_*，见 .env.example），与主服务 env 无关。
+# Elasticsearch / redis / etcd / Milvus / NSQ 同样在本目录，数据在 `./data/` 下。
+#   - 启动顺序：本目录**自包含**——`docker compose -f docker/workflow/docker-compose.yml up -d` 一次起全栈，
+#     不依赖任何别的 Compose 项目；库与桶的就绪由项目内的 depends_on 表达（不再有跨项目等待）。
+#   - 地址：容器内按服务名 mysql:3306 / rustfs:9000 访问，由本文件的 environment 显式注入
+#     （Compose 里 environment 优先于 env_file），不需要改动任何上游配置文件。
 #
-# 只有出口 coze-web、以及需要访问共享 mysql / rustfs 的 coze-server / mysql-init / s3-init / milvus
-# 接入 external 网络 fenix-server；其余服务使用 Compose 默认网络。
+# 只有出口 coze-web 接入 external 网络 fenix-server（平台 RCS 按服务名 workflow-upstream /
+# workflow-storage 访问它）；其余服务使用 Compose 默认网络。
 # RCS 接入 fenix-server，例如：
 # services:
 #   rcs:
@@ -33,7 +29,7 @@
 #   fenix-server:
 #     external: true
 #     name: fenix-server
-# workflow-upstream 与 workflow-storage 都指向 coze-web；存储经只读代理，**不直连共享 rustfs**。
+# workflow-upstream 与 workflow-storage 都指向 coze-web；存储经只读代理，**不直连栈内 rustfs**。
 # 控制台与 /workflow-canvas/* 均经 RCS 同源入口，不直接将 BFF 反代到上游。
 # RCS 需包含 workflow-v2 模块、控制台产物与完整 DDL / 数据迁移。
 # 当前画布票据状态仍在 RCS 进程内；Redis 不解决跨副本票据校验，先按单进程部署。
@@ -45,16 +41,65 @@
 # 一次性服务 assets-init 展开到宿主 `./assets/`；**本目录不再引用任何上游源码目录**，也不需要 clone。
 #
 # 启动（随主服务一键启动，推荐）：
-#   docker/deploy.env 打开 FENIX_FEATURE_WORKFLOW（并确保 FENIX_FEATURE_MYSQL / FENIX_FEATURE_S3 已打开）
+#   docker/deploy.env 打开 FENIX_FEATURE_WORKFLOW
 #   ./docker/deploy.sh up
-# 独立启动（共享实例已在同机）：本目录 .env 由 ./docker/deploy.sh init 或手工从 .env.example 物化；
-# 指定 --env-file 后 compose **不再**自动读项目目录 .env，所以两个都要给、后者优先（共享键只在主服务 env 定义）：
-#   docker compose --env-file docker/workflow/.env --env-file docker/main/.env \
-#     -f docker/workflow/docker-compose.yml up -d
+# 独立启动：本目录 .env 由 ./docker/deploy.sh init 或手工从 .env.example 物化，然后
+#   docker compose -f docker/workflow/docker-compose.yml up -d
 # 宿主诊断入口 WEB_LISTEN_ADDR 默认 127.0.0.1:18081（避让同机 ragflow 的 18080，见 .env.example）。
 
 name: fenix-workflow
 services:
+  mysql:
+    # 本栈自带的关系库实例（每个栈一套，不与别的栈共用，也就没有互相影响的风险）。库名与账号名是
+    # **本栈自己持有**的常量，不从环境传——它们不是部署参数，多一个入口只会多一处能改错的地方；
+    # 口令是本栈私有键（见 .env.example）。表结构由 mysql-init（schema.sql）与 atlas-init（Atlas 收敛）
+    # 落定，不由本服务承担。
+    image: mysql:8.4.5
+    restart: unless-stopped
+    # 与上游栈原先的 mysqld 参数一致；库/表自身的字符集在 schema 里另有声明，这里只改服务器默认值。
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      # 口令写在数据目录里：已有数据时改 env 不会改库里的账号（要改口令得同时改库或重建数据目录）。
+      MYSQL_ROOT_PASSWORD: ${WORKFLOW_MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: opencoze
+      MYSQL_USER: coze
+      MYSQL_PASSWORD: ${WORKFLOW_MYSQL_PASSWORD:-coze123}
+    volumes:
+      # 一律 bind 到本文件同级的 ./data/ 下（不用命名卷）：数据随交付面整体搬迁/备份。
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      # 用真实查询而不是 `mysqladmin ping`：ping 在口令不对时同样返回成功（服务器活着就算通过），
+      # 那样「口令改了但数据目录还是旧的」这类漂移不会暴露；这里连不上就直接 unhealthy。
+      # `$$` 是容器内 shell 展开（CMD-SHELL 形式）。
+      test:
+        [
+          "CMD-SHELL",
+          "mysql -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # 只在本项目网络内：不接 fenix-server、不发布宿主端口。
+  rustfs:
+    # 本栈自带的 S3 兼容对象存储（每个栈一套）。**只用 RustFS，不引回 MinIO**。
+    image: rustfs/rustfs:1.0.1
+    restart: unless-stopped
+    environment:
+      RUSTFS_VOLUMES: /data
+      # 实例侧凭据取自本栈私有键（与 s3-init / coze-server 用的同一对，改这里即全栈一致）。
+      RUSTFS_ACCESS_KEY: ${WORKFLOW_S3_ACCESS_KEY:-workflow}
+      RUSTFS_SECRET_KEY: ${WORKFLOW_S3_SECRET_KEY:-workflow-local-dev}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - ./data/rustfs:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # 同上：只在本项目网络内。
   assets-init:
     # 一次性资产展开（job 语义：执行完即退出，不常驻、不 restart）：把镜像内 /app/upstream-assets/docker
     # 下的初始化资产拷到宿主 ./assets/（本目录生成目录，不进版本控制）。为什么必须经这一跳：docker 不能把
@@ -103,8 +148,8 @@ services:
     command:
       - schema
       - apply
-      # DSN 由本编排拼（与 coze-server 的 MYSQL_DSN 同源同值），凭据来自主服务 env。
-      - "mysql://${MYSQL_USER:-coze}:${MYSQL_PASSWORD:-coze123}@mysql:3306/${MYSQL_DATABASE:-opencoze}?charset=utf8mb4&parseTime=True"
+      # DSN 由本编排拼（与 coze-server 的 MYSQL_DSN 同源同值）：库名与账号名是本栈常量，口令取本栈私有键。
+      - "mysql://coze:${WORKFLOW_MYSQL_PASSWORD:-coze123}@mysql:3306/opencoze?charset=utf8mb4&parseTime=True"
       - --to
       - file:///opencoze_latest_schema.hcl
       # 与上游 mysql 容器原先的调用逐字一致（同一个 --exclude 集合）。
@@ -118,28 +163,28 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    networks:
-      - fenix-server
   mysql-init:
     # 一次性初始化（job 语义：执行完即退出，不常驻、不 restart），按顺序做完才放 coze-server 起来：
-    #   等共享实例可用并可认证 → 幂等创建本栈的库与账号 → 应用账号自检 → 应用上游 schema.sql。
+    #   等本栈实例可用并可认证 → 幂等创建库与账号 → 应用账号自检 → 应用上游 schema.sql。
     #   具体分支与报错文案见 docker/workflow/init-mysql.sh（本目录的交付面文件，随目录一起交付）。
-    # 为什么不用共享实例的 MYSQL_DATABASE / MYSQL_USER 代劳：那两个键只在共享实例的**数据目录首次初始化**
-    # 时生效，对已经存在的实例（别的栈先起过）完全无效——本栈不能把「库和账号存在」寄托在别人的首启上。
+    # 为什么实例已经用 MYSQL_DATABASE / MYSQL_USER 建过一遍还要做：那两个键只在实例的**数据目录首次初始化**
+    # 时生效，对已经存在的目录无效；本服务把「库和账号存在」变成每次启动都复核的前置，脚本可重跑。
     # 幂等：CREATE ... IF NOT EXISTS / GRANT 都可重复执行，重跑不覆盖既有数据（见脚本头注释）。
     # 镜像复用本目录已有的 mysql:8.4.5（自带 mysql 客户端与 curl，原 mysql 服务同款），不新增镜像来源。
     image: mysql:8.4.5
     restart: "no"
-    # 只跟共享 MySQL 通信，因此只接 fenix-server（不需要项目默认网络）。
     environment:
-      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：mysql 是共享 MySQL 在 fenix-server 上的服务名。
+      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：mysql 是本栈实例在项目默认网络上的服务名。
       MYSQL_HOST: mysql
-      # 凭据是共享键（主服务 env）；缺省值与 common 的默认值一致，独立部署按同一份主服务 env 填。
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
-      MYSQL_USER: ${MYSQL_USER:-coze}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      # 库名与账号名是本栈常量（与 mysql 服务、coze-server 的 MYSQL_DSN 同值）；口令是本栈私有键。
+      MYSQL_DATABASE: opencoze
+      MYSQL_USER: coze
+      MYSQL_PASSWORD: ${WORKFLOW_MYSQL_PASSWORD:-coze123}
+      MYSQL_ROOT_PASSWORD: ${WORKFLOW_MYSQL_ROOT_PASSWORD:-root}
     depends_on:
+      # 栈内实例：就绪由它自己的健康检查保证（跨项目等待已不存在）。
+      mysql:
+        condition: service_healthy
       # 资产由 assets-init 展开到 ./assets；文件是否齐备由下面的 create_host_path: false 显式兜底。
       assets-init:
         condition: service_completed_successfully
@@ -161,33 +206,30 @@ services:
     # compose 里保持「哪些服务、什么顺序、挂什么」可读，分支与报错文案留给脚本。
     # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当 mysqld 启动参数劫持掉。
     entrypoint: ["/bin/sh", "/init/init-mysql.sh"]
-    # 没有 depends_on 共享 MySQL：它属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
-    # （写 mysql 会直接报 "depends on undefined service"）；顶层项目先起是启动顺序不变量（README §1），
-    # 就绪判定与失败诊断都在脚本里，非零退出码由 depends_on 它的 atlas-init / coze-server 反映出来。
-    networks:
-      - fenix-server
   s3-init:
     # 一次性初始化（job 语义：执行完即退出，不常驻、不 restart），按顺序做完才放 coze-server / milvus 起来：
-    #   等共享 rustfs 可用 → 幂等创建本栈的两个桶（opencoze / milvus）→ 用同一份凭据自检 → 播种画布图标。
+    #   等本栈 rustfs 可用 → 幂等创建两个桶（opencoze / milvus）→ 用同一份凭据自检 → 播种画布图标。
     # 具体分支与报错文案见 docker/workflow/init-s3.sh（本目录的交付面文件，随目录一起交付）。
-    # 为什么需要它：建桶与图标播种原先写在栈内 minio 容器的 entrypoint 里（上游形态）；minio 收敛到共享
-    #   rustfs 后那段初始化没有归属，改由本服务承担。顺带把「桶一定存在」变成 coze-server 的启动前置，
-    #   而不是依赖上游自己的 createBucketIfNeed——它固定用 `cn-north-1` 建桶，在共享实例上是个多余变量。
+    # 为什么需要它：建桶与图标播种原先写在栈内 minio 容器的 entrypoint 里（上游形态）；minio 退役后那段
+    #   初始化没有归属，改由本服务承担。顺带把「桶一定存在」变成 coze-server 的启动前置，而不是依赖上游
+    #   自己的 createBucketIfNeed——它固定用 `cn-north-1` 建桶，在这里是个多余变量。
     # 幂等：PUT /<bucket> 命中已存在的桶时返回 409，脚本按「已存在」处理；重跑不动桶里任何对象。
-    # 镜像复用 docker/common/ 的 rustfs 同款 tag（仓库已有镜像，不新增来源）：镜像里的 curl 8.22.0 原生
-    #   支持 --aws-sigv4，建桶不需要 mc——仓库里带 mc 的只有 MinIO 镜像，用它等于把要收敛掉的制品引回来。
+    # 镜像复用本栈 rustfs 的同款 tag（仓库已有镜像，不新增来源）：镜像里的 curl 8.22.0 原生支持
+    #   --aws-sigv4，建桶不需要 mc——仓库里带 mc 的只有 MinIO 镜像，用它等于把退役的制品引回来。
     image: rustfs/rustfs:1.0.1
     restart: "no"
-    # 只跟共享 rustfs 通信，因此只接 fenix-server（不需要项目默认网络）。
     environment:
-      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：rustfs 是共享实例在 fenix-server 上的服务名。
+      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：rustfs 是本栈实例在项目默认网络上的服务名。
       S3_ENDPOINT: rustfs:9000
-      # 凭据是共享键（主服务 env）；缺省值与 common 的默认值一致，独立部署时按同一份主服务 env 填。
-      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-fenix}
-      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
-      # SigV4 签名域：RustFS 的默认 region。共享实例若改了 RUSTFS_REGION，这里必须同步（脚本头有说明）。
+      # 凭据是本栈私有键，与 rustfs 实例、coze-server 同源（改一处即全栈一致）。
+      S3_ACCESS_KEY: ${WORKFLOW_S3_ACCESS_KEY:-workflow}
+      S3_SECRET_KEY: ${WORKFLOW_S3_SECRET_KEY:-workflow-local-dev}
+      # SigV4 签名域：RustFS 的默认 region。实例若改了 RUSTFS_REGION，这里必须同步（脚本头有说明）。
       S3_REGION: ${RUSTFS_REGION:-us-east-1}
     depends_on:
+      # 栈内实例：就绪由它自己的健康检查保证（跨项目等待已不存在）。
+      rustfs:
+        condition: service_healthy
       assets-init:
         condition: service_completed_successfully
     volumes:
@@ -206,9 +248,6 @@ services:
     # 初始化逻辑单独成文件（docker/workflow/init-s3.sh），只读挂载后由 /bin/sh 解释执行。
     # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当成 rustfs 启动参数劫持掉。
     entrypoint: ["/bin/sh", "/init/init-s3.sh"]
-    # 没有 depends_on 共享 rustfs：理由同 mysql-init（跨项目依赖不成立）。
-    networks:
-      - fenix-server
   redis:
     image: bitnamilegacy/redis:8.0
     container_name: coze-redis
@@ -380,12 +419,12 @@ services:
       - seccomp:unconfined
     environment:
       ETCD_ENDPOINTS: etcd:2379
-      # 对象存储是共享 rustfs（栈内 minio 已删除）：地址写显式服务名，凭据只取主服务 env 的 RUSTFS_*。
+      # 对象存储是本栈 rustfs：地址写显式服务名，凭据取本栈私有键。
       # 变量的 MINIO_* 拼写是 Milvus 自己的配置键，改不了——它说的是「S3 兼容存储」，不是「MinIO 服务」。
       MINIO_ADDRESS: rustfs:9000
       MINIO_BUCKET_NAME: milvus
-      MINIO_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-fenix}
-      MINIO_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+      MINIO_ACCESS_KEY_ID: ${WORKFLOW_S3_ACCESS_KEY:-workflow}
+      MINIO_SECRET_ACCESS_KEY: ${WORKFLOW_S3_SECRET_KEY:-workflow-local-dev}
       MINIO_USE_SSL: false
       LOG_LEVEL: debug
     volumes:
@@ -403,15 +442,12 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
-      # 共享 rustfs 在另一个 Compose 项目里，跨项目写不出健康依赖；改成本栈的桶初始化跑完为前置——
-      # s3-init 自己带对共享实例的等待与诊断，milvus 不必再各自重试（失败码也会在这里显式卡住）。
+      # 桶初始化跑完为前置：s3-init 自己带对实例的等待与诊断，milvus 不必再各自重试（失败码会在这里显式卡住）。
       s3-init:
         condition: service_completed_successfully
     networks:
-      # 默认网络：etcd 等服务名在这里解析。
-      # fenix-server：按服务名 rustfs 访问共享对象存储——跨项目 DNS 名只在这个网络上（文档 §3）。
+      # 只用默认网络：etcd / rustfs 等服务名都在这里解析。
       default: {}
-      fenix-server: {}
   nsqlookupd:
     image: nsqio/nsq:v1.2.1
     container_name: coze-nsqlookupd
@@ -460,17 +496,17 @@ services:
     # 这里只覆盖改动过的键；因此不再有「把上游 docker/.env 整份挂进 /app/.env」这一步，也不存在两处配置漂移。
     env_file:
       - ./.env
-    # 指向共享实例与栈内服务的键全部由本编排显式注入（Compose 里 environment 优先于 env_file），
+    # 指向栈内服务的键全部由本编排显式注入（Compose 里 environment 优先于 env_file），
     # 让「这个栈连到哪里」在评审时集中可见，并避免 .env 被误编辑后指向别处。
     environment:
-      # --- 共享 MySQL：库/账号由 mysql-init 幂等创建，凭据与主服务 env 同源 ---
+      # --- 本栈 MySQL：库/账号是常量，由 mysql-init 幂等复核；口令取本栈私有键 ---
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
-      MYSQL_USER: ${MYSQL_USER:-coze}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
+      MYSQL_DATABASE: opencoze
+      MYSQL_USER: coze
+      MYSQL_PASSWORD: ${WORKFLOW_MYSQL_PASSWORD:-coze123}
       # 应用直接读 MYSQL_DSN（godotenv 不展开 ${}），所以这里拼好整条，与 atlas-init 的 --url 同源同值。
-      MYSQL_DSN: "${MYSQL_USER:-coze}:${MYSQL_PASSWORD:-coze123}@tcp(mysql:3306)/${MYSQL_DATABASE:-opencoze}?charset=utf8mb4&parseTime=True"
+      MYSQL_DSN: "coze:${WORKFLOW_MYSQL_PASSWORD:-coze123}@tcp(mysql:3306)/opencoze?charset=utf8mb4&parseTime=True"
       # --- 栈内服务：服务名与端口写显式值，取值与上游默认一致，写出来是为了可评审 ---
       REDIS_ADDR: redis:6379
       ES_ADDR: http://elasticsearch:9200
@@ -478,14 +514,14 @@ services:
       MQ_NAME_SERVER: nsqd:4150
       COZE_MQ_TYPE: nsq
       VECTOR_STORE_TYPE: milvus
-      # --- 对象存储：共享 rustfs（栈内 minio 已删除）。这些键**覆盖** env_file 里的同名值 ---
-      # 地址写显式服务名，不插值同名宿主键（文档 §8.4）；rustfs 在 fenix-server 上。
+      # --- 对象存储：本栈 rustfs。这些键**覆盖** env_file 里的同名值 ---
+      # 地址写显式服务名，不插值同名宿主键（文档 §8.4）；rustfs 在本项目默认网络上。
       MINIO_ENDPOINT: rustfs:9000
       # 预签名 URL 的签名域：必须同时满足两件事——① 出口代理能把它改写成 workflow-storage
       # （nginx.conf 的 sub_filter 写死了这个值）；② 存储虚拟主机的 Host 与它逐字相同（否则签名不匹配）。
       MINIO_API_HOST: http://rustfs:9000
-      MINIO_AK: ${RUSTFS_ACCESS_KEY:-fenix}
-      MINIO_SK: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+      MINIO_AK: ${WORKFLOW_S3_ACCESS_KEY:-workflow}
+      MINIO_SK: ${WORKFLOW_S3_SECRET_KEY:-workflow-local-dev}
       # 字符串形式的 "false"：Compose 的 environment 只收字符串，写裸 false 会被当成布尔值。
       MINIO_USE_SSL: "false"
       STORAGE_TYPE: minio
@@ -495,9 +531,8 @@ services:
       # 写在这里是为了让「谁读哪个桶」在评审时一眼可比，改名要三处一起改。
       STORAGE_BUCKET: opencoze
     depends_on:
-      # 共享 MySQL / rustfs 都在顶层项目（另一个 Compose 项目）里，跨项目不能声明健康依赖：改由本栈的
-      # 一次性初始化服务承担——mysql-init 成功退出即代表共享实例可用且 schema.sql 已应用；atlas-init 成功
-      # 退出即代表 Atlas 收敛完成；s3-init 成功退出即代表共享 rustfs 可用且 opencoze / milvus 两个桶都已就绪。
+      # 库与桶都由本栈的一次性初始化服务落定：mysql-init 成功退出即代表实例可用且 schema.sql 已应用；
+      # atlas-init 成功退出即代表 Atlas 收敛完成；s3-init 成功退出即代表两个桶（opencoze / milvus）已就绪。
       mysql-init:
         condition: service_completed_successfully
       atlas-init:
@@ -511,12 +546,9 @@ services:
       milvus:
         condition: service_healthy
     networks:
-      # 默认网络：redis / elasticsearch / milvus / nsq 等服务名在这里解析。
-      # fenix-server：按服务名 mysql 访问共享实例，并按服务名 rustfs 访问共享对象存储。
-      # 代价：本容器对 fenix-server 上的一切可见——共享 redis 同时启用时，`redis` 在两个网络同名，
-      # 解析会歧义（见 README「已知冲突」）。
+      # 只用默认网络：mysql / rustfs / redis / elasticsearch / milvus / nsq 等服务名都在这里解析。
+      # 本栈不跨项目访问任何服务，因此不进 fenix-server（接入面越小，同名解析歧义越不可能出现）。
       default: {}
-      fenix-server: {}
     command:
       - /app/opencoze
   coze-web:
