@@ -1,7 +1,7 @@
 import "./ChatView.css";
 
 import { ArrowUpRight } from "lucide-react";
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
@@ -12,10 +12,7 @@ import { SubAgentToolCallGroupContext } from "../timeline/sub-agent-tool-call-co
 import { ToolCallGroup } from "../timeline/ToolCallGroup";
 import type { ThreadEntry, ToolCallEntry } from "../types";
 import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
-import { ChatTimelineWindow } from "./internal/ChatTimelineWindow";
 import type { CardEmitter } from "./internal/card-emitter";
-import { CHAT_WINDOW_ENTRY_BUDGET, splitOversizedBlocks } from "./internal/chat-window";
-import type { ChatTimelineWindowHandle } from "./internal/use-chat-timeline-window";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
 
 // =============================================================================
@@ -99,23 +96,9 @@ export const ChatView = React.memo(
     const { t } = useTranslation(UI_COMPONENTS_NS);
     const finalEmptyTitle = emptyTitle ?? t("chat.components.chatView.startConversation");
     const finalEmptyDescription = emptyDescription ?? t("chat.components.chatView.startConversationDesc");
-    // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组。
-    // 随后把超过预算的大块切成显示块：相邻工具调用会并成一个 `tool_group`，压测式长跑就是一块
-    // 数千条目，不切的话窗口的「整块」规则会整体收下它、首屏退回全量渲染（见 `./internal/chat-window.ts`）。
-    const renderBlocks = useMemo(
-      () => splitOversizedBlocks(buildChatRenderBlocks(entries), CHAT_WINDOW_ENTRY_BUDGET),
-      [entries],
-    );
+    // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
+    const renderBlocks = useMemo(() => buildChatRenderBlocks(entries), [entries]);
     const hasMessages = renderBlocks.length > 0;
-    // ── 渲染窗口（只决定渲染哪些块；数据、投影与写入路径不变）──
-    // 命令出口：提示词导航点击的条目可能落在窗口外（不在 DOM 里），由窗口先把它滑进来再定位。
-    const timelineWindowRef = useRef<ChatTimelineWindowHandle | null>(null);
-    const revealEntry = useCallback((entryId: string) => timelineWindowRef.current?.revealEntry(entryId), []);
-    // 换代键 = 会话 id + 首条目 id：换会话或投影整体替换（`load_session` / `create_session` 换代）
-    // 时首条目随之更换，窗口据此回到最新；单纯追加新条目不影响它，浏览中的窗口不会被打断。
-    const firstEntry = entries[0];
-    const firstEntryId = firstEntry?.type === "tool_call" ? firstEntry.toolCall.id : firstEntry?.id;
-    const windowSessionKey = `${sessionId ?? ""}\u0000${firstEntryId ?? ""}`;
     // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
     const hasUserMessages = useMemo(() => entries.some((e) => e.type === "user_message"), [entries]);
     const userEntries = useMemo(
@@ -129,7 +112,7 @@ export const ChatView = React.memo(
     return (
       <SubAgentToolCallGroupContext.Provider value={renderSubAgentToolGroup}>
         <Conversation className="min-h-0 flex-1">
-          <PromptJumpRail entries={userEntries} onRequestEntry={revealEntry} />
+          <PromptJumpRail entries={userEntries} />
           <ConversationContent
             // 源 `.chat-conversation-content` 的声明；`sm:` 级重复是为了压过 `ConversationContent`
             // 自带的 `sm:py-12`（变体工具类在样式表里晚于基础工具类，仅写基础 `pt/pb` 会被它顶掉）。
@@ -150,71 +133,59 @@ export const ChatView = React.memo(
               )
             ) : (
               <>
-                {/* 只渲染窗口内的块（约 100 条）；窗口外的条目仍在 Y.Doc 与投影里，只是不进 DOM。
-                    进行中的响应会把窗口尾部锚定在最新块，流式条目不滑出、不闪烁。 */}
-                <ChatTimelineWindow
-                  blocks={renderBlocks}
-                  live={isLoading}
-                  sessionKey={windowSessionKey}
-                  handleRef={timelineWindowRef}
-                  renderBlock={(block, blockIndex) => {
-                    if (block.type === "activity_chain") {
-                      const previousBlock = renderBlocks[blockIndex - 1];
-                      const followsAssistantMessage =
-                        previousBlock?.type === "item" &&
-                        previousBlock.item.type === "entry" &&
-                        previousBlock.item.entry.type === "assistant_message";
-                      return (
-                        <div
-                          key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
-                          // 本行工具类即源 `chat-design-messages.css` 的 `.chat-activity-chain` 声明；
-                          // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
-                          className={cn(
-                            "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
-                            "before:absolute before:top-2.75 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']",
-                            followsAssistantMessage && "-mt-3.5",
-                          )}
-                          data-slot="chat-activity-chain"
-                          data-after-message={followsAssistantMessage || undefined}
-                          // 块下标是窗口的锚点契约：滑动的锚定补偿按它把「块」换回可测量的 DOM 元素，
-                          // 口径定义在 `./internal/chat-window.ts`（`CHAT_BLOCK_INDEX_ATTRIBUTE`）。
-                          data-chat-block-index={blockIndex}
-                        >
-                          {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
-                            Context（源的后代选择器对嵌套工具组一视同仁）。 */}
-                          <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
-                            {block.items.map((item, itemIndex) => (
-                              <ChatRenderItemView
-                                key={renderItemKey(item, itemIndex)}
-                                item={item}
-                                inActivityChain
-                                isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
-                                sessionId={sessionId}
-                                envId={envId}
-                                cardEmitter={cardEmitter}
-                                onQuote={onQuote}
-                                onOpenWorkspaceFile={onOpenWorkspaceFile}
-                              />
-                            ))}
-                          </SubAgentToolCallGroupContext.Provider>
-                        </div>
-                      );
-                    }
+                {renderBlocks.map((block, blockIndex) => {
+                  if (block.type === "activity_chain") {
+                    const previousBlock = renderBlocks[blockIndex - 1];
+                    const followsAssistantMessage =
+                      previousBlock?.type === "item" &&
+                      previousBlock.item.type === "entry" &&
+                      previousBlock.item.entry.type === "assistant_message";
                     return (
-                      <ChatRenderItemView
-                        key={renderItemKey(block.item, blockIndex)}
-                        item={block.item}
-                        blockIndex={blockIndex}
-                        isLoading={isLoading && block.item.type === "entry" && block.item.entry === entries.at(-1)}
-                        sessionId={sessionId}
-                        envId={envId}
-                        cardEmitter={cardEmitter}
-                        onQuote={onQuote}
-                        onOpenWorkspaceFile={onOpenWorkspaceFile}
-                      />
+                      <div
+                        key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
+                        // 本行工具类即源 `chat-design-messages.css` 的 `.chat-activity-chain` 声明；
+                        // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
+                        className={cn(
+                          "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
+                          "before:absolute before:top-2.75 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']",
+                          followsAssistantMessage && "-mt-3.5",
+                        )}
+                        data-slot="chat-activity-chain"
+                        data-after-message={followsAssistantMessage || undefined}
+                      >
+                        {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
+                            Context（源的后代选择器对嵌套工具组一视同仁）。 */}
+                        <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
+                          {block.items.map((item, itemIndex) => (
+                            <ChatRenderItemView
+                              key={renderItemKey(item, itemIndex)}
+                              item={item}
+                              inActivityChain
+                              isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
+                              sessionId={sessionId}
+                              envId={envId}
+                              cardEmitter={cardEmitter}
+                              onQuote={onQuote}
+                              onOpenWorkspaceFile={onOpenWorkspaceFile}
+                            />
+                          ))}
+                        </SubAgentToolCallGroupContext.Provider>
+                      </div>
                     );
-                  }}
-                />
+                  }
+                  return (
+                    <ChatRenderItemView
+                      key={renderItemKey(block.item, blockIndex)}
+                      item={block.item}
+                      isLoading={isLoading && block.item.type === "entry" && block.item.entry === entries.at(-1)}
+                      sessionId={sessionId}
+                      envId={envId}
+                      cardEmitter={cardEmitter}
+                      onQuote={onQuote}
+                      onOpenWorkspaceFile={onOpenWorkspaceFile}
+                    />
+                  );
+                })}
 
                 {/* 加载指示器 — loading 期间一直显示，阶段文字由末条条目类型派生 */}
                 {isLoading && <LoadingIndicator stage={deriveLoadingStage(entries)} />}
@@ -362,13 +333,6 @@ interface ChatRenderItemViewProps {
   item: ChatRenderItem;
   /** 是否位于活动链内：透传给本项渲染出的工具组（工具行据此做对齐补偿）。 */
   inActivityChain?: boolean;
-  /**
-   * 块在完整时间线里的下标，只由顶层块传入（链内项不是块）。
-   *
-   * 写在块元素上供窗口的滚动锚定查找；不用 `contentEl.children` 定位是因为加载指示器与滚动按钮
-   * 也是内容层的子元素，按下标取元素会在它们出现时错位。
-   */
-  blockIndex?: number;
   isLoading: boolean;
   sessionId?: string;
   envId?: string;
@@ -387,7 +351,6 @@ interface ChatRenderItemViewProps {
 function ChatRenderItemView({
   item,
   inActivityChain,
-  blockIndex,
   isLoading,
   sessionId,
   envId,
@@ -397,7 +360,7 @@ function ChatRenderItemView({
 }: ChatRenderItemViewProps) {
   if (item.type === "tool_group") {
     return (
-      <div data-chat-block-index={blockIndex}>
+      <div>
         <ToolCallGroup
           entries={item.entries}
           onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)}
@@ -410,7 +373,7 @@ function ChatRenderItemView({
   const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
   const entryIsStreaming = isLoading && item.entry.type === "assistant_message";
   return (
-    <div id={`chat-entry-${entryId}`} className={entryClassName(item)} data-chat-block-index={blockIndex}>
+    <div id={`chat-entry-${entryId}`} className={entryClassName(item)}>
       <EntryRenderer
         entry={item.entry}
         density={item.density}
