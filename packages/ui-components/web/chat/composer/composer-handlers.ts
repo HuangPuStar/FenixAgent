@@ -165,6 +165,11 @@ export interface UseComposerHandlersOptions {
   mcps: readonly McpOption[];
   disabled: boolean;
   isLoading: boolean;
+  /**
+   * 运行中提交是否走「入队」（待发送队列可用时由 `ChatComposer` 传入）：为真时 Enter 与发送按钮
+   * 在 turn 运行期间照常提交（提交链路会把这次提交挂到队列），不再被 `isLoading` 拦下。
+   */
+  queueSubmitEnabled: boolean;
   supportsImages: boolean;
   /** 宿主上传回调；缺省时普通附件选择与拖拽上传整体禁用。 */
   uploadFiles?: UploadComposerFiles;
@@ -213,6 +218,7 @@ export function useComposerHandlers({
   mcps,
   disabled,
   isLoading,
+  queueSubmitEnabled,
   supportsImages,
   uploadFiles,
   compressImage,
@@ -331,6 +337,13 @@ export function useComposerHandlers({
       textareaRef.current?.focus();
     },
     onQuote: handleQuote,
+    // 待发送队列「取回」：只在草稿为空时回填——用户已经重新打了字时覆盖等于丢草稿
+    // （判定必须在这里做，调用方读不到半受控草稿）。
+    onRestoreDraft: (prompt) => {
+      if (!prompt) return;
+      setText((current) => (current.trim().length > 0 ? current : prompt));
+      textareaRef.current?.focus();
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -386,14 +399,15 @@ export function useComposerHandlers({
       }
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
-        if (isLoading) {
-          // Loading 时不通过 Enter 中断，需点击停止按钮
+        if (isLoading && !queueSubmitEnabled) {
+          // Loading 时不通过 Enter 中断，需点击停止按钮；
+          // 队列可用时 Enter 提交入队（打断与否由队列区的单发/全发决定，不受 Enter 影响）
           return;
         }
         handleSubmit();
       }
     },
-    [closeCommandPanel, commandPanelOpen, handleSubmit, isLoading],
+    [closeCommandPanel, commandPanelOpen, handleSubmit, isLoading, queueSubmitEnabled],
   );
 
   const handleInput = useCallback(

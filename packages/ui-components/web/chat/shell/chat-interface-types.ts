@@ -42,6 +42,58 @@ export interface BoundMcpOption {
 }
 
 /**
+ * 待发送队列单项的状态（服务端状态机，前端只读，不得自行迁移）。
+ *
+ * - `queued`：等待发送，可单发/全发/取回；
+ * - `dispatching` / `claimed`：已被某次派发认领（发送中），不可重复操作；
+ * - `delivered`：已注入 agent 会话（用户气泡由服务端写 Chat Doc），队列区不再展示；
+ * - `withdrawn`：已取回（草稿归还输入框），队列区立即移除；
+ * - `unknown`：契约外的脏数据，展示但不可操作（保守：宁可不给按钮，也不误发已失效的项）。
+ */
+export type UserInputQueueItemState = "queued" | "dispatching" | "claimed" | "delivered" | "withdrawn" | "unknown";
+
+/** 待发送队列单项的展示投影（Session Doc `userInputQueue.items` 元素）。 */
+export interface UserInputQueueItemView {
+  /** 前端生成（UUID）、随入队请求发送的条目标识；单发/取回都以它为键 */
+  inputId: string;
+  /** 可展示文本（服务端投影的 content，用于摘要） */
+  content: string;
+  /** 用户提交时的原始草稿（取回时回填输入框；缺失时回填 content） */
+  originalDraft?: string;
+  state: UserInputQueueItemState;
+}
+
+/**
+ * Session Doc `userInputQueue` 的展示投影。
+ *
+ * 队列是**服务端唯一事实源**（Y.Doc 子树），前端只读投影、不另建本地队列状态：入队/单发/全发/取回
+ * 都只发出控制面 action，界面等 Y.Doc 回推后自然收敛（与用户消息由服务端写 Chat Doc 同一口径）。
+ */
+export interface UserInputQueueView {
+  /** 服务端下发的开关（与能力位同时为真才启用新交互，见 `ChatInterfaceProps.supportsUserInputQueue`） */
+  enabled: boolean;
+  generation: string | null;
+  revision: number;
+  /** 当前正在处理的派发请求标识（服务端语义；前端只读展示不做门控） */
+  activeRequestId: string | null;
+  /** 待展示项（`delivered` / `withdrawn` 已在投影层剔除），保持 Session Doc 中的顺序 */
+  items: readonly UserInputQueueItemView[];
+}
+
+/**
+ * 入队请求（ChatInterface → 宿主）。
+ *
+ * `inputId` 不在请求内：它由宿主侧出站层生成（`randomUUID`，与 `commandId` 同一处），
+ * 界面通过 Y.Doc 回推的队列项拿到标识。
+ */
+export interface UserInputQueueEnqueueRequest {
+  /** 本次提交归一化后的 ACP 内容块（正文 + 附件引用 + 图片 + 引用/上下文注入） */
+  content: ContentBlock[];
+  /** 用户原始草稿正文（取回时回填输入框） */
+  originalDraft?: string;
+}
+
+/**
  * chat 会话统计摘要。
  *
  * 复制自 `apps/web/src/lib/chat-stats.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `ChatStatsSummary`（字段逐字一致）。
@@ -123,6 +175,31 @@ export interface ChatInterfaceProps {
   flushContext?: (scope?: string) => string | null;
   /** 运行时提示出口（替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+
+  // ── 待发送队列（peri steer 交互：运行中提交入队，可单发/全发/取回）──
+  /**
+   * 能力位 `capabilities['peri.userInputQueue']`（宿主从 Session Doc `agent.capabilities` 派生）。
+   * 与 `userInputQueue.enabled` 同时为真时才启用入队交互；任一为假时的一切提交维持直发 `send_prompt`。
+   */
+  supportsUserInputQueue?: boolean;
+  /**
+   * Session Doc `userInputQueue` 投影（宿主订阅派生，见 `@fenix/agent-runtime/web/hooks/use-user-input-queue`）。
+   * 未注入或未启用时队列区不渲染，提交按钮/回车保持原行为。
+   */
+  userInputQueue?: UserInputQueueView | null;
+  /**
+   * 入队（控制面 `enqueue_user_input`）：不打断当前执行，把这条提交挂到待发送队列。
+   * 返回是否真正写入 socket；`false` 时本组件给出可重试提示，草稿内容保留在重试入口里。
+   */
+  onEnqueueUserInput?: (request: UserInputQueueEnqueueRequest) => boolean;
+  /**
+   * 单发/全发（控制面 `dispatch_user_inputs`）：把指定待发送项打断注入当前执行。
+   * 传单个 id 即「单发」，传全部 queued 项即「全部发送」。返回是否真正写入 socket。
+   */
+  onDispatchUserInputs?: (inputIds: string[]) => boolean;
+  /** 取回（控制面 `takeback_user_input`）：撤销待发送项并归还草稿。返回是否真正写入 socket。 */
+  onTakebackUserInput?: (inputId: string) => boolean;
+
   /** 会话统计摘要出口（替代 `chat:stats` window 事件 + ChatStatsDispatcher） */
   onStatsChange?: (stats: ChatStatsSummary) => void;
   /**

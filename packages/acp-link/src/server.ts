@@ -7,6 +7,7 @@ import { createClaudeCodeHandler } from "@fenix/claude-code";
 import { createOpencodeHandler } from "@fenix/opencode";
 import { createPeriHandler } from "@fenix/peri";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { forwardUserInputQueueRequest } from "./acp-dispatcher.js";
 import { cancelAllFileOps, cancelFileOp, handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
@@ -1651,6 +1652,20 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           break;
         case ACP_METHOD.SESSION_DELETE:
           await handleDeleteSession(ws, id, p);
+          break;
+        // Peri steer（用户输入队列）：与 client mode（acp-dispatcher.ts）共用同一透传实现，
+        // params 原样转发给 agent，错误码/message/data 原样回传
+        case ACP_METHOD.SESSION_INPUT_SNAPSHOT:
+        case ACP_METHOD.SESSION_INPUT_ENQUEUE:
+        case ACP_METHOD.SESSION_INPUT_DISPATCH:
+        case ACP_METHOD.SESSION_INPUT_TAKEBACK:
+          await forwardUserInputQueueRequest({
+            connection: clients.get(ws)?.connection ?? null,
+            send: (message) => sendMsg(ws, message),
+            id,
+            method,
+            params: p,
+          });
           break;
         default:
           sendMsg(ws, createErrorResponse(id, -32601, `Method not found: ${method}`));

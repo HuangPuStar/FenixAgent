@@ -47,6 +47,12 @@ export const ACP_METHOD = {
   SESSION_DELETE: "session/delete",
   SESSION_RENAME: "session/rename",
   REQUEST_PERMISSION: "requestPermission",
+  // Peri 扩展方法：用户输入队列（steer）。SDK 无对应原语，经 extMethod 原样透传；
+  // 方法名与 params 形状由 peri 侧定义（deny_unknown_fields），不得改名或增删字段。
+  SESSION_INPUT_SNAPSHOT: "session/input/snapshot",
+  SESSION_INPUT_ENQUEUE: "session/input/enqueue",
+  SESSION_INPUT_DISPATCH: "session/input/dispatch",
+  SESSION_INPUT_TAKEBACK: "session/input/takeback",
 } as const;
 
 // 传输层消息类型（非 JSON-RPC）

@@ -19,7 +19,13 @@ import type {
 } from "../types";
 import { ChatHeader } from "./ChatHeader";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
-import type { BoundMcpOption, ChatNotice, ChatStatsSummary } from "./chat-interface-types";
+import type {
+  BoundMcpOption,
+  ChatNotice,
+  ChatStatsSummary,
+  UserInputQueueEnqueueRequest,
+  UserInputQueueView,
+} from "./chat-interface-types";
 import { AcpMainMobileSidebar } from "./internal/acp-main-mobile-sidebar";
 import { useAcpSessionBootstrap } from "./internal/use-acp-session-bootstrap";
 import { SessionSelectFallbackProvider, SidebarSessionList } from "./sidebar-session-list";
@@ -100,6 +106,18 @@ interface ACPMainProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 运行时提示出口（透传给 ChatInterface，替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+
+  // ── 待发送队列（peri steer，透传给 ChatInterface；语义见 chat-interface-types）──
+  /** 能力位 `capabilities['peri.userInputQueue']` */
+  supportsUserInputQueue?: boolean;
+  /** Session Doc `userInputQueue` 投影 */
+  userInputQueue?: UserInputQueueView | null;
+  /** 入队（控制面 `enqueue_user_input`），返回是否真正写入 socket */
+  onEnqueueUserInput?: (request: UserInputQueueEnqueueRequest) => boolean;
+  /** 单发/全发（控制面 `dispatch_user_inputs`） */
+  onDispatchUserInputs?: (inputIds: string[]) => boolean;
+  /** 取回（控制面 `takeback_user_input`） */
+  onTakebackUserInput?: (inputId: string) => boolean;
   /**
    * 打开工作区文件（透传给 ChatInterface）：用户消息正文中的 `@./path` 引用与状态面板的
    * 变更文件行都用它。源实现经宿主的预览事件总线派发；未注入时点击文件不产生跳转。
@@ -163,6 +181,11 @@ export function ACPMain({
   renderFilePicker,
   subscribeExternal,
   onNotice,
+  supportsUserInputQueue,
+  userInputQueue,
+  onEnqueueUserInput,
+  onDispatchUserInputs,
+  onTakebackUserInput,
   onStatsChange,
   onOpenWorkspaceFile,
 }: ACPMainProps) {
@@ -361,6 +384,11 @@ export function ACPMain({
               renderFilePicker={renderFilePicker}
               subscribeExternal={subscribeExternal}
               onNotice={onNotice}
+              supportsUserInputQueue={supportsUserInputQueue}
+              userInputQueue={userInputQueue}
+              onEnqueueUserInput={onEnqueueUserInput}
+              onDispatchUserInputs={onDispatchUserInputs}
+              onTakebackUserInput={onTakebackUserInput}
               onStatsChange={onStatsChange}
               onOpenWorkspaceFile={onOpenWorkspaceFile}
             />
