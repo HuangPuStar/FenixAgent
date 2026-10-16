@@ -189,6 +189,12 @@
         "unsupportedVersion": "不支持的 UI Spec 版本：{{version}}"
       },
       "periTask": {
+        "moreAgents": "更多 agent",
+        "showLess": "收起",
+        "empty": "暂无任务",
+        "failureUnavailable": "任务失败，未提供错误原因",
+        "timeUnavailable": "耗时未知",
+        "elapsed": "{{minutes}} 分 {{seconds}} 秒",
         "detailClose": "关闭",
         "detailExpired": "此任务详情已过期。",
         "detailLoadFailed": "详情加载失败",

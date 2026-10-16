@@ -189,6 +189,12 @@
         "unsupportedVersion": "Unsupported UI Spec version: {{version}}"
       },
       "periTask": {
+        "moreAgents": "More agents",
+        "showLess": "Show less",
+        "empty": "No tasks yet",
+        "failureUnavailable": "Task failed without an error reason",
+        "timeUnavailable": "Duration unavailable",
+        "elapsed": "{{minutes}}m {{seconds}}s",
         "detailClose": "Close",
         "detailExpired": "This task detail has expired.",
         "detailLoadFailed": "Failed to load detail",

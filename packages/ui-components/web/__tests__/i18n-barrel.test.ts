@@ -47,8 +47,11 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  *   （空值、循环引用、嵌套过深、条目截断、展开/收起），341 → 347。
  * 2026-10-15 文档预览批次（markdown 数学 + `.tex` 结构渲染）：`fileTree.preview.*` 加 6 键——
  *   渲染/源码标签、空文件、超上限提示、两条 KaTeX 降级提示，347 → 353。
+ * 2026-10-16 子任务区批次（peri agent 状态 + 折叠入口 + Markdown 详情）：`chat.components.periTask.*`
+ *   加 6 键——折叠入口 `moreAgents` / `showLess`、空态 `empty`、失败原因缺失时的 `failureUnavailable`、
+ *   耗时 `elapsed` 与不可用时 `timeUnavailable`，353 → 359。
  */
-const KEY_BASELINE = 353;
+const KEY_BASELINE = 359;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,
