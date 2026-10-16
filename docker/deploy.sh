@@ -20,8 +20,8 @@
 #       有多份则用 --config 指定。主服务的应用配置与密钥读 docker/main/.env——与它的编排同目录，compose
 #       自己也读这一份（同一份文件，不两处维护）；脚本还把它导出给依赖编排，供两侧共用的键（如
 #       LITELLM_MASTER_KEY 与主服务的 RCS_MODEL_GATEWAY_ADMIN_KEY）取到同一个值。
-#       模块声明键不在 compose 的 ${VAR:?} 扫描面上：WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL 由本脚本在
-#       init / up / deploy 时按主机名生成并固化（validate 与 config 干跑只读；见 docker-topology.md §9）。
+#       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL 不在 compose 的 ${VAR:?} 扫描面上：本脚本在
+#       init / up / deploy 时按主机名生成并固化它（validate 与 config 干跑只读；见 docker-topology.md §9）。
 # 镜像：一律固定版本、写在各 compose 文件里；本脚本不做任何镜像变量插值。
 #
 # 主服务编排固定为 docker/main/docker-compose.yml（生产形态：不声明 build、只用发布镜像）。

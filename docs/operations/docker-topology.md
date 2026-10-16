@@ -576,9 +576,11 @@ worktree / submodule 的 `.git` 是文件而非目录、脚本也可能落在仓
   基础服务 `postgres` / `redis` 内联其中，随它一并校验）与**已启用**依赖的 compose，逐项确认有值；
   `up` / `deploy` 在动任何容器前先跑这道闸。
 - **模块声明键不在这个扫描面上**：`${VAR:?}` 只覆盖编排插值键，而模块 `envDefinitions` 声明的必填键由 rcs **启动期**
-  校验（`apps/server/src/env-loader.ts`）——缺失的后果是容器起不来，而不是启动前被拦下。这类键当前只有
-  `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`（workflow-v2 声明、无默认值），所以脚本在 `init` / `up` / `deploy` 时补一道
-  **生成并固化**（`docker/lib/config.sh` 的 `ensure_workflow_platform_account_email`）：缺失时按主机名派生
+  校验（`apps/server/src/env-loader.ts`）——缺失的后果是容器起不来，而不是启动前被拦下。当前没有像这样的必填声明键。
+- **`WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` 的部署期生成保留**（2026-10-16 起它与另两枚能力键在声明侧都是可选，
+  缺失不再阻塞启动）：脚本仍在 `init` / `up` / `deploy` 时补一道 **生成并固化**
+  （`docker/lib/config.sh` 的 `ensure_workflow_platform_account_email`）——不是为了让进程能起来，而是让
+  「启用画布」这条路上的账号身份**一次定下、不再需要人工填**：缺失时按主机名派生
   `workflow-v2-platform+<主机名>@example.com` 写进 `docker/main/.env`，**已有值一律不动**。它是**身份**而不是密钥
   （密钥可以随时重新生成，它一旦被上游用作账号就是该账号的所有权）：上游首次引导会用它自助注册，改值等于换上游
   账号——需要重新引导，并人工清理上游的旧账号（见 `docker/workflow/README.md` §5）。`validate` 与 `config`（干跑）
@@ -825,9 +827,10 @@ docker compose up -d
     内联在主服务编排里的 `postgres` / `redis` 不设自己的 env 文件；dev 组件是例外形态（内联默认值、不设 env 文件，见 §8），
     且已移出部署面 env 发现。
 12. 必填项的真相只在 compose 的 `${VAR:?}`（脚本不另存清单）；`up` / `deploy` 在动任何容器前先过这道校验；
-    `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。唯一需要脚本落值的是模块声明键
-    `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`——compose 里没有它（由 rcs 启动期校验），脚本在缺失时按主机名生成并固化
-    （§9）；取值规则与 `init` 一致：**只补缺失、绝不覆盖**。
+    `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。唯一需要脚本落值的是
+    `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`——compose 里没有它，脚本在缺失时按主机名生成并固化（§9），
+    这是为了免去人工填身份、不是为了满足启动校验（该键在声明侧是可选）；取值规则与 `init` 一致：
+    **只补缺失、绝不覆盖**。
 13. **需要建库 / 建账号 / 建桶的目录必须有一次性初始化服务**（库名、账号、schema 应用的创建都在那里，形态逐条见 §6）；
     启动顺序用**同项目内**的 `depends_on: service_healthy` / `service_completed_successfully` 表达——跨项目的 `depends_on`
     不成立，本体系也不再需要它（没有跨项目等待，§6）。

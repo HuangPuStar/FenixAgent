@@ -30,12 +30,14 @@ export interface WorkflowV2Config {
    * 平台解析不到时由本键把出站改道到已可达的上游入口，同时保住上游反代的虚拟主机选择（见 `upstream-proxy.ts`）。
    */
   storageUpstreamUrl?: string;
-  /** 平台上游账号的登录邮箱；不是密钥材料，但仍不得进面向用户的响应。 */
-  accountEmail: string;
-  /** 平台上游账号的登录密码；密钥材料，禁止进日志、响应与错误文案。 */
-  accountPassword: string;
-  /** 画布票据的 HMAC 签名密钥；密钥材料，多副本部署必须同一值。 */
-  ticketSecret: string;
+  /** 平台上游账号的登录邮箱；未配置即 `undefined`（不启用 workflow 的部署不必配置）。不是密钥材料，
+   * 但仍不得进面向用户的响应。消费方经 {@link requirePlatformAccountCredentials} 取用。 */
+  accountEmail?: string;
+  /** 平台上游账号的登录密码；未配置即 `undefined`。密钥材料，禁止进日志、响应与错误文案。 */
+  accountPassword?: string;
+  /** 画布票据的 HMAC 签名密钥；未配置即 `undefined`。密钥材料，多副本部署必须同一值。消费方经
+   * {@link requireTicketSecret} 取用。 */
+  ticketSecret?: string;
   /** 一次性 code 的有效期（秒），默认 60。 */
   codeTtlSeconds: number;
   /** 画布票据的有效期（秒），默认 900。 */
@@ -91,9 +93,12 @@ const WorkflowV2ConfigSchema: z.ZodType<WorkflowV2Config> = z.strictObject({
   canvasUpstreamUrl: z.string().min(1),
   // 可选键：缺省即「直连直链 origin」，因此不能给默认值（给空串会把「未配置」变成「配置成了空地址」）。
   storageUpstreamUrl: z.string().optional(),
-  accountEmail: z.string().min(1),
-  accountPassword: z.string().min(1),
-  ticketSecret: z.string().min(1),
+  // 三枚能力键（账号邮箱/密码、票据密钥）声明为可选：不启用 workflow 的部署不必配置，缺失由调用点的
+  // require* 断言兜住（见 `fenix.module.ts` 的 optionalCapabilityValue）。此处不给默认值——“未配置”与
+  // “配成了空串”必须是同一种形状，否则消费方要判断两次。
+  accountEmail: z.string().min(1).optional(),
+  accountPassword: z.string().min(1).optional(),
+  ticketSecret: z.string().min(1).optional(),
   codeTtlSeconds: z.number().int().positive(),
   ticketTtlSeconds: z.number().int().positive(),
   upstreamTimeoutMs: z.number().int().positive(),
@@ -119,4 +124,53 @@ export function getWorkflowV2Config(): WorkflowV2Config {
     throw new Error(`workflow-v2 模块配置校验失败（${issues.join(", ")}）`);
   }
   return parsed.data;
+}
+
+/** 平台上游账号凭据（`WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` + `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD`）。 */
+export interface PlatformAccountCredentials {
+  readonly email: string;
+  readonly password: string;
+}
+
+/**
+ * 平台账号凭据的**唯一**取用入口：未配置时抛出点名键的部署错误。
+ *
+ * 这三枚键在声明侧是可选的（不启用 workflow 的部署不必配置，见 `fenix.module.ts` 的
+ * `optionalCapabilityValue`），因此「有没有配」只能在真正要用上游账号的那一刻判定。判定散在各调用点就会
+ * 退化成两种坏结果之一：`fetch` 拼出 `email=undefined` 的静默请求，或各写一段措辞不同的报错。这里把键名、
+ * 用途与补救方式集中到一条消息上——定位能力与原先的启动期校验等价，代价只是失败落在真正用该能力的请求上。
+ */
+export function requirePlatformAccountCredentials(
+  config: WorkflowV2Config = getWorkflowV2Config(),
+): PlatformAccountCredentials {
+  const { accountEmail, accountPassword } = config;
+  if (accountEmail === undefined || accountPassword === undefined) {
+    const missing = [
+      accountEmail === undefined ? "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL" : null,
+      accountPassword === undefined ? "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD" : null,
+    ].filter((key): key is string => key !== null);
+    throw new Error(
+      `workflow-v2 需要平台上游账号凭据，但未配置：${missing.join("、")}。` +
+        "启用画布 / 上游账号能力时必须给出这两枚键（模板见 docker/main/.env.example）",
+    );
+  }
+  return { email: accountEmail, password: accountPassword };
+}
+
+/**
+ * 画布票据签名密钥的唯一取用入口：未配置即抛。
+ *
+ * **不得**回落成内置默认密钥或进程内随机值：默认密钥让所有部署共享一把可推导的密钥（签署方与验证方都会
+ * 静默接受伪造票据），随机密钥则让多副本各签各的、跨副本校验必然失败。密钥只经返回值流转，调用方、日志与
+ * 错误文案都不得回显它。
+ */
+export function requireTicketSecret(config: WorkflowV2Config = getWorkflowV2Config()): string {
+  const { ticketSecret } = config;
+  if (ticketSecret === undefined) {
+    throw new Error(
+      "workflow-v2 画布票据缺签名密钥：未配置 WORKFLOW_V2_TICKET_SECRET（启用画布的部署必填，建议 " +
+        "`openssl rand -hex 32` 生成；多副本必须同一值）",
+    );
+  }
+  return ticketSecret;
 }

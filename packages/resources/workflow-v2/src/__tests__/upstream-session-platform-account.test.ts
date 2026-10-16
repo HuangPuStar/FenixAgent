@@ -190,17 +190,24 @@ describe("web platform-account routes", () => {
    *
    * 返回 `{ requests }` 的是同一个数组引用（`setup()` 就地清空），用例可安全地持有它做断言。
    */
-  function setup(handler: (path: string) => Response, database: unknown = stubDbWithRows([])): { requests: string[] } {
+  function setup(
+    handler: (path: string) => Response,
+    database: unknown = stubDbWithRows([]),
+    options: { omitCredentials?: boolean } = {},
+  ): { requests: string[] } {
     upstreamHandler = handler;
     upstreamRequests.length = 0;
     resetAllStubs();
+    // 显式传 `undefined` 覆盖工厂的 fixture 值（「键存在但未配置」正是声明侧可选键在宿主投影后的形状）。
+    const credentials = options.omitCredentials
+      ? { accountEmail: undefined, accountPassword: undefined }
+      : { accountEmail: TEST_EMAIL, accountPassword: TEST_PASSWORD };
     initializeTestApplicationInfrastructure({
       database,
       moduleConfigs: {
         "workflow-v2": createWorkflowV2ModuleConfig({
           upstreamBaseUrl: upstreamBaseUrl(),
-          accountEmail: TEST_EMAIL,
-          accountPassword: TEST_PASSWORD,
+          ...credentials,
         }),
       },
     });
@@ -409,5 +416,27 @@ describe("web platform-account routes", () => {
     expect(raw).not.toContain(TEST_EMAIL);
     expect(raw).not.toContain(TEST_PASSWORD);
     expect(raw).not.toContain(COOKIE_VALUE);
+  });
+
+  // 没配平台账号凭据的部署（三枚能力键在声明侧可选）点重登：必须给出可分辨的标签，而不是笼统的 unknown——
+  // 运维据此知道要去补 env 而不是去查上游账号；且一个上游请求都不发（未配置的邮箱不该被拼进请求体）。
+  test("POST /platform-account/login 未配置凭据时返回 503 且标签指明是配置缺失", async () => {
+    const started = setup(() => loginOk(), stubDbWithRows([]), { omitCredentials: true });
+
+    const response = await routes!.handle(
+      new Request("http://localhost/platform-account/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+    const raw = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(raw).toContain("PLATFORM_SESSION_UNAVAILABLE");
+    expect(raw).toContain("not_configured");
+    // 响应只给稳定标签：缺哪一枚键写在日志的错误原文里，不入响应；凭据更不得回显。
+    expect(raw).not.toContain(TEST_PASSWORD);
+    expect(started.requests).toHaveLength(0);
   });
 });

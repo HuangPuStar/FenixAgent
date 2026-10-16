@@ -142,7 +142,9 @@ test("主机名取不到时退化为不带主机名后缀的值", async () => {
 
 test("主服务 env 模板保留该键的注释行，并在注里写明部署期的生成行为", () => {
   // 「就地激活」分支的前提是模板里那行注释存在；注文案是部署方读到的说明，变更时这条会一起被审。
+  // 元信息取「可选」：三枚能力键在声明侧都不阻塞启动（2026-10-16），部署期生成是为了免去人工填身份，
+  // 不是补一个必填项（见 docs/operations/docker-topology.md §9）。
   expect(templateText.split("\n")).toContain(`# ${KEY}=`);
-  expect(templateText).toContain(`${KEY}｜必填`);
+  expect(templateText).toContain(`${KEY}｜可选`);
   expect(templateText).toContain("按主机名生成并固化");
 });

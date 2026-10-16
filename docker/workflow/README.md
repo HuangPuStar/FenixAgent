@@ -217,9 +217,9 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 | 变量 | 要求 / 默认值 |
 | --- | --- |
-| `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` | **必填**，专用上游账号邮箱；经 `docker/deploy.sh` 部署时由它在缺失时**生成并固化**（按主机名派生、写入 `docker/main/.env` 后不再改动，见 `docs/operations/docker-topology.md` §9）。独立部署须自行填部署方可控的邮箱 |
-| `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD` | **必填密钥**，上游账号密码 |
-| `WORKFLOW_V2_TICKET_SECRET` | **必填密钥**，建议至少 32 字节随机材料 |
+| `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` | **用画布才需要**，专用上游账号邮箱；经 `docker/deploy.sh` 部署时由它在缺失时**生成并固化**（按主机名派生、写入 `docker/main/.env` 后不再改动，见 `docs/operations/docker-topology.md` §9）。独立部署须自行填部署方可控的邮箱 |
+| `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD` | **用画布才需要**，上游账号密码（密钥） |
+| `WORKFLOW_V2_TICKET_SECRET` | **用画布才需要**，建议至少 32 字节随机材料（密钥） |
 | `WORKFLOW_V2_UPSTREAM_BASE_URL` | 文件头部注释要求设置为 `http://workflow-upstream:80` |
 | `WORKFLOW_CANVAS_UPSTREAM_URL` | 文件头部注释要求设置为 `http://workflow-upstream:80` |
 | `WORKFLOW_V2_IFRAME_CODE_TTL_SECONDS` | 默认 `60` |
@@ -230,6 +230,8 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 | `WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE` | 默认 `1200`，调得过低会干扰调试轮询 |
 | `WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE` | 默认 `60` |
 | `RCS_REDIS_URL` | 可选，仅共享上游登录会话与登录租约，不共享画布票据 |
+
+上表前三枚（账号邮箱 / 密码 / 票据密钥）在声明侧是**可选**的：不启用画布的部署不必配置，缺失不会阻塞启动；真正用到上游账号或票据的请求会在那时报错并点名缺少的键。
 
 模块变量以 `packages/resources/workflow-v2/fenix.module.ts` 为准，修改后重启生效；不要沿用旧文档中的 `WORKFLOW_V2_UPSTREAM_ACCOUNT_*` 拼写。密钥经 secret store 或受控环境文件注入，不能写在命令行示例、源码或日志中。
 

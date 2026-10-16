@@ -142,6 +142,15 @@ export function createWebWorkflowV2PlatformAccountRoutes(deps: WorkflowV2RouteDe
         return { success: true as const, data: { status: "active" as const } };
       } catch (error) {
         const reason = error instanceof UpstreamSessionUnavailableError ? error.reason : "unknown";
+        // 只补会话模块没记过的那一档（非 `UpstreamSessionUnavailableError`，响应里落成 `unknown`）：会话类失败
+        // （拒绝/缺会话/超时/网络/未配凭据）在 upstream-session 里已各有一条日志，这里不重复；剩下来的都是
+        // 意外错误，不记就等于把它吞成响应里的一个 `unknown`。
+        // 日志与响应都只带标签与错误原文：凭据、Cookie 值与上游响应正文都不在其内。
+        if (!(error instanceof UpstreamSessionUnavailableError)) {
+          logger.warn("workflow-v2 平台账号重登失败", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         // 失败原因标签只含状态码/业务码，不含凭据；上游响应原文与凭据一律不回传。
         return status(503, {
           success: false as const,

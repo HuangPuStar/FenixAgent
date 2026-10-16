@@ -23,7 +23,8 @@ import { z } from "zod/v4";
  *
  * `envDefinitions`：冻结 §2.2 的九枚键（上游基址、画布基址、账号邮箱/密码、票据密钥、code/票据 TTL、
  * 上游超时、节点白名单、对账周期、三枚限流）。两枚默认值与上游服务同机（`http://127.0.0.1:18080`），
- * 三枚必填（账号邮箱/密码、票据签名密钥），其余为带默认值的旋钮。
+ * 其余为带默认值的旋钮；**没有必填键**——账号凭据与票据密钥只在真正用到 workflow 能力时才需要，声明为可选、
+ * 缺失改在调用点判定（2026-10-16 改口径，理由见 `optionalCapabilityValue`）。
  *
  * 2026-10-12 追加 `WORKFLOW_V2_STORAGE_UPSTREAM_URL`（可选）：存储域出站的连接基址。起因是宿主源码运行
  * 的部署解析不到上游签名直链里的内网别名（`workflow-storage`，只在上游容器网络内可达），图片成片 502
@@ -46,6 +47,21 @@ import { z } from "zod/v4";
  * `"workflow-v2"`：它是导航项的**路由目标**（Shell 拼成 `/agent/workflow`），改名会同时改掉侧栏入口与用户
  * 的书签；服务端模块 id（`"workflow-v2"`）与 web id 是两个独立的命名空间，不需要一致。
  */
+/**
+ * 「只在用到 workflow 能力时才需要」的键：可选，且空串按未配置处理。
+ *
+ * 为什么不是必填（2026-10-16 改口径）：workflow-v2 在 `deploy/assembly/ce.json` 里是**常驻装配**，与
+ * `FENIX_FEATURE_WORKFLOW` 这类依赖开关无关——把「不启用就不需要」的键放在启动期拦，会让只用控制面的部署
+ * 卡在开机（没开的功能阻塞整台机器）。缺失因此改在**调用点**判定：`config.ts` 的
+ * `requirePlatformAccountCredentials()` / `requireTicketSecret()` 抛出点名键名的错误，定位能力与启动期校验
+ * 等价，而失败只落在真正用该能力的请求上。
+ * 空串归一成未配置：部署面写 `KEY=` 与「没写」是同一件事（`z.preprocess` 写法与宿主
+ * `apps/server/src/env.ts` 的 `RCS_DEFAULT_MACHINE_ID` 一致）。
+ */
+function optionalCapabilityValue() {
+  return z.preprocess((value) => (value === "" ? undefined : value), z.string().min(1).optional());
+}
+
 export const moduleManifest = {
   id: "workflow-v2",
   kind: "resource",
@@ -91,35 +107,37 @@ export const moduleManifest = {
     {
       moduleId: "workflow-v2",
       key: "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL",
-      // 必填：无 defaultValue，缺失即启动失败（`loadDeclaredEnv` 用同一 schema 校验）。
-      schema: z.string().min(1),
+      // 可选：只在用到上游账号时（画布、建 App、上游调用）才需要，见 optionalCapabilityValue。
+      schema: optionalCapabilityValue(),
       secret: false,
       restartRequired: true,
       description:
         "平台上游账号的登录邮箱（FenixAgent 整体映射上游一个用户，设计 §3.1）：账号不存在时，首次引导" +
         "（如第一个租户建 App）会用它与 `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD` 向上游自助注册，因此不必先人工建号" +
-        "（注册幂等，邮箱已存在则跳过）。无默认值，缺失即启动失败；不属于密钥材料，但仍不得出现在面向用户的" +
-        "响应与错误文案里。",
+        "（注册幂等，邮箱已存在则跳过）。可选：不启用 workflow 的部署不必配置，缺失只在用到上游账号的请求上报错" +
+        "并点名本键；不属于密钥材料，但仍不得出现在面向用户的响应与错误文案里。",
     },
     {
       moduleId: "workflow-v2",
       key: "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD",
-      schema: z.string().min(1),
+      schema: optionalCapabilityValue(),
       secret: true,
       restartRequired: true,
       description:
         "平台上游账号的登录密码（passport 邮箱登录用）；账号不存在时，首次引导会以它作为新账号的密码完成" +
-        "自助注册。无默认值，缺失即启动失败；密钥材料，禁止进日志、响应与错误文案。",
+        "自助注册。可选：不启用 workflow 的部署不必配置，缺失只在用到上游账号的请求上报错并点名本键；" +
+        "密钥材料，禁止进日志、响应与错误文案。",
     },
     {
       moduleId: "workflow-v2",
       key: "WORKFLOW_V2_TICKET_SECRET",
-      schema: z.string().min(1),
+      schema: optionalCapabilityValue(),
       secret: true,
       restartRequired: true,
       description:
-        "画布 iframe 票据（HMAC-SHA256）的签名密钥；无默认值，缺失即启动失败。密钥材料，禁止进日志与" +
-        "响应。多副本部署必须配置同一个值，否则票据跨副本校验失败。",
+        "画布 iframe 票据（HMAC-SHA256）的签名密钥。可选：不启用画布的部署不必配置，缺失只在签发/校验票据" +
+        "时报错并点名本键（**不得**退化成默认密钥或进程内随机值，那会让伪造票据被静默接受或跨副本互不认账）。" +
+        "密钥材料，禁止进日志与响应；多副本部署必须配置同一个值。",
     },
     {
       moduleId: "workflow-v2",

@@ -25,7 +25,7 @@
  * 否则同一次引导会出现第二条持有登录态的路径；何况上游按用户只存一个 session_key，这份马上会被随后的登录覆盖。
  */
 
-import { getWorkflowV2Config } from "../config";
+import { getWorkflowV2Config, requirePlatformAccountCredentials } from "../config";
 import { PLATFORM_ACCOUNT_LOCALE_ZH } from "./platform-account-locale";
 
 /** 注册端点；body 只需 `{email, password}`（上游 `passport.PassportWebEmailRegisterV2PostRequest`）。 */
@@ -80,6 +80,8 @@ function safeJson(text: string): unknown {
  */
 export async function registerPlatformAccount(): Promise<PlatformAccountRegistrationOutcome> {
   const config = getWorkflowV2Config();
+  // 凭据经唯一入口取：三枚键在声明侧可选，未配置时这里抛出的错误点名缺哪一枚（注册本就要用到上游账号）。
+  const credentials = requirePlatformAccountCredentials(config);
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -95,7 +97,7 @@ export async function registerPlatformAccount(): Promise<PlatformAccountRegistra
       // ——不带头就等于把账号建成了英文。固定写 zh-CN 而不是跟随部署环境：画布语言是我方的产品要求。
       headers: { "Content-Type": "application/json", "Accept-Language": PLATFORM_ACCOUNT_LOCALE_ZH },
       // 密码只出现在这里；本函数的返回值与诊断标签一律不含它。
-      body: JSON.stringify({ email: config.accountEmail, password: config.accountPassword }),
+      body: JSON.stringify({ email: credentials.email, password: credentials.password }),
       signal: controller.signal,
     });
     const code = readBusinessCode(safeJson(await response.text()));

@@ -228,7 +228,14 @@ describe("workflow-v2 平台账号自助注册", () => {
    *
    * 返回的是同一个请求数组与同一个台账数组的引用（就地清空 / 复用），用例可安全持有它们做断言。
    */
-  function setup(options: { baseUrl?: string; register?: (body: Record<string, unknown>) => Response } = {}): {
+  function setup(
+    options: {
+      baseUrl?: string;
+      register?: (body: Record<string, unknown>) => Response;
+      /** 不给账号凭据：两枚能力键在声明侧可选（见 `fenix.module.ts` 的 `optionalCapabilityValue`）。 */
+      omitCredentials?: boolean;
+    } = {},
+  ): {
     requests: FakeRequest[];
     ledger: AccountRow[];
     insertAttempts: () => number;
@@ -244,13 +251,16 @@ describe("workflow-v2 平台账号自助注册", () => {
     resetPlatformAccountLocaleForTests();
     // 熔断器是进程级单例：同进程的其它用例文件可能把它推到打开态，不复位会让本文件的 callUpstream 直接短路。
     resetUpstreamHealth();
+    // 显式传 `undefined` 覆盖工厂的 fixture 值（「键存在但未配置」正是声明侧可选键在宿主投影后的形状）。
+    const credentials = options.omitCredentials
+      ? { accountEmail: undefined, accountPassword: undefined }
+      : { accountEmail: TEST_EMAIL, accountPassword: TEST_PASSWORD };
     initializeTestApplicationInfrastructure({
       database: ledger.handle,
       moduleConfigs: {
         "workflow-v2": createWorkflowV2ModuleConfig({
           upstreamBaseUrl: options.baseUrl ?? upstreamBaseUrl(),
-          accountEmail: TEST_EMAIL,
-          accountPassword: TEST_PASSWORD,
+          ...credentials,
         }),
       },
     });
@@ -269,6 +279,23 @@ describe("workflow-v2 平台账号自助注册", () => {
     resetAllStubs();
     registerOverride = null;
     registeredEmails.clear();
+  });
+
+  // 三枚能力键在声明侧可选（不启用 workflow 的部署不必配置）：缺失不该在启动期拦人，但真要用上游账号时必须
+  // 立刻失败——归成 not_configured（上层据此回 503，而不是当持久化失败回 500），错误原文点名缺哪一枚键，
+  // 且一个上游请求都不发、不落半截台账（否则等于用 undefined 邮箱去上游建号）。
+  test("未配置平台账号凭据时引导即失败、点名键且不出站", async () => {
+    const started = setup({ omitCredentials: true });
+
+    const error = await bootstrapFailure();
+
+    expect(error).toBeInstanceOf(PlatformAccountBootstrapError);
+    expect((error as PlatformAccountBootstrapError).reason).toBe("not_configured");
+    const message = error instanceof Error ? error.message : "";
+    expect(message).toContain("WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL");
+    expect(message).toContain("WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD");
+    expect(started.requests).toHaveLength(0);
+    expect(started.ledger).toHaveLength(0);
   });
 
   // 首启建号：账号不存在时先注册、再登录，最后把身份落进台账——部署方只注入邮箱与密码就能起。
