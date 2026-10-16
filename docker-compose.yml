@@ -20,8 +20,9 @@
 # 组件的变量一律在编排里写 ${VAR:-默认值}（**没有** .env.<组件> 文件）：想改默认值就在**仓库根 .env**
 # 写同名键——它既是本文件（含 rcs）的插值来源，也覆盖全部组件的默认值。
 #
-# 镜像一律固定版本、不用环境变量插值：发布新版本时同时更新本文件与 docker/main/ 的 image 行。
-# dev 用 `--build` 构建出的镜像会占用同一个 tag，之后走生产入口时 deploy.sh 会先 pull 覆盖回发布镜像。
+# 镜像不用环境变量插值：本文件的 rcs 跟 CI 在 main 分支上发布的滚动 tag（`main`），要的是最新代码；
+# 生产形态（docker/main/）写固定发布 tag（`sha-<commit>`），要的是可回滚的确定版本。两者不再共用同一个 tag，
+# 因此 dev 用 `--build` 构建出的镜像不会占掉生产要跑的版本。
 # 基础服务（postgres / redis）就地内联在下方：它们随本文件恒启动。生产形态同样内联自己的一套
 # （docker/main/），两边各存各的数据，互不影响。
 
@@ -90,8 +91,8 @@ services:
             - fenix-server
 
     rcs:
-        # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）
-        image: ghcr.io/huangpustar/fenixagent:sha-da5eb54
+        # main 分支的滚动 tag：跟着 main 走，不用手工更新；禁止改成环境变量插值（文档 §4.2）
+        image: ghcr.io/huangpustar/fenixagent:main
         # 仅服务 dev：`docker compose up -d --build` 本地构建，tag 即上面的 image 行。
         # 生产形态（docker/main/）不声明 build，只用 pull 下来的发布镜像。
         build:
