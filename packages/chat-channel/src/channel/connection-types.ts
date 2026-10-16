@@ -87,6 +87,16 @@ export interface SharedRelay {
   /** 会话变更按 RPC id 等待 Agent 结果，避免发送成功被误报为持久化成功。 */
   pendingSessionMutations?: Map<number | string, (succeeded: boolean) => void>;
   /**
+   * 在途 create_session 的创建回执登记（rpcId → 结算 sessionId）。
+   *
+   * 与 pendingSessionSyncIds 的差别是目的：后者用于「响应是否可提交投影」的身份校验，
+   * 这里用于把「Agent 实际创建出的 session id」回传给发起该命令的连接（committed Ack 的
+   * sessionId 字段）。分开登记是因为二者生命周期不同：身份校验对所有 create/load/resume
+   * 生效，回执只有 create 需要，且必须在 supersede 的迟到响应上也结算，否则调用方
+   * 永远等不到自己那次创建的结果。
+   */
+  pendingSessionCreations?: Map<number | string, (sessionId: string | null) => void>;
+  /**
    * 最近一次发出的会话同步请求 rpcId（create/load/resume）。
    * 同一 relay 上可能同时存在多个在途会话同步请求（用户在响应到达前再次切换会话，
    * 或引导流程的自动恢复与用户点击重叠）。响应帧只有 id，无法区分「最新目标」与

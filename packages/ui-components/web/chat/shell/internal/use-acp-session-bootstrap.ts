@@ -16,8 +16,8 @@ interface UseAcpSessionBootstrapOptions {
   onLoadSession: (sessionId: string) => void;
   onResumeSession: (sessionId: string) => void;
   onNotice?: (notice: ChatNotice) => void;
-  /** 新会话创建（ACPMain 已做 Promise 适配的包装回调） */
-  handleCreateSession: () => Promise<void> | void;
+  /** 新建会话；回执由调用方（`ACPMain`）消费，本 hook 只触发不读取结果 */
+  handleCreateSession: () => Promise<unknown> | undefined;
   /** 用户主动切换会话时的副作用（收起移动端抽屉）；自动恢复不触发 */
   onUserSessionSelected?: () => void;
 }

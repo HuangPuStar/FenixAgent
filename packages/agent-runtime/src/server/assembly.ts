@@ -9,6 +9,7 @@ import type {
   ApiInstanceRouteDependencies,
   RequestErrorLogger,
 } from "../routes/dependencies";
+import { createWebChatSpacesRoutes } from "../routes/web/chat-spaces";
 import { createWebControlRoutes } from "../routes/web/control";
 import { createWebEnvironmentsRoutes } from "../routes/web/environments";
 import { createWebInstancesRoutes } from "../routes/web/instances";
@@ -33,6 +34,11 @@ function routeDependencies(host: ServerRouteHost): AgentRuntimeAuthDependencies 
 /** `/web/control` 实例控制面（挂宿主 `web` 聚合槽）。 */
 export function createAgentRuntimeWebControlRoutes(host: ServerRouteHost) {
   return createWebControlRoutes(routeDependencies(host));
+}
+
+/** `/web/chat-spaces` 会话分组（挂宿主 `web` 聚合槽）。 */
+export function createAgentRuntimeWebChatSpacesRoutes(host: ServerRouteHost) {
+  return createWebChatSpacesRoutes(routeDependencies(host));
 }
 
 /** `/web/environments` 环境管理（挂宿主 `web` 聚合槽）。 */

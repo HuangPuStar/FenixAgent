@@ -7,6 +7,16 @@ export type {
 } from "./agent-instance";
 export { agentInstanceRepo } from "./agent-instance";
 export type {
+  ChatSpaceRecord,
+  ChatSpaceRenameInput,
+  ChatSpaceScope,
+  ChatSpaceSessionInput,
+  ChatSpaceUserInput,
+  ChatSpaceWriteOutcome,
+  IChatSpaceRepo,
+} from "./chat-space";
+export { chatSpaceRepo } from "./chat-space";
+export type {
   EnvironmentCreateParams,
   EnvironmentRecord,
   EnvironmentUpdateParams,

@@ -241,6 +241,13 @@ export const moduleManifest = {
         import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebInstancesRoutes(host)),
     },
     {
+      id: "agent-runtime.web-chat-spaces",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebChatSpacesRoutes(host)),
+    },
+    {
       id: "agent-runtime.api-instances",
       kind: "app-route",
       slot: "api",

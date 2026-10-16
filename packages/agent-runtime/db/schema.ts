@@ -111,3 +111,43 @@ export const agentInstance = pgTable(
 
 export type AgentInstance = typeof agentInstance.$inferSelect;
 export type NewAgentInstance = typeof agentInstance.$inferInsert;
+
+/**
+ * Chat 会话分组表：把 ACP 会话（`ses_*`）归入用户自建的分组。
+ *
+ * 为什么需要这张表：会话本体由 ACP 侧持有（平台没有会话表），而「哪些会话属于哪个分组」是纯平台侧的
+ * 用户偏好数据，没有别的落点。未归属的会话**不落记录**，由前端归入「默认」分组，因此本表只存显式分组。
+ *
+ * 作用域是 `(instance_uid, user_id)` 而不是组织：实例已是「环境 + 属主」的载体，属主维度再叠组织会让
+ * 同一实例在切换组织视图时出现两套分组。唯一索引落在这个 scope 上，重名冲突因此由数据库裁决（不靠预检）。
+ *
+ * 两条外键都在库内（`user.id` 与 `agent_instance.id`），不新增跨包组装期依赖；`instance_uid` 级联删除，
+ * 实例被删时其分组随之消失，不留无主行。id 沿用业务前缀形态（`space_` + 32 位 hex），与实例 uid 同风格。
+ *
+ * `session_ids` 里可能残留 ACP 侧已删除的会话 id（已知取舍，不做后台清理）：清理需跨模块回查 ACP 会话，
+ * 而残留项对前端只是一个选不到的分组条目，收益低于引入跨模块依赖的成本。
+ */
+export const chatSpace = pgTable(
+  "chat_space",
+  {
+    id: varchar("id", { length: 80 }).primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    instanceUid: varchar("instance_uid", { length: 80 })
+      .notNull()
+      .references(() => agentInstance.id, { onDelete: "cascade" }),
+    // 元素是 ACP session id（`ses_*`），增删一律在 SQL 层原子完成（见 repositories/chat-space.ts）。
+    sessionIds: jsonb("session_ids").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    scopeNameIdx: uniqueIndex("idx_chat_space_scope_name").on(table.instanceUid, table.userId, table.name),
+    nameConstraint: check("chat_space_name_check", sql`char_length(btrim(${table.name})) BETWEEN 1 AND 100`),
+  }),
+);
+
+export type ChatSpace = typeof chatSpace.$inferSelect;
+export type NewChatSpace = typeof chatSpace.$inferInsert;
