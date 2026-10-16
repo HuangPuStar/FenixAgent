@@ -35,12 +35,13 @@ import { classifyToolSemantic } from "../lib/tool-semantic";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
-import type { PeriTaskViewProjection, ThreadEntry, TokenUsage } from "../types";
+import type { ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
 import { useComposerInputBridge } from "./internal/use-composer-input-bridge";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
+import { usePeriTaskSelection } from "./internal/use-peri-task-selection";
 
 export type { ChatInterfaceHandle } from "./chat-interface-types";
 
@@ -312,8 +313,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     sessionState,
   }));
 
-  // 详情抽屉的选中态由本组件持有，抽屉内容由宿主经 `renderPeriTaskDetail` 渲染（见文件头与 README「收录范围」）。
-  const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
+  // 按会话与 taskId 读取最新投影，不持有会在流式更新后陈旧的任务对象。
+  const taskScope = `${rcsSessionId ?? ""}:${activeSessionId ?? ""}`;
+  const { task: selectedPeriTask, select, close } = usePeriTaskSelection(taskScope, periTasks);
 
   return (
     <div className="chat-interface-root flex h-full min-w-0 min-h-0 flex-1 overflow-hidden">
@@ -321,9 +323,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           就近取档到本行工具类与根节点 `.chat-interface-root`（两侧同名 `chat-layout.css` 同批清空删除）。 */}
       <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
-        {renderPeriTaskDetail && selectedPeriTask
-          ? renderPeriTaskDetail(selectedPeriTask, () => setSelectedPeriTask(null))
-          : null}
+        {renderPeriTaskDetail && selectedPeriTask ? renderPeriTaskDetail(selectedPeriTask, close) : null}
 
         {/* Chat messages — unified ChatView */}
         <ChatView
@@ -367,7 +367,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                   tasksLoaded={periTasksLoaded}
                   reconnecting={Boolean(connectionState && connectionState !== "connected")}
                   changedFiles={changedFiles}
-                  onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
+                  onOpenTask={renderPeriTaskDetail ? select : undefined}
                   onPreviewFile={
                     agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
                   }

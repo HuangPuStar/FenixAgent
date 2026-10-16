@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../ui/sheet";
+import { MessageResponse } from "../primitives/message";
 import type { PeriTaskViewProjection } from "../types";
 
 /**
@@ -129,9 +130,11 @@ export function PeriTaskDetailSheet({ environmentId, sessionId, task, onClose, l
             <div className="space-y-3">
               <p className="text-xs text-text-muted">{t("chat.components.periTask.previewOnly")}</p>
               {detail.items.map((item) => (
-                <pre key={item.content} className="whitespace-pre-wrap break-words text-sm font-sans text-text-primary">
+                // 走聊天正文同一条 Markdown 链路（streamdown + 既有清洗与数学插件），不自建渲染：
+                // 内容是快照而非增量，故用 `mode="static"`；`envId` 让相对工作区路径经宿主文件代理打开。
+                <MessageResponse key={item.content} mode="static" envId={environmentId} sessionId={sessionId}>
                   {item.content}
-                </pre>
+                </MessageResponse>
               ))}
             </div>
           ) : detail?.kind === "unavailable" ? (

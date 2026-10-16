@@ -19,23 +19,13 @@
 
 import "./chat-status-panel.css";
 
-import {
-  Ban,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Circle,
-  Clock3,
-  FileDiff,
-  ListTodo,
-  Network,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock3, FileDiff, ListTodo, Network } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import type { ChangedFile, PeriTaskViewProjection, TodoItem } from "../types";
+import { PeriTaskRows } from "./peri-task-rows";
 
 type StatusTab = "todo" | "tasks" | "changes";
 
@@ -284,41 +274,9 @@ function TaskRows({
   reconnecting: boolean;
   onOpenTask?: (task: PeriTaskViewProjection) => void;
 }) {
-  const { t } = useTranslation(UI_COMPONENTS_NS);
-  if (!loaded)
-    return <p className="px-3 pt-1.5 pb-2.5 text-3xs text-slate-400">{t("chat.components.periTask.loading")}</p>;
   return (
     <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
-      {reconnecting && (
-        <p className="px-3 pt-1.5 pb-2.5 text-3xs text-slate-400">{t("chat.components.periTask.reconnecting")}</p>
-      )}
-      {tasks.map((task) => {
-        const Icon =
-          task.status === "completed"
-            ? CheckCircle2
-            : task.status === "failed"
-              ? XCircle
-              : task.status === "cancelled"
-                ? Ban
-                : Clock3;
-        const canOpen = task.detailAvailability !== "unavailable" && onOpenTask;
-        return (
-          <button
-            key={task.taskId}
-            type="button"
-            className={STATUS_ROW_CLASS}
-            data-status={task.status}
-            disabled={!canOpen}
-            onClick={() => canOpen && onOpenTask(task)}
-          >
-            <Icon className={statusIconClass(task.status)} />
-            <span className="overflow-hidden text-xs text-ellipsis whitespace-nowrap">
-              {task.title || t("chat.components.periTask.unknownTitle")}
-            </span>
-            <small className="text-3xs text-gray-400">{t(`chat.components.periTask.status.${task.status}`)}</small>
-          </button>
-        );
-      })}
+      <PeriTaskRows tasks={tasks} loaded={loaded} reconnecting={reconnecting} onOpenTask={onOpenTask} />
     </div>
   );
 }
