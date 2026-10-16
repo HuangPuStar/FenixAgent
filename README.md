@@ -86,7 +86,7 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 ### Docker Compose（推荐）
 
 ```bash
-# 创建本地配置，并至少为 RCS_API_KEYS 填入随机值（只有主服务需要这一步）
+# 创建本地配置；容器全栈开箱可起（DATABASE_URL 由编排注入），bun run dev 直跑源码需自行填它
 cp .env.example .env
 
 # 默认只起 PostgreSQL 与 rcs；组件按需用 --profile 追加，起服务前不再需要为组件准备 .env

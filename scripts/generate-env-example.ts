@@ -61,8 +61,12 @@ function probeHostSchema(fill: (key: string) => unknown): { keys: string[]; pars
     },
     has: (_target, property) => typeof property === "string" && fill(property) !== undefined,
   });
+  // 先解析再快照键集合：对象字面量的值按书写顺序求值，写成 `{ keys: [...keys], parsed: parseEnv(probe) }`
+  // 会在解析之前就取走一个空集合。这条顺序只有在宿主 schema 存在必填键时才被掩盖（那时解析抛出，
+  // `catch` 分支的快照求值发生在解析之后），因此是无必填键的 schema 才能暴露的隐患。
   try {
-    return { keys: [...keys], parsed: parseEnv(probe) };
+    const parsed = parseEnv(probe);
+    return { keys: [...keys], parsed };
   } catch (error) {
     return { keys: [...keys], error };
   }

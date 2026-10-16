@@ -119,7 +119,9 @@ services:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
-            RCS_API_KEYS: ${RCS_API_KEYS:?RCS_API_KEYS 未设置：请在仓库根 .env 配置（见 .env.example）}
+            # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：本地零配置可起，生产必须换成
+            # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
+            RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}
             # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
             RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
             # 与 sandbox / 控制台共享的密钥；默认值只服务本地，生产必须用 .env 覆盖。

@@ -21,12 +21,10 @@ import { parseEnv } from "../env";
  */
 
 /**
- * 真实装配面上「无默认值」的全部必填键；测试不读进程环境，全部经 `input` 注入。
+ * 真实装配面的基线输入；测试不读进程环境，全部经 `input` 注入。
  *
- * 前两枚是宿主 `env.ts` 的必填项；后三枚由 `workflow-v2` 声明（邮箱 / 密码 / 票据签名密钥，均无默认值）。
- * 模块启用后它们的声明就进了聚合面，`resolveAssemblyEnv` 少给一枚即解析失败——因此本文件里每一条
- * `resolveAssemblyEnv({ input: ... })` 都建立在「装配面所需的必填键已齐」之上。新增必填声明时同步补这里，
- * 否则失败信息是指向模块 schema 的 ZodError，与本文件的用例意图无关。
+ * 装配面的必填键只有宿主 `DATABASE_URL`（`RCS_API_KEYS` 有本地兜底值，`workflow-v2` 三枚可选）；其余列出只为让
+ * 取值确定，不参与任何断言。新增必填声明时同步补这里，否则失败信息是指向模块 schema 的 ZodError，与本文件用例意图无关。
  */
 const baseInput = {
   DATABASE_URL: "postgres://127.0.0.1:5432/fenix",

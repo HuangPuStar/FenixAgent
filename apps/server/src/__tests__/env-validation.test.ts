@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { findDeprecatedEnvVars, validateEnv } from "../env";
+import { findDeprecatedEnvVars, LOCAL_DEV_API_KEY, validateEnv } from "../env";
 
 const TEST_DATABASE_URL = "postgres://localhost/test-db";
 const TEST_API_KEY = ["test", "api", "fixture"].join("-");
@@ -22,19 +22,28 @@ describe("env validation", () => {
     process.env = { ...originalEnv } as NodeJS.ProcessEnv;
   });
 
+  // DATABASE_URL 仍是唯一必填键：缺失即校验失败，连接串必须由部署方给出（不给本地兜底值）。
   test("DATABASE_URL 缺失时校验失败", () => {
     delete process.env.DATABASE_URL;
-    delete process.env.RCS_API_KEYS;
     expect(() => validateEnv()).toThrow(/DATABASE_URL/);
   });
 
-  test("RCS_API_KEYS 缺失时校验失败", () => {
+  // RCS_API_KEYS 无必填约束：缺失时回落到本地兜底签名密钥（公开值，生产必须覆盖）。
+  test("RCS_API_KEYS 缺失时用本地兜底值", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.RCS_API_KEYS;
+    expect(validateEnv().RCS_API_KEYS).toBe(LOCAL_DEV_API_KEY);
+  });
+
+  // 空串不等于「未设置」：显式写空值应报错，而不是静默退回兜底值（避免误配置被兜底掩盖）。
+  test("RCS_API_KEYS 为空串时校验失败", () => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
+    process.env.RCS_API_KEYS = "";
     expect(() => validateEnv()).toThrow(/RCS_API_KEYS/);
   });
 
-  test("所有必填项存在时校验成功", () => {
+  // 显式给出的值原样保留，兜底值不覆盖已配置的取值。
+  test("显式给出两枚键时原样保留", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     process.env.RCS_API_KEYS = TEST_API_KEY;
     const env = validateEnv();

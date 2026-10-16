@@ -86,8 +86,8 @@ Besides the built-in engines, other ACP-compatible engines can be integrated by 
 ### Docker Compose (recommended)
 
 ```bash
-# Create local configuration and set RCS_API_KEYS to at least a random value
-# (only the main service needs this step).
+# Create local configuration; the container stack boots as-is (the compose file injects
+# DATABASE_URL) — running the source directly with `bun run dev` requires it in .env.
 cp .env.example .env
 
 # Starts PostgreSQL and rcs only; components are added with --profile and need no .env of their own.

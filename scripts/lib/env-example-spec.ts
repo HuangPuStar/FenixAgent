@@ -9,6 +9,8 @@
  * 与多写的后果都是静默的，把维护动作压成一次明确失败，而不是无声漂移。
  */
 
+import { ENGINE_TYPES } from "../../apps/server/src/services/config/types";
+
 /** 模板里一个声明键的渲染输入。 */
 export interface EnvEntry {
   readonly key: string;
@@ -62,7 +64,11 @@ export interface EnvTemplate {
  */
 export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: string; readonly secret?: boolean }>> = {
   DATABASE_URL: { description: "PostgreSQL 连接串；缺失即启动失败。", secret: true },
-  RCS_API_KEYS: { description: "skill 下载 token 的 HMAC 签名密钥；逗号分隔多把，首个用于签名。", secret: true },
+  RCS_API_KEYS: {
+    description:
+      "skill 下载 token 的 HMAC 签名密钥；逗号分隔多把，首个用于签名；未设置时用本地兜底值（公开值，生产必须覆盖）。",
+    secret: true,
+  },
   RCS_SYSTEM_API_KEYS: {
     description: "/api/system/* 管理端点（建用户、建组织、签发用户级 API Key）使用的系统级密钥；逗号分隔。",
     secret: true,
@@ -89,7 +95,10 @@ export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: str
   RCS_FILE_WS_MAX_PAYLOAD_MB: { description: "file-ws 单帧最大载荷（MB）；须容纳远程上传的 base64 帧。" },
   RCS_DISABLE_SIGNUP: { description: "关闭前端自助注册：隐藏注册入口并拒绝新用户注册。" },
   RCS_DEFAULT_MACHINE_ID: { description: "默认远端执行节点 ID（mach_ 前缀）；agent config 未绑定 machineId 时使用。" },
-  RCS_DEFAULT_ENGINE_TYPE: { description: "本地执行的默认引擎类型；未设置时按 peri。" },
+  // 取值清单来自 `ENGINE_TYPES`（引擎槽位的唯一真相在 `services/config/types.ts`），不手抄，避免增删引擎时静默漂移。
+  RCS_DEFAULT_ENGINE_TYPE: {
+    description: `本地执行的默认引擎类型；可选：${ENGINE_TYPES.join("、")}；未设置时按 peri。`,
+  },
   RCS_DISABLE_LOCAL_EXECUTION: { description: "禁用 local-default 本地节点；true 后所有实例必须路由到远端 machine。" },
   RCS_REDIS_URL: { description: "Redis 连接串；未设置时缓存回退为进程内 Map。", secret: true },
   RCS_REDIS_PASSWORD: { description: "Redis 密码。", secret: true },
@@ -175,7 +184,7 @@ export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
   RCS_API_KEYS: {
     owner: DEPLOY_OWNER_MAIN_ENV,
     secret: true,
-    description: "应用必填；编排对该键没有兜底值，缺失即启动失败。",
+    description: "skill 下载令牌的签名密钥；编排缺省为本地下发值（公开值），生产必须覆盖为长随机值。",
   },
   REGISTRY_SECRET: {
     owner: DEPLOY_OWNER_MAIN_ENV,
@@ -245,8 +254,9 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
     overrides: {
       DATABASE_URL:
         "本地开发可用 `docker compose up -d postgres` 起的实例（库/用户/口令见仓库根 docker-compose.yml）；本模板不写连接串样例。",
-      RCS_API_KEYS: "本地开发任意非空串即可启动；生产必须是长随机值，且不得提交。",
+      RCS_API_KEYS: "未设置时用本地兜底值（公开值，只够本地跑起来）；生产必须是长随机值，且不得提交。",
       RCS_BASE_URL: "本地开发通常填 http://localhost:3000。",
+      RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
     },
     undeclared: APP_UNDECLARED,
   },
@@ -267,8 +277,10 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
     overrides: {
       DATABASE_URL:
         "容器部署时由编排的 `environment` 显式给出（`postgres://rcs:…@postgres:5432/rcs`，优先级高于本文件），本键只在绕过容器直跑源码时才需要。",
-      RCS_API_KEYS: "生产必须是长随机值（`openssl rand -hex 32`）；缺失或为空即启动失败，且不得提交。",
+      RCS_API_KEYS:
+        "生产必须是长随机值（`openssl rand -hex 32`）——编排的缺省值是公开的本地兜底值，不得带进生产；空串按校验失败处理，且不得提交。",
       RCS_BASE_URL: "填部署方可达的对外地址（如 https://agent.example.com）：影响生成的回链与 skill 下载链接。",
+      RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL:
         "docker 部署由 `./docker/deploy.sh` 在 init / up / deploy 时按主机名生成并固化（写入本文件、之后不再改动）；" +
         "独立部署须自行填部署方可控的邮箱，并登记为保留账号（见 docker/workflow/README.md §5）。",

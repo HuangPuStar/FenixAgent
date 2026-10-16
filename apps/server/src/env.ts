@@ -25,6 +25,14 @@ export function parseDatabaseConnectionPoolConfig(input: unknown = process.env):
 }
 
 /**
+ * 未设置 `RCS_API_KEYS` 时的本地开发兜底签名密钥，只为让零配置的本地实例起得来。
+ *
+ * **这是公开值**（写在源码里）：用它签发的 skill 下载令牌任何人都能伪造，生产必须覆盖为长随机值
+ * （`openssl rand -hex 32`）。dev 与生产两份编排给出同名兜底值，三处必须同值。
+ */
+export const LOCAL_DEV_API_KEY = "rcs-local-dev-signing-key";
+
+/**
  * 宿主进程自身运行参数的 env schema。
  *
  * **模块专属变量不在这里**：自 1.7 C 块起，有唯一模块 owner 的部署变量由该模块的 `fenix.module.ts` 经
@@ -45,7 +53,10 @@ export function parseDatabaseConnectionPoolConfig(input: unknown = process.env):
 const envSchema = databaseConnectionPoolSchema.extend({
   // ── 必填 ──
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  RCS_API_KEYS: z.string().min(1, "RCS_API_KEYS is required — used for skill download token HMAC signing"),
+  // 宿主 schema 里唯一带兜底值的键：本地零配置可起，生产由编排显式覆盖（见 CLAUDE.md「环境变量」）。
+  // 不给 `""` 做归一（不像 workflow-v2 的能力键）：容器传递路径写的是 `:-兜底值`，不会透传空串；
+  // 真写了空串就按校验失败暴露，而不是静默退回兜底值。
+  RCS_API_KEYS: z.string().min(1).default(LOCAL_DEV_API_KEY),
   RCS_SYSTEM_API_KEYS: z.string().optional(),
 
   // ── 可选：服务器 ──
