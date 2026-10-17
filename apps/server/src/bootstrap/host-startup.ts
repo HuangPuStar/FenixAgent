@@ -8,6 +8,7 @@ import {
   findModelLabelsByIds,
   getModelManagementModule,
 } from "@fenix/model-management/server";
+import type { BootstrapModulesOptions, ModuleManifest } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
@@ -87,6 +88,17 @@ function withShutdownDeadline<T>(promise: Promise<T>, phase: string, deadline: n
 }
 
 /**
+ * 嵌入方对装配步骤的覆盖：不传即默认行为（generatedModuleManifests + mountServerRouteContribution）。
+ * 「Identity 与 AccessControl 成套替换」等装配契约经此对宿主入口可达。
+ */
+export interface HostRuntimeAssemblyOverrides {
+  /** 替换装配输入的模块清单；缺省用 generatedModuleManifests。 */
+  readonly manifests?: readonly ModuleManifest[];
+  /** 替换路由贡献挂载实现；缺省用 mountServerRouteContribution。 */
+  readonly mountContribution?: BootstrapModulesOptions["mountContribution"];
+}
+
+/**
  * 按关键序列与启动后编排完成全部启动步骤。
  *
  * `agentRuntime` 来自 `wireHostRuntime()`；`profile` 来自 `resolveAssemblyEnv()`，与 `env` 同一次解析，
@@ -96,6 +108,7 @@ export async function startHostRuntime(
   env: ServerEnv,
   agentRuntime: AgentRuntimeHandles,
   profile: AssemblyProfile,
+  assemblyOverrides?: HostRuntimeAssemblyOverrides,
 ): Promise<void> {
   // 模型网关的运行时凭证解析器：在启动序列里解析后交给 agent-config 的启动参数组装器
   // （见下方 `createPreLaunchPorts` + 端口绑定）。W4b 删掉 agent-runtime 的旧解析器槽位后，
@@ -115,7 +128,11 @@ export async function startHostRuntime(
       //
       // 时机不变：模型网关与 builtin 都会查询资源授权，装配必须在业务资源初始化前完成；本步骤仍在关键
       // 启动序列内、`initDb` 之后（`getDatabase()` 此时可用）。
-      await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
+      await bootstrapServerAssembly({
+        profile,
+        manifests: assemblyOverrides?.manifests,
+        mountContribution: assemblyOverrides?.mountContribution ?? mountServerRouteContribution,
+      });
     },
     initModelGateway: async () => {
       registerConfiguredSandboxProviders();
