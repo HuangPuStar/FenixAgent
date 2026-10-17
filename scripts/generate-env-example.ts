@@ -12,8 +12,9 @@
  *
  * **两份应用面产出 + 一份部署面产出**：根 `.env.example`（本地开发）与 `docker/main/.env.example`（生产编排
  * 同目录的 env 模板）渲染应用声明面的全量键，各自追加场景注记与「该场景确有消费方、但尚未在声明面上」的键。
- * `docker/deploy.env.example` 渲染的是另一个面：`docker/deploy.sh` 的开关与编排的变量插值键（含基础服务凭据
- * 的去处），由生成器从 `docker/` 的目录与主服务 / common 编排发现，与应用声明面无键集包含关系。
+ * `docker/deploy.env.example` 渲染的是另一个面：只有 `docker/deploy.sh` 的开关。主服务的应用配置、密钥与
+ * 编排插值键（如端口）都不在此列，统一写进主服务自己的 `.env`。键集合由生成器从 `docker/` 的目录与主服务编排
+ * 发现，与应用声明面无键集包含关系。
  * 两条渲染不变量由 `scripts/__tests__/env-example-generator.test.ts` 守护：键行恒为注释行
  * （`HERMES_PLATFORMS` 一类键的空串与未设置语义不同，留成有效空行会改变行为）；密钥类键不写任何取值，连样例
  * 也不写。
@@ -25,8 +26,7 @@ import { z } from "zod/v4";
 import { generatedModuleManifests } from "../apps/generated/module-registry";
 import { parseEnv } from "../apps/server/src/env";
 import {
-  DEPLOY_KEY_NOTES,
-  DEPLOY_OWNER_MAIN_ENV,
+  DEPLOY_INTERPOLATION_KEYS,
   DEPLOY_OWNER_MAIN_SERVICES,
   DEPLOY_OWNER_ORDER,
   DEPLOY_OWNER_SWITCHES,
@@ -250,10 +250,11 @@ async function discoverDependencyDirs(): Promise<string[]> {
 }
 
 /**
- * 部署面条目：依赖开关（按目录发现）+ 主服务编排的可选服务开关 + 编排插值键（归属决定它写在哪份文件里）。
+ * 部署面条目：只有依赖开关（按目录发现）与主服务编排的可选服务开关。
  *
  * 发现始终相对仓库根——部署面就是本仓库的 docker/ 与 compose 文件，注入的 `repositoryRoot` 只影响产出写到哪。
- * 键集合两个方向都报错：编排新增键而注记表没写、注记表里的键已不在编排中，都在这里当场失败。
+ * 键集合两个方向都报错：编排新增键而登记表没写、登记表里的键已不在编排中，都在这里当场失败。
+ * 这些插值键都属于主服务自己的 env，只校验登记，不渲染进部署模板。
  */
 export async function collectDeployEntries(): Promise<EnvEntry[]> {
   const composeKeys = new Map<string, { required: boolean; defaultValue: string | undefined }>();
@@ -271,9 +272,15 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
     }
   }
 
-  const unknown = [...composeKeys.keys()].filter((key) => DEPLOY_KEY_NOTES[key] === undefined);
+  const unknown = [...composeKeys.keys()].filter((key) => !DEPLOY_INTERPOLATION_KEYS.includes(key));
   if (unknown.length > 0) {
-    throw new Error(`编排新增了未登记归属的部署键：${unknown.join("、")}；请在 DEPLOY_KEY_NOTES 补一行`);
+    throw new Error(
+      `编排新增了未登记的插值键：${unknown.join("、")}；请在 DEPLOY_INTERPOLATION_KEYS 补一行，取值写在该组件自己的 .env`,
+    );
+  }
+  const stale = DEPLOY_INTERPOLATION_KEYS.filter((key) => !composeKeys.has(key));
+  if (stale.length > 0) {
+    throw new Error(`插值键 ${stale.join("、")} 已不在主服务编排中：请从 DEPLOY_INTERPOLATION_KEYS 删除`);
   }
 
   const entries: EnvEntry[] = [];
@@ -308,25 +315,6 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
       description: item.description,
     });
   }
-  for (const key of Object.keys(DEPLOY_KEY_NOTES).sort()) {
-    const note = DEPLOY_KEY_NOTES[key];
-    const info = composeKeys.get(key);
-    if (note === undefined || info === undefined) {
-      throw new Error(`部署键 ${key} 已不在主服务编排中：请从 DEPLOY_KEY_NOTES 删除`);
-    }
-    entries.push({
-      key,
-      owner: note.owner,
-      required: info.required,
-      defaultValue: info.defaultValue,
-      multilineDefault: info.defaultValue?.includes("\n") === true,
-      secret: note.secret === true,
-      restartRequired: false,
-      description: note.description,
-      // 由主服务 env 提供的键在这份模板里只列键与去处：模板受版本控制，值不得抄进来。
-      hideValue: note.owner === DEPLOY_OWNER_MAIN_ENV,
-    });
-  }
   return entries;
 }
 
@@ -347,9 +335,8 @@ function renderEntry(entry: EnvEntry, note: string | undefined): string[] {
 
   const lines = [`# ${entry.key}｜${markers.join("｜")}`, `#   ${entry.description}`];
   if (note !== undefined) lines.push(`#   注：${note}`);
-  // 密钥键、多行默认值与「取值在别处」的键一律不写取值：前者受「不写样例密钥」约束，多行值写出来不可直接使用，
-  // 后者是受版本控制的模板不该承载的值（部署模板里由主服务 env 提供的键）。
-  const value = entry.secret || entry.multilineDefault || entry.hideValue === true ? "" : (entry.defaultValue ?? "");
+  // 密钥键与多行默认值不写取值：前者受「不写样例密钥」约束，多行值写出来不可直接使用。
+  const value = entry.secret || entry.multilineDefault ? "" : (entry.defaultValue ?? "");
   lines.push(`# ${entry.key}=${value}`);
   return lines;
 }
@@ -397,7 +384,7 @@ function compareOwners(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-/** 部署模板不按字典序，按部署者的阅读顺序：开关 → 主服务可选服务 → 部署参数 → 主服务 env 的键。 */
+/** 部署模板不按字典序，按部署者的阅读顺序：依赖开关 → 主服务可选服务。 */
 function compareDeployOwners(left: string, right: string): number {
   return DEPLOY_OWNER_ORDER.indexOf(left) - DEPLOY_OWNER_ORDER.indexOf(right);
 }

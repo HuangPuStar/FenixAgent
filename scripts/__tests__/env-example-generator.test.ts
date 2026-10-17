@@ -10,7 +10,7 @@ import {
   findEnvExampleDrift,
   generateEnvExamples,
 } from "../generate-env-example";
-import { ENV_TEMPLATES, MAIN_FEATURE_SWITCHES } from "../lib/env-example-spec";
+import { DEPLOY_INTERPOLATION_KEYS, ENV_TEMPLATES, MAIN_FEATURE_SWITCHES } from "../lib/env-example-spec";
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "../..");
 const tempRoot = await mkdtemp(join(tmpdir(), "env-example-"));
@@ -18,7 +18,7 @@ afterAll(async () => {
   await rm(tempRoot, { recursive: true, force: true });
 });
 
-/** 部署面模板：渲染 docker/deploy.sh 的开关与编排插值键，不覆盖应用声明面（覆盖断言只对应用面模板成立）。 */
+/** 部署面模板：只渲染 docker/deploy.sh 的开关，不覆盖应用声明面（覆盖断言只对应用面模板成立）。 */
 const DEPLOY_TEMPLATE_PATH = "docker/deploy.env.example";
 const APP_TEMPLATE_PATHS = ENV_TEMPLATES.filter((template) => template.surface !== "deploy").map(
   (template) => template.path,
@@ -60,7 +60,7 @@ test("各应用面模板覆盖宿主与全部模块声明的键", async () => {
 });
 
 // 两条渲染不变量：键行恒为注释行（复制模板不隐式生效取值），密钥键恒为空值（连样例都不写）。
-// 部署面模板只覆盖编排插值到的键，因此密钥断言对它是「列出即必须为空值」，覆盖率由应用面模板的用例保证。
+// 部署面模板只有开关，因此密钥断言对它是「列出即必须为空值」，覆盖率由应用面模板的用例保证。
 test("模板中所有键行都是注释行，且密钥键不写任何取值", async () => {
   const secrets = new Set(
     collectEnvEntries()
@@ -81,7 +81,7 @@ test("模板中所有键行都是注释行，且密钥键不写任何取值", as
   }
 });
 
-// 场景差异机制必须是活的：开发模板对应开发起点，生产模板对应部署起点，部署模板对应开关与各键的去处。
+// 场景差异机制必须是活的：开发模板对应开发起点，生产模板对应部署起点，部署模板只对应部署开关。
 test("三份产出各自保留场景差异", async () => {
   const templates = await generatedTemplates();
   const dev = templates.get(".env.example")?.text ?? "";
@@ -97,8 +97,11 @@ test("三份产出各自保留场景差异", async () => {
   expect(prod).not.toContain("FENIX_FEATURE_");
   expect(deploy).toContain("./docker/deploy.sh init");
   expect(deploy).toContain("# FENIX_FEATURE_");
-  expect(deploy).toContain("由主服务 env 提供");
   expect(deploy).not.toContain("#   注：本地开发");
+  // 主服务编排的插值键只写进组件自己的 .env，不进入部署模板。
+  for (const key of DEPLOY_INTERPOLATION_KEYS) {
+    expect({ key, rendered: deploy.includes(`# ${key}=`) }).toEqual({ key, rendered: false });
+  }
 });
 
 // 场景补充键（声明面之外、但确有消费方的键）必须真的落进模板，不能只写在生成器里。
@@ -128,6 +131,7 @@ test("声明面之外的键带消费方落进各份应用面模板", async () =>
   // 基础服务凭据的消费方是主服务编排本身，键落在主服务 env：两份应用面模板都要说清这一点。
   // 依赖目录各自自带的实例凭据（LITELLM_DB_PASSWORD / RAGFLOW_* / WORKFLOW_*）不在这里——
   // 它们写在各自目录的 .env（见该目录 .env.example），不占主服务 env 的键面。
+  // 只有 Compose 插值消费的键（端口等）不进应用面模板：模板的键面来自代码声明，按需手写进组件自己的 .env。
   for (const key of ["POSTGRES_PASSWORD"]) {
     expect({ key, inDev: dev.includes(`# ${key}=`), inProd: prod.includes(`# ${key}=`) }).toEqual({
       key,
@@ -137,9 +141,10 @@ test("声明面之外的键带消费方落进各份应用面模板", async () =>
   }
   expect(dev).toContain("消费方：docker-compose.yml（dev）、docker/main/docker-compose.yml（生产）");
 
-  // 部署模板只列键与去处：由主服务 env 提供的键不写取值（模板受版本控制）。
-  expect(deploy).toContain("# POSTGRES_PASSWORD=");
-  expect(deploy.split("\n").filter((line) => line.startsWith("# POSTGRES_PASSWORD=")).length).toBe(1);
+  // 部署模板只有开关：主服务 env 的键一律不出现。
+  for (const key of DEPLOY_INTERPOLATION_KEYS) {
+    expect({ key, inDeploy: deploy.includes(`# ${key}=`) }).toEqual({ key, inDeploy: false });
+  }
 });
 
 // 漂移门禁的三种判定：逐字节一致 → 静默；内容被手改 → 指向首个差异行；文件缺失 → 明确报缺失。

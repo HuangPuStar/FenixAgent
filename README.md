@@ -107,6 +107,7 @@ docker compose --profile litellm --profile ragflow up -d
 
 生产部署（目标机无需源码与 Dockerfile）改用生产编排 `docker/main/docker-compose.yml` 与一键入口 `./docker/deploy.sh deploy`：
 见[部署](docs/operations/deployment.md)与 [Docker 编排体系](docs/operations/docker-topology.md)（dev 与生产两份编排同项目名、同网络，二选一运行）。
+历史部署迁移与部署注意事项见 [docker/README.md](docker/README.md)。
 
 ### 本地开发
 

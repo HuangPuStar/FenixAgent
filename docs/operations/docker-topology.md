@@ -67,8 +67,8 @@
 ```text
 任意机器（只需 docker + compose ≥ 2.20 + bash）
   │
-  ├─ docker/deploy.env ─ feature 开关与部署参数（部署方维护，一份配置描述一台机器）
-  ├─ docker/main/.env ── 应用配置与密钥（与主服务编排同目录，不进版本控制）
+  ├─ docker/deploy.env ─ feature 开关（部署方维护，一份配置描述一台机器）
+  ├─ docker/main/.env ── 应用配置、密钥与主服务编排的插值变量（与主服务编排同目录，不进版本控制）
   │
   └─ ./docker/deploy.sh up
        ├─ 主服务项目：docker compose -f docker/main/docker-compose.yml [--profile redis] up -d
@@ -87,7 +87,7 @@
     ├── main/                   # 生产形态编排（无 build，只用发布镜像；内联 postgres / redis；env 为同目录 .env，数据落 main/ 下的同名目录）
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
-    ├── deploy.env / .example   # 部署配置（开关与参数，见 §7；.example 是生成物）
+    ├── deploy.env / .example   # 部署配置（只有开关，见 §7；.example 是生成物）
     ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
@@ -223,7 +223,7 @@ services:
   数据在交付面内，随目录整体搬迁/备份，不依赖 docker 全局卷。
 - 健康检查 `GET /health`；日志 `LOG_FORMAT: json`；`env_file` 指向**同目录**的 `.env`（两份编排都写 `.env`，
   都是 `required: false`）：compose 的项目目录即编排文件所在目录，所以「哪份编排就吃哪份 env」由文件位置决定。
-- 端口 `"${FENIX_HTTP_PORT:-3001}:3000"`。
+- 端口 `"${FENIX_HTTP_PORT:-3001}:3000"`；默认值在编排里，覆盖时写进同目录的 `.env`。
 
 ## 5. 基础服务与各栈自带的依赖实例
 
@@ -240,7 +240,8 @@ services:
 - `redis` 默认不发布宿主端口，仅网络内互通；`postgres` 的宿主端口由 `POSTGRES_PORT` 控制（本地源码开发需要，prod 可关）；
   而且**起 `redis` 不等于接上**：编排刻意不内联 `RCS_REDIS_URL`，要用缓存得在主服务 env 里写 `redis://redis:6379`。
 - 凭据（`POSTGRES_PASSWORD`）从主服务 env 读取（dev 仓库根 `.env`、生产 `docker/main/.env`）：默认值只服务本地、
-  生产必须替换；端口类键（`FENIX_HTTP_PORT` / `POSTGRES_PORT`）属部署参数，放 `docker/deploy.env`。
+  生产必须替换；端口类键（`FENIX_HTTP_PORT` / `POSTGRES_PORT`）是主服务编排自己的插值变量，默认值写在编排里，
+  需要修改时写进主服务 env，**不进** `docker/deploy.env`。
 - 数据 bind 到各自编排同级的 `./data/`（`./data/postgres`、`./data/redis`），**不用命名卷**：命名卷会落到 docker
   全局目录（`/var/lib/docker/volumes/...`），打包交付面时容易漏、也看不出归属。
 - 它们随主服务编排启动，插值环境就是该编排所在的项目：键取自该编排同目录的 `.env`（dev 自动加载仓库根 `.env`，
@@ -418,11 +419,10 @@ FENIX_FEATURE_PERI_FUSE=false
 
 # ── 主服务可选服务（随主服务项目启动，不对应目录）──
 FENIX_FEATURE_REDIS=false
-
-# ── 部署参数：有默认值，按部署形态修改 ──
-FENIX_HTTP_PORT=3001
-POSTGRES_PORT=5432
 ```
+
+端口等主服务编排自己的插值变量不在这里：默认值写在 `docker/main/docker-compose.yml`，需要修改时写进
+`docker/main/.env`，由 Compose 从项目目录自动读取。
 
 规则：
 
@@ -457,8 +457,8 @@ compose 的项目目录 = 该 compose 文件所在目录，变量插值与 `env_
 
 | 位置 | 作用域 | 模板（进版本控制） | 运行时文件 |
 | --- | --- | --- | --- |
-| `docker/deploy.env` | 部署开关与部署参数（端口等，主服务） | `docker/deploy.env.example` | `docker/deploy.env` |
-| `docker/main/.env` | 主服务（rcs）的应用配置与密钥 + 主服务**自带基础服务**的凭据（`POSTGRES_PASSWORD`）；也是主服务编排的插值来源 | `docker/main/.env.example` | `docker/main/.env` |
+| `docker/deploy.env` | 部署开关（依赖目录与主服务可选服务），不承载其它组件的取值 | `docker/deploy.env.example` | `docker/deploy.env` |
+| `docker/main/.env` | 主服务（rcs）的应用配置与密钥 + 主服务**自带基础服务**的凭据（`POSTGRES_PASSWORD`）；也是主服务编排的插值来源（含 `FENIX_HTTP_PORT` / `POSTGRES_PORT`） | `docker/main/.env.example` | `docker/main/.env` |
 | 根 `.env` | 只服务 dev 形态：根 `docker-compose.yml`（含它 include 的 `docker/dev/` 组件）与 `bun run dev`（Bun 自动读仓库根） | `.env.example` | `.env` |
 | `docker/<name>/.env` | 该依赖的私有键，含它**自带实例**的凭据（`LITELLM_DB_PASSWORD`、`WORKFLOW_MYSQL_*` 等） | `docker/<name>/.env.example` | 同目录 `.env` |
 
@@ -470,13 +470,13 @@ compose 注释里逐条注明生产必须覆盖。这一形态不适用于依赖
 三段式与 `${VAR:?}` 执行。
 
 dev 根文件**不在部署面 env 发现范围内**（`scripts/generate-env-example.ts` 的 `DEPLOY_SURFACE_FILES`）：
-它内联默认值、含组件专用键，「两份主服务编排的插值键必须一致」这一前提对它不再成立；
-移出后 dev 面新增、改名、删除键都不需要登记或重新生成。生产面（`docker/main/docker-compose.yml`）
-覆盖 `DEPLOY_KEY_NOTES` 的全量键，`docker/deploy.env.example` 的产出不受影响。
+它内联默认值、含组件专用键，不参与「两份主服务编排的插值键必须一致」的校验，新增、改名、删除键都不需要
+登记或重新生成。生产面（`docker/main/docker-compose.yml`）的插值键由 `DEPLOY_INTERPOLATION_KEYS` 登记，
+取值写进主服务 env；`docker/deploy.env.example` 只产出开关。
 
 `postgres` / `redis` 内联在主服务编排里、不设自己的 env 文件：插值由主服务那一次 `docker compose` 调用决定
 （dev 读仓库根 `.env`，生产读 `docker/main/.env`；经 `deploy.sh` 时由脚本把主服务 env 导出为 shell 环境），
-键只能来自主服务 env 与 `docker/deploy.env`（见 §5）。各依赖目录**自带的实例**（`docker/litellm/` 的
+键只能来自主服务 env（见 §5）。各依赖目录**自带的实例**（`docker/litellm/` 的
 `litellm-postgres`、`docker/ragflow/` 的 `ragflow-mysql` / `ragflow-rustfs`、`docker/workflow/` 的 `mysql` /
 `rustfs`）反过来都由它自己目录的 `.env` 插值：实例、凭据、消费方同处一个项目，键不跨目录读。
 
