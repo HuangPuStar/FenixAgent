@@ -23,6 +23,7 @@ import { DataView as HindsightDataView } from "../pages/hindsight/components/Dat
 import { DocumentsView } from "../pages/hindsight/components/DocumentsView";
 import { MemoryDetailModal } from "../pages/hindsight/components/MemoryDetailModal";
 import { MemoryDetailPanel } from "../pages/hindsight/components/MemoryDetailPanel";
+import { MentalModelsView } from "../pages/hindsight/components/MentalModelsView";
 import { MemoriesPage } from "../pages/hindsight/MemoriesPage";
 import type { MemoryTableRow } from "../pages/hindsight/types";
 
@@ -266,6 +267,42 @@ describe("hindsight 取数三态与竞态", () => {
     await settle();
 
     expect(loggedErrors.join(" ")).toContain("Error loading memory");
+  });
+
+  // Hindsight 在心理模型首次刷新完成前会返回 content: null（tags 也可能为 null）。
+  // 列表一有数据就走卡片渲染，读取 null.length 会让整个页面抛错；这里钉住空内容被折算成占位文案。
+  test("心理模型 content/tags 为 null 时仍渲染卡片并显示占位内容", async () => {
+    stubFetch();
+    captureConsoleError();
+    const container = render(createElement(MentalModelsView));
+
+    expect(requestUrls[0]).toContain("/web/hindsight/mental-models");
+
+    respond(
+      jsonResponse({
+        success: true,
+        data: {
+          items: [
+            {
+              id: "mm-1",
+              bank_id: "bank-1",
+              name: "团队沟通偏好",
+              source_query: null,
+              content: null,
+              tags: null,
+              max_tokens: 2048,
+              last_refreshed_at: null,
+              created_at: null,
+              is_stale: null,
+            },
+          ],
+        },
+      }),
+    );
+    await settle();
+
+    expect(container.textContent).toContain("团队沟通偏好");
+    expect(container.textContent).toContain("No content generated yet");
   });
 
   // 图谱取数失败要落成可见失败块 + 重试；观察类型的整合状态是辅助信息，图谱没数据时不该单独发请求

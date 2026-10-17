@@ -10,6 +10,7 @@ import type {
   MemoriesResponse,
   MemoryDetail,
   MentalModel,
+  MentalModelResponse,
   RecallResponse,
   ReflectResponse,
 } from "../pages/hindsight/types";
@@ -19,6 +20,20 @@ const BASE = "/web/hindsight";
 /** 复用前端公共请求边界，并将失败响应统一转换为 ApiError。 */
 async function apiRequest<T>(path: string, options?: Parameters<typeof request>[1]): Promise<T> {
   return unwrap(request<T>(`${BASE}${path}`, options));
+}
+
+/**
+ * 把上游心理模型折叠成视图模型：首次刷新完成前 `content` / `source_query` 为 `null`，
+ * `tags` 列也可空；渲染层按非空字符串 / 数组消费，避免在 map 中读 `null.length` 崩溃。
+ */
+function toMentalModel(raw: MentalModelResponse): MentalModel {
+  return {
+    ...raw,
+    source_query: raw.source_query ?? "",
+    content: raw.content ?? "",
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    max_tokens: raw.max_tokens ?? 0,
+  };
 }
 
 export const hindsightApi = {
@@ -111,10 +126,14 @@ export const hindsightApi = {
     apiRequest<{ items: DocumentChunk[] }>(`/documents/${encodeURIComponent(id)}/chunks`),
 
   /** 列出心理模型 */
-  listMentalModels: () => apiRequest<{ items: MentalModel[] }>("/mental-models"),
+  listMentalModels: async () => {
+    const res = await apiRequest<{ items: MentalModelResponse[] }>("/mental-models");
+    return { items: (Array.isArray(res.items) ? res.items : []).map(toMentalModel) };
+  },
 
   /** 获取单个心理模型详情 */
-  getMentalModel: (id: string) => apiRequest<MentalModel>(`/mental-models/${encodeURIComponent(id)}`),
+  getMentalModel: async (id: string) =>
+    toMentalModel(await apiRequest<MentalModelResponse>(`/mental-models/${encodeURIComponent(id)}`)),
 
   /** 删除心理模型 */
   deleteMentalModel: (id: string) =>

@@ -50,6 +50,7 @@
     "delete": "删除",
     "deleteConfirm": "确定要删除这个心理模型吗？",
     "lastRefreshed": "上次刷新",
+    "emptyContent": "尚未生成内容",
     "loadFailed": "加载心理模型失败",
     "deleteFailed": "删除失败",
     "retry": "重试"
