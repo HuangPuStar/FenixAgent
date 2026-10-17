@@ -14,6 +14,7 @@
 
 相关文档（不在此目录复述）：
 
+- 交付面运维入口、历史部署迁移与部署注意事项：`docker/README.md`（随交付面一起下发）
 - 部署结构、方式与拓扑：[Docker 部署架构与拓扑](../arch/26-deployment-topology.md)
 - 编排与可选集成的细节：[Docker 编排体系](./docker-topology.md)
 - DDL 迁移链异常的处置场景（生产冲突、迁移记录异常、历史 `db:push` 库基线化）：`drizzle/README.md`

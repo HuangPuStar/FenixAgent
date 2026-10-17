@@ -95,6 +95,9 @@ cd /opt/fenix/docker                        # 之后所有命令在交付面里�
 - `docker/sandbox-dsh/` 无发布镜像、构建上下文是仓库根，交付面里构建不了（见该目录 README）：不用它就让
   `FENIX_FEATURE_SANDBOX_DSH` 保持关闭。
 
+历史部署（`docker/prod/`、`deploy/compose/`、根编排当生产用）迁移到本套部署的完整流程、数据落点映射与
+OpenSandbox / 端口等部署注意事项见 `docker/README.md`。
+
 ## 3. 环境变量与三份模板
 
 | 文件 | 场景 | 说明 |
