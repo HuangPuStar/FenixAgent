@@ -58,10 +58,10 @@ const TICKET_EXPIRES_AT = 1_760_000_000_000;
 const REFRESHED_EXPIRES_AT = TICKET_EXPIRES_AT + 900_000;
 
 /** 每个用例可覆盖的两条路由：兑换与续期（其余端点行为固定）。 */
-let exchangeRoute: FetchRoute;
-let refreshRoute: FetchRoute;
+let exchangeRoute: FetchRoute | Promise<FetchRoute>;
+let refreshRoute: FetchRoute | Promise<FetchRoute>;
 
-function defaultRoute(call: FetchCall): FetchRoute {
+function defaultRoute(call: FetchCall): FetchRoute | Promise<FetchRoute> {
   if (call.url === "/web/workflow-v2/org-app") return webOk({ appId: "app-1", status: "active" });
   if (call.url === "/web/workflow-v2/platform-account") return webOk({ spaceId: "space-1", status: "active" });
   if (call.url === "/web/workflow-v2/iframe-code") return webOk({ code: "code-1", expiresIn: 60 });
@@ -159,6 +159,60 @@ describe("画布宿主页的握手时序", () => {
 
     expect(router.callsTo("iframe-code").length).toBe(1);
     expect(router.callsTo("/session/exchange").length).toBe(1);
+  });
+
+  // 首轮兑换未完成时画布的首批请求可能先 401 并请求换票：宿主必须等首轮链路落定，
+  // 由它自己下发 token 供画布重放，而不是把「暂时还没票」误判成会话已死。
+  test("refresh-request 在首轮兑换完成前到达时等待票据，不下发 signout", async () => {
+    let releaseExchange: (() => void) | undefined;
+    exchangeRoute = new Promise<FetchRoute>((resolve) => {
+      releaseExchange = () => resolve(upstreamOk({ ticket: "ticket-1", expiresAt: TICKET_EXPIRES_AT }));
+    });
+    await mount.render(page());
+    const iframe = frame(mount.container);
+    const sent = captureHostMessages(iframe);
+
+    await sendFromCanvasAsync(mount.flush, iframe, "ready", {});
+    await sendFromCanvasAsync(mount.flush, iframe, "refresh-request", { reason: "unauthorized" });
+
+    // 兑换仍在途：不得发 signout，也不得进入不可恢复的会话失效覆盖层
+    expect(sentTypes(sent)).toEqual([]);
+    expect(mount.container.textContent).not.toContain("canvas.state.sessionExpired.title");
+
+    releaseExchange?.();
+    await mount.flush();
+
+    // 首轮兑换成功后下发的就是这张票据；画布据此重放首批 401 的请求
+    expect(sentTypes(sent)).toEqual(["token"]);
+    expect(sent[0].payload).toEqual({
+      apiBase: CANVAS_API_BASE,
+      ticket: "ticket-1",
+      expiresAt: TICKET_EXPIRES_AT,
+    });
+    // 票据刚到手，不需要再续期一次
+    expect(router.callsTo("/session/refresh").length).toBe(0);
+  });
+
+  // 首轮兑换失败时，refresh-request 不得把可重试的 handshake-failed 覆盖成不可恢复的 session-expired。
+  test("refresh-request 在首轮兑换失败后保留可重试的握手失败态", async () => {
+    let failExchange: (() => void) | undefined;
+    exchangeRoute = new Promise<FetchRoute>((resolve) => {
+      failExchange = () => resolve(upstreamErr(500, "internal_error"));
+    });
+    await mount.render(page());
+    const iframe = frame(mount.container);
+    const sent = captureHostMessages(iframe);
+
+    await sendFromCanvasAsync(mount.flush, iframe, "ready", {});
+    await sendFromCanvasAsync(mount.flush, iframe, "refresh-request", { reason: "unauthorized" });
+
+    failExchange?.();
+    await mount.flush();
+
+    // 不向画布发 signout：失败由握手的失败态收口，用户仍有重试入口
+    expect(sentTypes(sent)).toEqual([]);
+    expect(mount.container.textContent).toContain("canvas.state.handshakeFailed.title");
+    expect(mount.container.textContent).not.toContain("canvas.state.sessionExpired.title");
   });
 
   // 续期：refresh-request → 宿主用**自己持有的票据**调 session/refresh → 新 token 下发（冻结 §7）。
