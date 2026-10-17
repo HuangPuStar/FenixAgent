@@ -9,6 +9,10 @@
 // 「释放已消费段」未落地，移除条件 = 出现「构建与释放时间重叠」的调用方时补段级释放 API）；配额账目只在
 // 进程内，跨进程的「同 scope 唯一恢复任务位置」由上层协调器保证（§5.1.1）；段文件删除失败不改变「任务已
 // 释放」的结论——残留不占额度、由 cleanupOrphans（§9.4 启动清理）兜底，清理阶段的次生失败刻意不上抛。
+//
+// 释放与读取不得重叠（调用方责任）：释放是终止性的——`completeTask`/`failTask` 之后任何 `readRange` 都以
+// `RESOURCE_RETIRED` 失败（刻意不返回空字节，否则上层会把缺口当合法内容）。调用方必须先让所有在飞读取结算
+// 再释放（见 import-service.ts / build-dispatch.ts 的失败路径）。
 
 import type { FileHandle } from "node:fs/promises";
 import { mkdir, open, readdir, rm, writeFile } from "node:fs/promises";

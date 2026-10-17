@@ -90,9 +90,12 @@ export interface SyncGenerationRecord {
  * 一个 Doc 的持久记录。同一 `docId` 的已提交字节不可覆盖：`hash` 是判定键，
  * `putSealedIfAbsent` 依据它区分 `already-committed` 与 `conflict`。
  *
- * `baseSeq` 是基线快照对应的应用层序号；`finalSeq` 仅封口后非空；`blockIndex` /
- * `ordinalStart` / `ordinalEnd` 只对内容块 Doc 有值；`dependsOn` 上限见
- * `inputs.dependsOnMax`（8）。
+ * `baseSeq` 是基线快照对应的应用层序号；`blockIndex` / `ordinalStart` / `ordinalEnd` 只对内容块 Doc
+ * 有值；`dependsOn` 上限见 `inputs.dependsOnMax`（8）。
+ *
+ * `state` 与 `finalSeq` 一同表达可写性：`active` 是唯一可追加的取值；路由事务登记 successor 时把前驱推进
+ * 到 `sealing` 并钉死 `finalSeq`（设计 §7 第 2 步），此后追加一律被拒；`sealed` 是封口事务的终态。
+ * 因此 `finalSeq` 自 `sealing` 起非空，封口只是把状态推到终态、不改变这个序号。
  */
 export interface SyncDocRecord {
   scopeKey: string;
@@ -440,6 +443,9 @@ export interface ProjectionStore {
    * 登记封口路由：`predecessorDocId` 的唯一 `successorDocId` 与预期终点 `expectedLastSeq`。
    * 幂等键 `predecessorDocId`：同键同参 → `already-committed`，异参 → `conflict`（一个 successor 只能有一个，
    * 重复登记不同后继必须失败，否则重启后会按错误路由选写入入口）。
+   *
+   * 同一提交把前驱推进到 `sealing` 并钉死 `finalSeq = expectedLastSeq`（设计 §7 第 2 步），这是
+   * 「停止旧 Doc 新写入」的唯一承载物：提交后该 Doc 的追加一律被拒，前沿不再越过登记的截止序号。
    */
   registerSuccessor(input: RegisterSuccessorInput): Promise<RegistrationResult>;
 
@@ -458,9 +464,9 @@ export interface ProjectionStore {
   putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult>;
 
   /**
-   * 封口 active 文档：校验 epoch、`expectedLastSeq` 等于当前前沿、`successorDocId` 已登记为唯一后继，
-   * 通过则原子写 `sealed`/`finalSeq`、登记目录条目与 manifest 变更，并递增 `pointerRevision`
-   * （仅当 `manifestChange.pointerRevision` 未给出时由存储递增）。
+   * 封口处于 `active` 或 `sealing` 的文档：校验 epoch、`expectedLastSeq` 等于当前前沿、`successorDocId`
+   * 已登记为唯一后继，通过则原子写 `sealed`/`finalSeq`、登记目录条目与 manifest 变更，并递增 `pointerRevision`
+   * （仅当 `manifestChange.pointerRevision` 未给出时由存储递增；`sealing` → `sealed` 是设计 §7 第 4 步的常规路径）。
    * 重复提交同 `(docId, finalHash)` → `already-committed`，异摘要 → `conflict`；无法确认 → `unknown`。
    */
   sealDoc(input: SealDocInput): Promise<SealDocResult>;

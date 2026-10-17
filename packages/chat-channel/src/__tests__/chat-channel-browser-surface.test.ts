@@ -268,6 +268,47 @@ describe("chat-channel 根入口浏览器可达面", () => {
     const pkg = JSON.parse(readFileSync(join(PKG_SRC, "../package.json"), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    expect(Object.keys(pkg.exports).sort()).toEqual([".", "./server"]);
+    // `./sync-client` 是消息同步协议 F 阶段新增的浏览器安全出口（设计 2026-10-16 §8.6），不是恢复旧聊天出口：
+    // 它只导出无 node 依赖的 client 子集，旧路径（`./web` 等）的撤除结论仍由本断言的精确清单守住。
+    expect(Object.keys(pkg.exports).sort()).toEqual([".", "./server", "./sync-client"]);
+  });
+});
+
+// 守护 sync-client 子路径（消息同步协议 F 阶段，设计 2026-10-16 §8.6）：该出口专供浏览器消费，
+// 因此其值导入闭包不得出现 node 内建、fs、process、Buffer 或 ioredis 一类服务端依赖。
+// 一旦有人把 live/provider 这类依赖 node:fs 的模块拉进 client barrel，本测试立即失败——
+// Bun 环境里 node 内建存在，构建期也不报错，静态走图是唯一防线。
+// G 阶段 W4 起 `client/transport.ts` 进入该闭包：它按规格 §2.5 取 `capacity/profile.ts` 的 `CLIENT_BUDGET`
+// 作为接收队列与调度预算的单一来源，并用 `protocol/frames.ts` 解码——因此两者必须是浏览器安全的纯逻辑模块
+// （profile 只依赖 protocol/errors，frames 另引入 zod/v4；zod 是浏览器可用依赖，故外依赖白名单同步加一项）。
+const SYNC_CLIENT_ENTRY = join(PKG_SRC, "sync/client/index.ts");
+
+describe("sync-client 子路径浏览器可达面", () => {
+  const graph = walkValueGraph(SYNC_CLIENT_ENTRY);
+  const relFiles = graph.files.map((file) => relative(PKG_SRC, file)).sort();
+
+  test("不触及 node 内建与 ioredis 的运行时导入", () => {
+    const offenders = graph.externals.filter(
+      (entry) => entry.specifier.startsWith("node:") || entry.specifier === "ioredis",
+    );
+    expect(offenders.map((entry) => `${relative(PKG_SRC, entry.file)} → ${entry.specifier}`)).toEqual([]);
+  });
+
+  test("包外运行时依赖只有 yjs 与帧 schema 的 zod", () => {
+    const externals = [...new Set(graph.externals.map((entry) => entry.specifier))].sort();
+    expect(externals).toEqual(["yjs", "zod/v4"]);
+  });
+
+  test("值导入闭包只含 client 自身、protocol 的纯逻辑模块与 capacity 预算表", () => {
+    expect(relFiles).toEqual([
+      "sync/capacity/profile.ts",
+      "sync/client/apply-queue.ts",
+      "sync/client/doc-hub.ts",
+      "sync/client/index.ts",
+      "sync/client/transport.ts",
+      "sync/protocol/errors.ts",
+      "sync/protocol/frames.ts",
+      "sync/protocol/identity.ts",
+    ]);
   });
 });

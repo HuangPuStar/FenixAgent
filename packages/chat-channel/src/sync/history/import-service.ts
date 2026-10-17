@@ -4,6 +4,10 @@
 // 导入尝试是一次性的：失败后必须释放本次 load 的资源，重试由调用方重新调用 begin，取得新的
 // loadId/generation，避免把带洞的暂存流继续追加到旧目录。存储只通过 ProjectionStore 的已提交
 // 读取出口回答完整性；本服务不缓存「可能已经提交」的事实。
+//
+// 构建阶段的次序由 `BlockDispatcher` 承担（有界在飞窗口、一组多块的续建、失败先结清在飞任务再抛出）：
+// 本服务只负责把块的字节与元数据装配成构建入参、把提交结局折算成台账。三条不变式与缺陷记录见
+// build-dispatch.ts 文件头与 `.peri/plans/chat-sync-runtime-profile-result.md` §4。
 
 import type { AdmissionController } from "../capacity/admission";
 import type { SyncCapacityProfile } from "../capacity/profile";
@@ -11,7 +15,6 @@ import type { Clock, DigestFn, RandomSource } from "../clock";
 import { asSyncProtocolError, type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { createGenerationId, createLoadId, type SyncScope, scopeKey } from "../protocol/identity";
 import type {
-  CommitGenerationResult,
   CommitOutcome,
   GenerationEntryRefs,
   ProjectionStore,
@@ -24,6 +27,7 @@ import {
   type BuiltBlock,
   buildContentBlock,
 } from "./block-builder";
+import { BlockDispatcher } from "./build-dispatch";
 import type { BlockBuildPool } from "./build-pool";
 import { HistoryCommitter } from "./committer";
 import { HistoryIngest, type HistoryRecordMeta, type IngestedRecord } from "./ingest";
@@ -233,8 +237,9 @@ export class HistoryImportService {
         digest: this.digest,
       });
       const blocks = this.makeBlockInputs(attempt);
-      const pending = blocks.map((records, index) => this.submitBlock(attempt, committer, records, index));
-      await Promise.all(pending);
+      const dispatcher = this.makeDispatcher(attempt, committer);
+      await dispatcher.dispatch(blocks);
+      attempt.committedBlocks = dispatcher.committedBlocks();
       await this.pool.drain();
       const directory = await committer.listDirectory(this.capacity.inputs.directoryMaxRefs);
       attempt.committedBlocks = directory.blocks.length;
@@ -325,12 +330,38 @@ export class HistoryImportService {
     return this.attempt;
   }
 
-  private incomplete(message: string): SyncProtocolError {
+  private incomplete(message: string, cause?: unknown): SyncProtocolError {
     const attempt = this.attempt;
     return new SyncProtocolError("IMPORT_INCOMPLETE", {
       message,
+      ...(cause === undefined ? {} : { cause }),
       safeContext: attempt === null ? {} : { scope: attempt.scopeKey, generation: attempt.generation },
     });
+  }
+
+  /** 装配本组载荷字节与构建入参（块序号与在飞窗口由分派器决定），提交结局折算成已提交块数。 */
+  private makeDispatcher(attempt: ImportAttempt, committer: HistoryCommitter): BlockDispatcher {
+    return new BlockDispatcher(
+      this.pool,
+      {
+        source: { readRecord: (sourceOrdinal) => attempt.ingest.readRecord(sourceOrdinal) },
+        buildBlock: ({ blockIndex, records }) =>
+          this.buildBlock({
+            generation: attempt.generation,
+            blockIndex,
+            records: [...records],
+            targetPayloadBytes: this.capacity.inputs.historyBlockTargetPayloadBytes,
+            hardLimitBytes: this.capacity.inputs.historyBlockHardBytes,
+            rand: this.rand,
+            digest: this.digest,
+          }),
+        commitBlock: async (block) => {
+          const result = await committer.commitBlock(block);
+          return result.outcome;
+        },
+      },
+      { scope: attempt.scopeKey, generation: attempt.generation },
+    );
   }
 
   private makeBlockInputs(attempt: ImportAttempt): BlockRecordInput[][] {
@@ -365,41 +396,6 @@ export class HistoryImportService {
       result.push(current);
     }
     return result;
-  }
-
-  private submitBlock(
-    attempt: ImportAttempt,
-    committer: HistoryCommitter,
-    records: BlockRecordInput[],
-    blockIndex: number,
-  ): Promise<void> {
-    const estimateBytes = Math.max(
-      1,
-      records.reduce((sum, record) => sum + record.payload.byteLength, 0),
-    );
-    return this.pool.submit({
-      estimateBytes,
-      run: async (): Promise<void> => {
-        const materialized: BlockRecordInput[] = [];
-        for (const record of records) {
-          const payload = await attempt.ingest.readRecord(record.sourceOrdinal);
-          materialized.push({ ...record, payload });
-        }
-        const block = this.buildBlock({
-          generation: attempt.generation,
-          blockIndex,
-          records: materialized,
-          targetPayloadBytes: this.capacity.inputs.historyBlockTargetPayloadBytes,
-          hardLimitBytes: this.capacity.inputs.historyBlockHardBytes,
-          rand: this.rand,
-          digest: this.digest,
-        });
-        const result = await committer.commitBlock(block);
-        if (result.outcome === "committed" || result.outcome === "already-committed") {
-          attempt.committedBlocks += 1;
-        }
-      },
-    });
   }
 
   private assertComplete(

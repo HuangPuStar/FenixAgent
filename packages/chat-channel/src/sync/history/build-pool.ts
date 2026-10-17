@@ -10,6 +10,12 @@
 // 若等调度到才预留，队列长度就成了一道没有内存上限的掩体（设计 §5.2 第 1 条）。
 // 因此队列同时受 `maxQueued` 与池额度双重约束，队列满时**同步**抛错、不创建 Promise（禁止 20,000 个 Promise）。
 //
+// 两个提交入口，容量语义完全相同（`maxConcurrent` / `maxQueued` 都是硬上限），差别只在队列满时怎么办：
+//   `submit` 同步拒绝（`CAPACITY_EXCEEDED`）——给无法等待的调用方，绝不静默丢弃；
+//   `submitAwaitingCapacity` 等到有空位再提交——给必须让提交速率受消费者约束的批量生产者（历史导入的
+//   20,000 对象导入有 700+ 块，一次性提交必然撞满 4 格队列；等待的提交不被池接纳，不占额度与队列槽位，
+//   也不计入 `drain()` 的等待集合）。
+//
 // 失败语义（两种拒绝互不混淆）：池内排队容量耗尽 = `CAPACITY_EXCEEDED`；单任务字节数超出池额度 =
 // `ADMISSION_REJECTED`（由 `AdmissionController` 裁决，含非正整数）。两者都在建 Promise 之前同步抛出。
 
@@ -123,6 +129,8 @@ export class BlockBuildPool {
   /** FIFO 队列：非空即并发已满，槽位一空就按提交顺序填充，避免小任务持续插队饿死后排。 */
   private readonly queue: QueuedJob[] = [];
   private readonly drainWaiters: (() => void)[] = [];
+  /** `submitAwaitingCapacity` 的容量等待者；空位一出现就全部唤醒，各自重查后仍无空位的重新排队。 */
+  private readonly capacityWaiters: (() => void)[] = [];
   private running = 0;
   private completed = 0;
   private failed = 0;
@@ -163,6 +171,26 @@ export class BlockBuildPool {
     return gate.promise;
   }
 
+  /** 池的并发 worker 数：批量生产者据此约束自己的在飞窗口，使提交速率由消费者决定（容量上限不变）。 */
+  workerCount(): number {
+    return this.config.maxConcurrent;
+  }
+
+  /**
+   * 可等待的背压提交：队列满（无空闲 worker 且队列已满）时等待空位，而不是拒绝。
+   *
+   * 等待不改变容量语义——`maxConcurrent` / `maxQueued` 仍是硬上限，池不会因此多跑一个任务，只是把压力
+   * 回传给生产者。等不到空位时（例如某个 `run` 永不结算）本方法也永不返回，与 `drain()` 同一口径：
+   * 超时是调用方的职责，池不代替它猜测。额度拒绝与 `submit` 一样是显式失败：单任务自身超预算无法靠等待解决。
+   */
+  async submitAwaitingCapacity<T>(task: { estimateBytes: number; run: () => Promise<T> }): Promise<T> {
+    while (!this.hasCapacity()) {
+      await this.waitForCapacity();
+    }
+    // 检查与提交之间没有 await：单线程下这条路径与 `submit` 的队列检查是同一个判据，不会被自己绕过。
+    return this.submit(task);
+  }
+
   /** 当前计数快照：返回值是独立对象，调用方改写不影响池内状态。 */
   stats(): BuildPoolStats {
     return { running: this.running, queued: this.queue.length, completed: this.completed, failed: this.failed };
@@ -199,7 +227,7 @@ export class BlockBuildPool {
     );
   }
 
-  /** 结算：归还额度、更新计数、填充槽位、必要时唤醒 drain。 */
+  /** 结算：归还额度、更新计数、填充槽位、必要时唤醒 drain 与容量等待者。 */
   private finishJob(job: QueuedJob, failed: boolean): void {
     this.running -= 1;
     // 先归还额度再通知调用方：调用方的续体里立刻提交下一块时，不应看到自己刚释放的额度仍被占用。
@@ -210,9 +238,29 @@ export class BlockBuildPool {
       this.completed += 1;
     }
     this.pump();
+    // 唤醒放在 pump 之后：空位可能在 pump 之后才存在，唤醒者各自的 `hasCapacity()` 复查因此看到真实状态。
+    this.flushCapacityWaiters();
     // 空闲判定放在 pump 之后：pump 可能已接收排队任务，此时池并不空闲。
     if (this.running === 0 && this.queue.length === 0) {
       this.flushDrainWaiters();
+    }
+  }
+
+  /** 是否有空位接纳新任务：与 `submit` 的队列检查同一判据，两处不得各写一份。 */
+  private hasCapacity(): boolean {
+    return this.running < this.config.maxConcurrent || this.queue.length < this.config.maxQueued;
+  }
+
+  /** 等待一次容量变化；唤醒是「全部唤醒 + 各自重查」，避免为每个空位维护一对一唤醒链。 */
+  private waitForCapacity(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.capacityWaiters.push(resolve);
+    });
+  }
+
+  private flushCapacityWaiters(): void {
+    for (const resolve of this.capacityWaiters.splice(0, this.capacityWaiters.length)) {
+      resolve();
     }
   }
 

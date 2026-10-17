@@ -159,6 +159,13 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       successorDocId: input.successorDocId,
       expectedLastSeq: input.expectedLastSeq,
     });
+    // 设计 §7 第 2 步：路由登记的同一事务把前驱钉到 `sealing(finalSeq)`，停止旧 Doc 新写入——本事务成功后
+    // `appendUpdates` 的 `state !== "active"` 判定即拒绝任何续写，前沿不可能再越过这里登记的截止序号。
+    // 已是 `sealed` 的 Doc 不降级：`putSealedIfAbsent` 落地的谱系没有路由，重复登记不得把它退回可写态。
+    if (predecessor.state === "active") {
+      predecessor.state = "sealing";
+      predecessor.finalSeq = input.expectedLastSeq;
+    }
     return { outcome: "committed" };
   }
 
@@ -178,7 +185,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     for (const update of input.updates) {
       const doc = this.assertWritableDoc(input.scopeKey, update.docId);
       if (!expected.has(update.docId)) fail("SEQUENCE_GAP", "missing expected frontier");
-      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealed document cannot receive updates");
+      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealing or sealed document cannot receive updates");
       const list = grouped.get(update.docId) ?? [];
       list.push(update);
       grouped.set(update.docId, list);
@@ -186,7 +193,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     const frontiers: { docId: string; lastSeq: number }[] = [];
     for (const frontier of input.expectedFrontiers) {
       const doc = this.assertWritableDoc(input.scopeKey, frontier.docId);
-      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealed document cannot receive updates");
+      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealing or sealed document cannot receive updates");
       if (doc.lastSeq !== frontier.lastSeq) fail("SEQUENCE_GAP", "document frontier is stale");
       let next = doc.lastSeq + 1;
       for (const update of grouped.get(doc.docId) ?? []) {
@@ -269,7 +276,8 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
         ? { outcome: "already-committed", finalSeq: doc.finalSeq! }
         : { outcome: "conflict", finalSeq: doc.finalSeq! };
     this.assertWritableDoc(input.scopeKey, input.docId);
-    if (doc.state !== "active") fail("RESOURCE_RETIRED", "document cannot be sealed");
+    // `sealing` 是路由登记留下的中间态（`registerSuccessor`）：第 4 步正是把该状态推到 `sealed`。
+    if (doc.state !== "active" && doc.state !== "sealing") fail("RESOURCE_RETIRED", "document cannot be sealed");
     const route = this.successors.get(compositeKey(input.scopeKey, input.docId));
     if (route === undefined) fail("MALFORMED_FRAME", "successor not registered");
     if (
