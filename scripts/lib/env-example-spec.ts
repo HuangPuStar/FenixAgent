@@ -186,6 +186,11 @@ export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
     secret: true,
     description: "skill 下载令牌的签名密钥；编排缺省为本地下发值（公开值），生产必须覆盖为长随机值。",
   },
+  RCS_BASE_URL: {
+    owner: DEPLOY_OWNER_MAIN_ENV,
+    description:
+      "服务公开基址（生成回链与 skill 下载链接）；编排缺省 http://localhost:3000，跨机/公网部署改为实际可达地址。",
+  },
   REGISTRY_SECRET: {
     owner: DEPLOY_OWNER_MAIN_ENV,
     secret: true,
