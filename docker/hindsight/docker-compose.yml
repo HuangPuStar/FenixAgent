@@ -21,10 +21,9 @@ services:
         networks:
             - fenix-server
         ports:
-            # API（= 平台 HINDSIGHT_MCP_URL 指向的端口，REST 路径为 /v1/default/banks/**）与控制台：
-            # 都只绑回环，容器之间走 fenix-server 的 8888。
-            - "127.0.0.1:${HINDSIGHT_API_HOST_PORT:-8888}:8888"
-            - "127.0.0.1:${HINDSIGHT_CP_HOST_PORT:-9999}:9999"
+            # 要给外部沙盒访问，所以要放开
+            - "${HINDSIGHT_API_HOST_PORT:-8888}:8888"
+            - "${HINDSIGHT_CP_HOST_PORT:-9999}:9999"
         environment:
             # LLM: 阿里云百炼（OpenAI 兼容格式）
             HINDSIGHT_API_LLM_PROVIDER: openai

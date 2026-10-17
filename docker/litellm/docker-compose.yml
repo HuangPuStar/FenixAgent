@@ -59,8 +59,8 @@ services:
         networks:
             - fenix-server
         ports:
-            # 只绑回环：宿主上的 curl 与浏览器控制台用；平台容器走 fenix-server 内的 4000
-            - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+            # 要给外部沙盒访问，所以要放开
+            - "${LITELLM_PORT:-4000}:4000"
         environment:
             # 容器内地址写显式值（不插值同名宿主键，契约 §8.4）：litellm-postgres 是本文件的服务名，
             # 库名/角色名与上面写死的一致。
@@ -76,6 +76,9 @@ services:
             SERVER_ROOT_PATH: "/litellm"
             UI_USERNAME: admin
             UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin}
+        volumes:
+            - ./litellm-config.yaml:/app/config.yaml:ro
+        command: ["--config", "/app/config.yaml", "--port", "4000"]
 
 networks:
     fenix-server:
