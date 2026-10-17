@@ -13,7 +13,7 @@
 
 import { extname } from "node:path";
 import { createLogger, requestAls } from "@fenix/logger";
-import { ValidationError } from "elysia";
+import { ElysiaCustomStatusResponse, ValidationError } from "elysia";
 
 const logger = createLogger("http");
 
@@ -83,7 +83,7 @@ export function logRequest({ request }: { request: Request }) {
   }
 }
 
-/** 请求结束日志。挂到主 app 的 onAfterResponse 上，以读取最终 HTTP 状态码。 */
+/** 请求结束日志。挂在主 app 的 `onAfterHandle` 上（错误响应由 errorPlugin 自行记录）。 */
 export function logResponse({
   request,
   set,
@@ -124,16 +124,17 @@ export function logResponse({
 
 /**
  * 从统一响应日志层解析最终状态码。
- * Elysia 会在 afterHandle 之后才把 custom status response 映射到 `set.status`，
- * 因此必须在 afterResponse 阶段读取，避免把实际 4xx/5xx 记录为 200。
+ *
+ * `logResponse` 挂在 `onAfterHandle`：此时 Elysia 尚未把处理器返回值的状态映射到 `set.status`（仍是默认
+ * 的 200），真实状态只存在于返回值上——`status(code, body)` 的容器（`ElysiaCustomStatusResponse`）与
+ * 原生 `Response`。因此必须先读返回值，再回退到显式设置的 `set.status`，否则这些 4xx/5xx 会被记成 200。
  */
-function resolveResponseStatus(setStatus: number | string | undefined, responseValue: unknown): number {
-  if (typeof setStatus === "number") return setStatus;
-  if (responseValue instanceof Response) return responseValue.status;
-  if (typeof responseValue === "object" && responseValue !== null && "code" in responseValue) {
-    const customStatus = responseValue.code;
-    if (typeof customStatus === "number") return customStatus;
+export function resolveResponseStatus(setStatus: number | string | undefined, responseValue: unknown): number {
+  if (responseValue instanceof ElysiaCustomStatusResponse && typeof responseValue.code === "number") {
+    return responseValue.code;
   }
+  if (responseValue instanceof Response) return responseValue.status;
+  if (typeof setStatus === "number") return setStatus;
   return 200;
 }
 

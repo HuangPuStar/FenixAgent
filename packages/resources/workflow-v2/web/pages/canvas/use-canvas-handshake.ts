@@ -123,9 +123,22 @@ export function useCanvasHandshake(options: CanvasHandshakeOptions): CanvasHands
     }
   }, [upstreamWorkflowId, deliverToken]);
 
-  /** 续期：换新票后立刻下发 token（画布正在等它，最长 10s）。 */
+  /**
+   * 续期：换新票后立刻下发 token（画布正在等它，最长 10s）。
+   *
+   * 首轮 `issue → exchange` 在途时不能把「暂时还没有票」当作「会话已死」：画布的首批请求可能在兑换
+   * 完成前先拿到 401 并发出 `refresh-request`。此时等首轮链路落定即可——成功时它自己下发的 token 就是
+   * 画布等待的那张票（画布据此重放首批请求）；失败时保留 `handshake-failed` 的可重试出口，不覆写成
+   * 不可恢复的 `session-expired`。
+   */
   const runRefresh = useCallback(async () => {
     const generation = generationRef.current;
+    const pending = handshakeRef.current;
+    if (pending !== null) {
+      // 落定后无需再发消息：成功由首轮链路自己下发 token，失败由它展示可重试的失败态。
+      await pending;
+      return;
+    }
     const current = ticketRef.current;
     if (current === null) {
       expireSession();
