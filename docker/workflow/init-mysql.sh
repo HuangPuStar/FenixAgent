@@ -62,7 +62,7 @@ if ! mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e 'SELECT 1' >
 fi
 
 echo '④ 应用上游 schema.sql（库表结构；Atlas 收敛由 atlas-init 随后执行）...'
-mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" < /schema.sql
+mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /schema.sql
 
 if ! mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" \
   -e "SHOW TABLES LIKE 'workflow_version';" 2>/dev/null | grep -q workflow_version; then

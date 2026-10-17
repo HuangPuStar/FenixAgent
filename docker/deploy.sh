@@ -329,6 +329,35 @@ compose_dep() {
     run docker compose -f "$SCRIPT_DIR/$name/docker-compose.yml" "$@"
 }
 
+# rustfs 数据目录的属主准备（up / deploy 启动前）。
+#
+# 为什么需要：rustfs 镜像以 uid/gid `10001` 运行，且**自身不做 chown**（postgres / mysql 镜像的 entrypoint
+# 会 chown 自己的数据目录，rustfs 不会）。bind 目录由 compose 以 root 创建、或数据由 root 拷贝/rsync 而来时，
+# 容器会以 `[FATAL] Io error: Permission denied (os error 13)` 反复重启，错误信息里看不出是属主问题（实测）。
+# 只处理本次要启动的依赖：`WORKFLOW` → 本栈自带的 docker/workflow/data/rustfs；`RAGFLOW` → 自带的
+# docker/ragflow/data/rustfs（共享实例退役后，对象存储已回到各栈自带，见 docker-topology.md §5）。
+# 只改**顶层目录**属主：rustfs 在挂载点下自建的子项天然归 10001；若数据是在别处以 root 递归拷贝来的，
+# 需 `chown -R`（脚本不替部署方递归改写既有数据，只给命令）。非 root 运行时无法 chown，改为告警提示。
+prepare_data_dirs() {
+    local dirs=() dir current
+    if feature_enabled WORKFLOW; then dirs+=("$SCRIPT_DIR/workflow/data/rustfs"); fi
+    if feature_enabled RAGFLOW; then dirs+=("$SCRIPT_DIR/ragflow/data/rustfs"); fi
+    [[ ${#dirs[@]} -gt 0 ]] || return 0
+    for dir in "${dirs[@]}"; do
+        [[ -d "$dir" ]] || mkdir -p "$dir"
+        current="$(stat -c '%u:%g' "$dir" 2>/dev/null || echo unknown)"
+        [[ "$current" == "10001:10001" ]] && continue
+        if [[ "$(id -u)" == "0" ]]; then
+            log "准备 rustfs 数据目录属主 10001:10001：${dir#"$REPO_ROOT"/}"
+            chown 10001:10001 "$dir" ||
+                die "chown 10001:10001 失败：${dir#"$REPO_ROOT"/}（rustfs 以 10001 运行，属主不对会 Permission denied 重启）"
+        else
+            warn "rustfs 数据目录 ${dir#"$REPO_ROOT"/} 属主为 ${current}，需 10001:10001；当前非 root，无法自动处理，请执行："
+            warn "  sudo chown -R 10001:10001 ${dir#"$REPO_ROOT"/}"
+        fi
+    done
+}
+
 cmd_up() {
     local profiles="" name
     # 干跑（config）不拦必填项：审计「将要执行什么」不应依赖配置是否已填齐。
@@ -340,6 +369,12 @@ cmd_up() {
     # 只剩 redis 一个：postgres 恒启动，S3 / MYSQL 两个开关已退役——对它们的依赖改由各组件自带实例
     # （docker/workflow/、docker/ragflow/）满足，不再需要主服务项目提供共享实例。
     if feature_enabled REDIS; then profiles="--profile redis"; fi
+
+    # rustfs 的 bind 目录属主（见 prepare_data_dirs）：缺失/错属主会让容器重启循环，必须在起容器前处理。
+    # 干跑只打印命令、不落盘，因此这里只在真正启动时执行。
+    if [[ "$DRY_RUN" != "1" ]]; then
+        prepare_data_dirs
+    fi
 
     log "启动主服务项目：主服务 + 基础服务"
     # shellcheck disable=SC2086  # profiles 为空时不传参数，为空格分隔的固定值
