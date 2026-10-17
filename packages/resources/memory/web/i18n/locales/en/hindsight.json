@@ -50,6 +50,7 @@
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this mental model?",
     "lastRefreshed": "Last refreshed",
+    "emptyContent": "No content generated yet",
     "loadFailed": "Failed to load mental models",
     "deleteFailed": "Delete failed",
     "retry": "Retry"

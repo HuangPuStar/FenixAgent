@@ -117,7 +117,9 @@ function ModelDetailDialog({
         {/* 完整内容 */}
         <div className="flex-1 overflow-auto">
           <div className="rounded-md border bg-muted/30 p-4">
-            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{model.content}</p>
+            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+              {model.content || t("mentalModels.emptyContent")}
+            </p>
           </div>
         </div>
 
@@ -129,9 +131,11 @@ function ModelDetailDialog({
                 {t("mentalModels.lastRefreshed")}: {new Date(model.last_refreshed_at).toLocaleString()}
               </p>
             )}
-            <p>
-              {t("memories.createdAt")}: {new Date(model.created_at).toLocaleString()}
-            </p>
+            {model.created_at && (
+              <p>
+                {t("memories.createdAt")}: {new Date(model.created_at).toLocaleString()}
+              </p>
+            )}
           </div>
           <Button
             variant="outline"
@@ -298,9 +302,9 @@ export function MentalModelsView() {
                 </CardHeader>
 
                 <CardContent className="pb-0">
-                  {/* 内容预览 */}
+                  {/* 内容预览；模型首次刷新完成前 content 为空，显示占位文案而不是空白卡片 */}
                   <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                    {truncateContent(model.content)}
+                    {truncateContent(model.content) || t("mentalModels.emptyContent")}
                   </p>
                 </CardContent>
 
