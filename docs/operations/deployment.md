@@ -41,8 +41,8 @@ docker compose up --build -d
 ./deploy.sh deploy             # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
 ```
 
-- 一套配置描述一台机器：依赖开关与部署参数在 `docker/deploy.env`，应用配置与密钥在主服务 env
-  （生产 `docker/main/.env`、dev 仓库根 `.env`），各依赖的私有键在 `docker/<name>/.env`；
+- 一套配置描述一台机器：依赖开关在 `docker/deploy.env`，应用配置、密钥与组件自己的编排插值变量（如端口）
+  在主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`），各依赖的私有键在 `docker/<name>/.env`；
   同键只定义一次（[`docker-topology.md`](./docker-topology.md) §8）。
 - 主服务编排分两份：**dev** 是仓库根 `docker-compose.yml`（带 `build:`，本地构建），**生产**是 `docker/main/docker-compose.yml`
   （无 `build:`，只用发布镜像，`docker/deploy.sh` 的操作对象）。两份文件同项目名 `fenix`、同网络 `fenix-server`，
@@ -104,7 +104,7 @@ OpenSandbox / 端口等部署注意事项见 `docker/README.md`。
 | --- | --- | --- |
 | `.env.example` | 本地开发（dev）起点 | `cp .env.example .env`；Bun 启动时自动读取仓库根 `.env`，dev 编排（根 `docker-compose.yml`）把它作为 `env_file`。 |
 | `docker/main/.env.example` | 生产应用配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/main/.env`；它就在生产编排同目录，compose 自动加载（不必 `--env-file`）。 |
-| `docker/deploy.env.example` | 部署配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/deploy.env`（依赖开关、主服务可选服务、部署参数）。 |
+| `docker/deploy.env.example` | 部署配置起点 | `./docker/deploy.sh init` 会把它复制成 `docker/deploy.env`（依赖开关与主服务可选服务；端口等组件插值键写在该组件自己的 `.env`）。 |
 
 使用口径：
 

@@ -50,7 +50,7 @@ docker volume ls
 ### 2.1 配置面的去向
 
 1. **旧配置的取值**：原样迁入 `docker/main/.env`；旧环境本来就有独立依赖 env 文件的，迁入对应 `docker/<name>/.env`。
-2. **新部署的开关**：`docker/deploy.env` 不是旧配置的迁移目标。它只描述新部署启用哪些依赖、使用哪些端口：按旧环境实际运行过的能力设置 `FENIX_FEATURE_*`，按实际需要设置 `FENIX_HTTP_PORT` / `POSTGRES_PORT`；端口没有特殊要求时不必写，走默认值。
+2. **新部署的开关**：`docker/deploy.env` 不是旧配置的迁移目标。它只描述新部署启用哪些依赖与主服务可选服务：按旧环境实际运行过的能力设置 `FENIX_FEATURE_*`。端口等组件自己的插值变量不写在这里；需要修改时写进 `docker/main/.env`。
 3. 旧键在新模板中不存在时，先确认它确实已废弃，再决定不迁移；不要因为“新模板没有”就默认丢弃。
 
 ### 2.2 不要随意改配置，尤其是密钥
@@ -81,16 +81,7 @@ docker volume ls
 
 随主服务启动的 `FENIX_FEATURE_OPENSANDBOX_*` 不作为推荐路径：它把沙盒管理面与平台生命周期绑在一起，运维复杂度更高。OpenSandbox 统一按上述独立部署单元维护。
 
-### 3.2 `FENIX_HTTP_PORT` / `POSTGRES_PORT` 要同时写进 `docker/main/.env`
-
-这两个键是 Compose 的插值变量，不是容器内配置：
-
-1. 走 `deploy.sh` 时，脚本会加载 `docker/deploy.env` 和 `docker/main/.env`，只写在 `deploy.env` 里也能启动。
-2. 单独重启主服务（`cd docker/main && docker compose up -d`）时，Compose 只读同目录的 `docker/main/.env`。键不在那里，端口会回落到默认的 `3001` / `5432`。
-3. 因此 `init` 之后，把这两个键同时写到 `docker/main/.env` 头部，取值与 `docker/deploy.env` 保持一致。
-4. 两份都写时，`deploy.sh` 以 `docker/main/.env` 的值为准，因为它是后加载的；不要让两处出现不同值。
-
-### 3.3 迁移期间的其他注意事项
+### 3.2 迁移期间的其他注意事项
 
 1. 旧项目与新项目可能同名或占用固定容器名 / 端口。启动新环境前先停旧项目，确认端口已释放。
 2. 迁移期间不要执行 `./deploy.sh down --purge-data`；它会删除 `docker/main/` 下的数据目录。

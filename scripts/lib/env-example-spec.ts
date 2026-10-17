@@ -26,11 +26,6 @@ export interface EnvEntry {
   readonly restartRequired: boolean;
   /** 一句话说明：取声明 description 的首句，完整说明留在声明处。 */
   readonly description: string;
-  /**
-   * 值不写进这份模板：用于「键的真实取值在别处」的条目（如部署模板里由主服务 env 提供的键），
-   * 避免把值抄进一份受版本控制的文件。默认值仍会渲染进元信息行，作为未设置时的生效值展示。
-   */
-  readonly hideValue?: boolean;
 }
 
 /** 声明面之外、该场景确有消费方的键；给出消费者，避免它们随模板重写静默消失。 */
@@ -141,79 +136,30 @@ export const BASE_SERVICE_UNDECLARED: readonly UndeclaredKey[] = [
   },
 ];
 
-/** 部署模板分组标题（同时是渲染顺序）：开关 → 主服务可选服务 → 部署参数 → 主服务 env 提供的键。 */
+/** 部署模板分组标题（同时是渲染顺序）：依赖开关 → 主服务可选服务。 */
 export const DEPLOY_OWNER_SWITCHES = "依赖开关（docker/deploy.env）";
 export const DEPLOY_OWNER_MAIN_SERVICES = "主服务可选服务（随主服务启动）";
-export const DEPLOY_OWNER_PARAMS = "部署参数（docker/deploy.env）";
-export const DEPLOY_OWNER_MAIN_ENV = "由主服务 env 提供（生产 docker/main/.env、dev 仓库根；本文件不写取值）";
 
-export const DEPLOY_OWNER_ORDER: readonly string[] = [
-  DEPLOY_OWNER_SWITCHES,
-  DEPLOY_OWNER_MAIN_SERVICES,
-  DEPLOY_OWNER_PARAMS,
-  DEPLOY_OWNER_MAIN_ENV,
-];
-
-/** 部署面一个键的注记：归属决定它写在哪份文件里。 */
-export interface DeployKeyNote {
-  /** `deploy`：键写进 docker/deploy.env（模板给出注释形式的取值行）；`main-env`：键写进主服务 env。 */
-  readonly owner: typeof DEPLOY_OWNER_PARAMS | typeof DEPLOY_OWNER_MAIN_ENV;
-  readonly secret?: boolean;
-  readonly description: string;
-}
+export const DEPLOY_OWNER_ORDER: readonly string[] = [DEPLOY_OWNER_SWITCHES, DEPLOY_OWNER_MAIN_SERVICES];
 
 /**
- * 部署面键的注记表。键集合由主服务的生产编排（docker/main/docker-compose.yml）的变量插值发现
- * （生成器两个方向都会报错：compose 新增键而表里没有、表里的键已不在编排中），
- * 因此这里只回答「这个键写在哪、干什么用」，不维护键集合本身。
+ * 主服务生产编排（docker/main/docker-compose.yml）里以变量插值形式引用的键。
+ *
+ * 取值写在主服务自己的 env（生产 `docker/main/.env`、dev 仓库根 `.env`），不进入部署模板。
+ * 集合由生成器从编排发现，两个方向都报错：编排新增键而这里没有、这里的键已不在编排中。
  */
-export const DEPLOY_KEY_NOTES: Readonly<Record<string, DeployKeyNote>> = {
-  FENIX_HTTP_PORT: {
-    owner: DEPLOY_OWNER_PARAMS,
-    description: "主服务宿主端口（容器内固定 3000）；编排缺省 3001。",
-  },
-  POSTGRES_PORT: {
-    owner: DEPLOY_OWNER_PARAMS,
-    description: "PostgreSQL 宿主端口，只绑回环，供本地源码开发与运维工具连接；编排缺省 5432。",
-  },
-  POSTGRES_PASSWORD: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description: "基础服务 PostgreSQL 的口令；与 DATABASE_URL 中的口令必须一致。",
-  },
-  RCS_API_KEYS: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description: "skill 下载令牌的签名密钥；编排缺省为本地下发值（公开值），生产必须覆盖为长随机值。",
-  },
-  RCS_BASE_URL: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description:
-      "服务公开基址（生成回链与 skill 下载链接）；编排缺省 http://localhost:3000，跨机/公网部署改为实际可达地址。",
-  },
-  REGISTRY_SECRET: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description: "与 sandbox / 控制台共享的注册密钥；编排缺省只服务本地，生产必须显式替换。",
-  },
-  RCS_SECRET_ENCRYPTION_KEY: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    secret: true,
-    description: "敏感配置的解密密钥；编排缺省为空串。",
-  },
-  APP_BRAND_NAME: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description: "前端品牌名；编排缺省 Fenix。",
-  },
-  APP_LOGO_PATH: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description: "前端 logo 路径；编排缺省为空串（使用内置品牌资源）。",
-  },
-  RCS_DISABLE_SCHEDULER: {
-    owner: DEPLOY_OWNER_MAIN_ENV,
-    description: "跳过启动时的 schedulerService.start()；编排缺省 false。",
-  },
-};
+export const DEPLOY_INTERPOLATION_KEYS: readonly string[] = [
+  "APP_BRAND_NAME",
+  "APP_LOGO_PATH",
+  "FENIX_HTTP_PORT",
+  "POSTGRES_PASSWORD",
+  "POSTGRES_PORT",
+  "RCS_API_KEYS",
+  "RCS_BASE_URL",
+  "RCS_DISABLE_SCHEDULER",
+  "RCS_SECRET_ENCRYPTION_KEY",
+  "REGISTRY_SECRET",
+];
 
 /**
  * 主服务编排里以 compose profile 门控的可选服务开关。这是 docker/deploy.sh 里 `MAIN_OPTIONAL_FEATURES`
@@ -301,9 +247,8 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       "本文件由 `bun run scripts/generate-env-example.ts` 生成，勿手改（`precheck` 的 env-example 步骤按字节比对）。",
       "",
       "覆盖范围 = docker/deploy.sh 的配置面：依赖开关（按 docker/ 下带 docker-compose.yml 的目录发现，与脚本的",
-      "目录发现同源）、主服务编排里以 profile 门控的可选服务开关、部署参数（主服务编排里变量插值形式的键），",
-      "以及这些编排会从主服务 env 读取的键——最后一段只列键与去处：取值请写进主服务 env（生产 docker/main/.env、",
-      "dev 仓库根 .env），本文件进版本控制，密钥不得落在里面。",
+      "目录发现同源）与主服务编排里以 profile 门控的可选服务开关。主服务的应用配置、密钥与编排插值键（如端口）",
+      "写进主服务 env（生产 docker/main/.env、dev 仓库根 .env），本文件不列。",
       "",
       "键行一律是注释行：不写就等于用脚本与 compose 的缺省行为（未列出的依赖不启动），要改再取消注释。",
       "镜像版本不在这里：所有镜像固定版本、写在各自 compose 文件里（主服务 rcs 的 image 行随发布更新，dev 与生产两份编排同步）。",
