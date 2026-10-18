@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { NotFoundError } from "@fenix/platform-sdk";
+import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { environmentRepo } from "../server/repositories/environment";
 import type { EnvironmentResponse } from "../types/environment";
@@ -93,20 +93,24 @@ export function sanitizeResponse(row: EnvironmentRecord) {
 export type EnvironmentRole = "owner" | "admin" | "member";
 
 /**
- * 获取 Environment 并验证归属。
+ * 获取 Environment 并验证可见性与操作角色（D17 角色化授权：403/404 分离）。
  *
  * 普通共享 environment 仍按组织可见；绑定 agent 的 runtime environment 额外要求访问者是 owner，
  * 避免共享 agent 时直接落到其他成员的个人 workspace。
  *
- * 同组织成员对本人 Environment 的读写与管理操作一律放行；组织角色不构成第二道门槛。
- * 环境不存在、组织不一致、或 agent 绑定环境的属主不一致时抛 NotFoundError（404），避免向
- * 未授权主体泄露该个人 workspace 是否存在。保留 role 参数以维持既有调用契约。
+ * role 参数语义（语义变更点）：调用方声明本次为「需要 owner/admin 权限的写操作」。
+ * role 为 member 时抛 ForbiddenError（403，环境存在但无操作权限）；owner/admin 或不传
+ * （读操作）放行。环境不存在/组织不可见/agent 绑定环境非本人 → NotFoundError（404），
+ * 与 403 明确区分，避免向未授权调用方泄露环境是否存在。
+ * 现状注意：文件相关接口（agent-file-service.ensureEnvironment）目前对所有操作都透传
+ * role——member 经这些路径的操作一律 403，是偏保守的处理；将来需要更细的读写分离时，
+ * 在各调用点区分即可，本函数签名保持四参数不变。
  */
 export async function getOwnedEnvironment(
   envId: string,
   organizationId: string,
   userId?: string,
-  _role?: EnvironmentRole,
+  role?: EnvironmentRole,
 ) {
   const env = await environmentRepo.getById(envId);
   if (!env || env.organizationId !== organizationId) {
@@ -114,6 +118,9 @@ export async function getOwnedEnvironment(
   }
   if (userId && env.agentConfigId && env.userId !== userId) {
     throw new NotFoundError("环境不存在");
+  }
+  if (role === "member") {
+    throw new ForbiddenError("无权限执行该操作");
   }
   return env;
 }

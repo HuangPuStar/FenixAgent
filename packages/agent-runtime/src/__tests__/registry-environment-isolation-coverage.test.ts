@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { NotFoundError } from "@fenix/platform-sdk";
+import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { stubEnvironmentRepo } from "../server/testing";
@@ -111,12 +111,10 @@ describe("environment-core 的隔离、失败与响应边界", () => {
     await expect(getOwnedEnvironment("env-1", "org-a", "visitor")).rejects.toThrow(NotFoundError);
   });
 
-  // member 对本人环境拥有完整管理权限，角色不额外收紧个人 workspace。
-  test("member 写操作返回本人环境", async () => {
+  // member 对已存在环境写操作必须显式被拒绝。
+  test("member 写操作返回 ForbiddenError", async () => {
     stubEnvironmentRepo({ getById: async () => ({ organizationId: "org-a", userId: "user-a", agentConfigId: null }) });
-    await expect(getOwnedEnvironment("env-1", "org-a", "user-a", "member")).resolves.toMatchObject({
-      organizationId: "org-a",
-    });
+    await expect(getOwnedEnvironment("env-1", "org-a", "user-a", "member")).rejects.toThrow(ForbiddenError);
   });
 
   // owner 写操作可以取得已授权环境。
