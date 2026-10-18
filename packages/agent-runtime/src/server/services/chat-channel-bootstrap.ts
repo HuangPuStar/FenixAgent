@@ -11,6 +11,7 @@
 
 import type {
   ChatChannelDependencies,
+  ChatSyncProtocolConfig,
   SessionTitleStore,
   SnapshotPersistConfigSource,
 } from "@fenix/chat-channel/server";
@@ -54,6 +55,7 @@ type ChatChannelBootstrapDeps = {
   log: typeof log;
   logError: typeof logError;
   maxClients: () => number;
+  chatSyncProtocol: () => ChatSyncProtocolConfig;
   snapshotPersist: SnapshotPersistConfigSource;
   sessionTitleStore: () => SessionTitleStore;
 };
@@ -86,6 +88,16 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   // 到 200、负值被原样接受。schema 已随 `envDefinitions` 迁到本模块 manifest，启动期校验保证此处必是正整数。
   // 闭包保持惰性：`defaultDeps` 是模块级常量，装配期求值会撞上「基础设施尚未初始化」。
   maxClients: () => getAgentRuntimeConfig().yjsMaxClients,
+  // 新同步协议开关与宽限期：与其余旋钮同一数据流（模块配置注入），包内不读 process.env。
+  // 宿主 env 投影未提供时模块 schema 的默认值保持启用；非新协议帧仍走旧 Yjs 路径。
+  chatSyncProtocol: () => {
+    const config = getAgentRuntimeConfig();
+    return {
+      enabled: config.chatSyncProtocolEnabled,
+      sealGraceMs: config.chatSyncSealGraceMs,
+      retireGraceMs: config.chatSyncRetireGraceMs,
+    };
+  },
   // 快照节流 / TTL 参数同样取模块配置（F1）：三项原先由宿主 `env.ts` 声明、由 chat-channel 持久层
   // 直读 `process.env` 并自带一份默认值，绕过启动期校验。声明已迁入本模块 manifest，值经
   // `ChatChannelDependencies.snapshotPersist` 装入 DocManager；包内直读与包内默认值同批删除。
@@ -133,6 +145,7 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,
     maxClients: deps.maxClients,
+    chatSyncProtocol: deps.chatSyncProtocol(),
     snapshotPersist: deps.snapshotPersist,
     log: deps.log,
     reportError: deps.logError,

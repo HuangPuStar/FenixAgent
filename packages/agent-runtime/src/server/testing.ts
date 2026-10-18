@@ -130,6 +130,10 @@ export function createAgentRuntimeModuleConfig(
     yjsSnapshotIntervalMs: 2000,
     yjsSnapshotIdleMs: 500,
     yjsSnapshotTtlSeconds: 604800,
+    // 新同步协议默认启用；宽限期取 envDefinitions 默认值。
+    chatSyncProtocolEnabled: true,
+    chatSyncSealGraceMs: 2000,
+    chatSyncRetireGraceMs: 30000,
     ...overrides,
   };
 }

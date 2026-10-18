@@ -547,7 +547,12 @@ describe("HistoryImportService 换代与幂等", () => {
     const [submitted] = harness.store.commitInputs;
     expect(submitted).toBeDefined();
 
-    const replay = await harness.store.commitGeneration(submitted as CommitGenerationInput);
+    // 写权在 finalize 后已主动归还；幂等重放必须先取得新租约，不能凭已释放的旧 epoch 提交。
+    const lease = await harness.store.acquireWriter(SCOPE_KEY, "replay-owner", 30_000);
+    const replay = await harness.store.commitGeneration({
+      ...(submitted as CommitGenerationInput),
+      epoch: lease.epoch,
+    });
     expect(replay.outcome).toBe("already-committed");
     expect(replay.pointerRevision).toBe(result.pointerRevision);
     expect((await harness.store.readScopePointer(SCOPE_KEY))?.pointerRevision).toBe(result.pointerRevision);

@@ -421,6 +421,12 @@ export interface ProjectionStore {
   acquireWriter(scopeKey: string, owner: string, ttlMs: number): Promise<WriterLease>;
 
   /**
+   * 主动释放写权（可选）：基线建代等一次性写者提交后必须让出，否则首条实时写入会在租约到期前
+   * 以 `SCOPE_BUSY` 失败。实现方只释放与租约 owner/epoch 匹配的写权；不匹配时无副作用。
+   */
+  releaseWriter?(lease: WriterLease): Promise<void>;
+
+  /**
    * 续租：epoch 不匹配或租约已过期 → 抛 `LEASE_EXPIRED`（调用方据此立即停写并重新取得写权）；
    * 成功返回延长后的租约。续租不改变 epoch，也不可能复活已过期的租约。
    */

@@ -93,6 +93,16 @@ export function createSyncHistoryImport(input: {
   });
 }
 
+/** 连接窗口观测：均为只读快照，不参与任何协议判定。 */
+export interface SyncTransportDiagnostics {
+  /** 已授予但未归还的字节，即「已发送未 ACK」。 */
+  readonly outstandingBytes: number;
+  /** 在途发送任务数（一次预留对应一次 ACK / 自结算）。 */
+  readonly pendingTasks: number;
+  /** ACK 账本中已记录但未结算的投递数。 */
+  readonly unackedDeliveries: number;
+}
+
 /** 单 scope 运行时（规格 §2.2 冻结契约）：方法名与语义不得改名或增删。 */
 export interface SyncScopeRuntime {
   /** 实时入口：把已规范化的 ACP 事件交给写入层（内部经 ingress 分配 ingress 序号）。 */
@@ -103,6 +113,8 @@ export interface SyncScopeRuntime {
   onInboundBytes(bytes: Uint8Array): Promise<void>;
   /** 驱动追赶、ACK 超时扫描与预留到期释放；不返回帧（帧由网关直接发）。 */
   tick(): Promise<void>;
+  /** 连接窗口快照（观测/测试）；不改变账目。 */
+  transportDiagnostics(): SyncTransportDiagnostics;
   /** 历史导入入口（同一实例，供 ACP load 路径调用）。 */
   history: HistoryImportService;
   /** 释放本 scope 全部资源（Doc、定时器、租约、额度）；重复调用无副作用。 */
@@ -317,6 +329,15 @@ export async function createSyncScopeRuntime(input: {
         }
       }
       releaseExpiredCoexistence();
+    },
+
+    transportDiagnostics(): SyncTransportDiagnostics {
+      const snapshot = quota.snapshot();
+      return {
+        outstandingBytes: snapshot.outstandingBytes,
+        pendingTasks: snapshot.pendingTasks,
+        unackedDeliveries: ledger.outstandingCount(),
+      };
     },
 
     history,

@@ -15,10 +15,11 @@ import type { SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import type { DocManager } from "../state";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
-import type { ClientConnection } from "./connection-types";
+import type { ChatSyncProtocolConfig, ClientConnection } from "./connection-types";
 import { Gateway, type GatewayEnvironment } from "./gateway";
 import { RelayEventHandler } from "./relay-event-handler";
 import { SessionChannel } from "./session-channel";
+import type { GatewaySyncHostOverrides } from "./sync-connection";
 
 /** Chat 域宿主依赖（全部经构造器注入，包内禁止直接 import src/ 宿主模块） */
 export interface ChatChannelDependencies {
@@ -48,6 +49,10 @@ export interface ChatChannelDependencies {
   classifyPermanentSpawnFailure: (err: unknown) => string | null;
   /** YJS 连接配额（宿主 env 语义，默认 200） */
   maxClients: () => number;
+  /** 新聊天同步协议装配配置；缺省关闭，旧路径行为不变。 */
+  chatSyncProtocol?: ChatSyncProtocolConfig;
+  /** 同步运行时注入（观测/测试用假时钟）；生产缺省使用系统时钟。 */
+  syncHostOverrides?: GatewaySyncHostOverrides;
   /**
    * 快照节流 / TTL 参数来源（宿主 `RCS_YJS_SNAPSHOT_*` 投影）。惰性求值：宿主模块配置在应用基础设施
    * 初始化完成后才可读，构造本控制器时可能尚未就绪。
@@ -106,6 +111,11 @@ export class ChatChannelController {
       log: dependencies.log,
       touchInstanceActivity: dependencies.touchInstanceActivity,
       terminateLocalDeadInstance: dependencies.terminateLocalDeadInstance,
+      onNormalizedEvent: (rcsSessionId, event) => {
+        this.registry.forEachByRcsSession(rcsSessionId, (client) => {
+          client.syncConnection?.acceptNormalizedEvent(event);
+        });
+      },
     });
     this.gateway = new Gateway({
       registry: this.registry,
@@ -123,6 +133,8 @@ export class ChatChannelController {
       reportLog: dependencies.log,
       reportError: dependencies.reportError,
       maxClients: dependencies.maxClients,
+      chatSyncProtocol: dependencies.chatSyncProtocol,
+      syncHostOverrides: dependencies.syncHostOverrides,
       isMachineOffline: dependencies.isMachineOffline,
       classifyPermanentSpawnFailure: dependencies.classifyPermanentSpawnFailure,
     });

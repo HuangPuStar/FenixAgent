@@ -25,6 +25,7 @@ import { applyPermissionExpiration, applyPermissionResolution } from "../state/p
 import { expireQuestion, respondQuestion } from "../state/question";
 import type { ProjectionDocs } from "../types";
 import { CommandCoordinator } from "./command-coordinator";
+import type { SyncConnection } from "./connection-types";
 import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
 import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
@@ -63,6 +64,8 @@ export interface SessionConnection {
   registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
   /** 登记会话变更响应；relay 断开或超时时以 false 完成。 */
   awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
+  /** 新同步协议连接级运行时；仅用于后端单写用户消息。 */
+  syncConnection?: SyncConnection;
 }
 
 export interface SessionChannelDependencies {
@@ -389,7 +392,10 @@ export class SessionChannel {
     } catch (err) {
       this.dependencies.reportError("[SessionChannel] Failed to ensure session doc for user message:", err);
     }
-    return this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
+    const turnId = this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
+    // 用户消息只由后端写入：turnId 来自 registerUserMessage 的可信绑定，Agent 回显不进入新协议入口。
+    if (turnId) connection.syncConnection?.acceptUserMessage(turnId, text);
+    return turnId;
   }
 
   // ── 权限 CAS（C5）──

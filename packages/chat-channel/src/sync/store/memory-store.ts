@@ -97,6 +97,13 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     return this.lease(row);
   }
 
+  async releaseWriter(lease: WriterLease): Promise<void> {
+    const row = this.scopes.get(lease.scopeKey);
+    if (row === undefined || row.writerEpoch !== lease.epoch || row.writerOwner !== lease.owner) return;
+    row.writerOwner = null;
+    row.leaseExpiresAt = 0;
+  }
+
   async createGeneration(input: CreateGenerationInput): Promise<RegistrationResult> {
     this.requireLease(input.scopeKey, input.epoch);
     const value = input.generation;

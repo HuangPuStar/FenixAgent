@@ -6,6 +6,7 @@
 // WsConnection 为最小 WebSocket 抽象（纯接口，无框架依赖），宿主侧适配注入。
 
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import type { SyncTransportDiagnostics } from "../sync/runtime/scope-runtime";
 
 export type RelayMessage = EngineRelayMessage;
 
@@ -29,6 +30,39 @@ export interface WsConnection {
   close(code?: number, reason?: string): void;
   /** 当前就绪状态（0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED） */
   readonly readyState: number;
+  /** socket 待发送字节真值；宿主适配器提供，缺省按 0 处理（与旧链路一致）。 */
+  readonly bufferedAmount?: number;
+}
+
+/** 新聊天同步协议的装配配置（开关关闭时旧链路逐字节不变）。 */
+export interface ChatSyncProtocolConfig {
+  readonly enabled: boolean;
+  readonly sealGraceMs: number;
+  readonly retireGraceMs: number;
+}
+
+/**
+ * 单个连接的新同步运行时端口。
+ *
+ * 每条已认证连接持有独立 runtime / 内存 store；这里只暴露连接层需要的动作，协议规则留在
+ * `sync/runtime/**`。所有方法由实现方自行捕获错误，连接层不等待其异步完成。
+ */
+export interface SyncConnection {
+  /** 入站二进制帧（已由连接层按 `{` 首字节判定为新协议）。 */
+  onInboundBytes(bytes: Uint8Array): Promise<void>;
+  /** 旧投影路径已处理过的规范化 ACP 事件；trusted turnId 缺失时实现方不产事件。 */
+  acceptNormalizedEvent(event: {
+    readonly type: string;
+    readonly update: Record<string, unknown>;
+    readonly content?: Record<string, unknown> | null;
+    readonly turnId?: string | null;
+  }): void;
+  /** 后端单写用户消息（turnId 来自 registerUserMessage 的可信绑定）。 */
+  acceptUserMessage(turnId: string, text: string): void;
+  /** 连接窗口快照（观测/测试）；不改变账目。 */
+  diagnostics?(): SyncTransportDiagnostics;
+  /** 连接关闭时释放 runtime、定时器与内存投影。 */
+  dispose(): void;
 }
 
 /** 单个前端 WebSocket 客户端在连接生命周期内的全部状态 */
@@ -41,6 +75,8 @@ export interface ClientConnection {
   instanceId: string;
   /** RCS 会话标识符 (rcs_xxx)，连接生命周期内不变 */
   rcsSessionId: string;
+  /** 认证后组织标识；新同步 scope 使用，旧链路忽略。 */
+  organizationId?: string;
   /** 当前活跃的 ACP 会话标识符 (ses_xxx)，session/new、session/load 后更新；初始为 null */
   acpSessionId: string | null;
   /** 是否已执行过至少一次 load_session（用于区分重连首次加载 vs 后续正常切换） */
@@ -51,6 +87,8 @@ export interface ClientConnection {
   relayReady: boolean;
   /** agent 是否已发送过 status（确认 ACP 初始化完成） */
   agentStatusReceived: boolean;
+  /** 新同步协议连接级运行时；开关关闭或创建失败时缺省。 */
+  syncConnection?: SyncConnection;
 }
 
 /**

@@ -1,0 +1,132 @@
+// 新协议默认启用；旧连接仍承担历史、非文本与动作通道，不由本 hook 释放。
+// 明确不支持协议时锁定旧路径，只有会话/组织切换或显式重新启用才允许再次尝试。
+
+import { useEffect, useRef, useState } from "react";
+import type { SyncChatProjection } from "../yjs/sync-doc-hub";
+import { emptySyncChatProjection } from "../yjs/sync-doc-hub";
+import type { SyncChatConnectionState } from "../yjs/sync-transport";
+import { createSyncChatSession, INITIAL_SYNC_CHAT_STATE } from "../yjs/sync-transport";
+import type { SyncBrowserSocketFactory } from "../yjs/yjs-ws";
+
+export interface UseSyncChatStateOptions {
+  /** 默认 true；显式 false 不建立新连接。 */
+  readonly enabled?: boolean;
+  readonly agentId: string | null;
+  readonly instanceUid: string | null;
+  readonly rcsSessionId: string | null;
+  readonly organizationId: string | null;
+  /** ACP 会话切换时释放旧投影；不作为协议 generation 发送。 */
+  readonly sessionKey?: string | null;
+  readonly contentDocIds?: readonly string[];
+  readonly generation?: string;
+  /** 测试注入；生产使用浏览器 WebSocket。 */
+  readonly socketFactory?: SyncBrowserSocketFactory;
+  readonly url?: string;
+}
+
+export interface SyncChatState {
+  readonly connection: SyncChatConnectionState;
+  readonly projection: SyncChatProjection;
+  readonly legacyFallback: boolean;
+}
+
+const EMPTY_STATE: SyncChatState = {
+  connection: INITIAL_SYNC_CHAT_STATE,
+  projection: emptySyncChatProjection(),
+  legacyFallback: false,
+};
+
+/** 仅明确禁用/版本不兼容允许回退；认证拒绝和内部错误不能伪装成兼容问题。 */
+export function shouldFallbackToLegacy(connection: SyncChatConnectionState): boolean {
+  const error = connection.error;
+  return (
+    connection.status === "error" &&
+    (error?.code === "PROTOCOL_VERSION_UNSUPPORTED" ||
+      error?.code === "WS_1002" ||
+      (error?.code === "WS_1008" && error.message.toLowerCase().includes("sync protocol disabled")))
+  );
+}
+
+/** 订阅隔离的消息投影；切换时同步隐藏旧快照，effect 清理负责释放 transport 与 Doc 引用。 */
+export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatState {
+  const enabled = options.enabled ?? true;
+  const scope = JSON.stringify([
+    enabled,
+    options.agentId,
+    options.instanceUid,
+    options.rcsSessionId,
+    options.organizationId,
+    options.sessionKey,
+  ]);
+  const [snapshot, setSnapshot] = useState({ scope, state: EMPTY_STATE });
+  const fallbackScope = useRef<string | null>(null);
+  const contentKey = options.contentDocIds?.join(",") ?? "";
+
+  useEffect(() => {
+    if (fallbackScope.current !== scope) fallbackScope.current = null;
+    setSnapshot({ scope, state: EMPTY_STATE });
+    if (
+      !enabled ||
+      options.agentId === null ||
+      options.instanceUid === null ||
+      options.rcsSessionId === null ||
+      options.organizationId === null
+    ) {
+      return;
+    }
+    if (fallbackScope.current === scope) {
+      setSnapshot({ scope, state: { ...EMPTY_STATE, legacyFallback: true } });
+      return;
+    }
+
+    let active = true;
+    const session = createSyncChatSession({
+      agentId: options.agentId,
+      instanceUid: options.instanceUid,
+      rcsSessionId: options.rcsSessionId,
+      organizationId: options.organizationId,
+      contentDocIds: contentKey.length > 0 ? contentKey.split(",") : [],
+      generation: options.generation,
+      socketFactory: options.socketFactory,
+      url: options.url,
+      onState: (connection) => {
+        if (!active) return;
+        const legacyFallback = shouldFallbackToLegacy(connection);
+        setSnapshot((previous) => ({
+          scope,
+          state: {
+            connection,
+            legacyFallback,
+            projection: legacyFallback ? emptySyncChatProjection() : previous.state.projection,
+          },
+        }));
+        if (legacyFallback) {
+          fallbackScope.current = scope;
+          active = false;
+          session.dispose();
+        }
+      },
+      onProjection: (projection) => {
+        if (active) setSnapshot((previous) => ({ scope, state: { ...previous.state, projection } }));
+      },
+    });
+    session.connect();
+    return () => {
+      active = false;
+      session.dispose();
+    };
+  }, [
+    scope,
+    enabled,
+    options.agentId,
+    options.instanceUid,
+    options.rcsSessionId,
+    options.organizationId,
+    contentKey,
+    options.generation,
+    options.socketFactory,
+    options.url,
+  ]);
+
+  return snapshot.scope === scope ? snapshot.state : EMPTY_STATE;
+}

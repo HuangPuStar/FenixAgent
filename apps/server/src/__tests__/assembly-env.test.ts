@@ -4,6 +4,8 @@ import { z } from "zod/v4";
 import { generatedModuleManifests } from "../../../generated/module-registry";
 import { loadAssemblyProfile, resolveAssemblyProfilePath } from "../assembly-config";
 import { resolveAssemblyEnv } from "../bootstrap/assembly-env";
+import { buildModuleConfigs } from "../bootstrap/module-configs";
+import { applyEnv, config } from "../config";
 import { parseEnv } from "../env";
 
 /**
@@ -111,6 +113,25 @@ test("真实清单不改变宿主 schema 的任何键值", async () => {
   expect(changed).toEqual([]);
 });
 
+// 三个新同步协议变量必须从模块声明一路投影到 agent-runtime 配置，部署覆盖值不能停留在聚合 env。
+test("聊天同步协议部署配置进入 agent-runtime module config", async () => {
+  const { env } = await resolveAssemblyEnv({
+    input: {
+      ...baseInput,
+      RCS_CHAT_SYNC_PROTOCOL_ENABLED: "true",
+      RCS_CHAT_SYNC_SEAL_GRACE_MS: "3500",
+      RCS_CHAT_SYNC_RETIRE_GRACE_MS: "45000",
+    },
+  });
+  applyEnv(env);
+
+  expect(buildModuleConfigs(env, config)["agent-runtime"]).toMatchObject({
+    chatSyncProtocolEnabled: true,
+    chatSyncSealGraceMs: 3500,
+    chatSyncRetireGraceMs: 45000,
+  });
+});
+
 // profile 由本入口解析后透传给装配层，两处拿到必须是同一份，否则装配层会再读一次文件。
 test("解析出的 profile 与 loadAssemblyProfile 一致", async () => {
   const { profile } = await resolveAssemblyEnv({ input: baseInput });
@@ -162,6 +183,8 @@ test("声明键未设置时使用模块声明的默认值", async () => {
   expect(env.RCS_YJS_SNAPSHOT_INTERVAL_MS).toBe(2000);
   expect(env.RCS_YJS_SNAPSHOT_IDLE_MS).toBe(500);
   expect(env.RCS_YJS_SNAPSHOT_TTL_SECONDS).toBe(604800);
+  // 新同步协议默认启用；显式设为 "false" 才回退旧路径。
+  expect(env.RCS_CHAT_SYNC_PROTOCOL_ENABLED).toBe(true);
   expect(env.WORKSPACE_ROOT).toBeUndefined();
 });
 

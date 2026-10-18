@@ -1,0 +1,158 @@
+// packages/chat-channel/src/channel/sync-connection.ts
+// 连接层与新同步 runtime 的适配：帧判据、WS 三原语、按连接创建/关闭 runtime。
+//
+// 这里只做连接与生命周期适配，不复制协议规则；握手、额度、ACK、封口仍在 `sync/runtime/**`。
+// 每条已认证连接独立创建 runtime + 内存 store，同一 scope 的多标签页不共享（主控裁决）。
+
+import type { Clock, DigestFn, RandomSource } from "../sync/clock";
+import { SyncProtocolError } from "../sync/protocol/errors";
+import type { SyncFrameTransport } from "../sync/runtime/egress";
+import { createSyncHostSession } from "../sync/runtime/host-session";
+import type { ProjectionStore } from "../sync/store/types";
+import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
+
+const SYNC_FRAME_FIRST_BYTE = 0x7b;
+const SYNC_CLOSE_CODE = 1008;
+const MAX_CLOSE_REASON_CHARS = 120;
+
+/** 新协议帧判据：binary 首字节 `{`（UTF-8 JSON）；旧 Yjs 帧首字节为 0x01/0x02/0x03 或 magic 0xa7 0x59。 */
+export function isSyncProtocolFrame(data: Uint8Array): boolean {
+  return data.length > 0 && data[0] === SYNC_FRAME_FIRST_BYTE;
+}
+
+function syncCloseReason(reason: string): string {
+  return reason.length > MAX_CLOSE_REASON_CHARS ? reason.slice(0, MAX_CLOSE_REASON_CHARS) : reason;
+}
+
+/** 协议错误关闭码：版本/结构错误 1002，超大帧 1009，其余策略关闭 1008。 */
+function syncCloseCode(reason: string): number {
+  if (reason.startsWith("unsupported protocol version")) return 1002;
+  if (/too large/i.test(reason)) return 1009;
+  return SYNC_CLOSE_CODE;
+}
+
+/** send 返回真实成败，bufferedAmount 取 socket 真值，close 映射为策略关闭（1008）。 */
+function createSyncTransport(ws: WsConnection): SyncFrameTransport {
+  return {
+    send(bytes: Uint8Array): boolean {
+      if (ws.readyState !== 1) return false;
+      try {
+        ws.send(bytes);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    bufferedAmount(): number {
+      return typeof ws.bufferedAmount === "number" ? ws.bufferedAmount : 0;
+    },
+    close(reason: string): void {
+      try {
+        ws.close(syncCloseCode(reason), syncCloseReason(reason));
+      } catch {
+        /* 连接已关闭 */
+      }
+    },
+  };
+}
+
+/**
+ * 为一个已认证连接创建独立同步运行时。
+ *
+ * scope 由调用方用服务端认证/归属结果构造；失败时以 1011 关闭连接并返回 `undefined`，
+ * 调用方负责释放旧链路连接（handleClose）。
+ */
+export interface GatewaySyncHostOverrides {
+  readonly clock?: Clock;
+  readonly random?: RandomSource;
+  readonly digest?: DigestFn;
+  readonly store?: ProjectionStore;
+  readonly tickIntervalMs?: number;
+  readonly spoolRootDir?: string;
+}
+
+export async function attachGatewaySyncConnection(
+  ws: WsConnection,
+  config: ChatSyncProtocolConfig,
+  organizationId: string,
+  rcsSessionId: string,
+  owner: string,
+  reportError: (message: string, error: unknown) => void,
+  overrides: GatewaySyncHostOverrides = {},
+): Promise<SyncConnection | undefined> {
+  try {
+    return await createSyncHostSession({
+      scope: { organizationId, rcsSessionId },
+      runtimeConfig: {
+        sealGraceMs: config.sealGraceMs,
+        retireGraceMs: config.retireGraceMs,
+        tickIntervalMs: overrides.tickIntervalMs,
+        spoolRootDir: overrides.spoolRootDir,
+      },
+      transport: createSyncTransport(ws),
+      clock: overrides.clock,
+      random: overrides.random,
+      digest: overrides.digest,
+      store: overrides.store,
+      owner,
+      onError: reportError,
+    });
+  } catch (error) {
+    reportError("[YJS-FE] Failed to initialize sync protocol runtime", error);
+    try {
+      ws.close(1011, "sync init failed");
+    } catch {
+      /* 连接已关闭 */
+    }
+    return;
+  }
+}
+
+/**
+ * 处理 binary 帧的新协议分流。
+ *
+ * 返回 `true` 表示该帧已由本函数处理（新协议或明确拒绝），调用方不得再进入旧 Yjs 分支。
+ * 开关关闭时 `{` 帧以明确理由关闭连接，不静默忽略。
+ */
+export async function routeSyncProtocolFrame(
+  entry: ClientConnection | undefined,
+  ws: WsConnection,
+  data: Uint8Array,
+  config: ChatSyncProtocolConfig | undefined,
+  reportError: (message: string, error: unknown) => void,
+  overrides?: GatewaySyncHostOverrides,
+): Promise<boolean> {
+  if (!isSyncProtocolFrame(data)) return false;
+  if (!config?.enabled) {
+    ws.close(SYNC_CLOSE_CODE, "sync protocol disabled");
+    return true;
+  }
+  if (!entry) {
+    ws.close(SYNC_CLOSE_CODE, "sync protocol unavailable");
+    return true;
+  }
+  // 首次新协议帧到达时才创建 runtime：只说不发新帧的连接不承担内存投影成本。
+  entry.syncConnection ??= await attachGatewaySyncConnection(
+    ws,
+    config,
+    entry.organizationId ?? entry.userId,
+    entry.rcsSessionId,
+    `${entry.userId}:${entry.instanceId}`,
+    reportError,
+    overrides,
+  );
+  if (!entry.syncConnection) return true;
+  try {
+    await entry.syncConnection.onInboundBytes(data);
+  } catch (error) {
+    reportError("[YJS-FE] sync protocol inbound failed", error);
+    const code =
+      error instanceof SyncProtocolError
+        ? error.code === "FRAME_TOO_LARGE" || error.code === "FRAME_HEADER_TOO_LARGE"
+          ? 1009
+          : 1002
+        : 1011;
+    ws.close(code, code === 1009 ? "sync frame too large" : "sync protocol error");
+  }
+  return true;
+}

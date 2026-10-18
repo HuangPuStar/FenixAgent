@@ -141,6 +141,7 @@ function ChatPanelView({
     rcsSessionKey,
     chatState,
     sessionState,
+    syncChat,
     periTasks,
     periTasksLoaded,
     derivedState,
@@ -208,6 +209,17 @@ function ChatPanelView({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
+        {!syncChat.legacyFallback && syncChat.connection.status === "error" && (
+          <PublicErrorCard
+            error={{
+              type: "SYNC_RELAY.SYNC_FAILED",
+              id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
+              message: tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
+            }}
+            t={tUi}
+            className={INLINE_ERROR_CARD_CLASS}
+          />
+        )}
         {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {sessionState.agentPublicError &&

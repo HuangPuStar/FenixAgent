@@ -69,6 +69,12 @@ export interface AgentRuntimeModuleConfig {
   readonly yjsSnapshotIdleMs: number;
   /** Chat Doc 快照的滑动 TTL（秒，`RCS_YJS_SNAPSHOT_TTL_SECONDS`），每次成功 CAS 续期。 */
   readonly yjsSnapshotTtlSeconds: number;
+  /** 新聊天同步协议开关（`RCS_CHAT_SYNC_PROTOCOL_ENABLED`）；默认启用。 */
+  readonly chatSyncProtocolEnabled: boolean;
+  /** 同步协议封口宽限期（毫秒，`RCS_CHAT_SYNC_SEAL_GRACE_MS`）。 */
+  readonly chatSyncSealGraceMs: number;
+  /** 同步协议代次退役宽限期（毫秒，`RCS_CHAT_SYNC_RETIRE_GRACE_MS`）。 */
+  readonly chatSyncRetireGraceMs: number;
   /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"peri"`。 */
   readonly defaultEngineType?: string;
   /** 平台对外基址（宿主 `getBaseUrl()` 的已解析结果），注入 launch spec 的 `USER_META_BASE_URL`。 */
@@ -101,6 +107,10 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   yjsSnapshotIntervalMs: z.number().int().positive(),
   yjsSnapshotIdleMs: z.number().int().positive(),
   yjsSnapshotTtlSeconds: z.number().int().positive(),
+  // 默认启用；宿主装配会把已校验的 env 值显式投影进来，未投影时仍保持启用。
+  chatSyncProtocolEnabled: z.boolean().default(true),
+  chatSyncSealGraceMs: z.number().int().min(100).max(300_000).default(2_000),
+  chatSyncRetireGraceMs: z.number().int().min(1_000).max(3_600_000).default(30_000),
   defaultEngineType: z.string().min(1).optional(),
   baseUrl: z.string().min(1),
 });

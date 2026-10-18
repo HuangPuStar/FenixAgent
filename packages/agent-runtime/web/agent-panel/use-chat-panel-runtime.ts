@@ -29,12 +29,21 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ChatAuthState } from "../hooks/chat-auth-state";
 import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
+import { createSyncMessageMerger } from "../hooks/sync-chat-messages";
 import { useChatState } from "../hooks/use-chat-state";
 import { useSessionState } from "../hooks/use-session-state";
+import { useSyncChatState } from "../hooks/use-sync-chat-state";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
-import { buildYjsUrl, createYjsWs, resolveYjsWsCloseOutcome, type YjsWsState } from "../yjs/yjs-ws";
+import {
+  buildYjsUrl,
+  createYjsWs,
+  readSyncChatOrganizationId,
+  readSyncChatSwitch,
+  resolveYjsWsCloseOutcome,
+  type YjsWsState,
+} from "../yjs/yjs-ws";
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
 
 /** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
@@ -90,6 +99,8 @@ export interface ChatPanelRuntime {
   rcsSessionKey: string | undefined;
   chatState: ReturnType<typeof useChatState>["state"];
   sessionState: ReturnType<typeof useSessionState>["state"];
+  /** 默认启用的新消息投影；明确拒绝时保留旧路径。 */
+  syncChat: ReturnType<typeof useSyncChatState>;
   periTasks: PeriTaskViewsResult["state"]["tasks"];
   periTasksLoaded: boolean;
   derivedState: ChatPanelDerivedState;
@@ -152,11 +163,28 @@ export function useChatPanelRuntime({
   // 登录态未就绪时使用占位 key（此时建连守卫不会放行 WS，占位 doc 恒为空）
   const docHubKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
 
-  // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
+  // 默认新协议读取文本；旧连接保留历史、非文本和动作，直到新协议拥有完整历史恢复能力。
   const { state: chatState } = useChatState(docHubKey);
-
-  // Session Doc — 按 RCS session ID 命名（与 chatHook 同一 hub entry，共享 doc 副本）
-  const { state: sessionState } = useSessionState(docHubKey);
+  const { state: legacySessionState } = useSessionState(docHubKey);
+  const syncChatSearch = typeof window === "undefined" ? "" : window.location.search;
+  const syncEnabled = readSyncChatSwitch(syncChatSearch);
+  const syncChat = useSyncChatState({
+    enabled: syncEnabled && authState === "ready",
+    agentId,
+    instanceUid: sessionId ?? null,
+    rcsSessionId: rcsSessionKey ?? null,
+    organizationId: readSyncChatOrganizationId(),
+    sessionKey: legacySessionState.acpSessionId,
+  });
+  const mergeScope = `${docHubKey}:${legacySessionState.acpSessionId}`;
+  const merger = useMemo(() => ({ scope: mergeScope, merge: createSyncMessageMerger() }), [mergeScope]);
+  const sessionState = useMemo(() => {
+    if (!syncEnabled || syncChat.legacyFallback) return legacySessionState;
+    return {
+      ...legacySessionState,
+      structuredMessages: merger.merge(legacySessionState.structuredMessages, syncChat.projection.messages),
+    };
+  }, [legacySessionState, merger, syncEnabled, syncChat.legacyFallback, syncChat.projection.messages]);
 
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
@@ -450,6 +478,7 @@ export function useChatPanelRuntime({
     rcsSessionKey,
     chatState,
     sessionState,
+    syncChat,
     periTasks: periTaskState.tasks,
     periTasksLoaded: periTaskState.loaded,
     derivedState,

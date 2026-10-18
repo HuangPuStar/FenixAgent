@@ -87,6 +87,9 @@ function mapStatus(status: string): ToolCallStatus {
   }
 }
 
+// 文本条目不依赖前序 TODO，按不可变消息对象缓存，避免新增 token 使全部 EntryRenderer 失效。
+const textEntryCache = new WeakMap<StructuredMessage, ThreadEntry>();
+
 /**
  * 将 Yjs StructuredMessage[] 转换为 ChatInterface 渲染用的 ThreadEntry[]。
  * 纯函数，无副作用。
@@ -96,6 +99,11 @@ export function structuredToThreadEntries(messages: readonly StructuredMessage[]
   let previousTodos: TodoItem[] | null = null;
 
   for (const m of messages) {
+    const cached = textEntryCache.get(m);
+    if (cached) {
+      entries.push(cached);
+      continue;
+    }
     switch (m.type) {
       case "assistant_message":
         entries.push({
@@ -174,6 +182,7 @@ export function structuredToThreadEntries(messages: readonly StructuredMessage[]
           chunks: [],
         });
     }
+    if (m.type === "user_message" || m.type === "assistant_message") textEntryCache.set(m, entries[entries.length - 1]);
   }
 
   return entries;

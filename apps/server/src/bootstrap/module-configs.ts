@@ -60,6 +60,9 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       yjsSnapshotIntervalMs: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_INTERVAL_MS"),
       yjsSnapshotIdleMs: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_IDLE_MS"),
       yjsSnapshotTtlSeconds: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_TTL_SECONDS"),
+      chatSyncProtocolEnabled: readDeclaredEnv<boolean>(env, "RCS_CHAT_SYNC_PROTOCOL_ENABLED"),
+      chatSyncSealGraceMs: readDeclaredEnv<number>(env, "RCS_CHAT_SYNC_SEAL_GRACE_MS"),
+      chatSyncRetireGraceMs: readDeclaredEnv<number>(env, "RCS_CHAT_SYNC_RETIRE_GRACE_MS"),
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
     machine: {

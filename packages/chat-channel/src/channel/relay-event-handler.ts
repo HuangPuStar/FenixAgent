@@ -122,6 +122,20 @@ const CALLBACK_TERMINAL_EVENTS: ReadonlySet<NormalizedEventType> = new Set([
   "turn_failed",
 ]);
 
+/**
+ * 新同步协议旁路需要 turn 归属的事件。
+ *
+ * ACP 实时载荷不带 turnId；这里只使用旧投影已提交的 activeTurnId（由 registerUserMessage /
+ * pendingPromptTurns 建立的同一份服务端绑定），不读取客户端字段，也不在无绑定时猜造。
+ */
+const SYNC_TURN_BOUND_EVENTS: ReadonlySet<NormalizedEventType> = new Set([
+  ...REPLAY_NEEDS_TURN,
+  "permission_resolved",
+  "turn_failed",
+  "turn_cancelled",
+  "turn_interrupted",
+]);
+
 /** 提取 user_message 文本（与聚合层 extractText 同口径：content 优先，回落 update 顶层） */
 function extractUserMessageText(event: NormalizedEvent): string {
   const contentText = event.content?.text;
@@ -165,6 +179,13 @@ export interface RelayEventHandlerDependencies {
   terminateLocalDeadInstance: (instanceId: string) => void;
   /** 安全诊断日志：只记录低基数 method/type，不得记录 payload 或会话标识。 */
   log?: (message: string) => void;
+  /**
+   * 旧投影路径处理后的旁路通知（新同步协议接线用）。
+   *
+   * 必须先完成 `processNormalizedEvent` 再调用；旧客户端行为不依赖本回调。实现方负责按连接过滤
+   * trusted turnId 并自行捕获异步错误。
+   */
+  onNormalizedEvent?: (rcsSessionId: string, event: NormalizedEvent) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
@@ -865,6 +886,20 @@ export class RelayEventHandler {
       this.dependencies.docManager.processNormalizedEvent(shared.rcsSessionId, event);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
+    }
+    // 旧投影路径已完成；新协议旁路只消费同一份已规范化、已授权事件。
+    try {
+      const boundTurnId =
+        event.turnId ??
+        (SYNC_TURN_BOUND_EVENTS.has(event.type)
+          ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId
+          : null);
+      this.dependencies.onNormalizedEvent?.(
+        shared.rcsSessionId,
+        boundTurnId ? { ...event, turnId: boundTurnId } : event,
+      );
+    } catch (err) {
+      this.dependencies.reportError("[YJS-FE] sync protocol event fanout failed:", err);
     }
   }
 

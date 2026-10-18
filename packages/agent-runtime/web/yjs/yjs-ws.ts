@@ -81,3 +81,136 @@ export function buildYjsUrl(agentId: string, locator: YjsChatLocator): string {
 export function createYjsWs(options: YjsWsOptions): YjsWsClient {
   return createYjsWsClient(options);
 }
+
+// ── 新聊天同步协议（隔离路径）的浏览器接入原语 ──
+//
+// 新协议复用同一个已认证 endpoint，但帧是 UTF-8 JSON 二进制帧。以下导出只服务
+// `sync-transport.ts`：新增导出不改变旧 `createYjsWs` / URL 构造的任何行为。
+
+/** 浏览器 WebSocket 的最小结构面：测试用同形状替身即可，不依赖 DOM 事件对象。 */
+export interface SyncBrowserSocket {
+  binaryType: string;
+  readonly readyState: number;
+  readonly bufferedAmount: number;
+  send(data: Uint8Array): void;
+  close(code?: number, reason?: string): void;
+  onopen: (() => void) | null;
+  onmessage: ((data: unknown) => void) | null;
+  onclose: ((code: number, reason: string) => void) | null;
+  onerror: (() => void) | null;
+}
+
+export type SyncBrowserSocketFactory = (url: string) => SyncBrowserSocket;
+
+/** 浏览器 WebSocket 适配：事件回调收敛成最小结构面，避免测试伪造 DOM 事件。 */
+export function createBrowserSyncSocket(url: string): SyncBrowserSocket {
+  const ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  const socket: SyncBrowserSocket = {
+    get binaryType() {
+      return ws.binaryType;
+    },
+    set binaryType(value: string) {
+      ws.binaryType = value === "blob" ? "blob" : "arraybuffer";
+    },
+    get readyState() {
+      return ws.readyState;
+    },
+    get bufferedAmount() {
+      return ws.bufferedAmount;
+    },
+    // 控制帧很小；复制到独立 ArrayBuffer 以避开 SharedArrayBuffer 与 DOM send 的类型不兼容。
+    send: (data) => {
+      const copy = new ArrayBuffer(data.byteLength);
+      new Uint8Array(copy).set(data);
+      ws.send(copy);
+    },
+    close: (code, reason) => ws.close(code, reason),
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+    onerror: null,
+  };
+  ws.onopen = () => socket.onopen?.();
+  ws.onmessage = (event) => socket.onmessage?.(event.data);
+  ws.onclose = (event) => socket.onclose?.(event.code, event.reason);
+  ws.onerror = () => socket.onerror?.();
+  return socket;
+}
+
+/**
+ * 新同步协议 socket URL：复用旧 URL 的全部 query（组织、实例、RCS 会话），再显式标记 `chatSync=1`。
+ * 标记只影响服务端分流，不新建通道。
+ */
+export function buildSyncChatSocketUrl(agentId: string, locator: YjsChatLocator): string {
+  const url = new URL(buildYjsUrl(agentId, locator));
+  url.searchParams.set("chatSync", "1");
+  return url.toString();
+}
+
+/** 前端默认使用新协议；只有显式 `?chatSync=0` 回退，不依赖服务端环境变量。 */
+export function readSyncChatSwitch(search: string): boolean {
+  return new URLSearchParams(search).get("chatSync") !== "0";
+}
+
+/** 显式调试后备的内容块列表；正常由 MANIFEST → directory `root.contentDocIds` 发现。逗号分隔，去空去重。 */
+export function readSyncChatContentDocIds(search: string): string[] {
+  const raw = new URLSearchParams(search).get("chatSyncDocs");
+  if (raw === null) return [];
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  ];
+}
+
+/** HELLO 代次（服务端接线前用于满足握手校验；未提供时省略）。 */
+export function readSyncChatGeneration(search: string): string | undefined {
+  const raw = new URLSearchParams(search).get("chatSyncGeneration")?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+/** 新协议 HELLO scope 的组织来源：与旧 YJS URL 共用同一个读取契约点。 */
+export function readSyncChatOrganizationId(): string | null {
+  return readActiveOrgId();
+}
+
+/**
+ * 新协议帧是 UTF-8 JSON（首字节 `{`）。这里只做旁路镜像所需的轻量解码：非 JSON、非对象返回 null，
+ * 真正的 schema 校验由 sync-client 的 transport 完成。
+ */
+export function decodeSyncWireJson(bytes: Uint8Array): Record<string, unknown> | null {
+  if (bytes.byteLength === 0 || bytes[0] !== 0x7b) return null;
+  try {
+    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 标准 base64 解码（帧 schema 只接受该形态）；失败返回 null，由 transport 的严格解码报错。 */
+export function decodeSyncBase64Payload(text: string): Uint8Array | null {
+  try {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/** 把 WebSocket 的二进制事件统一成 Uint8Array；文本/未知类型返回 null。 */
+export function syncSocketBytes(data: unknown): Uint8Array | null {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  return null;
+}

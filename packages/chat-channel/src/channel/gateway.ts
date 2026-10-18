@@ -7,11 +7,12 @@ import type { DocManager } from "../state";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import type { ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
+import { type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -41,6 +42,9 @@ export interface GatewayDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
+  chatSyncProtocol?: ChatSyncProtocolConfig;
+  /** 同步运行时注入（观测/测试用假时钟）；生产缺省使用系统时钟。 */
+  syncHostOverrides?: GatewaySyncHostOverrides;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连，展示手动重试 UI） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连分支 */
@@ -227,6 +231,7 @@ export class Gateway {
       keepalive,
       instanceId,
       rcsSessionId: shared.rcsSessionId,
+      organizationId: orgId,
       acpSessionId: locator.acpSessionId ?? null,
       sessionLoaded: false,
       workspacePath: shared.workspacePath,
@@ -285,6 +290,15 @@ export class Gateway {
   async handleMessage(ws: WsConnection, wsId: string, data: string | Uint8Array): Promise<void> {
     const entry = this.dependencies.registry.getClient(wsId);
     if (typeof data !== "string") {
+      const routed = await routeSyncProtocolFrame(
+        entry,
+        ws,
+        data,
+        this.dependencies.chatSyncProtocol,
+        (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
+        this.dependencies.syncHostOverrides,
+      );
+      if (routed) return;
       const frame = decodeYjsSyncFrame(data);
       if (!entry || frame?.type !== "state-vector") return;
       const prefix = frame.docName.split(":", 1)[0];
@@ -326,6 +340,7 @@ export class Gateway {
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);
     if (!entry) return;
+    entry.syncConnection?.dispose();
     clearInterval(entry.keepalive);
     this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
