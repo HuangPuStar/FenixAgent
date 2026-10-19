@@ -233,13 +233,18 @@ export class YjsBroadcaster {
   private broadcastMessage(docName: string, frame: Uint8Array): void {
     const rcsSessionId = this.getRcsSessionId(docName);
 
-    const send = (ws: WsConnection) => this.sendFrameWithBackpressure(ws, docName, frame);
+    // sync-only 连接由新协议 DOC_BASE/DOC_UPDATE 驱动，旧 Doc 增量必须跳过；
+    // 同一会话可能同时存在旧标签页，因此按连接而非按会话整体裁剪。
+    const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
+      if (entry.syncOnly) return;
+      this.sendFrameWithBackpressure(entry.ws, docName, frame);
+    };
 
     if (rcsSessionId) {
-      this.registry.forEachByRcsSession(rcsSessionId, (entry) => send(entry.ws));
+      this.registry.forEachByRcsSession(rcsSessionId, send);
       return;
     }
-    this.registry.forEachClient((entry) => send(entry.ws));
+    this.registry.forEachClient(send);
   }
 
   /**

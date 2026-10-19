@@ -235,6 +235,31 @@ describe("sync content Doc 只读投影", () => {
     expect(latest().recordCount).toBe(1);
   });
 
+  // 历史导入的 `text_part` 是保真 JSON 字符串：按 JSON 解码成正文，坏 JSON 只计入 skipped。
+  test("text_part 按保真 JSON 解码为正文，坏 JSON 计入 skipped", async () => {
+    const { hub, latest } = createHub();
+    hub.applyUpdate({
+      docId: contentDocId(1),
+      generation: GENERATION,
+      payload: contentDocUpdate(
+        [
+          { entryId: "turn_5:assistant", kind: "text_part", payload: JSON.stringify("历史正文") },
+          { entryId: "turn_6:assistant", kind: "text_part", payload: "{not json" },
+        ],
+        1,
+      ),
+    });
+    await flushProjection();
+    expect(latest().messages).toHaveLength(1);
+    expect(latest().messages[0]).toMatchObject({
+      type: "assistant_message",
+      id: "turn_5:assistant",
+      chunks: [{ type: "message", text: "历史正文" }],
+    });
+    expect(latest().skippedRecords).toBe(1);
+    expect(latest().recordCount).toBe(1);
+  });
+
   // 同一 Doc 追加记录时只失效被改动的 entry：其他消息对象必须保持引用，React.memo 才能跳过。
   test("同一 Doc 追加记录不重建未变 entry 的消息对象", async () => {
     const { hub, latest } = createHub();

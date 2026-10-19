@@ -306,6 +306,7 @@ describe("sync-client 子路径浏览器可达面", () => {
       "sync/client/doc-hub.ts",
       "sync/client/index.ts",
       "sync/client/transport.ts",
+      "sync/protocol/directory.ts",
       "sync/protocol/errors.ts",
       "sync/protocol/frames.ts",
       "sync/protocol/identity.ts",

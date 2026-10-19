@@ -119,13 +119,14 @@ describe("useChatHydration", () => {
     expect(latest.current?.messages).toHaveLength(1);
     expect(latest.current?.hydrating).toBe(false);
 
-    // 基线齐备：一次合并全部 100 条（旧条目保留）。
+    // 基线齐备：一次合并全部 100 条；旧通道纯文本历史已由新投影覆盖，不再重复进入。
     options = { ...options, blocked: false };
     act(() => root.render(createElement(Probe)));
     await act(async () => {
       await wait(40);
     });
-    expect(latest.current?.messages).toHaveLength(101);
+    expect(latest.current?.messages).toHaveLength(100);
+    expect(latest.current?.messages.map((message) => message.id)).toEqual(baseline.map((message) => message.id));
     act(() => root.unmount());
   }, 30_000);
 
@@ -154,6 +155,30 @@ describe("useChatHydration", () => {
     expect(latest.current?.hydrating).toBe(false);
     expect(latest.current?.messages.map((message) => message.id)).toEqual(["old"]);
     act(() => root.unmount());
+  });
+
+  // 明确回退或关闭开关时，旧全量仍是唯一视图；新投影文本不得替换旧历史。
+  test("回退与关闭开关时保留旧全量文本", () => {
+    const legacy = {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready" as const,
+      status: "idle" as const,
+      loading: null,
+      canCancel: false,
+      replayState: null,
+      timelineEmpty: false,
+      structuredMessages: [assistant("old", "旧历史")],
+      pendingQuestions: new Map(),
+      agentPublicError: null,
+    };
+    const hydration = { messages: [assistant("new", "新投影")], hydrating: false };
+    for (const options of [
+      { syncEnabled: false, legacyFallback: false },
+      { syncEnabled: true, legacyFallback: true },
+    ]) {
+      const state = applyChatHydration(legacy, hydration, options);
+      expect(state.structuredMessages.map((message) => message.id)).toEqual(["old"]);
+    }
   });
 
   // 同步终态错误必须清掉旧路径遗留的 loading，否则错误卡消失后输入区仍被禁用。

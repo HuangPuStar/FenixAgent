@@ -2,6 +2,7 @@
 
 import { translateSimpleAction } from "../protocol/translator";
 import type { DocManager } from "../state";
+import { SyncStoreRegistry } from "../sync/runtime/store-registry";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
@@ -55,18 +56,29 @@ export interface ChatConnectionLocator {
   instanceUid: string;
   rcsSessionId: string;
   acpSessionId?: string;
+  /** 客户端显式声明只消费新同步协议（路由按 `chatSync=1` 注入）；缺省保持旧全链路。 */
+  syncOnly?: boolean;
 }
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
   private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
   private readonly messageHandler: GatewayMessageHandler;
+  /**
+   * 同 scope 多标签页共享投影存储：默认按控制器进程隔离，测试可经 `syncHostOverrides.storeRegistry`
+   * 注入独立实例。共享的是 store 与一次性历史引导，每个连接仍有独立 runtime。
+   */
+  private readonly syncHostOverrides: GatewaySyncHostOverrides;
   constructor(private readonly dependencies: GatewayDependencies) {
+    this.syncHostOverrides = {
+      storeRegistry: new SyncStoreRegistry(),
+      ...dependencies.syncHostOverrides,
+    };
     this.messageHandler = createGatewayMessageHandler({
       registry: dependencies.registry,
       broadcaster: dependencies.broadcaster,
       docManager: dependencies.docManager,
       chatSyncProtocol: dependencies.chatSyncProtocol,
-      syncHostOverrides: dependencies.syncHostOverrides,
+      syncHostOverrides: this.syncHostOverrides,
       pendingInitialSync: this.pendingInitialSync,
       reportError: (message, error) => this.reportError(message, error),
       forward: (entry, parsed, ws) => this.forward(entry, parsed, ws),
@@ -271,6 +283,7 @@ export class Gateway {
       pendingMessages: [],
       relayReady: false,
       agentStatusReceived: false,
+      syncOnly: locator.syncOnly === true,
     };
     registry.addClient(wsId, entry);
     await flushPendingSyncFrames(
@@ -280,7 +293,8 @@ export class Gateway {
       ws,
       this.dependencies.chatSyncProtocol,
       (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
-      this.dependencies.syncHostOverrides,
+      this.syncHostOverrides,
+      this.dependencies.docManager,
     );
     let chatDoc: Awaited<ReturnType<DocManager["openChat"]>>;
     let sessionDoc: Awaited<ReturnType<DocManager["openSession"]>>;
@@ -307,15 +321,19 @@ export class Gateway {
       ws.close(1011, "yjs initialization failed");
       return;
     }
-    await synchronizeInitialDocs(
-      this.pendingInitialSync,
-      broadcaster,
-      ws,
-      wsId,
-      shared.rcsSessionId,
-      chatDoc,
-      sessionDoc,
-    );
+    // sync-only 连接的新投影由 HELLO/DOC_BASE 自建，旧全量快照只会被客户端忽略并浪费带宽；
+    // 旧连接仍走 500ms state-vector 握手 + 全量兜底。
+    if (!entry.syncOnly) {
+      await synchronizeInitialDocs(
+        this.pendingInitialSync,
+        broadcaster,
+        ws,
+        wsId,
+        shared.rcsSessionId,
+        chatDoc,
+        sessionDoc,
+      );
+    }
     // connect 成功是 relayReady 的提交点；此前文本 action 始终留在有界 pending queue。
     try {
       await shared.handle.send({ type: "connect" } as never);

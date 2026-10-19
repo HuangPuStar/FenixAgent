@@ -41,7 +41,9 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
       );
       if (routed) return;
       const frame = decodeYjsSyncFrame(data);
-      if (!entry || frame?.type !== "state-vector") return;
+      // sync-only 连接不参与旧通道握手：state-vector 差量会绕过旧全量退役（快照除外），
+      // 直接忽略；旧连接保持原语义。
+      if (!entry || entry.syncOnly || frame?.type !== "state-vector") return;
       const prefix = frame.docName.split(":", 1)[0];
       const expectedName = `${prefix}:${entry.rcsSessionId}`;
       if (frame.docName !== expectedName) return;
