@@ -7,6 +7,7 @@ import { getMachineDatabase } from "../db";
 import { getEnvironmentById } from "../environment-port";
 import { getMachineSandboxRoutePort, type SandboxRouteResult } from "../sandbox-route-port";
 import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
+import { REMOTE_UPLOAD_LIMIT_MESSAGE, REMOTE_UPLOAD_MAX_BYTES } from "./file-types";
 
 type RemoteMachineResolutionInput = {
   /**
@@ -30,22 +31,14 @@ export function selectRemoteMachineId(input: RemoteMachineResolutionInput): stri
   return input.defaultMachineId;
 }
 
-// ── 远程 upload 单文件上限（字节）与 413 文案 ──
-// 权威声明在 file-types.ts（REMOTE_UPLOAD_MAX_BYTES / REMOTE_UPLOAD_LIMIT_MESSAGE）；
-// 此处独立声明以避免两服务模块互相导入成环（agent-file-service 已导入本模块函数），
-// 修改上限或文案必须两处同步——fs-upload-limit.test.ts 断言锁定，漂移即测试失败。
-const REMOTE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
-const REMOTE_UPLOAD_LIMIT_MESSAGE = "单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取";
-
 // ── 远程 zip 单帧上限与 413 文案（W16，§7.9）──
-// 单帧过渡版：base64 帧受 W8a 32MB WS 载荷约束（20MB 原数据 ≈ 27MB 帧），超过 20MB
-// 明确 413 + 建议选择子目录，不截断；分块回传（file_op_chunk，总包 ≤100MB）属二期。
-const REMOTE_ZIP_MAX_BYTES = 20 * 1024 * 1024;
+// 92MB ZIP 编码后约 122.67MB，必须小于服务端配置的 WS 消息上限。
+const REMOTE_ZIP_MAX_BYTES = 92 * 1024 * 1024;
 /** zip 超限的 413 用户可读文案（跨 plan 契约："建议选择子目录"），fs-zip-remote.test.ts 断言锁定 */
-export const REMOTE_ZIP_LIMIT_MESSAGE = "目录打包后超过 20MB（远程环境），建议选择子目录后重试";
+export const REMOTE_ZIP_LIMIT_MESSAGE = "目录打包后超过 92MB（远程环境），建议选择子目录后重试";
 
 // zip 超时派生（§7.9：默认 60s 不够，按 60s + 总包/2MB/s 预算）。单帧过渡版发送时
-// 总包未知，按 20MB 上限派生（60s + 10s = 70s）；分块二期首帧携带总大小后改按实际总包派生。
+// 总包未知，按 92MB 上限派生（60s + 46s = 106s）；分块二期首帧携带总大小后改按实际总包派生。
 const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)) * 1000;
 
 /**
@@ -176,7 +169,12 @@ export async function remoteReadBinaryFile(
 ): Promise<{ name: string; path: string; data: string; size: number; mimeType: string }> {
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(machineId, "read_binary", { path: filePath, environmentId: envId });
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "payload_too_large" && result.statusCode === 413) {
+      throw new AppError("单文件下载上限 92MB", "payload_too_large", 413);
+    }
+    throw new Error(result.error as string);
+  }
   return result.data as { name: string; path: string; data: string; size: number; mimeType: string };
 }
 
@@ -206,9 +204,7 @@ export async function remoteWriteFile(
 
 /**
  * 上传文件到远程机器（base64 编码）。
- * W8b（P1-11b）：发送前逐文件检查单文件上限（20MB）——20MB 原文件的 base64 帧约
- * 27MB，仍低于 W8a 的 32MB WS 载荷上限，若不提前拦截会构造出 ~27MB 大帧后才被
- * 兜底拒绝；从 base64 精确反推原始字节数（含 padding，恰好 20MB 允许）。
+ * 单文件限制与门面同源；发送前根据 base64 padding 还原字节数，避免超限文件进入传输。
  */
 export async function remoteUploadFiles(
   machineId: string,
@@ -218,12 +214,18 @@ export async function remoteUploadFiles(
   options?: FileOpOptions,
 ): Promise<{ files: Array<{ name: string; path: string; size: number }> }> {
   assertFileWsAvailable(machineId);
+  let totalBytes = 0;
   for (const file of files) {
     const padding = file.content.endsWith("==") ? 2 : file.content.endsWith("=") ? 1 : 0;
     const originalBytes = Math.floor((file.content.length * 3) / 4) - padding;
     if (originalBytes > REMOTE_UPLOAD_MAX_BYTES) {
       throw new AppError(REMOTE_UPLOAD_LIMIT_MESSAGE, "payload_too_large", 413);
     }
+    totalBytes += originalBytes;
+  }
+  // 单文件合规的多文件批次也会膨胀为同一条 Base64 消息。
+  if (totalBytes > REMOTE_UPLOAD_MAX_BYTES) {
+    throw new AppError("单次上传文件总量上限 92MB，请分批上传", "payload_too_large", 413);
   }
   const result = await sendFileOpAndWait(
     machineId,
@@ -348,8 +350,8 @@ export async function remoteTree(
 
 /**
  * 远程目录打包 zip（file_op "zip"，W16，§7.9）。
- * 单帧回传：机器端打包完成后一次性以 base64 返回（受 W8a 32MB WS 载荷约束 →
- * zip ≤ ~20MB）；超过 20MB 抛 413 payload_too_large + "建议选择子目录"，不截断。
+ * 单帧回传：机器端打包完成后一次性以 base64 返回（受 W8a 128MB WS 载荷约束 →
+ * zip ≤ ~92MB）；超过 92MB 抛 413 payload_too_large + "建议选择子目录"，不截断。
  * 机器端 zip 操作未上线（外部依赖）时返回 status:"error"，由调用方映射 503 明确错误。
  * @returns base64 编码的 zip 单帧
  */
@@ -367,7 +369,7 @@ export async function remoteZip(machineId: string, envId: string, path: string):
   }
   const data = result.data as string;
   // 从 base64 精确反推原始字节数（含 padding，与 remoteUploadFiles 同法）：
-  // >20MB 明确拒绝，不得截断回传部分 zip（不完整包对消费者比失败更糟）
+  // >92MB 明确拒绝，不得截断回传部分 zip（不完整包对消费者比失败更糟）
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   const originalBytes = Math.floor((data.length * 3) / 4) - padding;
   if (originalBytes > REMOTE_ZIP_MAX_BYTES) {

@@ -80,14 +80,14 @@ export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: str
   },
   APP_BRAND_NAME: { description: "前端品牌名。" },
   APP_LOGO_PATH: { description: "前端 logo 路径；空串表示使用内置品牌资源。" },
-  RCS_WS_MAX_PAYLOAD_MB: { description: "单条 WebSocket 消息上限（MB）。" },
+  RCS_WS_MAX_PAYLOAD_MB: { description: "单条 WebSocket 消息上限（MiB），最高128；文件实际大小上限92MiB。" },
   RCS_DISABLE_SCHEDULER: { description: "跳过启动时的 schedulerService.start()；不是全局只读模式。" },
   RCS_FILE_WS_IDLE_TIMEOUT_MS: { description: "file-ws 多久没有心跳即判定为僵尸连接（毫秒）。" },
   RCS_FILE_WS_SWEEP_INTERVAL_MS: { description: "file-ws 僵尸连接巡检间隔（毫秒）。" },
   RCS_FILE_WS_SWEEP_ENABLED: {
     description: "是否启用 file-ws 僵尸巡检；默认关闭，旧机器端未实现 keep_alive 时会被误判，需灰度开启。",
   },
-  RCS_FILE_WS_MAX_PAYLOAD_MB: { description: "file-ws 单帧最大载荷（MB）；须容纳远程上传的 base64 帧。" },
+  RCS_FILE_WS_MAX_PAYLOAD_MB: { description: "file-ws双向消息上限（MiB），最高128；上传及下载文件实际大小上限92MiB。" },
   RCS_DISABLE_SIGNUP: { description: "关闭前端自助注册：隐藏注册入口并拒绝新用户注册。" },
   RCS_DEFAULT_MACHINE_ID: { description: "默认远端执行节点 ID（mach_ 前缀）；agent config 未绑定 machineId 时使用。" },
   // 取值清单来自 `ENGINE_TYPES`（引擎槽位的唯一真相在 `services/config/types.ts`），不手抄，避免增删引擎时静默漂移。

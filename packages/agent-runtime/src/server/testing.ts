@@ -124,7 +124,7 @@ export function createAgentRuntimeModuleConfig(
     workspaceRoot: join(process.cwd(), "workspaces"),
     baseUrl: "http://stub.invalid",
     acpRegistrySecret: "test-acp-registry-secret",
-    fileWsMaxPayloadMb: 32,
+    fileWsMaxPayloadMb: 128,
     yjsMaxClients: 200,
     // 快照三项与 `yjsMaxClients` 同属 chat-channel 装配面，取声明的默认值（2000 / 500 / 604800）。
     yjsSnapshotIntervalMs: 2000,

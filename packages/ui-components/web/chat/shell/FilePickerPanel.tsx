@@ -194,23 +194,23 @@ export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, class
       const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
-      const maxSize = 100 * 1024 * 1024;
+      const maxSize = 92 * 1024 * 1024;
       for (const file of files) {
         if (file.size > maxSize) {
-          setUploadError(t("chat.components.filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          setUploadError(t("chat.components.filePicker.fileTooLarge", { name: file.name, max: "92MB" }));
           if (fileInputRef.current) fileInputRef.current.value = "";
           return;
         }
       }
 
-      // 校验总上传量，超过 100MB 全局限制时给出明确提示
+      // 校验总上传量，超过 92MB 全局限制时给出明确提示
       const totalSize = files.reduce((sum, f) => sum + f.size, 0);
       if (totalSize > maxSize) {
         const sizeStr =
           totalSize > 1024 * 1024 * 1024
             ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
             : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-        setUploadError(t("chat.components.filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        setUploadError(t("chat.components.filePicker.totalTooLarge", { total: sizeStr, max: "92MB" }));
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }

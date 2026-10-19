@@ -316,8 +316,10 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
      越界 400）；`/web` 自 F1 起允许 workspace 根内任意路径（`file-path-validator.assertSafePath`）。
   2. **远程落点**：`/api` 发往机器前剥掉 `user/` 前缀，`/web` 原样下发——同一条逻辑路径在远程机器上落到两个
      不同目录；`/api` 的响应再把机器返回的路径重新标成 `user/...` 掩盖了这个差异。
-  3. **单文件上限**：`/api` 本地 50MB；`/web` 本地 100MB / 远程 20MB（`file-types.ts` 的能力上限不对称条款）。
-     远程分支最终都受 `remote-file-service.ts` 的 20MB 约束，本地分支的阈值确实不同。
+  3. **单文件上限**：`/api` 本地 50MB；`/web` 本地 / 远程均为 92MB（`file-types.ts` 的上传容量约束）。
+     远程分支最终都受 `remote-file-service.ts` 的单文件和单次总量 92MiB 约束，本地分支的阈值确实不同。
+     后端 92MiB 是固定硬上限；前端产品上限当前也为 92MiB，后续在该范围内调整仅修改前端。
+     远程单文件与 ZIP 下载也固定为 92MiB，双向 WS 消息预算统一为 128MiB；下载限制需同步更新远程 acp-link。
   4. **授权口径**：`/api` 只按组织 + 属主（`machine-workspace-facade` 不下传角色）；`/web` 下传角色，
      `member` 一律 403（`machine-file-facade`）。这两条口径都是既有行为，收敛时必须先裁定取哪一条。
   5. **幂等与副作用**：`/web` 支持 `opId` 幂等键与 `If-Match` 条件写，并在本地写成功后发布 `file_changed`

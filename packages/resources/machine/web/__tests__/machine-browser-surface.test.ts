@@ -68,6 +68,7 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 内建），穿透检测能力未被放行削弱。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
+  ["radix-ui", "浏览器无样式原语（公共 ui/progress 的传递依赖）"],
   ["react", "React 运行时（本包 peerDependency，宿主注入）"],
   ["react-dom", "React DOM 运行时（本包 peerDependency；ui-components 的菜单/门户组件传递依赖）"],
   ["react-i18next", "React i18n 绑定（本包 peerDependency；文件上传 hook 与文件树容器取本包命名空间文案）"],

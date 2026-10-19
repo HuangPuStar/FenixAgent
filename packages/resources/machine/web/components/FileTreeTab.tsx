@@ -31,7 +31,6 @@ import { MACHINE_NS } from "../i18n/namespace";
 import { getFileOperationErrorMessage } from "../lib/file-operation-errors";
 
 const MAX_FILE_NAME_BYTES = 255;
-
 /** 浏览器侧按 UTF-8 字节校验 basename，与服务端文件系统 NAME_MAX 契约一致。 */
 export function getFileTreeNameByteLength(value: string) {
   return new TextEncoder().encode(value).byteLength;
@@ -48,12 +47,10 @@ export function isValidFileTreeBasename(value: string) {
     getFileTreeNameByteLength(value) <= MAX_FILE_NAME_BYTES
   );
 }
-
 export function isValidFileTreeMovePath(value: string) {
   const trimmed = value.trim();
   return !!trimmed && !trimmed.includes("\0");
 }
-
 interface FileTreeTabProps {
   envId: string | null;
   onPreviewFile: (path: string) => void;
@@ -66,22 +63,12 @@ export interface FileTreeTabHandle {
   uploadFiles: ReturnType<typeof useFileUploads>["uploadFiles"];
 }
 
-/**
- * 文件树容器（下载、重试、WS 失效事件、上传落点）。
- *
- * 归属（2026-09-24，台账 `ce-standards-todo.md` D2）：由宿主
- * `apps/web/src/shell/artifacts/FileTreeTab.tsx` 迁入本包（该簇 2026-09-28 归位到
- * `apps/web/src/pages/agent-panel/artifacts/`，本文件不在其中）——它消费的网络层（`fsApi` / `downloadWorkspacePath`
- * / `useFileUploads`）、事件通道（`useFileTreeEvents`）与拖拽计数都在本包，视图（`FileTreeView`）来自
- * `@fenix/ui-components` 的公开入口。文案改绑本包命名空间（键的最终所在地 = 包的 owner）。
- */
+/** 文件树容器：编排下载、上传、重试与文件变更订阅，视图由公共组件承载。 */
 export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(function FileTreeTab(
   { envId, onPreviewFile, onReferenceFile, headerActions },
   ref,
 ) {
   const { t } = useTranslation(MACHINE_NS);
-  // `confirmDialog.cancel` 的 owner 是 `@fenix/ui-components`（`ConfirmDialog` 的同名默认文案）：
-  // 台账 D4 起不再借宿主 `components` 字典的副本。
   const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const treeDataRef = useRef<ParsedFileNode[]>([]);
   const [treeVersion, setTreeVersion] = useState(0);
@@ -138,6 +125,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     fileInputRef,
     folderInputRef,
     uploading,
+    uploadProgress,
     uploadFiles,
     uploadDroppedFiles,
     handleFileInputChange,
@@ -441,12 +429,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   return (
     <>
       <FileTreeView
-        // 源实现用 `envId` 表达「能否改动远端」；包内契约改为语义化的 `canMutate`（§1.6 T8c）。
         canMutate={!!envId}
         headerActions={headerActions}
         loading={loading && treeDataRef.current.length === 0}
         stale={stale}
         uploading={uploading}
+        uploadProgress={uploadProgress?.percent}
+        uploadSaving={uploadProgress?.saving}
         dragOver={dragOver}
         searchQuery={searchQuery}
         normalizedSearch={normalizedSearch}

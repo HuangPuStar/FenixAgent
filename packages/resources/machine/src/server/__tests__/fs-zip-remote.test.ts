@@ -1,6 +1,6 @@
 // fs-zip-remote.test.ts —— W16（P1-7 zip 远程补齐）验证
 // download-zip 远程 501 → 可用：file_op "zip" 单帧回传（base64）→ 服务端解码后流式转发
-// （Content-Type / Content-Disposition 由路由设置，与本地同一 HTTP 契约）；>20MB →
+// （Content-Type / Content-Disposition 由路由设置，与本地同一 HTTP 契约）；>92MB →
 // 413 + "建议选择子目录"（不截断，能力上限不对称 §2.4/§7.6）；机器端 zip 未实现
 // （status:"error"）→ 503 明确错误路径（外部依赖未上线前不得静默回退）。
 
@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
 import { contentDispositionAttachment, createWebFsRoutes } from "../routes/web/fs";
-import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
+import { REMOTE_ZIP_LIMIT_MESSAGE, remoteReadBinaryFile } from "../services/remote-file-service";
 import {
   initializeMachineModuleConfig,
   lockMachineWorkspaceRoot,
@@ -27,8 +27,25 @@ const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";
 
 const MB = 1024 * 1024;
-// 单帧过渡版 zip 超时：60s + 20MB 上限 / 2MB/s 预算（remoteZip 契约，测试断言锁定）
-const REMOTE_ZIP_TIMEOUT_MS = 70_000;
+// 单帧过渡版 zip 超时：60s + 92MB 上限 / 2MB/s 预算（remoteZip 契约，测试断言锁定）
+const REMOTE_ZIP_TIMEOUT_MS = 106_000;
+
+// 机器端拒绝超大单文件时，主服务须保留413语义，不能误报为文件服务离线。
+test("远程单文件下载超限保留413错误", async () => {
+  stubFileWsTransport({
+    isFileWsConnected: () => true,
+    sendFileOpAndWait: async () => ({
+      status: "error",
+      error: "File exceeds 92MB download limit",
+      errorCode: "payload_too_large",
+      statusCode: 413,
+    }),
+  });
+  await expect(remoteReadBinaryFile(MACHINE_ID, ENV_ID, "large.bin")).rejects.toMatchObject({
+    code: "payload_too_large",
+    statusCode: 413,
+  });
+});
 
 // 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
 // 环境读取与 file-ws 传输经包内句柄替换（stubMachineEnvironmentRecord / stubFileWsTransport）
@@ -81,7 +98,7 @@ describe("远程环境（stub file-ws 在线）", () => {
 
   test("zip 单帧回传 → 200 流式转发 + 头正确 + 内容一致", async () => {
     // W16 契约：download-zip 远程经 file_op "zip"（params 含 path + 服务端注入的
-    // environmentId，超时按 20MB 上限派生 70s）单帧回传，解码后作为 zip 流响应，
+    // environmentId，超时按 92MB 上限派生 106s）单帧回传，解码后作为 zip 流响应，
     // 浏览器收到的字节与机器端打包结果完全一致
     const zipBytes = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x0a, 0x00, 0x01]);
     const sendMock = mock(
@@ -102,11 +119,11 @@ describe("远程环境（stub file-ws 在线）", () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(zipBytes);
   });
 
-  test(">20MB 单帧 → 413 + 建议选择子目录，不截断", async () => {
-    // 单帧受 W8a 32MB WS 载荷约束（20MB 原数据 ≈ 27MB base64 帧）；超限必须明确 413
+  test(">92MB 单帧 → 413 + 建议选择子目录，不截断", async () => {
+    // 单帧受 W8a 128MB WS 载荷约束（92MB 原数据 ≈ 122.67MB base64 帧）；超限必须明确 413
     // 并携带"建议选择子目录"用户可读文案，不得静默截断返回部分 zip（不完整包对消费者
     // 比失败更糟）
-    const oversized = Buffer.alloc(20 * MB + 1, 7).toString("base64");
+    const oversized = Buffer.alloc(92 * MB + 1, 7).toString("base64");
     stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "ok", data: oversized }),
@@ -126,7 +143,7 @@ describe("远程环境（stub file-ws 在线）", () => {
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({
         status: "error",
-        error: "ZIP archive exceeds 20MB; select a smaller directory",
+        error: "ZIP archive exceeds 92MB; select a smaller directory",
         errorCode: "payload_too_large",
         statusCode: 413,
       }),
@@ -140,9 +157,9 @@ describe("远程环境（stub file-ws 在线）", () => {
     });
   });
 
-  test("恰好 20MB 边界成功转发", async () => {
-    // 边界语义：>20MB 拒绝、恰好 20MB 允许（与 upload 上限判断同构，base64 反推含 padding）
-    const zipBytes = Buffer.alloc(20 * MB, 7);
+  test("恰好 92MB 边界成功转发", async () => {
+    // 边界语义：>92MB 拒绝、恰好 92MB 允许（与 upload 上限判断同构，base64 反推含 padding）
+    const zipBytes = Buffer.alloc(92 * MB, 7);
     stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "ok", data: zipBytes.toString("base64") }),
@@ -151,7 +168,7 @@ describe("远程环境（stub file-ws 在线）", () => {
     const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(200);
-    expect(Buffer.from(await response.arrayBuffer()).length).toBe(20 * MB);
+    expect(Buffer.from(await response.arrayBuffer()).length).toBe(92 * MB);
   });
 
   test("机器端 zip 未实现（status error）→ 503 明确错误", async () => {

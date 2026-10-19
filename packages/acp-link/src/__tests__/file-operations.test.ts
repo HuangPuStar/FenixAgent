@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -46,6 +46,16 @@ afterEach(async () => {
 });
 
 describe("handleFileOp", () => {
+  // 超大单文件必须返回413，不能编码后撑爆共用的128MiB消息预算。
+  test("远程二进制下载拒绝92MiB加1字节", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const path = join(workspace, "large.bin");
+    await writeFile(path, "");
+    await truncate(path, 92 * 1024 * 1024 + 1);
+    const result = await handleFileOp(createMessage(environmentId, "read_binary", { path: "large.bin" }));
+    expect(result).toMatchObject({ status: "error", error_code: "payload_too_large", status_code: 413 });
+  });
+
   // 机器端搬迁前故障只清理自己的空占位，绝不能删除源目录或其内容。
   test("远程目录搬迁失败清理自己的空占位", async () => {
     const { workspace, environmentId } = await createWorkspace();

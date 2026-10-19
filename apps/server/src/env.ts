@@ -84,7 +84,7 @@ const envSchema = databaseConnectionPoolSchema.extend({
   APP_LOGO_PATH: z.string().default(""),
 
   // ── 可选：HTTP/WebSocket ──
-  RCS_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(128),
+  RCS_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().max(128).default(128),
   RCS_DISABLE_SCHEDULER: z
     .string()
     .default("false")
@@ -102,9 +102,10 @@ const envSchema = databaseConnectionPoolSchema.extend({
     .transform((v) => v === "true"),
 
   // ── 可选：file-ws 载荷上限（P1-11a，D12）──
-  // file-ws 单帧最大载荷 32MB（§7.6）：远程 upload 单文件 20MB → base64 帧 ~27MB < 32MB。
-  // 默认值须与 src/transport/file-ws-payload.ts 的 DEFAULT_FILE_WS_MAX_PAYLOAD_MB 保持一致。
-  RCS_FILE_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(32),
+  // 双向统一为128MiB消息预算：92MiB文件经Base64后约122.67MiB，剩余空间留给协议元信息。
+  // 不允许配置超过机器端 Bun WS 客户端的128MiB接收上限；实际文件硬上限独立固定为92MiB。
+  // 默认值须与 machine 包 file-ws-payload.ts 的 DEFAULT_FILE_WS_MAX_PAYLOAD_MB 保持一致。
+  RCS_FILE_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().max(128).default(128),
 
   // ── 可选：认证 ──
   RCS_DISABLE_SIGNUP: z

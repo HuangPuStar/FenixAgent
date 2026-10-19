@@ -459,9 +459,9 @@ describe("门面统一错误映射与能力常量", () => {
     });
   });
 
-  test("能力上限常量：本地 100MB / 远程 20MB", async () => {
+  test("能力上限常量：本地 / 远程均为 92MB", async () => {
     // 能力不对称条款：常量声明即契约（W8b 据此实施检查）
-    expect(LOCAL_UPLOAD_MAX_BYTES).toBe(100 * 1024 * 1024);
-    expect(REMOTE_UPLOAD_MAX_BYTES).toBe(20 * 1024 * 1024);
+    expect(LOCAL_UPLOAD_MAX_BYTES).toBe(92 * 1024 * 1024);
+    expect(REMOTE_UPLOAD_MAX_BYTES).toBe(92 * 1024 * 1024);
   });
 });

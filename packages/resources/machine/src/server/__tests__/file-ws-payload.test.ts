@@ -11,14 +11,20 @@ import {
 // 不依赖 env / handler 状态，直接静态 import（与 setup-mocks preload 无冲突）。
 
 describe("checkWsMessageSize 解析前载荷检查", () => {
-  test("超过 32MB 默认上限的原始字符串被拒绝（D12 解析前检查）", () => {
-    // 20MB upload 的 base64 帧 ~27MB < 32MB 应放行，超过 32MB 的帧必须在解析前拒绝
+  // 上下载共用 128MiB 编码后预算，足以容纳 92MiB 文件且预留 JSON 空间。
+  test("默认消息上限固定为128MiB并容纳92MiB编码后的消息", () => {
+    expect(DEFAULT_FILE_WS_MAX_PAYLOAD_MB).toBe(128);
+    expect(4 * Math.ceil((92 * 1024 * 1024) / 3) + 1024).toBeLessThan(DEFAULT_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024);
+  });
+
+  test("超过 128MB 默认上限的原始字符串被拒绝（D12 解析前检查）", () => {
+    // 92MiB ZIP 的 base64 帧 ~122.67MiB < 128MiB 应放行，超过上限的帧必须在解析前拒绝
     const maxPayloadBytes = DEFAULT_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024;
     expect(checkWsMessageSize("x".repeat(maxPayloadBytes + 1), maxPayloadBytes)).toBe(true);
   });
 
   test("字节数恰好等于上限时不拒绝，超过 1 字节才拒绝", () => {
-    // 上限是开区间（>max 拒绝），边界帧不应误杀（20MB upload base64 帧接近 27MB，离 32MB 有裕量）
+    // 上限是开区间（>max 拒绝），边界帧不应误杀（92MiB ZIP 的 base64 帧仍有裕量）
     expect(checkWsMessageSize("x".repeat(1024), 1024)).toBe(false);
     expect(checkWsMessageSize("x".repeat(1025), 1024)).toBe(true);
   });

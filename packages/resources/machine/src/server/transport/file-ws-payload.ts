@@ -1,13 +1,13 @@
 import { error as logError } from "@fenix/logger";
 
 /**
- * file-ws 单帧最大载荷（MB），默认 32MB。
+ * file-ws 单帧最大载荷（MB），默认 128MB。
  *
  * 与 `src/env.ts` 的 `RCS_FILE_WS_MAX_PAYLOAD_MB` 默认值保持一致：
- * docs/arch/12-files.md §7.6 约定远程 upload 单文件 20MB → base64 帧 ~27MB < 32MB，
- * 使 32MB 恰好覆盖 upload 帧而不过度放宽。
+ * docs/arch/12-files.md §7.6 约定上传与下载均为 92MiB → base64 帧 ~122.67MiB < 128MiB，
+ * 两端消息预算统一，避免服务端放行超过机器端 Bun 客户端接收能力的消息。
  */
-export const DEFAULT_FILE_WS_MAX_PAYLOAD_MB = 32;
+export const DEFAULT_FILE_WS_MAX_PAYLOAD_MB = 128;
 
 /**
  * 估算任意 WS 消息载荷的字节数（检查与日志共用）。
@@ -33,11 +33,11 @@ export function estimateWsMessageBytes(data: unknown): number {
 /**
  * 解析前的载荷上限检查（D12）：按真实字节数（`Buffer.byteLength`）判断消息是否超限。
  *
- * 必须在 JSON 解析之前调用——file-ws 帧最大可达 ~27MB（20MB upload 的 base64），
+ * 必须在 JSON 解析之前调用——file-ws 帧最大可达 ~122.67MiB（92MiB ZIP 的 base64），
  * 若先由 Elysia 自动 `JSON.parse`（`createWSMessageParser` 对 `{` 开头字符串先 parse）
  * 再检查，超大 JSON 帧已全量进内存，10MB 上限形同虚设（§7.6）。
  * 注意：单行 JSON 帧会被 Elysia 默认 parser 提前 parse 成 object，到不了本函数，
- * 由 uWS 层 `maxPayloadLength`（apps/server/src/main.ts 全局 32MB）兜底；本函数覆盖
+ * 由 uWS 层 `maxPayloadLength`（apps/server/src/main.ts 全局 128MB）兜底；本函数覆盖
  * NDJSON 多行帧（默认 parse 失败保持字符串）与二进制帧。
  *
  * @param message 原始 WS 消息（文本帧为 string；二进制帧为 Uint8Array，按 byteLength 计）
@@ -54,7 +54,7 @@ export function checkWsMessageSize(message: string | Uint8Array, maxPayloadBytes
  * `createWSMessageParser` 对 `{` 开头的字符串会先 `JSON.parse`（无法禁用），
  * 单行 JSON 帧到达自定义 parse / message 回调时已是 object，`typeof === "string"`
  * 检查会被绕过。此函数将 object 重序列化后按字节比较，供 acp-ws / yjs / relay
- * 在 uWS 全局 maxPayloadLength（32MB，W8a 放宽）之下维持各自的 10MB 上限。
+ * 在 uWS 全局 maxPayloadLength（128MB，W8a 放宽）之下维持各自的 10MB 上限。
  * 正常帧体量小，序列化开销可忽略；不可序列化的异常载荷视为超限。
  *
  * @param data message 回调收到的载荷（object 或非对象）
