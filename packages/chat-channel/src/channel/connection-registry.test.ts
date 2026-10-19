@@ -21,6 +21,31 @@ describe("ConnectionRegistry", () => {
     expect(registry.consumePending("ws-2")).toEqual(["second"]);
   });
 
+  // 路由层在 handleOpen 之前就分配了 wsId；认证窗口内到达的 HELLO 必须可暂存，且按上限封顶。
+  test("buffers sync frames before pending registration and caps the queue", () => {
+    const registry = new ConnectionRegistry();
+    const frame = new Uint8Array([0x7b, 0x7d]);
+
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    expect(registry.pendingBinaryCount("ws-early")).toBe(1);
+    for (let index = 0; index < 7; index += 1) {
+      expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    }
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(false);
+    expect(registry.consumePendingBinary("ws-early")).toHaveLength(8);
+    expect(registry.consumePendingBinary("ws-early")).toBeUndefined();
+  });
+
+  // 连接在认证/装配阶段失败时，早到帧必须随 close 清理，不能残留。
+  test("discards early sync frames when the connection closes", () => {
+    const registry = new ConnectionRegistry();
+    registry.bufferPendingBinary("ws-early", new Uint8Array([0x7b, 0x7d]));
+
+    registry.discardPending("ws-early");
+
+    expect(registry.pendingBinaryCount("ws-early")).toBe(0);
+  });
+
   // 通过 RCS session 定向遍历时不得包含其他 session 的连接。
   test("iterates only clients in the requested RCS session", () => {
     const registry = new ConnectionRegistry();

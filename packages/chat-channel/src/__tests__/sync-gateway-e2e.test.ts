@@ -131,6 +131,20 @@ function expectWindowClosed(controller: ChatChannelController): void {
 }
 
 describe("sync gateway end-to-end", () => {
+  // 连接建立时写 timelineEmpty：客户端据此区分已有空会话与回放未开始，不再依赖计时兜底。
+  test("连接建立写入 timelineEmpty", async () => {
+    const { controller, ws, docManager } = createController(true);
+    try {
+      await controller.gateway.handleOpen(ws, WS_ID, "user-1", "agent-1", LOCATOR);
+      const session = docManager.getSession(LOCATOR.rcsSessionId)?.ydoc.getMap("root").get("session") as
+        | Y.Map<unknown>
+        | undefined;
+      expect(session?.get("timelineEmpty")).toBe(true);
+    } finally {
+      controller.gateway.handleClose(WS_ID);
+    }
+  });
+
   // 真实竞态：浏览器 open 后立刻发 HELLO，服务端 handleOpen 仍在异步装配；必须暂存而非 1008。
   test("entry 创建前的 HELLO 被暂存，不关闭连接", async () => {
     const { controller, ws } = createController(true);
@@ -140,6 +154,21 @@ describe("sync gateway end-to-end", () => {
       expect(ws.closed).toEqual([]);
 
       await opening;
+      expect(ws.closed).toEqual([]);
+      expect(frameOfType(ws, "MANIFEST")).toBeDefined();
+    } finally {
+      controller.gateway.handleClose(WS_ID);
+    }
+  });
+
+  // 路由层在认证/环境解析完成前就分配了 wsId：此时连 pending 都未登记，HELLO 仍必须暂存。
+  test("handleOpen 之前的 HELLO 被暂存，不关闭连接", async () => {
+    const { controller, ws } = createController(true);
+    try {
+      await controller.gateway.handleMessage(ws, WS_ID, encodeSyncFrame(helloFrame()));
+      expect(ws.closed).toEqual([]);
+
+      await controller.gateway.handleOpen(ws, WS_ID, "user-1", "agent-1", LOCATOR);
       expect(ws.closed).toEqual([]);
       expect(frameOfType(ws, "MANIFEST")).toBeDefined();
     } finally {

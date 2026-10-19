@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInstance } from "i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import { initReactI18next } from "react-i18next/initReactI18next";
@@ -6,6 +8,8 @@ import type { ThreadEntry } from "../chat/types";
 import { ChatView } from "../chat/view/ChatView";
 import zh from "../i18n/locales/zh/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
+
+const CHAT_VIEW_DIR = join(import.meta.dir, "../chat/view");
 
 /**
  * Chat 空状态与时间线间距的服务端渲染测试。
@@ -102,5 +106,16 @@ describe("Chat 空状态", () => {
     // `chat-activity-chain` 类名保留（工具簇样式表仍以它作作用域钩子），锚点为 `data-slot`。
     expect(markup).toContain('data-slot="chat-activity-chain"');
     expect(markup).toContain('data-after-message="true"');
+  });
+
+  // 空状态自定义选择器留在 ChatView.css，宿主 Tailwind 扫描面覆盖 packages/**/web；
+  // 拆分到新文件后类名仍会进入构建产物（构建后 CSS 已人工核对）。
+  test("空状态选择器与 Tailwind 扫描面存在", () => {
+    const css = readFileSync(join(CHAT_VIEW_DIR, "ChatView.css"), "utf8");
+    expect(css).toContain(".chat-empty-heading");
+    expect(css).toContain(".chat-empty-prompt-list");
+    expect(css).toContain(".chat-empty-prompt-button:hover");
+    const hostCss = readFileSync(join(import.meta.dir, "../../../../apps/web/src/index.css"), "utf8");
+    expect(hostCss).toContain('@source "../../../packages/**/web/**/*.{ts,tsx}"');
   });
 });

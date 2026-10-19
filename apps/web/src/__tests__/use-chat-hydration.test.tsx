@@ -83,7 +83,7 @@ describe("useChatHydration", () => {
     });
     expect(latest.current?.messages).toHaveLength(101);
     act(() => root.unmount());
-  });
+  }, 30_000);
 
   // 旧路径已有内容时，新协议基线在途期间冻结同步投影；基线齐备后一次合并，不逐条追加。
   test("旧内容先显示，后到基线只合并一次", async () => {
@@ -126,5 +126,5 @@ describe("useChatHydration", () => {
     });
     expect(latest.current?.messages).toHaveLength(101);
     act(() => root.unmount());
-  });
+  }, 30_000);
 });

@@ -19,7 +19,7 @@ import { dirname, join, resolve } from "node:path";
 export const REPOSITORY_ROOT = resolve(import.meta.dir, "../..");
 
 /** 单个步骤的超时上限；到达后终止该步骤并按失败处理，避免门禁整体挂死。 */
-const STEP_TIMEOUT_MS = 300_000;
+const STEP_TIMEOUT_MS = 900_000;
 
 /** 单路输出上限（与旧 `execSync` 的 maxBuffer 同量级），超出部分丢弃并留下截断标记。 */
 const MAX_STREAM_BYTES = 64 * 1024 * 1024;

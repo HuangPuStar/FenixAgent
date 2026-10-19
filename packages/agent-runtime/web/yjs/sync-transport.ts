@@ -12,6 +12,7 @@ import type {
   SyncManifestSummary,
 } from "./sync-chat-state";
 import { INITIAL_SYNC_CHAT_STATE, SYNC_PROTOCOL_VERSION } from "./sync-chat-state";
+import { formatSyncCloseError, logSyncClose } from "./sync-close-diagnostic";
 import { createSyncContentTap, noteProcessedAck } from "./sync-content-tap";
 import { createSyncContentProjectionHub, parseContentDocId, type SyncContentProjectionHub } from "./sync-doc-hub";
 import { createSyncHydrationTracker } from "./sync-hydration-tracker";
@@ -77,9 +78,9 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   let reconnectCancel: (() => void) | null = null;
   let connecting = false;
   let fatal = false;
+  let localClose = false;
   let disposed = false;
   let driveScheduled = false;
-
   function createProjectionHub(): SyncContentProjectionHub {
     return createSyncContentProjectionHub({
       onProjection: (projection) => {
@@ -87,7 +88,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       },
     });
   }
-
   function setState(patch: Partial<SyncChatConnectionState>): void {
     if (disposed) return;
     state = { ...state, ...patch };
@@ -110,11 +110,9 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       return false;
     }
   }
-
   function sendFrame(frame: Record<string, unknown>): boolean {
     return sendBytes(UTF8_ENCODER.encode(JSON.stringify(frame)));
   }
-
   function releaseRetainedDocs(): void {
     if (transport !== null) {
       for (const docId of retainedDocs) {
@@ -128,7 +126,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     retainedDocs.clear();
     seenDeliveries.clear();
   }
-
   function teardownTransport(): void {
     releaseRetainedDocs();
     hydration.reset();
@@ -136,7 +133,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     transport = null;
     manifestHandled = false;
   }
-
   function fail(code: string, message: string): void {
     if (disposed) return;
     fatal = true;
@@ -150,11 +146,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       current.onerror = null;
       current.onclose = null;
       try {
+        localClose = true;
         current.close(1002, "sync protocol error");
       } catch {}
     }
   }
-
   const tapContentFrame = createSyncContentTap({
     retainedDocs,
     seenDeliveries,
@@ -162,7 +158,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     applyProjection: (input) => projectionHub.applyUpdate(input),
     hydration,
   });
-
   function scheduleDrive(): void {
     if (disposed || driveScheduled) return;
     driveScheduled = true;
@@ -182,7 +177,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       if (!disposed && (transport?.hub.queueDepth() ?? 0) > 0) scheduleDrive();
     })();
   }
-
   function tapDirectoryFrame(frame: Record<string, unknown>): void {
     const activeManifest = manifest;
     if (
@@ -222,7 +216,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       fail("MALFORMED_FRAME", error instanceof Error ? error.message : "failed to apply directory update");
     }
   }
-
   function handleInboundBytes(bytes: Uint8Array): void {
     if (disposed) return;
     // 同一帧只解码一次：directory/content 旁路与协议 transport 都需要结构化视图。
@@ -236,7 +229,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     active.onFrame(bytes);
     scheduleDrive();
   }
-
   function handleInboundData(data: unknown): void {
     if (typeof data === "string") {
       // 新协议要求二进制 JSON；收到文本帧说明对端仍在旧协议上，必须显式失败而不是静默重试。
@@ -255,12 +247,10 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
         .catch(() => fail("MALFORMED_FRAME", "failed to read binary frame"));
     }
   }
-
   function sendSubscribe(docIds: readonly string[], priority: "live" | "currentHistory"): boolean {
     if (docIds.length === 0) return true;
     return sendFrame({ type: "SUBSCRIBE", protocolVersion: SYNC_PROTOCOL_VERSION, docIds, priority });
   }
-
   function contentDocIdsFromDirectory(): string[] {
     const value = directoryDoc?.getMap<unknown>("root").get("contentDocIds");
     if (value instanceof Y.Array) {
@@ -268,7 +258,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     }
     return Array.isArray(value) ? value.filter((docId): docId is string => typeof docId === "string") : [];
   }
-
   function applyManifest(input: ManifestFrame | GenerationReplaceFrame): void {
     if (input.protocolVersion !== SYNC_PROTOCOL_VERSION) {
       fail("PROTOCOL_VERSION_UNSUPPORTED", `unsupported sync protocol version ${String(input.protocolVersion)}`);
@@ -337,7 +326,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       reconnectAttempt: 0,
     });
   }
-
   function handleControl(frame: SyncControlFrame): void {
     switch (frame.type) {
       case "MANIFEST":
@@ -362,7 +350,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
         return;
     }
   }
-
   function sendHello(): void {
     const generation = manifest?.generation ?? expectedGeneration;
     const hello: Record<string, unknown> = {
@@ -377,7 +364,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       fail("CAPACITY_EXCEEDED", "socket is saturated while sending HELLO");
     }
   }
-
   function scheduleReconnect(): void {
     if (disposed || fatal) return;
     if (options.autoReconnect === false) {
@@ -392,11 +378,14 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       connect();
     }, delay);
   }
-
-  function handleClose(current: SyncBrowserSocket, code: number, reason: string): void {
+  function handleClose(current: SyncBrowserSocket, code: number, reason: string, wasClean: boolean): void {
     if (socket !== current) return;
     socket = null;
     connecting = false;
+    const local = localClose;
+    const clean = wasClean === true;
+    localClose = false;
+    logSyncClose({ code, reason, wasClean: clean, local });
     teardownTransport();
     if (disposed) return;
     if (fatal) {
@@ -406,7 +395,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     if (SYNC_TERMINAL_CLOSE_CODES.has(code)) {
       setState({
         status: "error",
-        error: { code: `WS_${code}`, message: reason || `websocket closed (${code})` },
+        error: formatSyncCloseError({ code: `WS_${code}`, reason, wasClean: clean, local }),
         hydrating: false,
       });
       return;
@@ -415,14 +404,16 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     if (outcome.terminal) {
       setState({
         status: "closed",
-        error: outcome.uiCode === null ? null : { code: outcome.uiCode, message: reason || outcome.uiCode },
+        error:
+          outcome.uiCode === null
+            ? null
+            : formatSyncCloseError({ code: outcome.uiCode, reason, wasClean: clean, local }),
         hydrating: false,
       });
       return;
     }
     scheduleReconnect();
   }
-
   function connect(): void {
     if (disposed || connecting || socket !== null) return;
     connecting = true;
@@ -430,6 +421,9 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     reconnectCancel?.();
     reconnectCancel = null;
     teardownTransport();
+    // 连接级 runtime/store 不跨连接：重连必须 stateless HELLO，不能复用上一代 generation（1008）。
+    manifest = null;
+    expectedGeneration = options.generation ?? null;
     projectionHub.dispose();
     projectionHub = createProjectionHub();
     projectionHub.reset(expectedGeneration);
@@ -438,6 +432,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       error: null,
       reconnectAttempt,
       hydrating: false,
+      manifest: null,
+      generation: expectedGeneration,
     });
 
     let current: SyncBrowserSocket;
@@ -467,12 +463,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       if (socket !== current || disposed) return;
       handleInboundData(data);
     };
-    current.onclose = (code, reason) => handleClose(current, code, reason);
+    current.onclose = (code, reason, wasClean) => handleClose(current, code, reason, wasClean);
     current.onerror = () => {
       if (socket === current) setState({ error: { code: "SOCKET_ERROR", message: "websocket error" } });
     };
   }
-
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -487,6 +482,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       current.onclose = null;
       current.onerror = null;
       try {
+        localClose = true;
         current.close(1000, "dispose");
       } catch {}
     }

@@ -150,10 +150,8 @@ export function useChatPanelRuntime({
   const pageVisible = useChatPageVisible();
   /** 本地新建会话没有历史回放：门控不得用骨架替换空状态。 */
   const noReplaySessionRef = useRef(false);
-
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
-
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
@@ -188,6 +186,9 @@ export function useChatPanelRuntime({
   const noReplaySession = resolveNoReplaySession({
     localCreate: noReplaySessionRef.current,
     replayState: legacySessionState.replayState,
+    // timelineEmpty 只用于首次页面加载；会话切换必须等 replay_started/complete 的真实信号。
+    timelineEmpty: replacementVersion === 0 && legacySessionState.timelineEmpty === true,
+    hasMessages: legacySessionState.structuredMessages.length > 0,
   });
   const hydration = useChatHydration({
     scope: mergeScope,
@@ -480,7 +481,6 @@ export function useChatPanelRuntime({
     }),
     [sendAction, sessionState.acpSessionId],
   );
-
   return {
     authState,
     connectionState,

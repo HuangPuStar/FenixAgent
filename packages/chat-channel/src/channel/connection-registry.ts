@@ -60,12 +60,25 @@ export class ConnectionRegistry {
     return pending;
   }
 
+  /** 诊断用：未就绪文本帧数量（不消费）。 */
+  pendingTextCount(wsId: string): number {
+    return this.clients.get(wsId)?.pendingMessages.length ?? this.pendingBuffers.get(wsId)?.length ?? 0;
+  }
+
+  /** 诊断用：entry 创建前暂存的二进制帧数量（不消费）。 */
+  pendingBinaryCount(wsId: string): number {
+    return this.pendingBinaryBuffers.get(wsId)?.length ?? 0;
+  }
+
   /**
-   * 暂存 entry 创建前到达的新协议二进制帧；没有 pending/active 连接或超过上限时返回 false。
-   * 真实竞态发生在 handleOpen 的异步初始化窗口内（pending 已登记、client 尚未 addClient）。
+   * 暂存 entry 创建前到达的新协议二进制帧；超过上限或连接已关闭时返回 false。
+   *
+   * 帧可能在 `handleOpen` 之前到达：路由层在 `open` 回调里先分配 wsId，再异步完成认证与
+   * environment 解析，最后才调用 `handleOpen`（此时才登记 pending）。浏览器 `open` 后立即
+   * 发送 HELLO，正好落在这段窗口里；若要求 pending 已存在，会把正常握手误判为 1008
+   * `sync protocol unavailable`。缓冲仍按 wsId 限 8 帧，连接关闭时由 `discardPending` 清空。
    */
   bufferPendingBinary(wsId: string, frame: Uint8Array): boolean {
-    if (!this.pendingBuffers.has(wsId) && !this.clients.has(wsId)) return false;
     const pending = this.pendingBinaryBuffers.get(wsId) ?? [];
     if (pending.length >= ConnectionRegistry.MAX_PENDING_BINARY_FRAMES) return false;
     pending.push(frame);

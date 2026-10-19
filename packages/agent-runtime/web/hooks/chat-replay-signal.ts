@@ -11,7 +11,13 @@ export type ChatReplayState = "active" | "complete" | null | undefined;
 export function resolveNoReplaySession(input: {
   readonly localCreate: boolean;
   readonly replayState: ChatReplayState;
+  /** 初始连接的投影是否为空（服务端 timelineEmpty，仅 initial load 使用）。 */
+  readonly timelineEmpty?: boolean;
+  /** 旧路径已有可见消息：无需等待回放（回放 active 时仍以 active 优先）。 */
+  readonly hasMessages?: boolean;
 }): boolean {
   if (input.replayState === "active") return false;
-  return input.localCreate || input.replayState === "complete";
+  return (
+    input.localCreate || input.replayState === "complete" || input.timelineEmpty === true || input.hasMessages === true
+  );
 }

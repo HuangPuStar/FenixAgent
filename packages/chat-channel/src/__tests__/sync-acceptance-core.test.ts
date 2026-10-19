@@ -207,7 +207,7 @@ describe("T02 稳定历史对象零间隔突发", () => {
   // 本用例同时是**缺陷 D2** 的复现场景：接收边界本身编号连续（下面的 `jumps` 断言为真），
   // 但分组构建只提交了「装得下 256KiB 硬限的前缀」，组内剩余记录没有成块，
   // `listDirectory` 因而报出序号码缺口，`assertComplete` 以 IMPORT_INCOMPLETE 终止导入。
-  // 20k 对象在并行测试负载下会超过默认 5s；断言不变，仅放宽墙钟上限。
+  // 20k 对象在并行测试负载下会超过默认 5s；断言不变，仅放宽墙钟上限（CI 并行时可达分钟级）。
   test("两万个对象暴发后顺序与内容完全一致", async () => {
     const harness = await open();
     const expected = Array.from({ length: 20_000 }, (_, index) => ({ index, text: `对象 ${index}` }));
@@ -236,7 +236,7 @@ describe("T02 稳定历史对象零间隔突发", () => {
     expect(records.map((record) => JSON.parse(decodePayload(record.payload)))).toEqual(expected);
     expect(harness.importStatus()?.gaps).toEqual([]);
     expect(await harness.currentGeneration()).toBe(started.generation);
-  }, 30_000);
+  }, 120_000);
 
   // 接收阶段只写暂存、不提交任何块；分块构建才提交，且每块编码状态受 256KiB 硬限约束。
   test("接收阶段不提交块且提交后每块受字节硬限约束", async () => {

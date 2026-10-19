@@ -515,7 +515,7 @@ describe("sync chat 浏览器会话", () => {
     harness.socket.closeFromServer(1008, "sync protocol disabled");
     expect(harness.states.at(-1)).toMatchObject({
       status: "error",
-      error: { code: "WS_1008", message: "sync protocol disabled" },
+      error: { code: "WS_1008", message: "sync protocol disabled [wasClean=false, local=false]" },
     });
     expect(scheduled).toHaveLength(0);
   });
@@ -527,6 +527,31 @@ describe("sync chat 浏览器会话", () => {
     harness.socket.receiveRaw('{"type":"MANIFEST"}');
     expect(harness.states.at(-1)?.status).toBe("error");
     expect(harness.states.at(-1)?.error?.code).toBe("MALFORMED_FRAME");
+  });
+
+  // 连接级 runtime/store 不跨连接：重连必须发 stateless HELLO，不能复用上一代 MANIFEST generation。
+  test("重连 HELLO 不带上一代 generation", () => {
+    const scheduled: Array<() => void> = [];
+    const harness = createHarness({
+      generation: undefined,
+      autoReconnect: true,
+      schedule: (task) => {
+        scheduled.push(task);
+        return () => {};
+      },
+    });
+    harness.socket.open();
+    harness.socket.receive(manifest());
+    expect(harness.states.at(-1)?.generation).toBe(GENERATION);
+
+    harness.socket.closeFromServer(1006, "network");
+    expect(scheduled).toHaveLength(1);
+    scheduled[0]?.();
+    const second = FakeSocket.instances[1];
+    second?.open();
+    const hello = sentFrames(second as FakeSocket).find((frame) => frame.type === "HELLO");
+    expect(hello).toBeDefined();
+    expect(hello && "generation" in hello).toBe(false);
   });
 
   // 断连后重建 transport/镜像；新连接重新握手并应用新基线，消息数仍为 1（不重复 apply）。

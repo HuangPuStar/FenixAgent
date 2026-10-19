@@ -214,7 +214,10 @@ function ChatPanelView({
             error={{
               type: "SYNC_RELAY.SYNC_FAILED",
               id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
-              message: tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
+              // 保留服务端原始 close reason（+ wasClean/local 标记），线上不依赖 console 才能定位。
+              message: syncChat.connection.error?.message
+                ? `${tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED")} (${syncChat.connection.error.message.slice(0, 160)})`
+                : tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
             }}
             t={tUi}
             className={INLINE_ERROR_CARD_CLASS}

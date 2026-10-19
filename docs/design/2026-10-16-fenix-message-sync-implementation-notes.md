@@ -143,6 +143,10 @@
   200 批回放期间 0 次提交，结束后一次提交；渲染窗口默认挂载最近 1000 条，避免单次提交 >1s。用例见
   `chat-hydration-gate.test.ts`、`use-chat-hydration.test.tsx`、`chat-hydration-scroll.test.tsx`、
   `chat-render-window.test.tsx` 与 `chat-replay-signal.test.ts`。
+- 空会话与关闭诊断：连接建立时 Session Doc 写入 `timelineEmpty`，首次加载已有空会话可直接渲染空状态（不依赖
+  1.5s 计时）；重连 HELLO 改为 stateless，避免复用已销毁连接级 store 的 generation（1008）。同步关闭统一写
+  `data/logs/sync-close.log`（code/reason/wsId/entry/pending/org/rcs），客户端错误卡保留原始 reason 与
+  wasClean/local 标记。
 
 ## 5. 未覆盖与不可做
 
@@ -156,7 +160,7 @@
 | 历史重建 | 未覆盖 | ACP `load_session` 仅返回增量，尚无可用生产完整历史源 |
 | final / 非文本展示 | 未覆盖 | final descriptor、history/tool 对象尚未接入新投影 |
 | UI 渲染 | 文本已实施 | 用户/助手文本经合并视图复用现有消息组件；历史和非文本仍依赖旧 Doc |
-| 初次加载 hydrate 完成信号 | 客户端门控已实施 | 旧路径由服务端在窗口开启时写入 `replay_started`，load/resume 后由 acp-link 发 `session/replay_complete`（含零历史），relay 立即收敛并写 `replayState=complete`；新协议用 DOC_BASE 的 processed APPLY_ACK。旧宿主不发 `replay_complete` 时保留 1.5s 兜底、12s 硬上限；完整基线后到的首次合并放宽 5s 配对窗口一次。移除条件 = 全量宿主升级后删除客户端兜底 |
+| 初次加载 hydrate 完成信号 | 客户端门控已实施 | 旧路径由服务端在窗口开启时写入 `replay_started`，load/resume 后由 acp-link 发 `session/replay_complete`（含零历史），relay 立即收敛并写 `replayState=complete`；连接建立时写 `timelineEmpty` 供首次加载已有空会话直接放行；新协议用 DOC_BASE 的 processed APPLY_ACK。旧宿主不发 `replay_complete` 时保留 1.5s 兜底、12s 硬上限；完整基线后到的首次合并放宽 5s 配对窗口一次。重连 HELLO 不复用上一代 generation。移除条件 = 全量宿主升级后删除客户端兜底 |
 | 大基线渲染窗口 | 已实施 | 默认只挂载最近 1000 条，更早消息由用户显式加载；DOM 有界（10k 条目一次性渲染从 1.7s 降至约 0.2s）。加载更早后滚到第一条新增历史，不再钉在底部；移除条件 = 引入带锚点的虚拟列表 |
 
 ## 6. 下一步（按设计分阶段）

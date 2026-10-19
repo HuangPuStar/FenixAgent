@@ -4,6 +4,7 @@
 // 这里只做连接与生命周期适配，不复制协议规则；握手、额度、ACK、封口仍在 `sync/runtime/**`。
 // 每条已认证连接独立创建 runtime + 内存 store，同一 scope 的多标签页不共享（主控裁决）。
 
+import type { DocManager } from "../state/doc-manager";
 import type { Clock, DigestFn, RandomSource } from "../sync/clock";
 import { SyncProtocolError } from "../sync/protocol/errors";
 import type { SyncFrameTransport } from "../sync/runtime/egress";
@@ -11,6 +12,7 @@ import { createSyncHostSession } from "../sync/runtime/host-session";
 import type { ProjectionStore } from "../sync/store/types";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
+import { logSyncClose, setSyncCloseContextForConnection } from "./sync-close-diagnostics";
 
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
 const SYNC_CLOSE_CODE = 1008;
@@ -48,8 +50,10 @@ function createSyncTransport(ws: WsConnection): SyncFrameTransport {
       return typeof ws.bufferedAmount === "number" ? ws.bufferedAmount : 0;
     },
     close(reason: string): void {
+      const code = syncCloseCode(reason);
+      logSyncClose(ws, { code, reason, source: "sync-provider" });
       try {
-        ws.close(syncCloseCode(reason), syncCloseReason(reason));
+        ws.close(code, syncCloseReason(reason));
       } catch {
         /* 连接已关闭 */
       }
@@ -122,16 +126,23 @@ export async function routeSyncProtocolFrame(
   config: ChatSyncProtocolConfig | undefined,
   reportError: (message: string, error: unknown) => void,
   overrides?: GatewaySyncHostOverrides,
-  pending?: { readonly registry: Pick<ConnectionRegistry, "bufferPendingBinary">; readonly wsId: string },
+  pending?: {
+    readonly registry: Pick<ConnectionRegistry, "bufferPendingBinary" | "pendingTextCount" | "pendingBinaryCount">;
+    readonly wsId: string;
+    readonly docManager?: Pick<DocManager, "getSessionYdoc">;
+  },
 ): Promise<boolean> {
   if (!isSyncProtocolFrame(data)) return false;
+  if (pending) setSyncCloseContextForConnection(pending.registry, ws, pending.wsId, entry, pending.docManager);
   if (!config?.enabled) {
+    logSyncClose(ws, { code: SYNC_CLOSE_CODE, reason: "sync protocol disabled", source: "gateway-route" });
     ws.close(SYNC_CLOSE_CODE, "sync protocol disabled");
     return true;
   }
   if (!entry) {
     // 浏览器 open 后 HELLO 可能早于服务端 handleOpen 的异步装配：暂存到 entry 创建。
     if (pending?.registry.bufferPendingBinary(pending.wsId, data)) return true;
+    logSyncClose(ws, { code: SYNC_CLOSE_CODE, reason: "sync protocol unavailable", source: "gateway-route" });
     ws.close(SYNC_CLOSE_CODE, "sync protocol unavailable");
     return true;
   }
@@ -156,7 +167,9 @@ export async function routeSyncProtocolFrame(
           ? 1009
           : 1002
         : 1011;
-    ws.close(code, code === 1009 ? "sync frame too large" : "sync protocol error");
+    const reason = code === 1009 ? "sync frame too large" : "sync protocol error";
+    logSyncClose(ws, { code, reason, source: "gateway-route" });
+    ws.close(code, reason);
   }
   return true;
 }
@@ -169,7 +182,7 @@ export async function routeSyncProtocolFrame(
  * SYNC_RELAY.SYNC_FAILED（reason 不是 "sync protocol disabled"，不会回退旧路径）。
  */
 export async function flushPendingSyncFrames(
-  registry: Pick<ConnectionRegistry, "consumePendingBinary">,
+  registry: Pick<ConnectionRegistry, "consumePendingBinary" | "pendingTextCount" | "pendingBinaryCount">,
   wsId: string,
   entry: ClientConnection,
   ws: WsConnection,
@@ -177,6 +190,8 @@ export async function flushPendingSyncFrames(
   reportError: (message: string, error: unknown) => void,
   overrides?: GatewaySyncHostOverrides,
 ): Promise<void> {
+  // entry 已创建：刷新诊断上下文，provider 后续关闭时能看到真实的 entry/scope。
+  setSyncCloseContextForConnection(registry, ws, wsId, entry);
   for (const frame of registry.consumePendingBinary(wsId) ?? []) {
     await routeSyncProtocolFrame(entry, ws, frame, config, reportError, overrides);
   }

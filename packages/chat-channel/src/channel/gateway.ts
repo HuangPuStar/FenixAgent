@@ -12,6 +12,7 @@ import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync"
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
+import { markSessionTimelineEmpty } from "./session-timeline-flag";
 import { flushPendingSyncFrames, type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
 
 const KEEPALIVE_INTERVAL = 30_000;
@@ -55,7 +56,6 @@ export interface ChatConnectionLocator {
   rcsSessionId: string;
   acpSessionId?: string;
 }
-
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
   private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
@@ -289,6 +289,7 @@ export class Gateway {
         | undefined;
       const activeSessionId = sessionInfo?.get("sessionId");
       if (typeof activeSessionId === "string" && activeSessionId.length > 0) entry.acpSessionId = activeSessionId;
+      markSessionTimelineEmpty(sessionDoc.ydoc, !this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId));
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] Failed to initialize Yjs docs:", err);
       ws.close(1011, "yjs initialization failed");
@@ -331,7 +332,7 @@ export class Gateway {
         this.dependencies.chatSyncProtocol,
         (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
         this.dependencies.syncHostOverrides,
-        { registry: this.dependencies.registry, wsId },
+        { registry: this.dependencies.registry, wsId, docManager: this.dependencies.docManager },
       );
       if (routed) return;
       const frame = decodeYjsSyncFrame(data);

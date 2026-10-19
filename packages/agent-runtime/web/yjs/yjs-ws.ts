@@ -96,7 +96,7 @@ export interface SyncBrowserSocket {
   close(code?: number, reason?: string): void;
   onopen: (() => void) | null;
   onmessage: ((data: unknown) => void) | null;
-  onclose: ((code: number, reason: string) => void) | null;
+  onclose: ((code: number, reason: string, wasClean: boolean) => void) | null;
   onerror: (() => void) | null;
 }
 
@@ -133,7 +133,7 @@ export function createBrowserSyncSocket(url: string): SyncBrowserSocket {
   };
   ws.onopen = () => socket.onopen?.();
   ws.onmessage = (event) => socket.onmessage?.(event.data);
-  ws.onclose = (event) => socket.onclose?.(event.code, event.reason);
+  ws.onclose = (event) => socket.onclose?.(event.code, event.reason, event.wasClean);
   ws.onerror = () => socket.onerror?.();
   return socket;
 }

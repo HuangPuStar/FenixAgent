@@ -157,6 +157,8 @@ export interface SessionStateSnapshot {
    * 回放结束（含零历史）。旧客户端忽略该字段；缺失时按原有 presenting/兜底逻辑处理。
    */
   replayState?: "active" | "complete" | null;
+  /** 当前投影是否为空（连接建立时服务端写入）；仅用于首次加载空会话的确定性判定。 */
+  timelineEmpty?: boolean | null;
   // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段）：
   // 前端唯一消费方是 structuredMessages（ChatInterface 时间线渲染），上述四个
   // 字段全仓零消费且每次流式批次都触发全量派生计算（根因 B2）。

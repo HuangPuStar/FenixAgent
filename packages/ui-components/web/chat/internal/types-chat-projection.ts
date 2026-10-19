@@ -325,6 +325,8 @@ export interface SessionStateSnapshot {
   canCancel: boolean;
   /** 回放状态：active=窗口开启，complete=宿主显式通知结束（含零历史）。 */
   replayState?: "active" | "complete" | null;
+  /** 当前投影是否为空（连接建立时服务端写入）。 */
+  timelineEmpty?: boolean | null;
   /** 时间线消息（ChatInterface 渲染输入）。 */
   structuredMessages: StructuredMessage[];
   /** AskUserQuestion 待应答问题投影（questionId → 投影，60s expiresAt）。 */

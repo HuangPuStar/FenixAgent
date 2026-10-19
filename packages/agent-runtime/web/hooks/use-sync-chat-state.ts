@@ -36,14 +36,15 @@ const EMPTY_STATE: SyncChatState = {
   legacyFallback: false,
 };
 
-/** 仅明确禁用/版本不兼容允许回退；认证拒绝和内部错误不能伪装成兼容问题。 */
+/**
+ * 1008/1002 是协议级不可用（禁用、scope/代次拒绝、入口未就绪等），旧 Yjs 通道仍健康，
+ * 直接回退以保证输入可用；1011 等内部错误保留错误卡，不伪装成兼容问题。
+ */
 export function shouldFallbackToLegacy(connection: SyncChatConnectionState): boolean {
   const error = connection.error;
   return (
     connection.status === "error" &&
-    (error?.code === "PROTOCOL_VERSION_UNSUPPORTED" ||
-      error?.code === "WS_1002" ||
-      (error?.code === "WS_1008" && error.message.toLowerCase().includes("sync protocol disabled")))
+    (error?.code === "PROTOCOL_VERSION_UNSUPPORTED" || error?.code === "WS_1002" || error?.code === "WS_1008")
   );
 }
 
@@ -131,6 +132,10 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
           },
         }));
         if (legacyFallback) {
+          console.warn("[sync-chat] fallback to legacy", {
+            code: connection.error?.code,
+            reason: connection.error?.message,
+          });
           fallbackScope.current = scope;
           active = false;
           session.dispose();

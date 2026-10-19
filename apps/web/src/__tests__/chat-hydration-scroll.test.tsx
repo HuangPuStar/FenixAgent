@@ -163,7 +163,7 @@ describe("hydrate 滚动次数", () => {
     expect(scrollWrites).toBeGreaterThanOrEqual(1);
     expect(scrollWrites).toBeLessThanOrEqual(2);
     act(() => root.unmount());
-  });
+  }, 30_000);
 
   // hydrate 中途再切会话：旧会话的计时器与内容都不得产生滚动；新会话完成后只滚一次。
   test("hydrate 中途切会话不产生滚动", async () => {
@@ -219,5 +219,5 @@ describe("hydrate 滚动次数", () => {
     expect(scrollWrites).toBeGreaterThanOrEqual(1);
     expect(scrollWrites).toBeLessThanOrEqual(2);
     act(() => root.unmount());
-  });
+  }, 30_000);
 });

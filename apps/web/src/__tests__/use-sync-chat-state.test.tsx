@@ -103,6 +103,7 @@ describe("新同步开关与 hook 生命周期", () => {
   test("默认连接在明确拒绝时释放并锁定旧路径", () => {
     for (const [code, reason] of [
       [1008, "sync protocol disabled"],
+      [1008, "sync protocol unavailable"],
       [1002, "unsupported version"],
     ] as const) {
       FakeSocket.instances = [];
@@ -119,17 +120,15 @@ describe("新同步开关与 hook 生命周期", () => {
     }
   });
 
-  // 认证拒绝和服务端内部错误必须可观测，不得静默伪装成旧协议兼容。
-  test("1011 和普通 1008 保留错误态且不回退", () => {
-    for (const code of [1011, 1008]) {
-      const harness = renderHook(options);
-      const socket = FakeSocket.instances.at(-1)!;
-      act(() => socket.open());
-      act(() => socket.onclose?.(code, "rejected"));
-      expect(harness.latest.current?.legacyFallback).toBe(false);
-      expect(harness.latest.current?.connection.status).toBe("error");
-      harness.unmount();
-    }
+  // 1011 是服务端内部错误，保留错误态；1008 已在上一用例覆盖自动回退。
+  test("1011 保留错误态且不回退", () => {
+    const harness = renderHook(options);
+    const socket = FakeSocket.instances.at(-1)!;
+    act(() => socket.open());
+    act(() => socket.onclose?.(1011, "rejected"));
+    expect(harness.latest.current?.legacyFallback).toBe(false);
+    expect(harness.latest.current?.connection.status).toBe("error");
+    harness.unmount();
   });
 
   // 切换 ACP 会话销毁旧连接并屏蔽迟到回调，卸载后新连接同样释放。
