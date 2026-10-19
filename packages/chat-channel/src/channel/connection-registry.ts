@@ -12,8 +12,12 @@ import type { ClientConnection, SharedRelay } from "./connection-types";
 export class ConnectionRegistry {
   private readonly clients = new Map<string, ClientConnection>();
   private readonly pendingBuffers = new Map<string, string[]>();
+  /** 新协议二进制帧在 entry 创建前到达时的暂存（HELLO 可能在 open 异步初始化期间到达）。 */
+  private readonly pendingBinaryBuffers = new Map<string, Uint8Array[]>();
   private readonly sharedRelays = new Map<string, SharedRelay>();
   private readonly relayAcquisitions = new Map<string, Promise<SharedRelay>>();
+  /** 未就绪连接最多暂存的新协议帧数，防止握手窗口被用作无界队列。 */
+  private static readonly MAX_PENDING_BINARY_FRAMES = 8;
 
   get clientCount(): number {
     return this.clients.size;
@@ -56,8 +60,28 @@ export class ConnectionRegistry {
     return pending;
   }
 
+  /**
+   * 暂存 entry 创建前到达的新协议二进制帧；没有 pending/active 连接或超过上限时返回 false。
+   * 真实竞态发生在 handleOpen 的异步初始化窗口内（pending 已登记、client 尚未 addClient）。
+   */
+  bufferPendingBinary(wsId: string, frame: Uint8Array): boolean {
+    if (!this.pendingBuffers.has(wsId) && !this.clients.has(wsId)) return false;
+    const pending = this.pendingBinaryBuffers.get(wsId) ?? [];
+    if (pending.length >= ConnectionRegistry.MAX_PENDING_BINARY_FRAMES) return false;
+    pending.push(frame);
+    this.pendingBinaryBuffers.set(wsId, pending);
+    return true;
+  }
+
+  consumePendingBinary(wsId: string): Uint8Array[] | undefined {
+    const pending = this.pendingBinaryBuffers.get(wsId);
+    this.pendingBinaryBuffers.delete(wsId);
+    return pending;
+  }
+
   discardPending(wsId: string): void {
     this.pendingBuffers.delete(wsId);
+    this.pendingBinaryBuffers.delete(wsId);
   }
 
   addClient(wsId: string, client: ClientConnection): void {

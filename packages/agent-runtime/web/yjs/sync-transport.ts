@@ -11,8 +11,10 @@ import type {
   SyncChatSessionOptions,
   SyncManifestSummary,
 } from "./sync-chat-state";
-import { INITIAL_SYNC_CHAT_STATE } from "./sync-chat-state";
+import { INITIAL_SYNC_CHAT_STATE, SYNC_PROTOCOL_VERSION } from "./sync-chat-state";
+import { createSyncContentTap, noteProcessedAck } from "./sync-content-tap";
 import { createSyncContentProjectionHub, parseContentDocId, type SyncContentProjectionHub } from "./sync-doc-hub";
+import { createSyncHydrationTracker } from "./sync-hydration-tracker";
 import {
   buildSyncChatSocketUrl,
   createBrowserSyncSocket,
@@ -22,9 +24,6 @@ import {
   type SyncBrowserSocket,
   syncSocketBytes,
 } from "./yjs-ws";
-
-/** 与 `sync/protocol/frames.ts` 的 `SYNC_PROTOCOL_VERSION` 对齐（帧层不向浏览器出口暴露该常量）。 */
-const SYNC_PROTOCOL_VERSION = 1;
 
 const DEFAULT_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 10000] as const;
 
@@ -68,8 +67,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   let socket: SyncBrowserSocket | null = null;
   let transport: SyncClientTransport | null = null;
   let projectionHub: SyncContentProjectionHub = createProjectionHub();
-  let retainedDocs = new Set<string>();
-  let seenDeliveries = new Set<string>();
+  const retainedDocs = new Set<string>();
+  const seenDeliveries = new Set<string>();
   let manifest: SyncManifestSummary | null = null;
   let directoryDoc: Y.Doc | null = null;
   let manifestHandled = false;
@@ -95,12 +94,17 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     options.onState?.(state);
   }
 
+  const hydration = createSyncHydrationTracker({
+    onHydratingChange: (hydrating) => setState({ hydrating }),
+    timeoutMs: options.syncBaseTimeoutMs,
+  });
   function sendBytes(bytes: Uint8Array): boolean {
     const current = socket;
     if (current === null || current.readyState !== 1) return false;
     if (current.bufferedAmount > 64 * 1024) return false;
     try {
       current.send(bytes);
+      noteProcessedAck(bytes, hydration);
       return true;
     } catch {
       return false;
@@ -121,12 +125,13 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
         }
       }
     }
-    retainedDocs = new Set<string>();
-    seenDeliveries = new Set<string>();
+    retainedDocs.clear();
+    seenDeliveries.clear();
   }
 
   function teardownTransport(): void {
     releaseRetainedDocs();
+    hydration.reset();
     transport?.dispose();
     transport = null;
     manifestHandled = false;
@@ -135,7 +140,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   function fail(code: string, message: string): void {
     if (disposed) return;
     fatal = true;
-    setState({ status: "error", error: { code, message } });
+    setState({ status: "error", error: { code, message }, hydrating: false });
     teardownTransport();
     const current = socket;
     socket = null;
@@ -150,32 +155,13 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     }
   }
 
-  function tapContentFrame(bytes: Uint8Array): void {
-    const frame = decodeSyncWireJson(bytes);
-    if (frame === null) return;
-    const type = frame.type;
-    if (type !== "DOC_BASE" && type !== "DOC_UPDATE") return;
-    if (frame.protocolVersion !== SYNC_PROTOCOL_VERSION) return;
-    if (typeof frame.docId !== "string" || typeof frame.generation !== "string" || typeof frame.payload !== "string") {
-      return;
-    }
-    const parsedDoc = parseContentDocId(frame.docId);
-    if (parsedDoc === null || !retainedDocs.has(frame.docId)) return;
-    if (expectedGeneration !== null && frame.generation !== expectedGeneration) return;
-    const deliveryId = typeof frame.deliveryId === "string" ? frame.deliveryId : null;
-    if (deliveryId !== null) {
-      if (seenDeliveries.has(deliveryId)) return;
-      seenDeliveries.add(deliveryId);
-      if (seenDeliveries.size > 4096) {
-        const oldest = seenDeliveries.values().next();
-        if (!oldest.done) seenDeliveries.delete(oldest.value);
-      }
-    }
-    const payload = decodeSyncBase64Payload(frame.payload);
-    if (payload === null) return;
-    if (typeof frame.encodedLength === "number" && frame.encodedLength !== payload.byteLength) return;
-    projectionHub.applyUpdate({ docId: frame.docId, generation: frame.generation, payload });
-  }
+  const tapContentFrame = createSyncContentTap({
+    retainedDocs,
+    seenDeliveries,
+    expectedGeneration: () => expectedGeneration,
+    applyProjection: (input) => projectionHub.applyUpdate(input),
+    hydration,
+  });
 
   function scheduleDrive(): void {
     if (disposed || driveScheduled) return;
@@ -197,11 +183,9 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     })();
   }
 
-  function tapDirectoryFrame(bytes: Uint8Array): void {
-    const frame = decodeSyncWireJson(bytes);
+  function tapDirectoryFrame(frame: Record<string, unknown>): void {
     const activeManifest = manifest;
     if (
-      frame === null ||
       activeManifest === null ||
       (frame.type !== "DOC_BASE" && frame.type !== "DOC_UPDATE") ||
       frame.docId !== activeManifest.directoryDocId ||
@@ -210,6 +194,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     ) {
       return;
     }
+    const isBase = frame.type === "DOC_BASE";
+    const deliveryId = typeof frame.deliveryId === "string" ? frame.deliveryId : null;
     const payload = decodeSyncBase64Payload(frame.payload);
     if (payload === null) return;
     try {
@@ -218,16 +204,20 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       const discovered = contentDocIdsFromDirectory().filter(
         (docId) => parseContentDocId(docId)?.generation === manifest?.generation && !retainedDocs.has(docId),
       );
-      if (discovered.length === 0 || transport === null) return;
-      for (const docId of discovered) {
-        transport.hub.retain(docId);
-        retainedDocs.add(docId);
-      }
-      if (!sendSubscribe(discovered, "currentHistory")) {
-        fail("CAPACITY_EXCEEDED", "socket is saturated while sending content SUBSCRIBE");
-      } else {
+      if (discovered.length > 0 && transport !== null) {
+        for (const docId of discovered) {
+          transport.hub.retain(docId);
+          retainedDocs.add(docId);
+          // 新发现的历史块尚未送达基线；首批 hydrate 必须等它们的 DOC_BASE。
+          hydration.addPending([docId]);
+        }
+        if (!sendSubscribe(discovered, "currentHistory")) {
+          fail("CAPACITY_EXCEEDED", "socket is saturated while sending content SUBSCRIBE");
+          return;
+        }
         setState({ subscribedDocIds: Object.freeze([...state.subscribedDocIds, ...discovered]) });
       }
+      if (isBase) hydration.noteBase(frame.docId, deliveryId);
     } catch (error) {
       fail("MALFORMED_FRAME", error instanceof Error ? error.message : "failed to apply directory update");
     }
@@ -235,8 +225,12 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
 
   function handleInboundBytes(bytes: Uint8Array): void {
     if (disposed) return;
-    tapDirectoryFrame(bytes);
-    tapContentFrame(bytes);
+    // 同一帧只解码一次：directory/content 旁路与协议 transport 都需要结构化视图。
+    const frame = decodeSyncWireJson(bytes);
+    if (frame !== null) {
+      tapDirectoryFrame(frame);
+      tapContentFrame(frame);
+    }
     const active = transport;
     if (active === null) return;
     active.onFrame(bytes);
@@ -316,6 +310,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       recoveryState: input.type === "MANIFEST" ? input.recoveryState : null,
     };
     projectionHub.reset(input.generation);
+    // 首批 DOC_BASE（入口 Doc + 目录发现的全部内容块）落地前不提交半成品。
+    hydration.begin(nextDocIds);
 
     try {
       for (const docId of nextDocIds) {
@@ -390,7 +386,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     }
     const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)] ?? 10000;
     reconnectAttempt += 1;
-    setState({ status: "reconnecting", reconnectAttempt });
+    setState({ status: "reconnecting", reconnectAttempt, hydrating: false });
     reconnectCancel = schedule(() => {
       reconnectCancel = null;
       connect();
@@ -404,11 +400,15 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     teardownTransport();
     if (disposed) return;
     if (fatal) {
-      setState({ status: "error" });
+      setState({ status: "error", hydrating: false });
       return;
     }
     if (SYNC_TERMINAL_CLOSE_CODES.has(code)) {
-      setState({ status: "error", error: { code: `WS_${code}`, message: reason || `websocket closed (${code})` } });
+      setState({
+        status: "error",
+        error: { code: `WS_${code}`, message: reason || `websocket closed (${code})` },
+        hydrating: false,
+      });
       return;
     }
     const outcome = resolveYjsWsCloseOutcome(code, reason);
@@ -416,6 +416,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       setState({
         status: "closed",
         error: outcome.uiCode === null ? null : { code: outcome.uiCode, message: reason || outcome.uiCode },
+        hydrating: false,
       });
       return;
     }
@@ -436,6 +437,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       status: reconnectAttempt > 0 ? "reconnecting" : "connecting",
       error: null,
       reconnectAttempt,
+      hydrating: false,
     });
 
     let current: SyncBrowserSocket;
@@ -474,6 +476,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    hydration.dispose();
     reconnectCancel?.();
     reconnectCancel = null;
     const current = socket;

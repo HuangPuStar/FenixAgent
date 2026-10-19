@@ -131,6 +131,22 @@ function expectWindowClosed(controller: ChatChannelController): void {
 }
 
 describe("sync gateway end-to-end", () => {
+  // 真实竞态：浏览器 open 后立刻发 HELLO，服务端 handleOpen 仍在异步装配；必须暂存而非 1008。
+  test("entry 创建前的 HELLO 被暂存，不关闭连接", async () => {
+    const { controller, ws } = createController(true);
+    try {
+      const opening = controller.gateway.handleOpen(ws, WS_ID, "user-1", "agent-1", LOCATOR);
+      await controller.gateway.handleMessage(ws, WS_ID, encodeSyncFrame(helloFrame()));
+      expect(ws.closed).toEqual([]);
+
+      await opening;
+      expect(ws.closed).toEqual([]);
+      expect(frameOfType(ws, "MANIFEST")).toBeDefined();
+    } finally {
+      controller.gateway.handleClose(WS_ID);
+    }
+  });
+
   // 开关开启：从 stateless HELLO 到内容块 DOC_UPDATE/APPLY_ACK 全链路，连接窗口在每次结清后归零。
   test("开关开启时 HELLO→MANIFEST→目录→内容→DOC_UPDATE→ACK 贯通且窗口归零", async () => {
     const { controller, ws } = createController(true);

@@ -152,6 +152,11 @@ export interface SessionStateSnapshot {
    * 期间为 true（输出中停止按钮保持可用），回放 turn 与 idle/终态为 false。
    */
   canCancel: boolean;
+  /**
+   * 回放状态（Session Doc session.replayState）：active = 窗口开启；complete = 宿主显式通知
+   * 回放结束（含零历史）。旧客户端忽略该字段；缺失时按原有 presenting/兜底逻辑处理。
+   */
+  replayState?: "active" | "complete" | null;
   // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段）：
   // 前端唯一消费方是 structuredMessages（ChatInterface 时间线渲染），上述四个
   // 字段全仓零消费且每次流式批次都触发全量派生计算（根因 B2）。

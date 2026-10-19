@@ -57,6 +57,27 @@ describe("Chat 空状态", () => {
     expect(markup).not.toContain('data-slot="agent-badge"');
   });
 
+  // 拆分到 chat-empty-state.tsx 后，空状态的 DOM 层级、class、图标、文案与间距必须逐项保持原样。
+  test("空状态 DOM 结构与拆分前一致", () => {
+    const markup = renderToStaticMarkup(<ChatView entries={[]} emptyTitle="标题保持" emptyDescription="说明保持" />);
+    expect(markup).toContain('data-slot="chat-empty-state"');
+    expect(markup).toContain('aria-labelledby="chat-empty-title"');
+    expect(markup).toContain('id="chat-empty-title"');
+    expect(markup).toContain("chat-empty-heading my-1.75 text-3xl");
+    expect(markup).toContain("max-w-115 text-sm leading-relaxed text-slate-500");
+    expect(markup).toContain("h-11.5 w-11.5 rotate-[-5deg]");
+    expect(markup).toContain("h-6.75 w-6.75 rotate-[5deg]");
+    expect(markup).toContain("mt-4.5 text-blue-600");
+    expect(markup).toContain("从一次充分讨论开始");
+    expect(markup).toContain('data-slot="chat-empty-suggestions"');
+    expect(markup.match(/chat-empty-prompt-button/g)).toHaveLength(3);
+    expect(markup).toContain("讨论代码变更的思路与风险");
+    expect(markup).toContain("讨论技术方案的选择与取舍");
+    expect(markup).toContain("讨论构建失败的可能原因");
+    expect(markup).toContain("标题保持");
+    expect(markup).toContain("说明保持");
+  });
+
   // 推荐提示词应引导用户先讨论思路、风险和取舍，而不是要求 Agent 直接行动。
   // 包内字典的键带 `chat.components.` 前缀，故断言路径由 `chatEmpty.*` 改为 `chat.components.chatEmpty.*`。
   test("推荐讨论型起始话题", () => {

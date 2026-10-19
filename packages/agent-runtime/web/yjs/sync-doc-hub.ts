@@ -11,6 +11,9 @@
 // - `kind: "text" | "text_part"` 按 UTF-8 解码后拼接；`kind: "final"` 只读取 completedAt，不伪造正文；
 // - `history_object` / `tool_object` 不在本适配器解码（保真 JSON 尚无展示映射），计入 skipped；
 // - 时间戳在 content Doc 中不存在：assistant 取 final descriptor 的 completedAt，其余为 0（限制见报告）。
+//
+// 增量性：每个 content Doc 的解析结果按 Doc 缓存，只有收到更新的 Doc 才重新扫描 records；跨 Doc 的
+// entry 聚合只失效受影响 entry 的正文缓存。大基线按块到达时不会每次全量解析所有块（旧实现 O(n²)）。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
 import * as Y from "yjs";
@@ -63,12 +66,41 @@ export interface SyncContentProjectionHub {
   dispose(): void;
 }
 
+interface ParsedPart {
+  readonly index: number;
+  readonly text: string;
+}
+
+interface DocEntryContribution {
+  entryOrder: number | null;
+  completedAt: number | null;
+  /** 该 entry 在本 Doc 全部记录中的最小下标（含 final/跳过记录，与旧 firstPosition 语义一致）。 */
+  firstRecordIndex: number;
+  readonly parts: ParsedPart[];
+  recordCount: number;
+}
+
 interface MirrorDoc {
   readonly doc: Y.Doc;
   readonly blockIndex: number;
+  contribution: Map<string, DocEntryContribution>;
+  dirty: boolean;
+  recordCount: number;
+  skippedRecords: number;
+}
+
+interface GlobalEntry {
+  readonly byDoc: Map<string, DocEntryContribution>;
+  firstEntryOrder: number | null;
+  completedAt: number | null;
+  /** 正文缓存：只有贡献变化的 entry 才重新拼接。 */
+  text: string | null;
+  signature: string | null;
+  message: StructuredMessage | null;
 }
 
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const POSITION_STRIDE = 1_000_000_000;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -87,159 +119,253 @@ function readCompletedAt(payload: Uint8Array): number | null {
   }
 }
 
-interface EntryAccumulator {
-  readonly entryId: string;
-  readonly parts: Array<{ readonly position: number; readonly text: string }>;
-  firstPosition: number;
-  firstEntryOrder: number | null;
-  completedAt: number | null;
-}
-
-interface MessageCacheEntry {
-  readonly signature: string;
-  readonly message: StructuredMessage;
-}
-
-function projectDocs(
-  docs: readonly MirrorDoc[],
-  invalidUpdates: number,
-  messageCache: Map<string, MessageCacheEntry>,
-): SyncChatProjection {
-  const ordered = [...docs].sort((left, right) => left.blockIndex - right.blockIndex);
-  const entries = new Map<string, EntryAccumulator>();
-  const seenRecords = new Set<string>();
+/** 解析单个 Doc 的全部 records；返回的 contribution 只属于该 Doc。 */
+function parseDoc(mirror: MirrorDoc): {
+  contribution: Map<string, DocEntryContribution>;
+  recordCount: number;
+  skippedRecords: number;
+} {
+  const contribution = new Map<string, DocEntryContribution>();
   let recordCount = 0;
   let skippedRecords = 0;
+  const records = mirror.doc.getMap<unknown>("root").get("records");
+  if (!(records instanceof Y.Array)) return { contribution, recordCount, skippedRecords };
 
-  for (const [docOrder, mirror] of ordered.entries()) {
-    const root = mirror.doc.getMap<unknown>("root");
-    const records = root.get("records");
-    if (!(records instanceof Y.Array)) continue;
-    const values: unknown[] = records.toArray();
-    for (const [index, raw] of values.entries()) {
-      const record = asRecord(raw);
-      if (record === null) {
-        skippedRecords += 1;
-        continue;
-      }
-      const entryId = record.entryId;
-      const kind = record.kind;
-      const payload = record.payload;
-      if (
-        typeof entryId !== "string" ||
-        entryId.length === 0 ||
-        typeof kind !== "string" ||
-        !(payload instanceof Uint8Array)
-      ) {
-        skippedRecords += 1;
-        continue;
-      }
-      const position = docOrder * 1_000_000_000 + index;
-      const recordId =
-        typeof record.recordId === "string" && record.recordId.length > 0
-          ? `record:${mirror.doc.guid}:${record.recordId}`
-          : `position:${mirror.doc.guid}:${index}`;
-      if (seenRecords.has(recordId)) continue;
-      seenRecords.add(recordId);
+  const seenRecords = new Set<string>();
+  const values: unknown[] = records.toArray();
+  for (const [index, raw] of values.entries()) {
+    const record = asRecord(raw);
+    if (record === null) {
+      skippedRecords += 1;
+      continue;
+    }
+    const entryId = record.entryId;
+    const kind = record.kind;
+    const payload = record.payload;
+    if (
+      typeof entryId !== "string" ||
+      entryId.length === 0 ||
+      typeof kind !== "string" ||
+      !(payload instanceof Uint8Array)
+    ) {
+      skippedRecords += 1;
+      continue;
+    }
+    const recordId =
+      typeof record.recordId === "string" && record.recordId.length > 0
+        ? `record:${record.recordId}`
+        : `position:${index}`;
+    if (seenRecords.has(recordId)) continue;
+    seenRecords.add(recordId);
 
-      let entry = entries.get(entryId);
-      if (entry === undefined) {
-        entry = {
-          entryId,
-          parts: [],
-          firstPosition: position,
-          firstEntryOrder: null,
-          completedAt: null,
-        };
-        entries.set(entryId, entry);
-      }
-      const entryOrder = record.entryOrder;
-      if (typeof entryOrder === "number" && Number.isFinite(entryOrder)) {
-        entry.firstEntryOrder =
-          entry.firstEntryOrder === null ? entryOrder : Math.min(entry.firstEntryOrder, entryOrder);
-      }
+    let entry = contribution.get(entryId);
+    if (entry === undefined) {
+      entry = {
+        entryOrder: null,
+        completedAt: null,
+        firstRecordIndex: index,
+        parts: [],
+        recordCount: 0,
+      };
+      contribution.set(entryId, entry);
+    } else {
+      entry.firstRecordIndex = Math.min(entry.firstRecordIndex, index);
+    }
+    const entryOrder = record.entryOrder;
+    if (typeof entryOrder === "number" && Number.isFinite(entryOrder)) {
+      entry.entryOrder = entry.entryOrder === null ? entryOrder : Math.min(entry.entryOrder, entryOrder);
+    }
 
-      if (kind === "final") {
-        const completedAt = readCompletedAt(payload);
-        if (completedAt !== null) {
-          entry.completedAt = entry.completedAt === null ? completedAt : Math.max(entry.completedAt, completedAt);
-        }
-        recordCount += 1;
-        continue;
+    if (kind === "final") {
+      const completedAt = readCompletedAt(payload);
+      if (completedAt !== null) {
+        entry.completedAt = entry.completedAt === null ? completedAt : Math.max(entry.completedAt, completedAt);
       }
-      if (kind !== "text" && kind !== "text_part") {
-        // history_object / tool_object 的保真 JSON 尚无入口映射，不猜正文。
-        skippedRecords += 1;
-        continue;
-      }
-      try {
-        const text = UTF8_DECODER.decode(payload);
-        entry.parts.push({ position, text });
-        entry.firstPosition = Math.min(entry.firstPosition, position);
-        recordCount += 1;
-      } catch {
-        skippedRecords += 1;
-      }
+      entry.recordCount += 1;
+      recordCount += 1;
+      continue;
+    }
+    if (kind !== "text" && kind !== "text_part") {
+      // history_object / tool_object 的保真 JSON 尚无入口映射，不猜正文。
+      skippedRecords += 1;
+      continue;
+    }
+    try {
+      const text = UTF8_DECODER.decode(payload);
+      entry.parts.push({ index, text });
+      entry.recordCount += 1;
+      recordCount += 1;
+    } catch {
+      skippedRecords += 1;
     }
   }
-
-  const orderedEntries = [...entries.values()].sort((left, right) => {
-    const leftOrder = left.firstEntryOrder ?? left.firstPosition;
-    const rightOrder = right.firstEntryOrder ?? right.firstPosition;
-    return leftOrder - rightOrder || left.firstPosition - right.firstPosition;
-  });
-
-  const messages: StructuredMessage[] = [];
-  const nextCache = new Map<string, MessageCacheEntry>();
-  let seq = 0;
-  for (const entry of orderedEntries) {
-    const text = entry.parts
-      .sort((left, right) => left.position - right.position)
-      .map((part) => part.text)
-      .join("");
-    if (text.length === 0) continue;
-    const ts = entry.completedAt ?? 0;
-    const type = entry.entryId.endsWith(":user") ? "user_message" : "assistant_message";
-    // 内容未变的 entry 复用同一个消息对象，旧 ChatView 的 React.memo 才能跳过整棵子树。
-    const signature = `${String(seq)}|${type}|${String(ts)}|${text}`;
-    const cachedMessage = messageCache.get(entry.entryId);
-    const message: StructuredMessage =
-      cachedMessage?.signature === signature
-        ? cachedMessage.message
-        : type === "user_message"
-          ? { type: "user_message", id: entry.entryId, content: text, seq, ts }
-          : {
-              type: "assistant_message",
-              id: entry.entryId,
-              chunks: [{ type: "message", text }],
-              seq,
-              ts,
-            };
-    nextCache.set(entry.entryId, { signature, message });
-    messages.push(message);
-    seq += 1;
-  }
-  messageCache.clear();
-  for (const [entryId, cachedEntry] of nextCache) messageCache.set(entryId, cachedEntry);
-
-  return Object.freeze({
-    messages: Object.freeze(messages),
-    contentDocCount: ordered.length,
-    recordCount,
-    skippedRecords,
-    invalidUpdates,
-  });
+  return { contribution, recordCount, skippedRecords };
 }
 
 export function createSyncContentProjectionHub(options: SyncContentProjectionHubOptions): SyncContentProjectionHub {
   const docs = new Map<string, MirrorDoc>();
-  const messageCache = new Map<string, MessageCacheEntry>();
+  const entries = new Map<string, GlobalEntry>();
   let generation: string | null = null;
   let invalidUpdates = 0;
   let dirty = true;
   let cached: SyncChatProjection = EMPTY_PROJECTION;
   let disposed = false;
   let notifyScheduled = false;
+
+  function invalidateEntry(entry: GlobalEntry): void {
+    let firstEntryOrder: number | null = null;
+    let completedAt: number | null = null;
+    for (const contribution of entry.byDoc.values()) {
+      if (contribution.entryOrder !== null) {
+        firstEntryOrder =
+          firstEntryOrder === null ? contribution.entryOrder : Math.min(firstEntryOrder, contribution.entryOrder);
+      }
+      if (contribution.completedAt !== null) {
+        completedAt = completedAt === null ? contribution.completedAt : Math.max(completedAt, contribution.completedAt);
+      }
+    }
+    entry.firstEntryOrder = firstEntryOrder;
+    entry.completedAt = completedAt;
+    entry.text = null;
+    entry.signature = null;
+    entry.message = null;
+  }
+
+  /** 同一 entry 的内容未变时复用旧贡献对象，保住正文/消息对象引用（React.memo 依赖）。 */
+  function sameContribution(left: DocEntryContribution, right: DocEntryContribution): boolean {
+    if (
+      left.entryOrder !== right.entryOrder ||
+      left.completedAt !== right.completedAt ||
+      left.firstRecordIndex !== right.firstRecordIndex ||
+      left.recordCount !== right.recordCount ||
+      left.parts.length !== right.parts.length
+    ) {
+      return false;
+    }
+    for (let index = 0; index < left.parts.length; index += 1) {
+      const leftPart = left.parts[index]!;
+      const rightPart = right.parts[index]!;
+      if (leftPart.index !== rightPart.index || leftPart.text !== rightPart.text) return false;
+    }
+    return true;
+  }
+
+  /** 用新解析结果替换该 Doc 的贡献；只失效受影响的 entry，不动其他块的缓存。 */
+  function replaceContribution(
+    docId: string,
+    mirror: MirrorDoc,
+    next: Map<string, DocEntryContribution>,
+    recordCount: number,
+    skippedRecords: number,
+  ): void {
+    for (const entryId of mirror.contribution.keys()) {
+      if (next.has(entryId)) continue;
+      const entry = entries.get(entryId);
+      if (entry === undefined) continue;
+      entry.byDoc.delete(docId);
+      if (entry.byDoc.size === 0) entries.delete(entryId);
+      else invalidateEntry(entry);
+    }
+    for (const [entryId, contribution] of next) {
+      const previous = mirror.contribution.get(entryId);
+      if (previous !== undefined && sameContribution(previous, contribution)) {
+        next.set(entryId, previous);
+        continue;
+      }
+      let entry = entries.get(entryId);
+      if (entry === undefined) {
+        entry = {
+          byDoc: new Map(),
+          firstEntryOrder: null,
+          completedAt: null,
+          text: null,
+          signature: null,
+          message: null,
+        };
+        entries.set(entryId, entry);
+      }
+      entry.byDoc.set(docId, contribution);
+      invalidateEntry(entry);
+    }
+    mirror.contribution = next;
+    mirror.recordCount = recordCount;
+    mirror.skippedRecords = skippedRecords;
+  }
+
+  function refreshDirtyDocs(): void {
+    for (const [docId, mirror] of docs) {
+      if (!mirror.dirty) continue;
+      const parsed = parseDoc(mirror);
+      replaceContribution(docId, mirror, parsed.contribution, parsed.recordCount, parsed.skippedRecords);
+      mirror.dirty = false;
+    }
+  }
+
+  function buildProjection(): SyncChatProjection {
+    const orderedDocs = [...docs.entries()].sort((left, right) => left[1].blockIndex - right[1].blockIndex);
+    const rank = new Map<string, number>();
+    for (const [index, [docId]] of orderedDocs.entries()) rank.set(docId, index);
+
+    const rows: Array<{ order: number; firstPosition: number; entryId: string; entry: GlobalEntry }> = [];
+    for (const [entryId, entry] of entries) {
+      let firstPosition = Number.POSITIVE_INFINITY;
+      for (const docId of entry.byDoc.keys()) {
+        const docRank = rank.get(docId);
+        if (docRank === undefined) continue;
+        const contribution = entry.byDoc.get(docId)!;
+        firstPosition = Math.min(firstPosition, docRank * POSITION_STRIDE + contribution.firstRecordIndex);
+      }
+      if (!Number.isFinite(firstPosition)) continue;
+      rows.push({ order: entry.firstEntryOrder ?? firstPosition, firstPosition, entryId, entry });
+    }
+    rows.sort((left, right) => left.order - right.order || left.firstPosition - right.firstPosition);
+
+    let recordCount = 0;
+    let skippedRecords = 0;
+    for (const mirror of docs.values()) {
+      recordCount += mirror.recordCount;
+      skippedRecords += mirror.skippedRecords;
+    }
+
+    const messages: StructuredMessage[] = [];
+    let seq = 0;
+    for (const row of rows) {
+      const entry = row.entry;
+      if (entry.text === null) {
+        const parts: Array<{ rank: number; index: number; text: string }> = [];
+        for (const [docId, contribution] of entry.byDoc) {
+          const docRank = rank.get(docId);
+          if (docRank === undefined) continue;
+          for (const part of contribution.parts) parts.push({ rank: docRank, index: part.index, text: part.text });
+        }
+        parts.sort((left, right) => left.rank - right.rank || left.index - right.index);
+        entry.text = parts.map((part) => part.text).join("");
+      }
+      const text = entry.text;
+      if (text.length === 0) continue;
+      const ts = entry.completedAt ?? 0;
+      const type = row.entryId.endsWith(":user") ? "user_message" : "assistant_message";
+      const signature = `${String(seq)}|${type}|${String(ts)}|${text}`;
+      if (entry.message === null || entry.signature !== signature) {
+        // 内容未变的 entry 复用同一个消息对象，旧 ChatView 的 React.memo 才能跳过整棵子树。
+        entry.message =
+          type === "user_message"
+            ? { type: "user_message", id: row.entryId, content: text, seq, ts }
+            : { type: "assistant_message", id: row.entryId, chunks: [{ type: "message", text }], seq, ts };
+        entry.signature = signature;
+      }
+      messages.push(entry.message);
+      seq += 1;
+    }
+
+    return Object.freeze({
+      messages: Object.freeze(messages),
+      contentDocCount: orderedDocs.length,
+      recordCount,
+      skippedRecords,
+      invalidUpdates,
+    });
+  }
 
   function scheduleNotify(): void {
     if (disposed || notifyScheduled) return;
@@ -252,9 +378,17 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
 
   function snapshot(): SyncChatProjection {
     if (!dirty) return cached;
-    cached = projectDocs([...docs.values()], invalidUpdates, messageCache);
+    refreshDirtyDocs();
+    cached = buildProjection();
     dirty = false;
     return cached;
+  }
+
+  function clearAll(): void {
+    for (const mirror of docs.values()) mirror.doc.destroy();
+    docs.clear();
+    entries.clear();
+    invalidUpdates = 0;
   }
 
   return {
@@ -267,11 +401,19 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
       let mirror = docs.get(input.docId);
       const created = mirror === undefined;
       if (mirror === undefined) {
-        mirror = { doc: new Y.Doc({ guid: input.docId }), blockIndex: parsed.blockIndex };
+        mirror = {
+          doc: new Y.Doc({ guid: input.docId }),
+          blockIndex: parsed.blockIndex,
+          contribution: new Map(),
+          dirty: false,
+          recordCount: 0,
+          skippedRecords: 0,
+        };
         docs.set(input.docId, mirror);
       }
       try {
         Y.applyUpdate(mirror.doc, input.payload);
+        mirror.dirty = true;
         dirty = true;
         scheduleNotify();
         return true;
@@ -280,6 +422,8 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
         if (created) {
           mirror.doc.destroy();
           docs.delete(input.docId);
+        } else {
+          mirror.dirty = true;
         }
         invalidUpdates += 1;
         dirty = true;
@@ -291,10 +435,7 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     reset(nextGeneration: string | null): void {
       if (disposed) return;
       generation = nextGeneration;
-      for (const mirror of docs.values()) mirror.doc.destroy();
-      docs.clear();
-      messageCache.clear();
-      invalidUpdates = 0;
+      clearAll();
       dirty = true;
       scheduleNotify();
     },
@@ -304,9 +445,7 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      for (const mirror of docs.values()) mirror.doc.destroy();
-      docs.clear();
-      messageCache.clear();
+      clearAll();
     },
   };
 }

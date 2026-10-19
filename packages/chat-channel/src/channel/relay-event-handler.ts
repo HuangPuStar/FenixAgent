@@ -304,6 +304,14 @@ export class RelayEventHandler {
       return this.handleStatus(shared, raw);
     }
 
+    // ACP 宿主在 load/resume 响应之后显式通知回放结束（含零历史）：立即收敛窗口，
+    // 不再等 10s 窗口或依赖客户端计时。旧宿主不发该通知时保持原窗口语义。
+    if (rpcCheck?.method === "session/replay_complete") {
+      this.convergeReplayWindow(shared);
+      this.dispatch(shared, { type: "replay_complete", update: {}, content: null });
+      return;
+    }
+
     // 第三级：规范化事件帧（acp-link 私有帧 / session/update 通知），在此边界
     // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截
     // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
@@ -745,6 +753,13 @@ export class RelayEventHandler {
     if (shared.replaySkipSynthesis === undefined) {
       shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
     }
+    // 窗口一开就建立回放 turn（不写 entry）：前端无需等首个回放事件才知道 replaying，
+    // 慢启动 Agent（2s/4s 后才吐历史）也不会被客户端的“无活动”兜底提前放行。
+    if (shared.replaySkipSynthesis === false && shared.replayTurnId == null) {
+      const turnId = createReplayTurnId();
+      shared.replayTurnId = turnId;
+      this.dispatch(shared, { type: "replay_started", update: {}, content: null, turnId });
+    }
     if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
     shared.replayWindowTimer = setTimeout(() => {
       this.convergeReplayWindow(shared);
@@ -887,13 +902,16 @@ export class RelayEventHandler {
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
     }
-    // 旧投影路径已完成；新协议旁路只消费同一份已规范化、已授权事件。
+    // 旧投影路径已完成；新协议旁路只消费实时事件。回放 turn（turn_replay_*）的历史由旧
+    // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（2048 记录上限，且回放工具事件无
+    // 可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
     try {
       const boundTurnId =
         event.turnId ??
         (SYNC_TURN_BOUND_EVENTS.has(event.type)
           ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId
           : null);
+      if (boundTurnId?.startsWith("turn_replay_")) return;
       this.dependencies.onNormalizedEvent?.(
         shared.rcsSessionId,
         boundTurnId ? { ...event, turnId: boundTurnId } : event,

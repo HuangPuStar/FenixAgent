@@ -30,6 +30,8 @@ class FakeSocket implements SyncBrowserSocket {
   bufferedAmount = 0;
   readonly sent: Uint8Array[] = [];
   readonly closed: Array<{ code?: number; reason?: string }> = [];
+  /** 模拟 ACK 写 socket 失败：服务端账本收不到回执，客户端基线等待只能靠超时。 */
+  dropAcks = false;
   onopen: (() => void) | null = null;
   onmessage: ((data: unknown) => void) | null = null;
   onclose: ((code: number, reason: string) => void) | null = null;
@@ -40,6 +42,9 @@ class FakeSocket implements SyncBrowserSocket {
   }
 
   send(data: Uint8Array): void {
+    if (this.dropAcks && decodeSyncFrame(data).type === "APPLY_ACK") {
+      throw new Error("simulated ack send failure");
+    }
     this.sent.push(data);
   }
 
@@ -141,8 +146,37 @@ function directoryBase(deliveryId: string, docIds: readonly string[]): SyncFrame
   };
 }
 
-function docBase(docId: string, deliveryId: string, text = "hello"): SyncFrame {
-  const payload = contentUpdate(text);
+let appendSequence = 0;
+
+/** 向同一 content Doc 追加一条记录并返回增量（模拟持续 DOC_UPDATE）。 */
+function appendContentUpdate(doc: Y.Doc, text: string, entryId = "turn_1:assistant"): Uint8Array {
+  const before = Y.encodeStateVector(doc);
+  doc.transact(() => {
+    const root = doc.getMap<unknown>("root");
+    if (!(root.get("records") instanceof Y.Array)) {
+      root.set("schemaVersion", 1);
+      root.set("kind", "content");
+      root.set("generation", GENERATION);
+      root.set("blockIndex", 1);
+      root.set("records", new Y.Array<Record<string, unknown>>());
+    }
+    const records = root.get("records") as Y.Array<Record<string, unknown>>;
+    records.push([
+      {
+        recordId: `rec_append_${appendSequence++}`,
+        entryId,
+        entryOrder: 1,
+        contentSlot: "text",
+        partIndex: 0,
+        kind: "text",
+        payload: new TextEncoder().encode(text),
+      },
+    ]);
+  });
+  return Y.encodeStateAsUpdate(doc, before);
+}
+
+function docBaseWithPayload(docId: string, deliveryId: string, payload: Uint8Array): SyncFrame {
   return {
     type: "DOC_BASE",
     protocolVersion: SYNC_PROTOCOL_VERSION,
@@ -158,6 +192,10 @@ function docBase(docId: string, deliveryId: string, text = "hello"): SyncFrame {
     encodedLength: payload.byteLength,
     payload: base64(payload),
   };
+}
+
+function docBase(docId: string, deliveryId: string, text = "hello"): SyncFrame {
+  return docBaseWithPayload(docId, deliveryId, contentUpdate(text));
 }
 
 function docUpdate(docId: string, deliveryId: string): SyncFrame {
@@ -309,6 +347,71 @@ describe("sync chat 浏览器会话", () => {
       },
     ] satisfies SyncFrame[]);
     expect(harness.states.at(-1)?.status).toBe("ready");
+  });
+
+  // MANIFEST 后展示层先收起半成品：入口/目录/内容块 DOC_BASE 的 processed APPLY_ACK 全部到齐才解除。
+  test("基线 DOC_BASE 与 APPLY_ACK 齐备前保持 hydrating", async () => {
+    const harness = createHarness({ generation: undefined, contentDocIds: [] });
+    harness.socket.open();
+    harness.socket.receive(manifest());
+    expect(harness.states.at(-1)?.hydrating).toBe(true);
+
+    harness.socket.receive(directoryBase("dlv_hydrate_dir", [CONTENT_DOC]));
+    expect(harness.states.at(-1)?.hydrating).toBe(true);
+    harness.socket.receive(docBase(CONTROL_DOC, "dlv_hydrate_control"));
+    expect(harness.states.at(-1)?.hydrating).toBe(true);
+    harness.socket.receive(docBase(RUNTIME_DOC, "dlv_hydrate_runtime"));
+    expect(harness.states.at(-1)?.hydrating).toBe(true);
+    harness.socket.receive(docBase(CONTENT_DOC, "dlv_hydrate_content"));
+    // 帧已到达但 ACK 尚未写出：不能提前放行。
+    expect(harness.states.at(-1)?.hydrating).toBe(true);
+    await flush();
+    expect(harness.states.at(-1)?.hydrating).toBe(false);
+  });
+
+  // ACK 丢失时只能靠 base 超时解除 hydrate；投影仍已应用，后续增量正常追加且不重复。
+  test("ACK 丢失降级为增量追加，不重复不丢失", async () => {
+    const harness = createHarness({ generation: undefined, contentDocIds: [], syncBaseTimeoutMs: 20 });
+    harness.socket.open();
+    harness.socket.dropAcks = true;
+    harness.socket.receive(manifest());
+    harness.socket.receive(directoryBase("dlv_ackloss_dir", [CONTENT_DOC]));
+
+    const contentDoc = new Y.Doc();
+    const basePayload = appendContentUpdate(contentDoc, "hello");
+    const updatePayload = appendContentUpdate(contentDoc, " world");
+    harness.socket.receive(docBaseWithPayload(CONTENT_DOC, "dlv_ackloss_base", basePayload));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(harness.states.at(-1)?.hydrating).toBe(false);
+    expect(harness.projections.at(-1)?.messages).toHaveLength(1);
+
+    harness.socket.receive({
+      type: "DOC_UPDATE",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      docId: CONTENT_DOC,
+      generation: GENERATION,
+      transportEpoch: "tx_1",
+      subscriptionEpoch: "sub_1",
+      syncAttemptId: "att_1",
+      deliveryId: "dlv_ackloss_update",
+      fromSeq: 1,
+      toSeq: 1,
+      payloadDigest: "sha256:test",
+      encodedLength: updatePayload.byteLength,
+      payload: base64(updatePayload),
+    } satisfies SyncFrame);
+    await flush();
+    const messages = harness.projections.at(-1)?.messages ?? [];
+    expect(messages).toHaveLength(1);
+    const message = messages[0];
+    const text =
+      message?.type === "assistant_message"
+        ? message.chunks
+            .filter((chunk) => chunk.type === "message")
+            .map((chunk) => chunk.text)
+            .join("")
+        : "";
+    expect(text).toBe("hello world");
   });
 
   // DOC_BASE 应用成功后必须回 processed APPLY_ACK，同时把正文投影成只读消息。

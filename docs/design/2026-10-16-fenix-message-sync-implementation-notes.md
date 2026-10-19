@@ -136,6 +136,13 @@
   **36 通过 / 0 失败**；含假 WebSocket 拒绝回退、切换清理，以及真实用户/助手气泡渲染、历史可见、双写去重与稳定引用。
   `fastcheck` / `precheck` 均通过（web 308、server/script 981、package 10278 通过，108 跳过）；最终补充精确身份优先与
   后到消息排序后，重跑四文件、web 全目录（309 通过 / 0 失败）、server/web 类型检查及生产构建通过。构建仍有 Vite 原生配置、Node 弃用、依赖 externalization 与 Tailwind sourcemap 告警，未验证真实服务多版本部署。
+- 初次加载 hydrate 门控：切换会话后旧/新两路都按批到达（旧路径 ACP 回放、新路径 DOC_BASE/DOC_UPDATE）。展示层以
+  确定性事实收口：旧路径在回放窗口开启时由服务端写入 `replay_started`（`presenting=replaying`），load/resume 响应后
+  acp-link 再发 `session/replay_complete`（含零历史），relay 立即收敛窗口并写 `replayState=complete`；新协议等首批
+  DOC_BASE 的 processed APPLY_ACK 全部匹配。旧宿主不发 `replay_complete` 时保留 1.5s 兜底与 12s 硬上限。10k 消息/
+  200 批回放期间 0 次提交，结束后一次提交；渲染窗口默认挂载最近 1000 条，避免单次提交 >1s。用例见
+  `chat-hydration-gate.test.ts`、`use-chat-hydration.test.tsx`、`chat-hydration-scroll.test.tsx`、
+  `chat-render-window.test.tsx` 与 `chat-replay-signal.test.ts`。
 
 ## 5. 未覆盖与不可做
 
@@ -149,6 +156,8 @@
 | 历史重建 | 未覆盖 | ACP `load_session` 仅返回增量，尚无可用生产完整历史源 |
 | final / 非文本展示 | 未覆盖 | final descriptor、history/tool 对象尚未接入新投影 |
 | UI 渲染 | 文本已实施 | 用户/助手文本经合并视图复用现有消息组件；历史和非文本仍依赖旧 Doc |
+| 初次加载 hydrate 完成信号 | 客户端门控已实施 | 旧路径由服务端在窗口开启时写入 `replay_started`，load/resume 后由 acp-link 发 `session/replay_complete`（含零历史），relay 立即收敛并写 `replayState=complete`；新协议用 DOC_BASE 的 processed APPLY_ACK。旧宿主不发 `replay_complete` 时保留 1.5s 兜底、12s 硬上限；完整基线后到的首次合并放宽 5s 配对窗口一次。移除条件 = 全量宿主升级后删除客户端兜底 |
+| 大基线渲染窗口 | 已实施 | 默认只挂载最近 1000 条，更早消息由用户显式加载；DOM 有界（10k 条目一次性渲染从 1.7s 降至约 0.2s）。加载更早后滚到第一条新增历史，不再钉在底部；移除条件 = 引入带锚点的虚拟列表 |
 
 ## 6. 下一步（按设计分阶段）
 

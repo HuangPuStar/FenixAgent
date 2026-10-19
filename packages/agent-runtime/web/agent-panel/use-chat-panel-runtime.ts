@@ -28,11 +28,14 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ChatAuthState } from "../hooks/chat-auth-state";
+import { resolveNoReplaySession } from "../hooks/chat-replay-signal";
 import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
-import { createSyncMessageMerger } from "../hooks/sync-chat-messages";
+import { applyChatHydration, useChatHydration } from "../hooks/use-chat-hydration";
 import { useChatState } from "../hooks/use-chat-state";
+import { useDocHubReplacementVersion } from "../hooks/use-doc-hub-replacement";
 import { useSessionState } from "../hooks/use-session-state";
 import { useSyncChatState } from "../hooks/use-sync-chat-state";
+import { useYjsDebugDump } from "../hooks/use-yjs-debug-dump";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
@@ -145,6 +148,8 @@ export function useChatPanelRuntime({
   const [terminalUiCode, setTerminalUiCode] = useState<TerminalWsUiCode | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
+  /** 本地新建会话没有历史回放：门控不得用骨架替换空状态。 */
+  const noReplaySessionRef = useRef(false);
 
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
@@ -176,15 +181,33 @@ export function useChatPanelRuntime({
     organizationId: readSyncChatOrganizationId(),
     sessionKey: legacySessionState.acpSessionId,
   });
-  const mergeScope = `${docHubKey}:${legacySessionState.acpSessionId}`;
-  const merger = useMemo(() => ({ scope: mergeScope, merge: createSyncMessageMerger() }), [mergeScope]);
-  const sessionState = useMemo(() => {
-    if (!syncEnabled || syncChat.legacyFallback) return legacySessionState;
-    return {
-      ...legacySessionState,
-      structuredMessages: merger.merge(legacySessionState.structuredMessages, syncChat.projection.messages),
-    };
-  }, [legacySessionState, merger, syncEnabled, syncChat.legacyFallback, syncChat.projection.messages]);
+  const replacementVersion = useDocHubReplacementVersion(docHubKey);
+  // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
+  const mergeScope = `${docHubKey}:${replacementVersion}`;
+  // 服务端 replay_complete（含零历史）与本地新建会话都无需等待回放；active 回放优先。
+  const noReplaySession = resolveNoReplaySession({
+    localCreate: noReplaySessionRef.current,
+    replayState: legacySessionState.replayState,
+  });
+  const hydration = useChatHydration({
+    scope: mergeScope,
+    legacy: legacySessionState.structuredMessages,
+    sync: syncChat.projection.messages,
+    sourceReady: connectionState === "connected",
+    replayActive: legacySessionState.status === "replaying",
+    liveActive: legacySessionState.status === "responding",
+    blocked: syncChat.connection.hydrating,
+    noReplaySession,
+  });
+  const sessionState = useMemo(
+    () =>
+      applyChatHydration(legacySessionState, hydration, {
+        syncEnabled,
+        legacyFallback: syncChat.legacyFallback,
+        noReplaySession,
+      }),
+    [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession],
+  );
 
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
@@ -196,20 +219,7 @@ export function useChatPanelRuntime({
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
 
-  // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
-  const yjsChatRef = useRef(chatState);
-  const yjsSessionRef = useRef(sessionState);
-  yjsChatRef.current = chatState;
-  yjsSessionRef.current = sessionState;
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__yjs_dump__ = () => {
-      console.log("── YJS Chat State ──", yjsChatRef.current);
-      console.log("── YJS Session State ──", yjsSessionRef.current);
-    };
-    return () => {
-      delete (window as unknown as Record<string, unknown>).__yjs_dump__;
-    };
-  }, []);
+  useYjsDebugDump(chatState, sessionState);
 
   // ── Action commandId（C3：幂等键，同会话唯一）──
   // 同一 action 意图（action + 业务参数）重试复用同一 commandId；
@@ -439,12 +449,15 @@ export function useChatPanelRuntime({
         sendAction({ action: "cancel", sessionId: sessionState.acpSessionId || undefined });
       },
       onCreateSession: () => {
+        noReplaySessionRef.current = true;
         sendAction({ action: "create_session" });
       },
       onLoadSession: (sid: string) => {
+        noReplaySessionRef.current = false;
         sendAction({ action: "load_session", sessionId: sid });
       },
       onResumeSession: (sid: string) => {
+        noReplaySessionRef.current = false;
         sendAction({ action: "resume_session", sessionId: sid });
       },
       onRenameSession: (sid: string, title: string) => {

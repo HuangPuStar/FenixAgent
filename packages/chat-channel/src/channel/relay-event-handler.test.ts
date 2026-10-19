@@ -705,6 +705,100 @@ describe("RelayEventHandler replay window", () => {
     expect(shared.replayWindowUntil!).toBeGreaterThan(Date.now());
   });
 
+  // 回放窗口一开就写入 replaying（不等首个回放事件）：慢启动回放不会落回 idle 被客户端提前放行。
+  test("replay window starts a replaying placeholder before events", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+
+    handler.openReplayWindow(shared);
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("presenting")).toBe("replaying");
+    expect(shared.replayTurnId).toMatch(/^turn_replay_/);
+
+    handler.convergeReplayWindow(shared);
+    expect(session.get("presenting")).not.toBe("replaying");
+  });
+
+  // 回放事件（含工具）不得 fanout 到新协议 live ingress；回放后的实时事件必须正常进入。
+  test("回放 1 万条事件不进新协议，回放后的实时事件进入", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const logs: string[] = [];
+    const docManager = new DocManager({ onLog: (message) => logs.push(message), onError: () => {} });
+    await docManager.openChat("rcs-1");
+    await docManager.openSession("user-1", "agent-1", "rcs-1");
+    const forwarded: Array<{ type: string; turnId?: string | null }> = [];
+    const handler = createRelayEvents(registry, broadcaster, [], {
+      docManager,
+      onNormalizedEvent: (_rcsSessionId, event) => forwarded.push({ type: event.type, turnId: event.turnId }),
+    });
+    const shared = relayOn("rcs-1");
+    handler.openReplayWindow(shared);
+    const handle = handler.createMessageHandler(shared);
+
+    for (let index = 0; index < 10_000; index += 1) {
+      await handle({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "ses-1",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "历史" } },
+        },
+      } as unknown as RelayMessage);
+    }
+    await handle({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "tool_call", toolCallId: "tool-1", title: "Read", status: "running" },
+      },
+    } as unknown as RelayMessage);
+
+    expect(forwarded).toHaveLength(0);
+    expect(logs.some((message) => message.includes("tool_call without writable turn"))).toBe(false);
+
+    handler.convergeReplayWindow(shared);
+    docManager.registerUserMessage(shared.rcsSessionId, "实时消息");
+    await handle({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "实时回答" } },
+      },
+    } as unknown as RelayMessage);
+
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]?.turnId?.startsWith("turn_replay_")).toBe(false);
+  }, 30_000);
+
+  // 宿主在 load/resume 响应后显式通知回放结束（含零历史）：立即收敛，不等 10s 窗口。
+  test("session/replay_complete converges the window immediately", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+
+    handler.openReplayWindow(shared);
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("presenting")).toBe("replaying");
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/replay_complete",
+      params: { sessionId: "ses-1" },
+    } as unknown as RelayMessage);
+
+    expect(shared.replayWindowUntil).toBeNull();
+    expect(session.get("presenting")).not.toBe("replaying");
+    expect(session.get("replayState")).toBe("complete");
+  });
+
   // 判定「是否跳过回放合成」只在窗口开启时捕获一次：回放流本身会写 Chat Doc，
   // result 分支幂等重开窗口时若重新判定，会把回放自己写入的内容当作「重连前已有内容」，
   // 切换后剩余回放轮次全被拒绝（历史消息消失）。

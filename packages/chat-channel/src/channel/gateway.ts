@@ -2,17 +2,17 @@
 
 import { translateSimpleAction } from "../protocol/translator";
 import { decodeYjsSyncFrame } from "../protocol/update-frame";
-import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import type { DocManager } from "../state";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } from "./gateway-open-errors";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
-import { type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
+import { flushPendingSyncFrames, type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -70,28 +70,28 @@ export class Gateway {
     const { registry, broadcaster } = this.dependencies;
     const maxClients = this.dependencies.maxClients();
     if (!registry.tryCreatePending(wsId, maxClients)) {
-      this.rejectOpen(ws, wsId, 1013, "too many connections", "SYNC_RELAY.CAPACITY_EXCEEDED");
+      rejectGatewayOpen(this.dependencies, ws, wsId, 1013, "too many connections", "SYNC_RELAY.CAPACITY_EXCEEDED");
       return;
     }
     let environment: Awaited<ReturnType<GatewayDependencies["getEnvironment"]>>;
     try {
       environment = await this.dependencies.getEnvironment(agentId);
     } catch {
-      this.rejectOpen(ws, wsId, 1011, "environment lookup failed", "INTERNAL.UNCLASSIFIED");
+      rejectGatewayOpen(this.dependencies, ws, wsId, 1011, "environment lookup failed", "INTERNAL.UNCLASSIFIED");
       this.reportError("[YJS-FE] Failed to load environment", { agentId });
       return;
     }
     if (!environment) {
-      this.rejectOpen(ws, wsId, 4004, "env not found", "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE");
+      rejectGatewayOpen(this.dependencies, ws, wsId, 4004, "env not found", "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE");
       return;
     }
     if (!this.dependencies.authorizeEnvironment(userId, environment)) {
-      this.rejectOpen(ws, wsId, 4003, "unauthorized", "ACTION.FORBIDDEN");
+      rejectGatewayOpen(this.dependencies, ws, wsId, 4003, "unauthorized", "ACTION.FORBIDDEN");
       return;
     }
     const ownerUserId = environment.userId;
     if (!ownerUserId) {
-      this.rejectOpen(ws, wsId, 4003, "unauthorized", "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE");
+      rejectGatewayOpen(this.dependencies, ws, wsId, 4003, "unauthorized", "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE");
       return;
     }
     const orgId = environment.organizationId ?? ownerUserId;
@@ -103,17 +103,32 @@ export class Gateway {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance", typeof err);
       if (this.dependencies.isMachineOffline(err)) {
-        this.sendPublicError(ws, "CONTROL_PLANE.MACHINE_UNAVAILABLE", "orchestration.ensure_running");
+        sendGatewayPublicError(
+          this.dependencies,
+          ws,
+          "CONTROL_PLANE.MACHINE_UNAVAILABLE",
+          "orchestration.ensure_running",
+        );
         ws.close(4500, "machine offline");
         return;
       }
       const permanentCode = this.dependencies.classifyPermanentSpawnFailure(err);
       if (permanentCode) {
-        this.sendPublicError(ws, this.mapPermanentSpawnFailure(permanentCode), "orchestration.ensure_running");
+        sendGatewayPublicError(
+          this.dependencies,
+          ws,
+          mapPermanentSpawnFailure(permanentCode),
+          "orchestration.ensure_running",
+        );
         ws.close(4502, "spawn rejected");
         return;
       }
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
+      sendGatewayPublicError(
+        this.dependencies,
+        ws,
+        "CONTROL_PLANE.INSTANCE_START_FAILED",
+        "orchestration.ensure_running",
+      );
       ws.close(1011, "spawn failed");
       return;
     }
@@ -157,7 +172,12 @@ export class Gateway {
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to connect agent relay", typeof err);
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
+      sendGatewayPublicError(
+        this.dependencies,
+        ws,
+        "CONTROL_PLANE.INSTANCE_START_FAILED",
+        "orchestration.ensure_running",
+      );
       ws.close(1011, "relay failed");
       return;
     }
@@ -241,6 +261,15 @@ export class Gateway {
       agentStatusReceived: false,
     };
     registry.addClient(wsId, entry);
+    await flushPendingSyncFrames(
+      registry,
+      wsId,
+      entry,
+      ws,
+      this.dependencies.chatSyncProtocol,
+      (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
+      this.dependencies.syncHostOverrides,
+    );
     let chatDoc: Awaited<ReturnType<DocManager["openChat"]>>;
     let sessionDoc: Awaited<ReturnType<DocManager["openSession"]>>;
     try {
@@ -279,7 +308,12 @@ export class Gateway {
       await shared.handle.send({ type: "connect" } as never);
     } catch (err) {
       this.reportError("[YJS-FE] relay connect handshake failed:", err);
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
+      sendGatewayPublicError(
+        this.dependencies,
+        ws,
+        "CONTROL_PLANE.INSTANCE_START_FAILED",
+        "orchestration.ensure_running",
+      );
       ws.close(1011, "relay handshake failed");
       return;
     }
@@ -297,6 +331,7 @@ export class Gateway {
         this.dependencies.chatSyncProtocol,
         (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
         this.dependencies.syncHostOverrides,
+        { registry: this.dependencies.registry, wsId },
       );
       if (routed) return;
       const frame = decodeYjsSyncFrame(data);
@@ -352,38 +387,6 @@ export class Gateway {
     } catch {
       /* ignore */
     }
-  }
-  private rejectOpen(
-    ws: WsConnection,
-    wsId: string,
-    closeCode: number,
-    closeReason: string,
-    type: PublicErrorType,
-  ): void {
-    this.dependencies.registry.discardPending(wsId);
-    try {
-      this.sendPublicError(ws, type, "gateway.open");
-    } catch {
-      /* ignore */
-    }
-    try {
-      ws.close(closeCode, closeReason);
-    } catch {
-      /* ignore */
-    }
-  }
-  private sendPublicError(ws: WsConnection, type: PublicErrorType, stage: string): PublicError {
-    const error = createPublicError(type);
-    this.dependencies.reportLog(serializePublicErrorLog(error, stage));
-    this.dependencies.broadcaster.sendToYjsWs(ws, { type: "error", payload: error });
-    return error;
-  }
-  private mapPermanentSpawnFailure(code: string): PublicErrorType {
-    if (code === "instance_limit_reached") return "CONTROL_PLANE.INSTANCE_LIMIT_REACHED";
-    if (code === "auto_start_disabled" || code === "configuration_invalid") {
-      return "CONTROL_PLANE.CONFIGURATION_INVALID";
-    }
-    return "CONTROL_PLANE.INSTANCE_START_FAILED";
   }
   private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
     const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);

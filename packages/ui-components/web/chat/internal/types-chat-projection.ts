@@ -323,6 +323,8 @@ export interface SessionStateSnapshot {
   loading: LoadingState | null;
   /** 展示态（后端投影字段 session.canCancel 直接读取）：输出中停止按钮保持可用。 */
   canCancel: boolean;
+  /** 回放状态：active=窗口开启，complete=宿主显式通知结束（含零历史）。 */
+  replayState?: "active" | "complete" | null;
   /** 时间线消息（ChatInterface 渲染输入）。 */
   structuredMessages: StructuredMessage[];
   /** AskUserQuestion 待应答问题投影（questionId → 投影，60s expiresAt）。 */

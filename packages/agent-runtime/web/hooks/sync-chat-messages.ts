@@ -30,57 +30,92 @@ function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): S
 /**
  * 每个会话持有一个合并器：别名一对一锁定，已显示的 key/相对顺序不因双写追平改变。
  * 无协议时间戳的记录用首次观察时间，仅用于跨来源配对，不拿未知时间 0 去匹配任意历史。
+ *
+ * 复杂度：身份/别名/正文均为一次索引，缺省历史按线性链表顺序插入；大基线 hydrate 时
+ * 不会因逐条 `Array.find` / `slice().reverse()` 退化为 O(n²)（旧实现 5k 条双写可达 19s）。
+ * `matchWindowMs` 仅在「完整基线后到」时放宽（调用方传 Infinity）；实时双写仍用 5s 窗口。
  */
 export function createSyncMessageMerger(now: () => number = Date.now) {
   let previous: StructuredMessage[] = [];
   let aliases = new Map<string, string>();
   let observed = new Map<string, number>();
 
-  return (legacy: readonly StructuredMessage[], sync: readonly StructuredMessage[]): StructuredMessage[] => {
+  return (
+    legacy: readonly StructuredMessage[],
+    sync: readonly StructuredMessage[],
+    matchWindowMs: number = SYNC_MESSAGE_MATCH_WINDOW_MS,
+  ): StructuredMessage[] => {
     const nextAliases = new Map<string, string>();
     const nextObserved = new Map<string, number>();
     const candidates = new Map<string, StructuredMessage>();
     const times = new Map<string, number>();
     const legacyKeys: string[] = [];
     const used = new Set<string>();
-    const timestamp = (source: string, message: StructuredMessage): number => {
+
+    const legacyTimes = new WeakMap<StructuredMessage, number>();
+    const syncTimes = new WeakMap<StructuredMessage, number>();
+    const readTime = (source: "legacy" | "sync", message: StructuredMessage): number => {
       const key = `${source}:${message.id}`;
       const time = observed.get(key) ?? (isText(message) && message.ts > 0 ? message.ts : now());
       nextObserved.set(key, time);
       return time;
     };
-    for (const message of legacy) timestamp("legacy", message);
-    for (const message of sync) timestamp("sync", message);
+    for (const message of legacy) legacyTimes.set(message, readTime("legacy", message));
+    for (const message of sync) syncTimes.set(message, readTime("sync", message));
+
     const legacyById = new Map(legacy.map((message) => [message.id, message]));
-    const exactIds = new Set(sync.filter((message) => legacyById.has(message.id)).map((message) => message.id));
+    const exactIds = new Set<string>();
+    for (const message of sync) {
+      if (legacyById.has(message.id)) exactIds.add(message.id);
+    }
+
+    // 别名 → 旧消息：旧实现每次同步消息都线性扫描 legacy 找别名，双写流下同样退化。
+    const aliasToLegacy = new Map<string, StructuredMessage>();
+    for (const message of legacy) {
+      const alias = aliases.get(`legacy:${message.id}`);
+      if (alias !== undefined && !aliasToLegacy.has(alias)) aliasToLegacy.set(alias, message);
+    }
+
+    // 正文 → 旧消息：模糊配对只扫描同角色同正文的候选，保持 legacy 顺序（与逐个 find 等价）。
+    const textIndex = new Map<string, StructuredMessage[]>();
+    for (const message of legacy) {
+      if (!isText(message) || exactIds.has(message.id)) continue;
+      const key = `${message.type}\u0000${textOf(message)}`;
+      const bucket = textIndex.get(key);
+      if (bucket) bucket.push(message);
+      else textIndex.set(key, [message]);
+    }
+
     const pairs = new Map<string, StructuredMessage>();
     for (const message of sync) {
       const alias = aliases.get(`sync:${message.id}`);
       let match = legacyById.get(message.id);
-      if (!match && alias) match = legacy.find((item) => aliases.get(`legacy:${item.id}`) === alias);
+      if (!match && alias !== undefined) match = aliasToLegacy.get(alias);
       if (!match && isText(message)) {
-        match = legacy.find(
-          (item) =>
-            !used.has(item.id) &&
-            !exactIds.has(item.id) &&
-            isText(item) &&
-            item.type === message.type &&
-            textOf(item) === textOf(message) &&
-            Math.abs(timestamp("legacy", item) - timestamp("sync", message)) <= SYNC_MESSAGE_MATCH_WINDOW_MS,
-        );
+        const bucket = textIndex.get(`${message.type}\u0000${textOf(message)}`);
+        if (bucket !== undefined) {
+          const syncTime = syncTimes.get(message);
+          match = bucket.find(
+            (item) =>
+              !used.has(item.id) &&
+              syncTime !== undefined &&
+              Math.abs((legacyTimes.get(item) ?? 0) - syncTime) <= matchWindowMs,
+          );
+        }
       }
       if (match && !used.has(match.id)) {
         pairs.set(match.id, message);
         used.add(match.id);
       }
     }
+
     for (const message of legacy) {
       const pair = pairs.get(message.id);
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(`sync:${pair.id}`, key);
       candidates.set(key, pair ? preferredMessage(message, pair) : message);
-      times.set(key, timestamp("legacy", message));
+      times.set(key, legacyTimes.get(message) ?? now());
       legacyKeys.push(key);
     }
     for (const message of sync) {
@@ -88,34 +123,66 @@ export function createSyncMessageMerger(now: () => number = Date.now) {
       const key = aliases.get(`sync:${message.id}`) ?? message.id;
       nextAliases.set(`sync:${message.id}`, key);
       candidates.set(key, message);
-      times.set(key, timestamp("sync", message));
+      times.set(key, syncTimes.get(message) ?? now());
     }
 
-    // 后到的历史插入下一个已有历史锚点之前；其余新消息追加，已有消息不按浮动时间戳重排。
-    const order = previous.map((message) => message.id).filter((id) => candidates.has(id));
-    const present = new Set(order);
-    for (let index = legacyKeys.length - 1; index >= 0; index -= 1) {
-      const key = legacyKeys[index];
-      if (present.has(key)) continue;
-      const next = legacyKeys[index + 1];
-      const position = next === undefined ? -1 : order.indexOf(next);
-      const preceding = legacyKeys
-        .slice(0, index)
-        .reverse()
-        .find((id) => present.has(id));
-      const laterPosition = order.findIndex((id) => (times.get(id) ?? 0) >= (times.get(key) ?? 0));
-      const fallbackPosition = Math.max(
-        preceding === undefined ? 0 : order.indexOf(preceding) + 1,
-        laterPosition < 0 ? order.length : laterPosition,
-      );
-      order.splice(position < 0 ? fallbackPosition : position, 0, key);
-      present.add(key);
+    // 旧侧插入顺序：已有 key 保持原相对位置；缺失 key 归入“下一个已有旧 key 之前”的块。
+    // 只有尾部缺失块需要时间回退定位——旧实现的 `slice().reverse().find` 与逐次 splice
+    // 在整段历史一次性到达时是 O(n²)，这里用一次前向扫描 + 块拼接保持同一顺序语义。
+    const initialOrder: string[] = [];
+    const initialIndex = new Map<string, number>();
+    for (const message of previous) {
+      if (!candidates.has(message.id) || initialIndex.has(message.id)) continue;
+      initialIndex.set(message.id, initialOrder.length);
+      initialOrder.push(message.id);
     }
+
+    const pendingBefore = new Map<number, string[]>();
+    const placed = new Set<string>(initialOrder);
+    let pending: string[] = [];
+    let precedingPosition = -1;
+    for (const key of legacyKeys) {
+      const position = initialIndex.get(key);
+      if (position !== undefined) {
+        if (pending.length > 0) {
+          const bucket = pendingBefore.get(position);
+          if (bucket) bucket.push(...pending);
+          else pendingBefore.set(position, pending);
+          pending = [];
+        }
+        precedingPosition = position;
+        continue;
+      }
+      if (placed.has(key)) continue;
+      placed.add(key);
+      pending.push(key);
+    }
+
+    let fallbackPosition = initialOrder.length;
+    if (pending.length > 0) {
+      const trailingKey = pending[pending.length - 1]!;
+      const laterPosition = initialOrder.findIndex((id) => (times.get(id) ?? 0) >= (times.get(trailingKey) ?? 0));
+      fallbackPosition = Math.max(precedingPosition + 1, laterPosition < 0 ? initialOrder.length : laterPosition);
+    }
+
+    const orderKeys: string[] = [];
+    for (let index = 0; index <= initialOrder.length; index += 1) {
+      if (index === fallbackPosition) orderKeys.push(...pending);
+      const before = pendingBefore.get(index);
+      if (before) orderKeys.push(...before);
+      const key = initialOrder[index];
+      if (key !== undefined) orderKeys.push(key);
+    }
+    const present = new Set(orderKeys);
     for (const key of candidates.keys()) {
-      if (!present.has(key)) order.push(key);
+      if (!present.has(key)) {
+        orderKeys.push(key);
+        present.add(key);
+      }
     }
+
     const cache = new Map(previous.map((message) => [message.id, message]));
-    const result = order.map((id) => {
+    const result = orderKeys.map((id) => {
       const source = candidates.get(id)!;
       const cached = cache.get(id);
       if (cached === source) return cached;

@@ -20,6 +20,7 @@ import { resolveSyncRuntimeConfig, type SyncRuntimeConfigOverrides } from "./con
 import type { SyncFrameTransport } from "./egress";
 import { ensureBaselineGeneration } from "./host-baseline";
 import { normalizeAcpSessionUpdate, type SyncIngressEvent } from "./ingress";
+import { createIngressFailureReporter } from "./ingress-failure-reporter";
 import { createSyncScopeRuntime, type SyncTransportDiagnostics } from "./scope-runtime";
 
 /** 宿主连接可注入的运行时旋钮（宽限期由 env 装配给出，本层不提供默认值）。 */
@@ -72,6 +73,8 @@ export interface SyncHostSession {
   tick(): Promise<void>;
   /** 连接窗口快照（观测/测试）；不改变账目。 */
   diagnostics(): SyncTransportDiagnostics;
+  /** live ingress 失败计数（有界日志的观测出口）；不改变投影。 */
+  ingressDiagnostics(): { readonly total: number; readonly lastCode: string | null };
   /** 释放 runtime、定时器与内存投影；幂等。 */
   dispose(): Promise<void>;
   readonly closed: boolean;
@@ -213,6 +216,7 @@ export async function createSyncHostSession(input: {
   timer.unref?.();
 
   /** 把映射结果按顺序交给 runtime；失败只记录，不阻塞旧 relay 投影。 */
+  const ingressFailures = createIngressFailureReporter({ report: reportError, now: () => clock.now() });
   const acceptEvents = (events: readonly SyncIngressEvent[]): void => {
     if (events.length === 0) return;
     void (async () => {
@@ -220,7 +224,7 @@ export async function createSyncHostSession(input: {
         try {
           await runtime.acceptIngress(event);
         } catch (error) {
-          reportError("sync host ingress failed", error);
+          ingressFailures.report(error);
           return;
         }
       }
@@ -335,6 +339,9 @@ export async function createSyncHostSession(input: {
     },
     diagnostics(): SyncTransportDiagnostics {
       return runtime.transportDiagnostics();
+    },
+    ingressDiagnostics(): { total: number; lastCode: string | null } {
+      return ingressFailures.diagnostics();
     },
     async dispose(): Promise<void> {
       if (closed) return;

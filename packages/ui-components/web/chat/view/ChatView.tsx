@@ -1,6 +1,5 @@
 import "./ChatView.css";
 
-import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -11,7 +10,9 @@ import { AgentBadgeSkeleton, type AgentSkillInfo } from "../shell/AgentBadge";
 import { SubAgentToolCallGroupContext } from "../timeline/sub-agent-tool-call-context";
 import { ToolCallGroup } from "../timeline/ToolCallGroup";
 import type { ThreadEntry, ToolCallEntry } from "../types";
+import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
+import { ChatLoadEarlier, useChatRenderWindow } from "./chat-render-window";
 import type { CardEmitter } from "./internal/card-emitter";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
 
@@ -96,17 +97,19 @@ export const ChatView = React.memo(
     const { t } = useTranslation(UI_COMPONENTS_NS);
     const finalEmptyTitle = emptyTitle ?? t("chat.components.chatView.startConversation");
     const finalEmptyDescription = emptyDescription ?? t("chat.components.chatView.startConversationDesc");
+    // 大基线只挂载最近 1000 条，避免单次提交 >1s；更早消息由用户显式加载。
+    const { visible: visibleEntries, hiddenCount, loadEarlier } = useChatRenderWindow(entries, sessionId);
     // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
-    const renderBlocks = useMemo(() => buildChatRenderBlocks(entries), [entries]);
+    const renderBlocks = useMemo(() => buildChatRenderBlocks(visibleEntries), [visibleEntries]);
     const hasMessages = renderBlocks.length > 0;
     // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
-    const hasUserMessages = useMemo(() => entries.some((e) => e.type === "user_message"), [entries]);
+    const hasUserMessages = useMemo(() => visibleEntries.some((e) => e.type === "user_message"), [visibleEntries]);
     const userEntries = useMemo(
       () =>
-        entries.filter(
+        visibleEntries.filter(
           (entry): entry is Extract<ThreadEntry, { type: "user_message" }> => entry.type === "user_message",
         ),
-      [entries],
+      [visibleEntries],
     );
 
     return (
@@ -133,6 +136,7 @@ export const ChatView = React.memo(
               )
             ) : (
               <>
+                {hiddenCount > 0 && <ChatLoadEarlier hiddenCount={hiddenCount} onLoadEarlier={loadEarlier} />}
                 {renderBlocks.map((block, blockIndex) => {
                   if (block.type === "activity_chain") {
                     const previousBlock = renderBlocks[blockIndex - 1];
@@ -161,7 +165,7 @@ export const ChatView = React.memo(
                               key={renderItemKey(item, itemIndex)}
                               item={item}
                               inActivityChain
-                              isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
+                              isLoading={isLoading && item.type === "entry" && item.entry === visibleEntries.at(-1)}
                               sessionId={sessionId}
                               envId={envId}
                               cardEmitter={cardEmitter}
@@ -177,7 +181,7 @@ export const ChatView = React.memo(
                     <ChatRenderItemView
                       key={renderItemKey(block.item, blockIndex)}
                       item={block.item}
-                      isLoading={isLoading && block.item.type === "entry" && block.item.entry === entries.at(-1)}
+                      isLoading={isLoading && block.item.type === "entry" && block.item.entry === visibleEntries.at(-1)}
                       sessionId={sessionId}
                       envId={envId}
                       cardEmitter={cardEmitter}
@@ -188,7 +192,7 @@ export const ChatView = React.memo(
                 })}
 
                 {/* 加载指示器 — loading 期间一直显示，阶段文字由末条条目类型派生 */}
-                {isLoading && <LoadingIndicator stage={deriveLoadingStage(entries)} />}
+                {isLoading && <LoadingIndicator stage={deriveLoadingStage(visibleEntries)} />}
               </>
             )}
             <ConversationScrollButtons hasUserMessages={hasUserMessages} />
@@ -219,77 +223,6 @@ export const ChatView = React.memo(
 // =============================================================================
 // 空状态 — 与 Chat 设计稿保持一致
 // =============================================================================
-
-/** 空状态默认品牌图（宿主 public 资源路径，与源实现一致）。 */
-const DEFAULT_EMPTY_LOGO_SRC = `${import.meta.env.BASE_URL}brand/fenix-agent-logo-mark.png`;
-
-/**
- * 会话空状态：品牌图 + 标题 + 说明 + 三条建议提示词。
- *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 内的 `ChatEmptyState`。
- * 纯化改动点：建议提示词的 `chat:apply-suggested-prompt` window 事件改为 `onApplySuggestedPrompt`
- * 回调；品牌图地址提为 `logoSrc`（默认值与源表达式一致）；i18n 键加 `chat.components.` 前缀。
- */
-function ChatEmptyState({
-  title,
-  description,
-  agentName,
-  logoSrc = DEFAULT_EMPTY_LOGO_SRC,
-  onApplySuggestedPrompt,
-}: {
-  title: string;
-  description: string;
-  agentName?: string;
-  logoSrc?: string;
-  onApplySuggestedPrompt?: (prompt: string) => void;
-}) {
-  const { t } = useTranslation(UI_COMPONENTS_NS);
-  const suggestions = [
-    t("chat.components.chatEmpty.suggestionReview"),
-    t("chat.components.chatEmpty.suggestionPlan"),
-    t("chat.components.chatEmpty.suggestionBuild"),
-  ];
-
-  return (
-    <section
-      className="flex min-h-0 flex-1 flex-col items-center justify-center p-10 text-center max-sm:px-2 max-sm:py-7"
-      data-slot="chat-empty-state"
-      aria-labelledby="chat-empty-title"
-    >
-      <span
-        className="grid h-11.5 w-11.5 rotate-[-5deg] place-items-center rounded-2xl border border-violet-200 bg-white text-blue-600"
-        aria-hidden="true"
-      >
-        <img className="h-6.75 w-6.75 rotate-[5deg] object-contain" src={logoSrc} alt="" />
-      </span>
-      <small className="mt-4.5 text-blue-600 tracking-widest uppercase [font:700_11px_ui-monospace,monospace]">
-        {agentName
-          ? t("chat.components.chatEmpty.readyWithAgent", { agentName })
-          : t("chat.components.chatEmpty.eyebrow")}
-      </small>
-      <h2
-        id="chat-empty-title"
-        className="chat-empty-heading my-1.75 text-3xl font-medium tracking-tight text-slate-800 max-sm:text-2xl"
-      >
-        {title}
-      </h2>
-      <p className="m-0 max-w-115 text-sm leading-relaxed text-slate-500">{description}</p>
-      <div className="chat-empty-prompt-list mt-6 grid gap-2" data-slot="chat-empty-suggestions">
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="chat-empty-prompt-button flex min-w-0 cursor-pointer items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-3.5 py-2.75 text-left text-xs text-gray-600 [transition:border-color_150ms_ease,box-shadow_150ms_ease,transform_150ms_ease] hover:-translate-y-px hover:border-indigo-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            onClick={() => onApplySuggestedPrompt?.(suggestion)}
-          >
-            <span>{suggestion}</span>
-            <ArrowUpRight className="h-3.5 w-3.5 flex-none" aria-hidden="true" />
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 // =============================================================================
 // 间距逻辑 — 用户消息前后间距大，工具调用紧贴
@@ -480,7 +413,7 @@ type LoadingStage = "thinking" | "generating" | "callingTool" | "working";
  * 助手正在产出（判据与 `ChatRenderItemView` 的 `isStreaming` 同源：末条 + loading）；
  * 末条 `user_message` → 本轮尚无任何产出。末条是 `plan` 或空列表时拿不到可靠信号，退回 `working`。
  */
-function deriveLoadingStage(entries: ThreadEntry[]): LoadingStage {
+function deriveLoadingStage(entries: readonly ThreadEntry[]): LoadingStage {
   const last = entries.at(-1);
   if (last?.type === "tool_call") return "callingTool";
   if (last?.type === "assistant_message") return "generating";

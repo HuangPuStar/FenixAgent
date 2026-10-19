@@ -15,6 +15,19 @@ function assistant(id: string, text: string, ts = 10000): StructuredMessage {
   return { type: "assistant_message", id, chunks: [{ type: "message", text }], ts, seq: 1 };
 }
 
+/** 统计 chunks 读取次数：用于证明模糊配对不再对每个 sync 消息线性扫描全部 legacy。 */
+function countedAssistant(id: string, text: string, counter: { reads: number }): StructuredMessage {
+  const message = { type: "assistant_message", id, ts: 0, seq: 0 } as StructuredMessage;
+  Object.defineProperty(message, "chunks", {
+    enumerable: true,
+    get() {
+      counter.reads += 1;
+      return [{ type: "message", text }];
+    },
+  });
+  return message;
+}
+
 async function renderMessages(messages: StructuredMessage[]): Promise<string> {
   const elements = structuredToThreadEntries(messages).map((entry) => {
     if (entry.type === "user_message") return createElement(UserBubble, { key: entry.id, entry });
@@ -125,5 +138,32 @@ describe("新旧消息合并视图", () => {
       "2",
       "3",
     ]);
+  });
+
+  // 完整基线后到（异 ID）可跨 5 秒窗口配对一次；正常实时合并仍保留时间窗口，避免误吞重复输入。
+  test("完整基线后到可放宽配对窗口", () => {
+    let now = 10000;
+    const merge = createSyncMessageMerger(() => now);
+    merge([assistant("legacy_old", "answer")], []);
+    now = 20000;
+    expect(merge([assistant("legacy_old", "answer")], [assistant("sync_new", "answer", 0)])).toHaveLength(2);
+    expect(
+      merge([assistant("legacy_old", "answer")], [assistant("sync_new", "answer", 0)], Number.POSITIVE_INFINITY),
+    ).toHaveLength(1);
+  });
+
+  // 大基线双写（1000 对异 ID 同正文）的正文读取是线性的；旧实现对每条 sync 消息扫描全部 legacy，
+  // 读取次数为 O(n²)，大会话 hydrate 时会独占主线程。阈值 20n 只约束复杂度，不约束具体实现。
+  test("异 ID 大基线模糊配对不退化", () => {
+    const counter = { reads: 0 };
+    const legacy = Array.from({ length: 1000 }, (_, index) =>
+      countedAssistant(`legacy_${index}`, `answer ${index}`, counter),
+    );
+    const sync = Array.from({ length: 1000 }, (_, index) =>
+      countedAssistant(`sync_${index}`, `answer ${index}`, counter),
+    );
+    const merged = createSyncMessageMerger(() => 10000)(legacy, sync);
+    expect(merged).toHaveLength(1000);
+    expect(counter.reads).toBeLessThan(20 * 1000);
   });
 });

@@ -9,6 +9,7 @@ import { SyncProtocolError } from "../sync/protocol/errors";
 import type { SyncFrameTransport } from "../sync/runtime/egress";
 import { createSyncHostSession } from "../sync/runtime/host-session";
 import type { ProjectionStore } from "../sync/store/types";
+import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
 
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
@@ -121,6 +122,7 @@ export async function routeSyncProtocolFrame(
   config: ChatSyncProtocolConfig | undefined,
   reportError: (message: string, error: unknown) => void,
   overrides?: GatewaySyncHostOverrides,
+  pending?: { readonly registry: Pick<ConnectionRegistry, "bufferPendingBinary">; readonly wsId: string },
 ): Promise<boolean> {
   if (!isSyncProtocolFrame(data)) return false;
   if (!config?.enabled) {
@@ -128,6 +130,8 @@ export async function routeSyncProtocolFrame(
     return true;
   }
   if (!entry) {
+    // 浏览器 open 后 HELLO 可能早于服务端 handleOpen 的异步装配：暂存到 entry 创建。
+    if (pending?.registry.bufferPendingBinary(pending.wsId, data)) return true;
     ws.close(SYNC_CLOSE_CODE, "sync protocol unavailable");
     return true;
   }
@@ -155,4 +159,25 @@ export async function routeSyncProtocolFrame(
     ws.close(code, code === 1009 ? "sync frame too large" : "sync protocol error");
   }
   return true;
+}
+
+/**
+ * entry 创建前暂存的同步帧按顺序补交给连接级 runtime。
+ *
+ * 真实竞态：浏览器 WebSocket open 后立即发送 HELLO，而服务端 handleOpen 仍在异步查询
+ * environment / 打开旧 Doc；此时 entry 尚未登记。若不暂存会以 1008 关闭，客户端只看到
+ * SYNC_RELAY.SYNC_FAILED（reason 不是 "sync protocol disabled"，不会回退旧路径）。
+ */
+export async function flushPendingSyncFrames(
+  registry: Pick<ConnectionRegistry, "consumePendingBinary">,
+  wsId: string,
+  entry: ClientConnection,
+  ws: WsConnection,
+  config: ChatSyncProtocolConfig | undefined,
+  reportError: (message: string, error: unknown) => void,
+  overrides?: GatewaySyncHostOverrides,
+): Promise<void> {
+  for (const frame of registry.consumePendingBinary(wsId) ?? []) {
+    await routeSyncProtocolFrame(entry, ws, frame, config, reportError, overrides);
+  }
 }

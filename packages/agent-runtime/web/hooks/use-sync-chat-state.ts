@@ -80,6 +80,36 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     }
 
     let active = true;
+    // 投影按动画帧合并：WebSocket 帧各自是独立宏任务，直接 setState 会让每个 DOC_BASE/
+    // DOC_UPDATE 触发一次 React 提交；hydrate 期间展示层虽然隐藏，也没有必要逐帧重渲染。
+    let pendingProjection: SyncChatProjection | null = null;
+    let frameScheduled = false;
+    let cancelFrameTask: (() => void) | null = null;
+    const cancelFrame = (): void => {
+      cancelFrameTask?.();
+      cancelFrameTask = null;
+      frameScheduled = false;
+    };
+    const flushProjection = (): void => {
+      cancelFrameTask = null;
+      frameScheduled = false;
+      if (!active || pendingProjection === null) return;
+      const projection = pendingProjection;
+      pendingProjection = null;
+      setSnapshot((previous) => ({ scope, state: { ...previous.state, projection } }));
+    };
+    const scheduleProjection = (): void => {
+      if (frameScheduled) return;
+      frameScheduled = true;
+      if (typeof requestAnimationFrame === "function") {
+        const handle = requestAnimationFrame(flushProjection);
+        // 极少数环境只有 rAF 没有 cancel：回调内的 active 判定仍能阻止迟到提交。
+        cancelFrameTask = typeof cancelAnimationFrame === "function" ? () => cancelAnimationFrame(handle) : null;
+      } else {
+        const handle = setTimeout(flushProjection, 0);
+        cancelFrameTask = () => clearTimeout(handle);
+      }
+    };
     const session = createSyncChatSession({
       agentId: options.agentId,
       instanceUid: options.instanceUid,
@@ -107,12 +137,16 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
         }
       },
       onProjection: (projection) => {
-        if (active) setSnapshot((previous) => ({ scope, state: { ...previous.state, projection } }));
+        if (!active) return;
+        pendingProjection = projection;
+        scheduleProjection();
       },
     });
     session.connect();
     return () => {
       active = false;
+      cancelFrame();
+      pendingProjection = null;
       session.dispose();
     };
   }, [

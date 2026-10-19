@@ -57,6 +57,36 @@ function contentDocId(blockIndex: number): string {
   return `sync/content/${GENERATION}/${blockIndex}/nonce_${blockIndex}`;
 }
 
+let appendSequence = 0;
+
+/** 向同一个 Y.Doc 追加记录并只编码增量（模拟 live writer 的连续提交）。 */
+function appendContentUpdate(doc: Y.Doc, records: readonly RecordSpec[], blockIndex: number): Uint8Array {
+  const before = Y.encodeStateVector(doc);
+  doc.transact(() => {
+    const root = doc.getMap<unknown>("root");
+    if (!(root.get("records") instanceof Y.Array)) {
+      root.set("schemaVersion", 1);
+      root.set("kind", "content");
+      root.set("generation", GENERATION);
+      root.set("blockIndex", blockIndex);
+      root.set("records", new Y.Array<Record<string, unknown>>());
+    }
+    const array = root.get("records") as Y.Array<Record<string, unknown>>;
+    array.push(
+      records.map((record) => ({
+        recordId: `rec_append_${appendSequence++}`,
+        entryId: record.entryId,
+        entryOrder: record.entryOrder ?? 0,
+        contentSlot: record.contentSlot ?? "text",
+        partIndex: record.partIndex ?? 0,
+        kind: record.kind,
+        payload: typeof record.payload === "string" ? new TextEncoder().encode(record.payload) : record.payload,
+      })),
+    );
+  });
+  return Y.encodeStateAsUpdate(doc, before);
+}
+
 function descriptor(completedAt: number, entityId: string): Uint8Array {
   return new TextEncoder().encode(
     JSON.stringify({
@@ -203,6 +233,46 @@ describe("sync content Doc 只读投影", () => {
     expect(latest().messages).toHaveLength(1);
     expect(latest().skippedRecords).toBe(3);
     expect(latest().recordCount).toBe(1);
+  });
+
+  // 同一 Doc 追加记录时只失效被改动的 entry：其他消息对象必须保持引用，React.memo 才能跳过。
+  test("同一 Doc 追加记录不重建未变 entry 的消息对象", async () => {
+    const { hub, latest } = createHub();
+    const doc = new Y.Doc();
+    const docId = contentDocId(1);
+    hub.applyUpdate({
+      docId,
+      generation: GENERATION,
+      payload: appendContentUpdate(
+        doc,
+        [
+          { entryId: "turn_a:assistant", kind: "text", payload: "first" },
+          { entryId: "turn_b:assistant", kind: "text", payload: "stable" },
+        ],
+        1,
+      ),
+    });
+    await flushProjection();
+    const before = latest().messages;
+    expect(before.map((message) => message.id)).toEqual(["turn_a:assistant", "turn_b:assistant"]);
+
+    hub.applyUpdate({
+      docId,
+      generation: GENERATION,
+      payload: appendContentUpdate(
+        doc,
+        [
+          { entryId: "turn_a:assistant", kind: "text", payload: " second" },
+          { entryId: "turn_c:assistant", kind: "text", payload: "new" },
+        ],
+        1,
+      ),
+    });
+    await flushProjection();
+    const after = latest().messages;
+    expect(after.map((message) => message.id)).toEqual(["turn_a:assistant", "turn_b:assistant", "turn_c:assistant"]);
+    expect(after[0]).not.toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
   });
 
   // reset 必须清空全部镜像与消息（换代会话/重连时由 session 调用）。

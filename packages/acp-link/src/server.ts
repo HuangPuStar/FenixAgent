@@ -926,6 +926,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     relayRouter.sendTo(ws, message);
   }
 
+  /**
+   * 通知前端回放已结束（含零历史）。必须在 load/resume 成功响应之后发送：
+   * 前端先据此开启回放窗口，再收到本通知立即收敛，不用等满 10s 窗口。
+   */
+  function sendReplayComplete(ws: AcpWs, sessionId: string): void {
+    sendMsg(ws, { jsonrpc: "2.0", method: "session/replay_complete", params: { sessionId } });
+  }
+
   function bindSession(ws: AcpWs, sessionId: string): void {
     socketSessions.set(ws, sessionId);
     relayRouter.bind(sessionId, ws);
@@ -1380,6 +1388,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           modes: state.modeState,
         }),
       );
+      sendReplayComplete(ws, sessionId);
     } catch (error) {
       restoreSession(ws, previousSessionId, sessionId);
       console.error("session load failed:", (error as Error).message);
@@ -1429,6 +1438,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           modes: state.modeState,
         }),
       );
+      sendReplayComplete(ws, sessionId);
     } catch (error) {
       restoreSession(ws, previousSessionId, sessionId);
       console.error("session resume failed:", (error as Error).message);
