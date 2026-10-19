@@ -307,6 +307,7 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
       const instanceUid = url.searchParams.get("instanceUid");
       const rcsSessionId = url.searchParams.get("rcsSessionId");
       const acpSessionId = url.searchParams.get("acpSessionId") ?? undefined;
+      const syncOnly = url.searchParams.get("chatSync") === "1";
       if (!instanceUid || !rcsSessionId) {
         adaptWs(ws).close(4000, "invalid chat locator");
         return;
@@ -336,6 +337,7 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
           instanceUid,
           rcsSessionId: expectedRcsSessionId,
           acpSessionId,
+          syncOnly,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

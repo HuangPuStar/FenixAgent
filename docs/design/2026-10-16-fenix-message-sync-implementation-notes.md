@@ -147,6 +147,133 @@
   （48 万条 / 1.2GB / 万级块）会同时触发目录帧超限与 GB 级 RSS，当前协议不可行。
   硬问题修复方向是目录分页/归档，不是调大单帧上限。
 
+### 3.5 入口生命周期与背压（2026-10-19）
+
+- 根因：`LiveIngress.stored` 累计保存已成功事件，生产复用 `maxRecordsPerDoc = 2048` 作为上限，
+  第 2049 个文本 chunk 起以 `CAPACITY_EXCEEDED` 停写；且 `accept()` 先挂顺序队列、到 `dispatch()`
+  才检查容量，宿主 fire-and-forget 投递时慢写者会让 Promise 队列无界增长。
+- 修复：`maxRecords` / `maxBytes` 改为**在飞 + 排队**的 pending 预算，在入队前的同步段完成条数与
+  估算字节预留，超限立即拒绝；写者成功或失败都由 `finally` 归还额度。`records()` 只保留最近
+  `LIVE_INGRESS_DIAGNOSTIC_LIMIT = 64` 条成功记录用于诊断，不再是累计历史；`lastIngressSeq()`
+  仍表达累计进度。生产 pending 字节预算取 `liveWaitPerScopeBytes`（4MiB）。
+- 停止语义：宿主 `acceptEvents` 遇到入口失败后置 `stopped`，只报告一次并停止新协议投影旁路；
+  后续事件直接丢弃、不再排队。旧 relay 投影在调用本旁路之前已完成，因此不受影响，连接也不关闭。
+  停止状态经 `ingressDiagnostics()` 暴露；`SyncConnection` 端口同步提供可选观测入口。
+- 边界：突发并发超过 pending 预算时新投影会显式停止而非降级排队；已进入 runtime 的在飞事件
+  无法取消；字节数按快照 JSON 的 UTF-8 长度估算，且快照复制发生在字节检查之前（受 16MiB
+  原始帧上限约束）。停止后恢复依赖连接重建，当前没有进程内重启入口。
+- 验证：新增 3000 条连续接收、慢写者 pending 条数/字节有界、写者失败归还额度、诊断窗口有界、
+  宿主停止后不再进入 runtime 等用例；相关 5 个测试文件 80 pass / 0 fail，`fastcheck` 全绿
+  （chat-channel 1482 pass / 0 fail）。
+
+### 3.6 目录分页与双向淘汰（2026-10-19）
+
+- 根因：§3.4 的目录单帧超限来自「全部 `contentDocIds` 放在一个 Y.Array」。分页后根目录只持
+  `latestPageId`（恒定 <256B），每页固定 `DIRECTORY_PAGE_SIZE = 64` 条并链接 `previousPageId`
+  （页号从 1 起，等于 docId 的 `blockIndex`）。目录页复用既有 `SUBSCRIBE`/`DOC_BASE`，没有新增帧。
+- 服务端维护：`HostBaseline` 建根 + 第 1 页；`HistoryImportService.finalize` 在
+  `commitGeneration` 之前创建控制/运行态/根/全部页 Doc（修复「MANIFEST 的 `directoryDocId`
+  在 store 中不可读、订阅直接 DOC_NOT_FOUND」）；`DirectoryAppender` 在 live 内容轮换时把
+  successor 追加到最新页，页满后建下一页并原子更新根目录。
+- 客户端发现：`sync-frame-router` 分根/页两类镜像；根到达后订阅 `latestPageId`，页到达后合并
+  跨页 `contentDocIds` 并交给订阅窗口。`hasEarlierPage` 依据最早已知页的 `previousPageId`，
+  用户点击「显示更早」时先订阅上一页，页基线到达后自动续订该页内容。
+- 双向淘汰：内容窗口在 live 追加超过 `SYNC_HISTORY_MAX_RETAINED_BLOCKS` 时释放最旧块；向历史
+  扩展时释放最新块并记入 `later`，回看期间新块不再自动推走阅读锚点。释放动作同时移出
+  `retainedDocs`、协议 retain、投影镜像与 Y.Doc；页镜像在页内无驻留块且不是最新页时释放，
+  页元数据（块列表 + `previousPageId`）保留，因此释放后仍可重新加载。
+- 实施中发现并修复：目录 appender 自举/建页时把同一份快照编码了两次（一次落库、一次作为本地
+  游标），两个 Y.Doc 的 `clientID` 不同，后续增量在读取方成为悬空 struct——目录看似写入成功，
+  但重建后新块不可见。现在每个 Doc 的 canonical 字节只编码一次，落库与本地游标共用。
+- 验证：`sync-directory-pagination.test.ts` 覆盖 64/64/2 切页、6000 块时根目录尺寸有界与页
+  快照低于单帧上限；`sync-live-writer.test.ts` 覆盖轮换追加 successor、页满切换第 2 页与链接；
+  `sync-import-service.test.ts` 覆盖导入后根/页可读；`sync-content-window.test.ts` 覆盖驻留预算
+  淘汰、释放后重新加载与回看期间不自动订阅；`sync-chat-session.test.ts` 覆盖跨页加载、首屏四块、
+  基线与 ACK。chat-channel 同步面 **781 pass / 0 fail**，agent-runtime web + 浏览器会话
+  **137 pass / 0 fail**，`tsc-rs` 类型检查通过。
+
+### 3.7 真实恢复与共享投影（2026-10-19）
+
+- 共享边界：`SyncStoreRegistry` 按 `scopeKey`（`organizationId/rcsSessionId`）复用同一
+  `ProjectionStore` 并引用计数，**只共享 store 与一次历史引导**；runtime、provider、配额和订阅
+  仍按连接隔离。`bootstrap` 的并发调用共享同一 Promise，成功值（含 `null`）缓存、失败不缓存，
+  因此下一次连接可以重试；引用归零但引导在途时保留条目到引导落定。
+- 单写者竞争：共享 store 下每个连接必须用独立 owner，`uniqueOwner(base, random)` 追加
+  `#<8 hex>`；否则同 owner 会被存储当作续租，两个标签页同时持有写权。抢不到租约的连接按
+  follower 降级：`acceptEvents` 遇 `SCOPE_BUSY` 时置 `writerRetryAtMs = now + FOLLOWER_RETRY_MS`
+  （1000ms）并丢弃实时入口事件，**不** `stopIngress`；它的 tick 从共享 store 的已提交边界追赶，
+  因此 follower 仍能看到 leader 提交的更新。
+- 真实历史源：握手时经 `attachGatewaySyncConnection` 注入
+  `createLegacyChatHistorySource({ docs: DocManager, rcsSessionId, acpSessionId })`，把旧 Chat Doc
+  的已提交时间线映射为 `importHistory` 记录。只取终态（跳过 pending/streaming）、`user`/`assistant`
+  的 `type:"text"` 正文，entryId 原样保留，长文本按 UTF-16 code units 切片且不拆代理对
+  （`LEGACY_HISTORY_PART_CHARS = 64KiB`）。选择旧 Chat Doc 是因为它是仓库内唯一可验证的稳定投影。
+- 阻塞证据（不伪造恢复成功）：仓库内不存在 Peri 持久化历史的读取契约——
+  `grep -rn "importHistory" apps packages/agent-runtime/src` 零命中；ACP `load_session` 只提供
+  增量回放。因此生产历史源以可注入的 `SyncHistorySource` 接缝实现，未来接入 Peri 持久接口时
+  只需替换这一适配器，sync runtime 不改。已知限制：导入只发生在握手时，之后旧 Doc 新增的稳定
+  条目不会追补；条目级时间戳与非文本内容不在映射范围。
+- 恢复判定：`bootstrapGeneration` 三分支——已提交且 `importEndOrdinal > 0` 的代次直接复用
+  （重启/重连不重复导入）；有历史源则读取，空列表回退空基线（不得把「无历史」伪装成导入成功）；
+  无源或读取失败由调用方回退空基线并 `reportError`。失败从引导任务抛出、注册表不缓存，下一次
+  连接重试。并发回退经 `ensureBaseline` 的 `SCOPE_BUSY` 退避（最多 40 次 × 5ms）重读指针复用
+  赢家代次，避免一次恢复失败让部分标签页握手失败。
+- 快照水合时序（2026-10-19 复核修复）：`createRedisProvider` 暴露 `hydration: Promise<SnapshotHydration>`
+  （`loaded` / `empty` / `failed` / `stale`，永不 reject），`loadChatDoc` / `loadSessionDoc` 等它落定后
+  才补结构并返回；`DocManager.openChat` / `openSession` 对同一会话共享在途 Promise，握手历史源
+  `legacy-chat-history.read()` 因此拿到的必然是已水合的旧 Chat Doc。确定行为：无快照 → `empty`
+  （空结果才是可缓存的「确实无历史」）；读取失败 / 代次已被替换 → `failed` / `stale`，打开明确
+  失败且不留下半初始化 Doc，注册表不缓存，下一次连接重试。
+- 快照恢复顺序（复核修复的既有缺陷）：必须先 `Y.applyUpdate` 快照、再执行
+  `initChatDocStructure` / `initSessionDocStructure`。顺序交换时本地空 `entries` / `entryOrder` /
+  `toolCalls`（Session Doc 的 `session` / `agent` / `sessions` / `tasks`）会参与 Yjs 根 map 同键
+  冲突，目标 clientID 较大时空结构覆盖快照，整份历史不可达。`snapshot-hydration.test.ts` 以
+  Chat Doc 20 条历史、Session Doc 20 条会话摘要分别在 clientID 0/2/10/1000 下验证恢复完整，并覆盖
+  Redis 延迟加载、无快照确定空、加载失败重试与真实握手导入；`loadChatDoc` / `loadSessionDoc`
+  因此改为异步，`createChatDoc` / `createSessionDoc` 仍只用于新建世代（`hydration` 固定 `empty`）。
+- 实施缺陷一（阻断多标签实时写入）：历史导入的内容块全部由 `HistoryCommitter` 写成 `sealed`，
+  恢复时 `rebuildFromCommitted` 却把闭包末位当作活动块，首条实时写入必被存储以
+  `RESOURCE_RETIRED` 拒绝。`content-tail.ts` 的 `ensureWritableContentDoc` 在
+  `importEndOrdinal > 0` 且目录末位为空或等于闭包末位时，用确定性 nonce `live-tail` 与
+  `blockIndex + 1` 新建 active 尾块并追加到目录页；空基线行为不变。已知限制：若在「封口旧块」
+  与「目录页追加 successor」之间崩溃，存储没有读取 active Doc 的出口，恢复会显式失败而非伪造可写。
+- 实施缺陷二：`MemoryProjectionStore.commitGeneration` 原先未把 `acpSessionId / loadId /
+  importEndOrdinal / createdAt` 写回代次记录，重启后无法区分已导入代次与空基线；现已补齐。
+  `live-writer.close()` 同时主动 `releaseWriter`，重连不必等待租约 TTL。
+- 验证：`sync-host-session.test.ts` 16 pass（未注入注册表各自持有 store、同 scope 共享代次与
+  follower 追赶、断线重连重新导入、已提交快照重启不重导、源失败回退且下次重试成功）；
+  `sync-store-registry.test.ts` 5 pass、`legacy-chat-history.test.ts` 6 pass；
+  `sync-gateway-e2e.test.ts` 6 pass，其中新用例经真实 `ChatChannelController`/`Gateway`/
+  `SyncHostSession` 把旧 Chat Doc 的 `legacy hello` 经 stateless 握手导入，两个标签页共享
+  generation 与目录，leader 的 `live hello` 落到新 active 尾块后 follower 读到同一正文；
+  `sync-chat-projection.test.ts` 11 pass，含 `text_part` 保真 JSON 解码与坏载荷计入 skipped。
+  `snapshot-hydration.test.ts` 6 pass：Redis 延迟快照下 `openChat` 与真实 HELLO 导入都等待水合、
+  无快照确定空、加载失败拒绝并可重试，以及 Chat/Session Doc 在 clientID 0/2/10/1000 下恢复完整。
+
+### 3.8 旧全量通道退役边界（2026-10-19）
+
+- 服务端分流：路由按 `chatSync=1` 注入 `syncOnly`，`Gateway` 为该连接跳过
+  `synchronizeInitialDocs`（不再发 `yjs:sync-request`、不再 500ms 超时后补全量快照）；
+  `YjsBroadcaster.broadcastMessage` 按连接跳过旧 Doc 增量；`gateway-message` 忽略其 legacy
+  `state-vector`。文本 JSON action（会话切换、取消、权限响应等）与同步 runtime ingress 不变。
+- 保留旧通道：无 `chatSync` 标记或 `chatSync=0` 的连接逐字节保持原行为；同一会话可混用新旧
+  标签页。旧 Yjs WS 仍由前端独立建立，继续承载动作与非文本文档更新。
+- 展示层退役：`createSyncMessageMerger` 在新投影已含文本时丢弃**未配对**的纯文本旧消息
+  （用户消息，或无错误、只含 `message` chunk 的助手消息）；工具、计划、思考与错误仍从旧通道
+  补充。新投影为空时保留旧全量；`chatSync=0` 或 `shouldFallbackToLegacy` 不进入合并器，
+  继续使用旧全量。已按 entryId/正文配对的消息仍取更完整一侧，退役不会误删双写副本。
+- 保留理由（真实阻塞，不伪造验收）：仓库内不存在真实 `/history` 端点，Peri 持久历史契约
+  不存在（ACP `load_session` 仅增量）；同步 store 仍是进程内 `MemoryProjectionStore`，
+  无法做真实重启验收。新投影目前也只覆盖用户/助手文本，final descriptor 与工具对象尚未接入，
+  因此不能删除旧通道的非文本/动作能力。
+- 移除前置条件：新投影覆盖 final/工具/计划并具备独立历史读取契约；投影 store 具备跨进程
+  持久化与重启恢复；真实多版本灰度验证完成。满足前保持 `chatSync=0` 回滚路径与旧 Yjs WS。
+- 验收矩阵：真实 `/history` **不可做**（端点不存在）；持续生成由 `sync-gateway-e2e` 的实时
+  `DOC_UPDATE` 覆盖；旧页阅读由 `sync-content-window`/`sync-frame-router` 覆盖；重启以
+  `exportCommittedState`/`restoreFromCommittedState` 的进程内等价物覆盖；多标签在进程内共享
+  store 场景覆盖。新增 `sync-legacy-retirement.test.ts` 验证无旧快照/无广播/忽略 state-vector
+  且 action 可达，`sync-chat-messages` 与 `use-chat-hydration` 验证文本退役、非文本保留与回退。
+
 ## 4. 验证证据
 
 - 包内测试：**1464 通过 / 0 失败**（75 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。
@@ -207,25 +334,34 @@
   1.5s 计时）；重连 HELLO 改为 stateless，避免复用已销毁连接级 store 的 generation（1008）。同步关闭统一写
   `data/logs/sync-close.log`（code/reason/wsId/entry/pending/org/rcs），客户端错误卡保留原始 reason 与
   wasClean/local 标记。
+- 旧全量通道退役（§3.8）：`sync-legacy-retirement.test.ts` 5 pass（无 sync-request/快照、无旧广播、
+  忽略 state-vector、action 可达、旧连接不变）；`sync-chat-messages.test.tsx` 13 pass 与
+  `use-chat-hydration.test.tsx` 5 pass 覆盖文本退役、非文本保留、空投影与回退。chat-channel 全量
+  **1510 pass / 81 files**，agent-runtime web + apps/web **479 pass / 57 files**；`bun run typecheck`、
+  `bun run build:web`、`bun run fastcheck` 均通过；`bun run precheck` 全绿（web 360、server/script 981、
+  package 10430 通过 / 2 跳过）。
 
 ## 5. 未覆盖与不可做
 
 | 项 | 结论 | 原因 |
 | --- | --- | --- |
-| 灰度与新旧协议共存（T16） | 部分覆盖 | 默认开启、明确拒绝回退与历史合并已有浏览器测试；多版本真实部署、灰度观测与回滚验证仍待实施 |
+| 灰度与新旧协议共存（T16） | 部分覆盖 | 默认开启、明确拒绝回退、历史合并与 `chatSync=1` 旧全量退役已有浏览器/包内测试；多版本真实部署、灰度观测与回滚验证仍待实施 |
 | T13 长跑与资源趋势 | 不可做 | 需 24 小时墙钟与固定硬件 profile；假时钟只能覆盖轮换/热工作集的正确性分支 |
 | T23 暂存盘满与故障注入 | 不可做 | 需 sharedrelay 真实进程与真实磁盘故障；`history/spool.ts` 没有失败注入点，进程内近似会冒充已覆盖 |
 | T07 / T21 持久化分支 | 未覆盖 | 需真实 SQL 幂等语义与进程重启；进程内等价物已覆盖 fencing 与指针单调 |
-| 多标签共享 | 未覆盖 | 当前每连接独立 runtime / 内存 store，用户消息仅写发送连接 |
-| 历史重建 | 未覆盖 | ACP `load_session` 仅返回增量，尚无可用生产完整历史源 |
+| 多标签共享 | 进程内已实施 | 同 scope 共享 `SyncStoreRegistry` 的 store 与一次历史引导，follower 从共享已提交边界追赶；runtime/provider/订阅仍按连接隔离。Redis 快照水合时序已覆盖（延迟加载、无快照、加载失败重试），但投影 store 的跨进程与 Redis 共享仍未覆盖，需持久化 adapter |
+| 历史重建 | 旧 Chat Doc 已实施 | 握手时等待 Redis 快照水合后再读旧 Chat Doc 的已提交时间线；无快照才是可缓存的「无历史」，读取失败/代次失效明确失败且下次重试。Peri 持久历史契约不存在（`importHistory` 零命中，ACP `load_session` 仅增量），已留可注入 `SyncHistorySource` 接缝；导入后的新稳定条目不追补 |
+| Redis 快照恢复 | 已覆盖 | `loadChatDoc` / `loadSessionDoc` 先 `Y.applyUpdate` 再幂等补结构；回归覆盖 Chat/Session Doc 的 clientID 0/2/10/1000 × 20 条，以及延迟水合、确定空与失败重试。跨进程并发换代只以进程内 generation fence 覆盖 |
 | final / 非文本展示 | 未覆盖 | final descriptor、history/tool 对象尚未接入新投影 |
-| UI 渲染 | 文本已实施 | 用户/助手文本经合并视图复用现有消息组件；历史和非文本仍依赖旧 Doc |
+| UI 渲染 | 文本已退役旧通道 | 用户/助手文本以新投影为准；未配对旧纯文本不再进入合并视图，工具/计划/思考/错误仍依赖旧 Doc。移除条件 = final/工具对象接入新投影 |
+| 旧全量通道退役 | 服务端与展示层已实施 | `chatSync=1` 连接跳过旧快照、旧 Doc 广播与 state-vector；动作与非文本仍走旧 Yjs WS。删除旧通道的前置条件见 §3.8 |
 | 初次加载 hydrate 完成信号 | 客户端门控已实施 | 旧路径由服务端在窗口开启时写入 `replay_started`，load/resume 后由 acp-link 发 `session/replay_complete`（含零历史），relay 立即收敛并写 `replayState=complete`；连接建立时写 `timelineEmpty` 供首次加载已有空会话直接放行；新协议用 DOC_BASE 的 processed APPLY_ACK。旧宿主不发 `replay_complete` 时保留 1.5s 兜底、12s 硬上限；完整基线后到的首次合并放宽 5s 配对窗口一次。重连 HELLO 不复用上一代 generation。移除条件 = 全量宿主升级后删除客户端兜底 |
 | 大基线渲染窗口 | 已实施 | 默认只挂载最近 1000 条，更早消息由用户显式加载；DOM 有界（10k 条目一次性渲染从 1.7s 降至约 0.2s）。加载更早后滚到第一条新增历史，不再钉在底部；移除条件 = 引入带锚点的虚拟列表 |
 
 ## 6. 下一步（按设计分阶段）
 
 1. 完成灰度验证：观测拒绝率、重连与资源占用，验证开关关闭可回滚并覆盖新旧协议共存（T16）。
-2. 定义多标签共享与生产历史重建路径；当前 ACP `load_session` 仅有增量，不可冒充完整历史。
-3. 经用户批准表结构后实现 DB adapter，解决每连接内存 store 与重启恢复限制。
+2. 接入 Peri 持久历史契约后替换 `SyncHistorySource` 适配器；当前以旧 Chat Doc 已提交时间线为源，ACP `load_session` 仅有增量。
+3. 经用户批准表结构后实现 DB adapter，把进程内共享 store 扩展为跨进程/重启共享，并解决现有内存 store 的恢复限制。
+4. 按 §3.8 的移除前置条件推进：接入 final/工具对象与真实历史契约、完成持久化与灰度后，再删除旧 Yjs WS 与 `chatSync=0` 回退。
 4. 补齐 final / 非文本内容映射并接入 UI 渲染；随后验收 T13、T23、T07/T21 持久化分支及固定 profile 性能门槛。

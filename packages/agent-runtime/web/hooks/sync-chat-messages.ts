@@ -28,6 +28,27 @@ function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): S
 }
 
 /**
+ * 纯文本旧消息：用户消息，或无错误、只含 message chunk 的助手消息。
+ * 工具、计划、思考与错误属于旧通道仍需保留的非文本能力。
+ */
+function isPureText(message: StructuredMessage): boolean {
+  if (message.type === "user_message") return true;
+  if (message.type !== "assistant_message") return false;
+  return !message.error && message.chunks.every((chunk) => chunk.type === "message");
+}
+
+export interface SyncMessageMergerOptions {
+  /**
+   * 新投影一旦含有文本，就丢弃未配对到新消息的纯文本旧消息（默认开启）。
+   *
+   * 新协议的历史由旧 Chat Doc 已提交时间线导入并分页，旧通道的完整历史若继续参与合并会
+   * 绕过首屏窗口并产生重复；非文本（工具/计划/思考/错误）仍从旧通道补充。
+   * 新投影为空时保留旧全量，覆盖回退与导入未就绪场景。
+   */
+  readonly retireLegacyText?: boolean;
+}
+
+/**
  * 每个会话持有一个合并器：别名一对一锁定，已显示的 key/相对顺序不因双写追平改变。
  * 无协议时间戳的记录用首次观察时间，仅用于跨来源配对，不拿未知时间 0 去匹配任意历史。
  *
@@ -35,7 +56,8 @@ function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): S
  * 不会因逐条 `Array.find` / `slice().reverse()` 退化为 O(n²)（旧实现 5k 条双写可达 19s）。
  * `matchWindowMs` 仅在「完整基线后到」时放宽（调用方传 Infinity）；实时双写仍用 5s 窗口。
  */
-export function createSyncMessageMerger(now: () => number = Date.now) {
+export function createSyncMessageMerger(now: () => number = Date.now, options: SyncMessageMergerOptions = {}) {
+  const retireLegacyText = options.retireLegacyText ?? true;
   let previous: StructuredMessage[] = [];
   let aliases = new Map<string, string>();
   let observed = new Map<string, number>();
@@ -51,6 +73,8 @@ export function createSyncMessageMerger(now: () => number = Date.now) {
     const times = new Map<string, number>();
     const legacyKeys: string[] = [];
     const used = new Set<string>();
+    // 新投影已有文本即视为文本覆盖成立；不因某次实时帧暂时为空而回退旧全量。
+    const syncCoversText = retireLegacyText && sync.some(isText);
 
     const legacyTimes = new WeakMap<StructuredMessage, number>();
     const syncTimes = new WeakMap<StructuredMessage, number>();
@@ -111,6 +135,8 @@ export function createSyncMessageMerger(now: () => number = Date.now) {
 
     for (const message of legacy) {
       const pair = pairs.get(message.id);
+      // 未配对纯文本：新投影已覆盖文本，旧副本只会造成重复或绕过分页。
+      if (pair === undefined && syncCoversText && isPureText(message)) continue;
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(`sync:${pair.id}`, key);

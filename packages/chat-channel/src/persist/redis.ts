@@ -14,6 +14,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import type { RedisProvider, SnapshotHydration } from "../types";
 import { mergeYjsSnapshotWithCas, type RedisSnapshotConnection } from "./snapshot-cas";
 import { defaultSnapshotMetricsLog, reportSnapshotCasMetric, type SnapshotPersistConfig } from "./snapshot-config";
 import { framePublishUpdate, isSamePublisherId, PUBLISHER_ID, parseFramedPublish } from "./snapshot-framing";
@@ -80,7 +81,7 @@ export function createRedisProvider(
   docName: string,
   ydoc: Y.Doc,
   options: RedisProviderOptions,
-): { destroy(): Promise<void> } {
+): RedisProvider {
   const snapshotIntervalMs = options.snapshot.intervalMs;
   const snapshotIdleMs = options.snapshot.idleMs;
   const snapshotTtlSeconds = options.snapshot.ttlSeconds;
@@ -113,6 +114,20 @@ export function createRedisProvider(
   let intervalTimer: ReturnType<typeof setTimeout> | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightCas: Promise<boolean> | null = null;
+
+  // 初始快照水合信号：打开 Doc 的调用方（factory / 历史源）必须等待它落定；
+  // 所有提前退出路径都要 settle，否则调用方会永久挂起。
+  let hydrationSettled = false;
+  let resolveHydration!: (outcome: SnapshotHydration) => void;
+  const hydration = new Promise<SnapshotHydration>((resolve) => {
+    resolveHydration = resolve;
+  });
+  const settleHydration = (outcome: SnapshotHydration): void => {
+    if (hydrationSettled) return;
+    hydrationSettled = true;
+    resolveHydration(outcome);
+  };
+  const hydrationFailure = (message: string): SnapshotHydration => ({ status: "failed", error: new Error(message) });
 
   const reportSubscriberFailure = (stage: "duplicate" | "listen" | "subscribe" | "load" | "error" | "persist") => {
     console.warn(`[redis-provider] Redis ${stage} failed; local sync remains enabled`);
@@ -308,10 +323,25 @@ export function createRedisProvider(
   };
 
   const loadInitialSnapshot = async () => {
+    let outcome: SnapshotHydration = { status: "empty" };
     try {
-      if (generation && (await r.get(activeGenerationKey)) !== generation) return;
+      if (destroyed) {
+        outcome = hydrationFailure("redis provider destroyed before snapshot hydration");
+        return;
+      }
+      if (generation && (await r.get(activeGenerationKey)) !== generation) {
+        // 并发换代后本 provider 的 Doc 已被取代；把旧快照当成“无历史”会误导恢复。
+        outcome = {
+          status: "stale",
+          error: new Error("projection generation was replaced before snapshot hydration"),
+        };
+        return;
+      }
       const buf = await r.getBuffer(redisKey);
-      if (destroyed) return;
+      if (destroyed) {
+        outcome = hydrationFailure("redis provider destroyed before snapshot hydration");
+        return;
+      }
 
       if (buf) {
         try {
@@ -320,11 +350,15 @@ export function createRedisProvider(
           // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
           Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(buf.toString(), "base64")), remoteUpdateOrigin);
         }
+        outcome = { status: "loaded" };
       }
-    } catch {
+    } catch (error) {
       if (!destroyed) reportSubscriberFailure("load");
+      outcome = { status: "failed", error };
     } finally {
+      // 先放开本地更新再把水合结果交给等待方，避免调用方初始化结构时更新仍被当成 pending。
       enableLocalUpdates();
+      settleHydration(outcome);
     }
   };
 
@@ -373,7 +407,9 @@ export function createRedisProvider(
   } catch {
     reportSubscriberFailure("duplicate");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis persistence connection duplicate failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -387,7 +423,9 @@ export function createRedisProvider(
     cleanupPersistence();
     reportSubscriberFailure("duplicate");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis subscriber connection duplicate failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -402,7 +440,9 @@ export function createRedisProvider(
     cleanupSubscriber();
     reportSubscriberFailure("listen");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis subscriber listener registration failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -423,17 +463,22 @@ export function createRedisProvider(
         cleanupSubscriber();
         reportSubscriberFailure("subscribe");
         enableLocalUpdates();
+        settleHydration(hydrationFailure("redis snapshot channel subscribe failed"));
       },
     );
   } catch {
     cleanupSubscriber();
     reportSubscriberFailure("subscribe");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis snapshot channel subscribe failed"));
   }
 
   return {
+    hydration,
     async destroy() {
       destroyed = true;
+      // 水合尚未落定时销毁 provider：等待方必须得到确定的失败结果，不能永久挂起。
+      settleHydration(hydrationFailure("redis provider destroyed before snapshot hydration"));
       ydoc.off("update", onUpdate);
       cleanupSubscriber();
       clearSnapshotTimers();

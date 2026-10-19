@@ -9,9 +9,11 @@ import type { Clock, DigestFn, RandomSource } from "../sync/clock";
 import { SyncProtocolError } from "../sync/protocol/errors";
 import type { SyncFrameTransport } from "../sync/runtime/egress";
 import { createSyncHostSession } from "../sync/runtime/host-session";
+import type { SyncStoreRegistry } from "../sync/runtime/store-registry";
 import type { ProjectionStore } from "../sync/store/types";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
+import { createLegacyChatHistorySource, type LegacyChatDocumentSource } from "./legacy-chat-history";
 import { logSyncClose, setSyncCloseContextForConnection } from "./sync-close-diagnostics";
 
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
@@ -72,8 +74,16 @@ export interface GatewaySyncHostOverrides {
   readonly random?: RandomSource;
   readonly digest?: DigestFn;
   readonly store?: ProjectionStore;
+  /** 同 scope 共享投影存储；Gateway 缺省注入进程内注册表。 */
+  readonly storeRegistry?: SyncStoreRegistry;
   readonly tickIntervalMs?: number;
   readonly spoolRootDir?: string;
+}
+
+/** 连接层能提供的真实历史来源：旧 Chat Doc + 当前 ACP 会话标识。 */
+interface SyncHistoryContext {
+  readonly acpSessionId: string | null;
+  readonly docs: LegacyChatDocumentSource;
 }
 
 export async function attachGatewaySyncConnection(
@@ -84,8 +94,17 @@ export async function attachGatewaySyncConnection(
   owner: string,
   reportError: (message: string, error: unknown) => void,
   overrides: GatewaySyncHostOverrides = {},
+  history?: SyncHistoryContext,
 ): Promise<SyncConnection | undefined> {
   try {
+    const historySource =
+      history === undefined
+        ? undefined
+        : createLegacyChatHistorySource({
+            docs: history.docs,
+            rcsSessionId,
+            acpSessionId: history.acpSessionId,
+          });
     return await createSyncHostSession({
       scope: { organizationId, rcsSessionId },
       runtimeConfig: {
@@ -99,6 +118,8 @@ export async function attachGatewaySyncConnection(
       random: overrides.random,
       digest: overrides.digest,
       store: overrides.store,
+      storeRegistry: overrides.storeRegistry,
+      historySource,
       owner,
       onError: reportError,
     });
@@ -129,7 +150,7 @@ export async function routeSyncProtocolFrame(
   pending?: {
     readonly registry: Pick<ConnectionRegistry, "bufferPendingBinary" | "pendingTextCount" | "pendingBinaryCount">;
     readonly wsId: string;
-    readonly docManager?: Pick<DocManager, "getSessionYdoc">;
+    readonly docManager?: Pick<DocManager, "getSessionYdoc" | "getChat" | "openChat">;
   },
 ): Promise<boolean> {
   if (!isSyncProtocolFrame(data)) return false;
@@ -155,6 +176,7 @@ export async function routeSyncProtocolFrame(
     `${entry.userId}:${entry.instanceId}`,
     reportError,
     overrides,
+    pending?.docManager === undefined ? undefined : { acpSessionId: entry.acpSessionId, docs: pending.docManager },
   );
   if (!entry.syncConnection) return true;
   try {
@@ -182,17 +204,25 @@ export async function routeSyncProtocolFrame(
  * SYNC_RELAY.SYNC_FAILED（reason 不是 "sync protocol disabled"，不会回退旧路径）。
  */
 export async function flushPendingSyncFrames(
-  registry: Pick<ConnectionRegistry, "consumePendingBinary" | "pendingTextCount" | "pendingBinaryCount">,
+  registry: Pick<
+    ConnectionRegistry,
+    "consumePendingBinary" | "bufferPendingBinary" | "pendingTextCount" | "pendingBinaryCount"
+  >,
   wsId: string,
   entry: ClientConnection,
   ws: WsConnection,
   config: ChatSyncProtocolConfig | undefined,
   reportError: (message: string, error: unknown) => void,
   overrides?: GatewaySyncHostOverrides,
+  docManager?: Pick<DocManager, "getSessionYdoc" | "getChat" | "openChat">,
 ): Promise<void> {
   // entry 已创建：刷新诊断上下文，provider 后续关闭时能看到真实的 entry/scope。
   setSyncCloseContextForConnection(registry, ws, wsId, entry);
   for (const frame of registry.consumePendingBinary(wsId) ?? []) {
-    await routeSyncProtocolFrame(entry, ws, frame, config, reportError, overrides);
+    await routeSyncProtocolFrame(entry, ws, frame, config, reportError, overrides, {
+      registry,
+      wsId,
+      docManager,
+    });
   }
 }

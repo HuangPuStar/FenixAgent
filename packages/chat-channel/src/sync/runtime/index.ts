@@ -8,3 +8,4 @@ export * from "./egress";
 export * from "./host-session";
 export * from "./ingress";
 export * from "./scope-runtime";
+export * from "./store-registry";

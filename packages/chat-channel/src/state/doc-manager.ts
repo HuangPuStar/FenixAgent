@@ -60,6 +60,9 @@ export type QuestionRequestedHandler = (
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
+  /** 同一会话的并发打开共享同一 Promise，避免重复创建 Doc / provider。 */
+  private chatOpens = new Map<string, Promise<ChatDoc>>();
+  private sessionOpens = new Map<string, Promise<SessionDoc>>();
   private closingSessionDocs = new Map<string, Promise<void>>();
   private readonly sessionTitles: SessionTitleState;
   private getRedis: () => Redis | Cluster | null;
@@ -135,17 +138,36 @@ export class DocManager {
 
   // ── Chat Doc ──
 
-  /** 打开或获取已有的 Chat Doc（内存/Redis 模式） */
+  /**
+   * 打开或获取已有的 Chat Doc（内存/Redis 模式）。
+   *
+   * Redis 模式会等待初始快照水合完成后再返回：握手历史源同步读取 `openChat()` 的结果，
+   * 提前返回会把空视图当成“无历史”并缓存为已完成引导。
+   * 并发调用共享同一 Promise，后到者同样在快照水合后才拿到 Doc。
+   */
   async openChat(rcsSessionId: string): Promise<ChatDoc> {
     const existing = this.chatDocs.get(rcsSessionId);
     if (existing) return existing;
 
+    const inflight = this.chatOpens.get(rcsSessionId);
+    if (inflight) return inflight;
+
+    const opening = this.openChatInternal(rcsSessionId);
+    this.chatOpens.set(rcsSessionId, opening);
+    try {
+      return await opening;
+    } finally {
+      if (this.chatOpens.get(rcsSessionId) === opening) this.chatOpens.delete(rcsSessionId);
+    }
+  }
+
+  private async openChatInternal(rcsSessionId: string): Promise<ChatDoc> {
     const redis = this.getRedis();
     const generation = redis
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
       : (this.sessionDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
     const doc = redis
-      ? loadChatDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
+      ? await loadChatDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
       : createChatDoc(rcsSessionId, null, generation);
     this.registerDocBroadcast(doc.ydoc, `chat:${rcsSessionId}`);
     this.chatDocs.set(rcsSessionId, doc);
@@ -172,18 +194,34 @@ export class DocManager {
   }
 
   // ── Session Doc ──
-  /** 打开或获取已有的 Session Doc（_userId/_agentId 为兼容旧调用方保留） */
+  /**
+   * 打开或获取已有的 Session Doc（_userId/_agentId 为兼容旧调用方保留）。
+   * 与 `openChat` 相同：Redis 模式等待快照水合，并发调用共享同一 Promise。
+   */
   async openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
     await this.closingSessionDocs.get(rcsSessionId);
     const existing = this.sessionDocs.get(rcsSessionId);
     if (existing) return existing;
 
+    const inflight = this.sessionOpens.get(rcsSessionId);
+    if (inflight) return inflight;
+
+    const opening = this.openSessionInternal(rcsSessionId);
+    this.sessionOpens.set(rcsSessionId, opening);
+    try {
+      return await opening;
+    } finally {
+      if (this.sessionOpens.get(rcsSessionId) === opening) this.sessionOpens.delete(rcsSessionId);
+    }
+  }
+
+  private async openSessionInternal(rcsSessionId: string): Promise<SessionDoc> {
     const redis = this.getRedis();
     const generation = redis
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
       : (this.chatDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
     const doc = redis
-      ? loadSessionDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
+      ? await loadSessionDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
       : createSessionDoc(rcsSessionId, null, generation);
     try {
       if (!(await this.sessionTitles.refresh(rcsSessionId))) throw new Error("session metadata load superseded");
