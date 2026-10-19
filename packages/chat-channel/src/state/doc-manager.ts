@@ -12,7 +12,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import { getActiveGeneration, getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import { encodeYjsReplaceFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
@@ -203,15 +203,29 @@ export class DocManager {
         continue;
       }
 
+      // Redis 模式下安装前始终复核 active generation：fence 只能观察本进程经过同一对象的
+      // 换代，close 删除登记后新 open 拿到的是新 fence；跨进程换代也不会触碰本地 epoch。
+      // 复核结果先暂存，等同步段确认 close/换代优先级后再决定安装还是重试。
+      const generationCurrent = redis ? await this.isGenerationCurrent(redis, rcsSessionId, doc.generation) : true;
+
+      // 复核 await 窗口内可能发生 close / replace 提交：以下检查到写 map 之间没有 await。
+      const settledCurrent = docs.get(rcsSessionId);
+      if (settledCurrent) {
+        await this.discardOpenedDoc(doc, context);
+        return { kind: "current", doc: settledCurrent };
+      }
+      if (this.fences.isClosed(snapshot)) {
+        await this.discardOpenedDoc(doc, context);
+        throw new Error(`${kind} doc was closed during open`);
+      }
+      if (this.fences.hasReplacement(rcsSessionId)) continue;
       if (snapshot.fence.replaceEpoch !== observedReplaceEpoch) {
         observedReplaceEpoch = snapshot.fence.replaceEpoch;
-        // 本地换代已失败退出：active generation 未变，旧 projection 仍权威；但外部进程可能
-        // 已提交换代，装回旧世代会污染投影，因此先复核本次加载的世代是否仍是 active。
-        if (!(await this.isGenerationCurrent(redis, rcsSessionId, doc.generation))) {
-          await this.discardOpenedDoc(doc, context);
-          return { kind: "retry" };
-        }
         continue;
+      }
+      if (!generationCurrent) {
+        await this.discardOpenedDoc(doc, context);
+        return { kind: "retry" };
       }
 
       // 从这里到写 map 没有 await：check-then-install 原子，close / replace 无法插队。
@@ -231,7 +245,8 @@ export class DocManager {
     generation: string,
   ): Promise<boolean> {
     if (!redis) return true;
-    return (await getOrCreateActiveGeneration(redis, rcsSessionId)) === generation;
+    // 只读复核：不复用 getOrCreateActiveGeneration，避免 key 缺失时凭空创建新世代。
+    return (await getActiveGeneration(redis, rcsSessionId)) === generation;
   }
 
   private isStaleHydration(error: unknown): error is SnapshotHydrationError {
@@ -301,7 +316,7 @@ export class DocManager {
       if (resolution.kind === "current") return resolution.doc;
       if (resolution.kind === "installed") return doc;
       if (attempt === maxRetries) {
-        throw new Error(`chat doc load was superseded by projection replacement for ${rcsSessionId}`);
+        throw new Error(`chat doc generation changed during open for ${rcsSessionId}`);
       }
     }
 
@@ -398,7 +413,7 @@ export class DocManager {
       if (resolution.kind === "current") return resolution.doc;
       if (resolution.kind === "installed") return doc;
       if (attempt === maxRetries) {
-        throw new Error(`session doc load was superseded by projection replacement for ${rcsSessionId}`);
+        throw new Error(`session doc generation changed during open for ${rcsSessionId}`);
       }
     }
 
@@ -488,6 +503,7 @@ export class DocManager {
       : (this.getProjectionGeneration(rcsSessionId) ?? generation);
     let chat: ChatDoc | null = null;
     let session: SessionDoc | null = null;
+    let publishedGeneration = false;
     try {
       // 换代同样走装配投影的快照参数：新 generation 的 provider 需要同一组节流 / TTL 值。
       const snapshot = this.resolveSnapshotPersistConfig();
@@ -511,6 +527,7 @@ export class DocManager {
       if (redis && !(await publishActiveGeneration(redis, rcsSessionId, expectedGeneration, generation))) {
         throw new Error("projection generation changed concurrently");
       }
+      publishedGeneration = redis !== null;
       // publish await 窗口内可能发生 close：关闭优先，销毁新 Doc 并放弃提交，
       // 绝不把已关闭的会话重新写回 map（复活）。
       this.fences.assertReplacementOpen(attempt);
@@ -529,6 +546,13 @@ export class DocManager {
       }
       return { rcsSessionId, generation, targetAcpSessionId, chat, session };
     } catch (err) {
+      // CAS 已推进 active generation 后仍可能被 close 中止；不回滚 Redis（可能已被别的换代推进），
+      // 但必须留下明确诊断：后续 open 的安装前复核会选中该新世代。
+      if (publishedGeneration) {
+        this.onLog?.(
+          `[DocManager] replacement for ${rcsSessionId} advanced active generation to ${generation} before being aborted`,
+        );
+      }
       await Promise.allSettled([chat?.destroy(), session?.destroy()]);
       throw err;
     }

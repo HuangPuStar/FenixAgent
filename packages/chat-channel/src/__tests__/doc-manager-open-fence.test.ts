@@ -53,6 +53,8 @@ class ProdRedis extends FakeRedis {
 /** 让 publishActiveGeneration 停在 await 窗口，用于覆盖 open / close 与 publish 的竞争。 */
 class GatedEvalRedis extends ProdRedis {
   evalStarted = false;
+  /** active-generation 读取次数，用于确认 open 已完成水合并进入安装前等待。 */
+  activeGenGets = 0;
   private readonly gate = deferred();
   private readonly started = deferred();
 
@@ -63,6 +65,11 @@ class GatedEvalRedis extends ProdRedis {
       await this.gate.promise;
     }
     return super.eval(script, numKeys, ...args);
+  }
+
+  override get(key: string): Promise<string | null> {
+    if (key.startsWith("yjs:active-generation:")) this.activeGenGets += 1;
+    return super.get(key);
   }
 
   releaseEval(): void {
@@ -347,5 +354,110 @@ describe("DocManager 投影生命周期栅栏", () => {
 
     await provider.destroy();
     ydoc.destroy();
+  });
+
+  // 无旧快照时 GETBUFFER 窗口内换代：旧世代的“空历史”必须判 stale，openChat 返回新世代。
+  test("无旧快照时 GETBUFFER 窗口内换代 openChat 返回新世代 Doc", async () => {
+    const rcsSessionId = "rcs_fence_empty_stale_chat";
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    // 旧世代没有快照；新世代已有另一进程落盘的历史。
+    redis.seedSnapshot(`chat:${rcsSessionId}`, REPLACED_EXTERNALLY, chatSnapshotWithText("new-history"));
+    const gate = deferred();
+    redis.delayBuffer(`yjs:chat:${rcsSessionId}:${GENERATION}`, gate.promise);
+    const manager = createManager(() => redis);
+
+    const opening = manager.openChat(rcsSessionId);
+    await waitFor(() => redis.bufferReads.length > 0, "old generation GETBUFFER");
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    gate.resolve();
+
+    const opened = await opening;
+    expect(opened.generation).toBe(REPLACED_EXTERNALLY);
+    expect(opened.hydration.status).toBe("loaded");
+    expect(historyValues(opened.ydoc)).toEqual(["new-history"]);
+    expect(manager.getChat(rcsSessionId)?.generation).toBe(REPLACED_EXTERNALLY);
+    // 旧世代 provider 在 stale 时已销毁，不得继续订阅 / 持久化。
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    await manager.closeAll();
+  });
+
+  // Session 无旧快照的同类窗口：openSession 同样必须返回当前 active generation。
+  test("无旧快照时 GETBUFFER 窗口内换代 openSession 返回新世代 Doc", async () => {
+    const rcsSessionId = "rcs_fence_empty_stale_session";
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`session:${rcsSessionId}`, REPLACED_EXTERNALLY, snapshotOf(initSessionDocStructure));
+    const gate = deferred();
+    redis.delayBuffer(`yjs:session:${rcsSessionId}:${GENERATION}`, gate.promise);
+    const manager = createManager(() => redis);
+
+    const opening = manager.openSession("user-1", "agent-1", rcsSessionId);
+    await waitFor(() => redis.bufferReads.length > 0, "old generation GETBUFFER");
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    gate.resolve();
+
+    const opened = await opening;
+    expect(opened.generation).toBe(REPLACED_EXTERNALLY);
+    expect(opened.hydration.status).toBe("loaded");
+    expect(manager.getSession(rcsSessionId)?.generation).toBe(REPLACED_EXTERNALLY);
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    await manager.closeAll();
+  });
+
+  // close 删除 fence 登记后、replace 仍停在 publish await：新 open 不得安装旧世代 Doc。
+  test("close 删除登记后在途 publish 期间新 open 不安装旧世代 Doc", async () => {
+    const rcsSessionId = "rcs_fence_close_reopen_publish";
+    const broadcasts: string[] = [];
+    const redis = new GatedEvalRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, GENERATION, chatSnapshotWithText("old-history"));
+    redis.seedSnapshot(`session:${rcsSessionId}`, GENERATION, snapshotOf(initSessionDocStructure));
+    const manager = createManager(() => redis, { onYjsUpdate: (docName) => broadcasts.push(docName) });
+
+    // 暂缓销毁被丢弃的旧世代 Chat Doc，测试写入一次 update 验证其从未注册广播。
+    const originalDestroy = Y.Doc.prototype.destroy;
+    const discardedGuid = `chat:${rcsSessionId}:${GENERATION}`;
+    let discardedDoc: Y.Doc | null = null;
+    Y.Doc.prototype.destroy = function (this: Y.Doc) {
+      if (this.guid === discardedGuid) {
+        discardedDoc = this;
+        return;
+      }
+      originalDestroy.call(this);
+    };
+    try {
+      const replacementPromise = manager.replaceProjection(rcsSessionId, "ses_replacement");
+      await waitFor(() => redis.evalStarted, "publishActiveGeneration eval");
+      // close 删除 fence 登记；在途 replace 仍停在 publish await。
+      await manager.closeChat(rcsSessionId);
+      await manager.closeSession(rcsSessionId);
+
+      const opening = manager.openChat(rcsSessionId);
+      // 4 次 active-generation GET = replace 1 + open 1 + provider 前后各 1：
+      // 说明本次 open 已完成水合、停在安装前等待在途换代。
+      await waitFor(() => redis.activeGenGets >= 4, "open waits for in-flight replacement");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      redis.releaseEval();
+      await expect(replacementPromise).rejects.toThrow("superseded by close");
+      const opened = await opening;
+      const active = await redis.get(`yjs:active-generation:${rcsSessionId}`);
+
+      expect(active).not.toBe(GENERATION);
+      expect(opened.generation).toBe(active);
+      expect(manager.getChat(rcsSessionId)?.generation).toBe(active);
+
+      const staleDoc = discardedDoc;
+      if (!staleDoc) throw new Error("expected the old-generation chat doc to be discarded");
+      staleDoc.getMap("root").set("broadcast-leak-probe", 1);
+      expect(broadcasts).toEqual([]);
+    } finally {
+      Y.Doc.prototype.destroy = originalDestroy;
+      if (discardedDoc) originalDestroy.call(discardedDoc);
+      await manager.closeAll();
+    }
   });
 });

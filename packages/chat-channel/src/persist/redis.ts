@@ -39,6 +39,14 @@ export async function getOrCreateActiveGeneration(redis: Redis | Cluster, rcsSes
   return (await r.get(key)) ?? proposed;
 }
 
+/**
+ * 只读当前 active generation，不创建、不覆盖。
+ * 用于安装前的权威复核：返回 null 说明 key 已消失，调用方应按“不一致”处理。
+ */
+export async function getActiveGeneration(redis: Redis | Cluster, rcsSessionId: string): Promise<string | null> {
+  return (redis as Redis).get(`${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`);
+}
+
 /** 仅当前 active generation 可发布后继，防止并发 replacement 后到者覆盖胜者。 */
 export async function publishActiveGeneration(
   redis: Redis | Cluster,
@@ -350,17 +358,17 @@ export function createRedisProvider(
           // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
           Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(buf.toString(), "base64")), remoteUpdateOrigin);
         }
-        // GETBUFFER / apply 期间可能换代：此时快照已属于被取代的世代，不能报 loaded，
-        // 否则调用方会把旧快照当作当前投影的历史。
-        if (generation && (await r.get(activeGenerationKey)) !== generation) {
-          outcome = {
-            status: "stale",
-            error: new Error("projection generation was replaced during snapshot hydration"),
-          };
-          return;
-        }
-        outcome = { status: "loaded" };
       }
+      // 无论 GETBUFFER 是否返回快照都要校验：空结果同样属于某一世代，跨进程换代后
+      // 不能把旧世代的“无历史”当作当前投影的权威空历史。apply 期间换代也必须在此收敛。
+      if (generation && (await r.get(activeGenerationKey)) !== generation) {
+        outcome = {
+          status: "stale",
+          error: new Error("projection generation was replaced during snapshot hydration"),
+        };
+        return;
+      }
+      if (buf) outcome = { status: "loaded" };
     } catch (error) {
       if (!destroyed) reportSubscriberFailure("load");
       outcome = { status: "failed", error };
