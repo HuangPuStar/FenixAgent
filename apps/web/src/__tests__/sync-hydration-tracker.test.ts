@@ -52,6 +52,22 @@ describe("sync hydration tracker", () => {
     tracker.dispose();
   });
 
+  // 入口 Doc 先完成时，目录晚到的首批内容块必须重新打开等待，避免首屏先空/半截再补齐。
+  test("extendInitial 在首批完成后重新等待晚到内容块", () => {
+    const events: boolean[] = [];
+    const tracker = createSyncHydrationTracker({ onHydratingChange: (value) => events.push(value) });
+    tracker.begin(["control"]);
+    tracker.noteBase("control", "d_control");
+    tracker.noteAck("d_control");
+    expect(tracker.isDone()).toBe(true);
+    tracker.extendInitial(["content"]);
+    expect(events).toEqual([true, false, true]);
+    tracker.noteBase("content", "d_content");
+    tracker.noteAck("d_content");
+    expect(events).toEqual([true, false, true, false]);
+    expect(tracker.isDone()).toBe(true);
+  });
+
   // 重连 reset 后内部 hydrating 归零，下一轮 begin 必须重新通知 true。
   test("reset 后重新 begin 再次进入 hydrating", () => {
     const events: boolean[] = [];

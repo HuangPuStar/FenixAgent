@@ -366,7 +366,10 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
                 : data instanceof ArrayBuffer
                   ? new Uint8Array(data)
                   : JSON.stringify(data);
-        getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload);
+        // 兜底：Gateway.handleMessage 已隔离错误；这里再吞掉极端情况下的拒绝，避免 WS 事件循环出现未处理 Promise。
+        void getChatChannelController()
+          .gateway.handleMessage(adaptWs(ws), yjsWsId, payload)
+          .catch((error) => logError("[YJS-WS] message handler failed", error));
       }
     },
     close(ws) {

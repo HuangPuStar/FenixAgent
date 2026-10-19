@@ -302,4 +302,24 @@ describe("sync content Doc 只读投影", () => {
     expect(parseContentDocId(`sync/content/${GENERATION}/01/n`)).toBeNull();
     expect(parseContentDocId("not-a-doc-id")).toBeNull();
   });
+
+  // 单个内容块也可能包含大量短消息：投影默认只给最近 600 条，显式扩大后才揭示更早条目。
+  test("投影窗口默认 600 条，扩大后揭示隐藏条目", () => {
+    const hub = createSyncContentProjectionHub({ onProjection: () => {} });
+    hub.reset(GENERATION);
+    const records = Array.from({ length: 700 }, (_, index) => ({
+      entryId: `window_${index}:assistant`,
+      entryOrder: index,
+      kind: "text",
+      payload: `window ${index}`,
+    }));
+    hub.applyUpdate({ docId: contentDocId(1), generation: GENERATION, payload: contentDocUpdate(records, 1) });
+    const first = hub.snapshot();
+    expect(first.messages).toHaveLength(600);
+    expect(first.hiddenMessageCount).toBe(100);
+    hub.growWindow(100);
+    const grown = hub.snapshot();
+    expect(grown.messages).toHaveLength(700);
+    expect(grown.hiddenMessageCount).toBe(0);
+  });
 });

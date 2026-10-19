@@ -62,7 +62,6 @@ export interface ChatPanelCallbacks {
   onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   onSetMode: (modeId: string) => void;
 }
-
 /** `ACPMain` 需要的派生展示态（从 Chat Doc 的能力/模型/模式子树投影）。 */
 export interface ChatPanelDerivedState {
   supportsImages: boolean;
@@ -74,7 +73,6 @@ export interface ChatPanelDerivedState {
   supportsModeSelection: boolean;
   tokenUsage: ReturnType<typeof useChatState>["state"]["tokenUsage"];
 }
-
 /**
  * ChatPanel 的运行时状态与出站出口。
  *
@@ -100,6 +98,8 @@ export interface ChatPanelRuntime {
   terminalUiCode: TerminalWsUiCode | null;
   /** RCS session id（Y.Doc 命名用），未就绪时为 undefined。 */
   rcsSessionKey: string | undefined;
+  /** 会话/投影换代键：包含 DocHub replacementVersion，用于重置首屏历史窗口。 */
+  historyScopeKey: string;
   chatState: ReturnType<typeof useChatState>["state"];
   sessionState: ReturnType<typeof useSessionState>["state"];
   /** 默认启用的新消息投影；明确拒绝时保留旧路径。 */
@@ -109,7 +109,6 @@ export interface ChatPanelRuntime {
   derivedState: ChatPanelDerivedState;
   callbacks: ChatPanelCallbacks;
 }
-
 /**
  * 装配 ChatPanel 的运行时。`agentId` 为空时不建连；`sessionId` 参与 RCS session id 派生，
  * 因此同一 agent 的不同会话拥有各自独立的 Y.Doc。
@@ -155,17 +154,14 @@ export function useChatPanelRuntime({
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
-
   // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
   // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
   const rcsSessionKey =
     agentId && userId ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined) : undefined;
-
   // DocHub 绑定 key（SP-B1）：两个 hook 必须绑定同一会话的同一份共享 doc。
   // 登录态未就绪时使用占位 key（此时建连守卫不会放行 WS，占位 doc 恒为空）
   const docHubKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
-
   // 默认新协议读取文本；旧连接保留历史、非文本和动作，直到新协议拥有完整历史恢复能力。
   const { state: chatState } = useChatState(docHubKey);
   const { state: legacySessionState } = useSessionState(docHubKey);
@@ -190,6 +186,9 @@ export function useChatPanelRuntime({
     timelineEmpty: replacementVersion === 0 && legacySessionState.timelineEmpty === true,
     hasMessages: legacySessionState.structuredMessages.length > 0,
   });
+  const syncTerminalError =
+    syncChat.connection.status === "error" ||
+    (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
   const hydration = useChatHydration({
     scope: mergeScope,
     legacy: legacySessionState.structuredMessages,
@@ -198,6 +197,7 @@ export function useChatPanelRuntime({
     replayActive: legacySessionState.status === "replaying",
     liveActive: legacySessionState.status === "responding",
     blocked: syncChat.connection.hydrating,
+    syncTerminalError,
     noReplaySession,
   });
   const sessionState = useMemo(
@@ -206,20 +206,19 @@ export function useChatPanelRuntime({
         syncEnabled,
         legacyFallback: syncChat.legacyFallback,
         noReplaySession,
+        syncTerminalError,
       }),
-    [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession],
+    [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession, syncTerminalError],
   );
 
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
   const acpSessionIdRef = useRef(sessionState.acpSessionId);
   acpSessionIdRef.current = sessionState.acpSessionId;
-
   // Peri Task 视图 — 只订阅 Session Doc 的 tasks/taskOrder 子树（DocHub 共享实例，
   // 与上面两个 hook 同一份 doc；Chat Doc token 流不触发本 selector 重算）。
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
-
   useYjsDebugDump(chatState, sessionState);
 
   // ── Action commandId（C3：幂等键，同会话唯一）──
@@ -489,6 +488,7 @@ export function useChatPanelRuntime({
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,
+    historyScopeKey: mergeScope,
     chatState,
     sessionState,
     syncChat,

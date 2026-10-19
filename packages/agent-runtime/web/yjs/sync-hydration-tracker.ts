@@ -22,6 +22,11 @@ export interface SyncHydrationTracker {
   begin(docIds: Iterable<string>): void;
   /** 目录发现新的内容块：首批 hydrate 期间纳入等待集合。 */
   addPending(docIds: Iterable<string>): void;
+  /**
+   * 目录基线晚于入口 Doc ACK 时重新打开首批等待（只用于首次窗口内的内容块）：
+   * 否则入口 Doc 先完成动作会让 UI 在内容块到达前放行，首屏出现“先空/半截再补齐”。
+   */
+  extendInitial(docIds: Iterable<string>): void;
   /** 收到某个 Doc 的 DOC_BASE；deliveryId 缺失时按到达即完成（防御性降级）。 */
   noteBase(docId: string, deliveryId: string | null): void;
   /** 收到 processed APPLY_ACK：只有与当前 base delivery 匹配才推进。 */
@@ -103,6 +108,18 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
     addPending(docIds: Iterable<string>): void {
       if (done) return;
       for (const docId of docIds) pendingDocs.add(docId);
+    },
+    extendInitial(docIds: Iterable<string>): void {
+      const ids = [...docIds];
+      if (ids.length === 0) return;
+      if (done) {
+        done = false;
+        pendingDocs = new Set();
+        clearDeliveries();
+        setHydrating(true);
+        scheduleTimeout();
+      }
+      for (const docId of ids) pendingDocs.add(docId);
     },
     noteBase(docId: string, deliveryId: string | null): void {
       if (done || !pendingDocs.has(docId)) return;

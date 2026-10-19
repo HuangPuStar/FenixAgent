@@ -139,6 +139,7 @@ function ChatPanelView({
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,
+    historyScopeKey,
     chatState,
     sessionState,
     syncChat,
@@ -254,6 +255,10 @@ function ChatPanelView({
           currentModeId={derivedState.currentModeId}
           supportsModeSelection={derivedState.supportsModeSelection}
           boundMcps={hostPorts.boundMcps}
+          historyScopeKey={historyScopeKey}
+          hasEarlierHistory={syncChat.history.hasEarlier}
+          historyLoading={syncChat.history.loading}
+          onLoadEarlierHistory={syncChat.history.loadEarlier}
           {...callbacks}
           {...ports}
         />

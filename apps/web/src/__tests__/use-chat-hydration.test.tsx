@@ -9,6 +9,7 @@ import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  applyChatHydration,
   type ChatHydrationState,
   type UseChatHydrationOptions,
   useChatHydration,
@@ -127,4 +128,54 @@ describe("useChatHydration", () => {
     expect(latest.current?.messages).toHaveLength(101);
     act(() => root.unmount());
   }, 30_000);
+
+  // 新协议进入终态错误时，门控必须结束骨架并提交旧通道内容；不能错误卡与骨架长期并存。
+  test("同步终态错误结束骨架并提交旧内容", async () => {
+    const latest: { current: ChatHydrationState | null } = { current: null };
+    const options: UseChatHydrationOptions = {
+      scope: "sync-terminal-error",
+      legacy: [assistant("old", "旧通道内容")],
+      sync: [],
+      sourceReady: false,
+      replayActive: true,
+      blocked: true,
+      syncTerminalError: true,
+    };
+    function Probe() {
+      latest.current = useChatHydration(options);
+      return null;
+    }
+    const container = win.document.createElement("div");
+    const root = createRoot(container as unknown as HTMLElement);
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(400);
+    });
+    expect(latest.current?.hydrating).toBe(false);
+    expect(latest.current?.messages.map((message) => message.id)).toEqual(["old"]);
+    act(() => root.unmount());
+  });
+
+  // 同步终态错误必须清掉旧路径遗留的 loading，否则错误卡消失后输入区仍被禁用。
+  test("同步终态错误清除 loading 并保留旧消息", () => {
+    const legacy = {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready" as const,
+      status: "idle" as const,
+      loading: { kind: "session/bootstrap" as const, since: 0 },
+      canCancel: false,
+      replayState: null,
+      timelineEmpty: false,
+      structuredMessages: [assistant("old", "旧通道内容")],
+      pendingQuestions: new Map(),
+      agentPublicError: null,
+    };
+    const state = applyChatHydration(
+      legacy,
+      { messages: [assistant("old", "旧通道内容")], hydrating: false },
+      { syncEnabled: true, legacyFallback: false, syncTerminalError: true },
+    );
+    expect(state.loading).toBeNull();
+    expect(state.structuredMessages.map((message) => message.id)).toEqual(["old"]);
+  });
 });

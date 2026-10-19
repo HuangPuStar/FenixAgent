@@ -142,6 +142,8 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
     active = true;
     scheduleMax();
     scheduleNoActivity();
+    // markComplete 可能早于旧连接就绪（例如新协议先进入终态错误）：激活后必须补一次收口。
+    scheduleSettle();
   }
 
   return {

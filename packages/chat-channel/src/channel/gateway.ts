@@ -1,19 +1,19 @@
 // Gateway：YJS 前端 WebSocket 连接生命周期控制面。
 
 import { translateSimpleAction } from "../protocol/translator";
-import { decodeYjsSyncFrame } from "../protocol/update-frame";
 import type { DocManager } from "../state";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import { createGatewayMessageHandler, type GatewayMessageHandler } from "./gateway-message";
 import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } from "./gateway-open-errors";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
 import { markSessionTimelineEmpty } from "./session-timeline-flag";
-import { flushPendingSyncFrames, type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
+import { flushPendingSyncFrames, type GatewaySyncHostOverrides } from "./sync-connection";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -59,7 +59,19 @@ export interface ChatConnectionLocator {
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
   private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
-  constructor(private readonly dependencies: GatewayDependencies) {}
+  private readonly messageHandler: GatewayMessageHandler;
+  constructor(private readonly dependencies: GatewayDependencies) {
+    this.messageHandler = createGatewayMessageHandler({
+      registry: dependencies.registry,
+      broadcaster: dependencies.broadcaster,
+      docManager: dependencies.docManager,
+      chatSyncProtocol: dependencies.chatSyncProtocol,
+      syncHostOverrides: dependencies.syncHostOverrides,
+      pendingInitialSync: this.pendingInitialSync,
+      reportError: (message, error) => this.reportError(message, error),
+      forward: (entry, parsed, ws) => this.forward(entry, parsed, ws),
+    });
+  }
   async handleOpen(
     ws: WsConnection,
     wsId: string,
@@ -322,63 +334,48 @@ export class Gateway {
     const pending = registry.consumePending(wsId);
     if (pending?.length) await this.flushPending(entry, pending, ws);
   }
+  /**
+   * 入站消息隔离边界：任何解码、协议路由或 legacy 出站异常都只关闭当前连接，
+   * 记录带 wsId 的诊断，绝不把 Promise 拒绝留给 WS 事件循环。
+   */
   async handleMessage(ws: WsConnection, wsId: string, data: string | Uint8Array): Promise<void> {
-    const entry = this.dependencies.registry.getClient(wsId);
-    if (typeof data !== "string") {
-      const routed = await routeSyncProtocolFrame(
-        entry,
-        ws,
-        data,
-        this.dependencies.chatSyncProtocol,
-        (message, error) => this.reportError(`[YJS-FE] ${message}`, error),
-        this.dependencies.syncHostOverrides,
-        { registry: this.dependencies.registry, wsId, docManager: this.dependencies.docManager },
-      );
-      if (routed) return;
-      const frame = decodeYjsSyncFrame(data);
-      if (!entry || frame?.type !== "state-vector") return;
-      const prefix = frame.docName.split(":", 1)[0];
-      const expectedName = `${prefix}:${entry.rcsSessionId}`;
-      if (frame.docName !== expectedName) return;
-      const doc =
-        prefix === "chat"
-          ? this.dependencies.docManager.getChat(entry.rcsSessionId)
-          : this.dependencies.docManager.getSession(entry.rcsSessionId);
-      if (!doc || doc.generation !== frame.generation) return;
-      this.dependencies.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
-      const pendingSync = this.pendingInitialSync.get(wsId);
-      if (pendingSync?.expected.has(frame.docName)) {
-        pendingSync.received.add(frame.docName);
-        if (pendingSync.received.size === pendingSync.expected.size) pendingSync.resolve();
-      }
-      return;
-    }
-    if (!entry?.relayReady) {
-      this.dependencies.registry.bufferPending(wsId, data);
-      return;
-    }
-    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(data);
-    } catch {
-      return;
+      await this.messageHandler(ws, wsId, data);
+    } catch (error) {
+      this.reportError(`[YJS-FE] message handling failed: wsId=${wsId}`, error);
+      try {
+        ws.close(1011, "message handling failed");
+      } catch {
+        // 连接已关闭时 close 可能抛错；不能让它覆盖原始诊断。
+      }
+      this.handleClose(wsId);
     }
-    if (parsed.type === "ping") {
-      this.dependencies.broadcaster.sendToYjsWs(ws, { type: "pong" });
-      return;
-    }
-    if (parsed.type === "keep_alive") return;
-    if (parsed.action) await this.forward(entry, parsed, ws);
   }
   handleClose(wsId: string): void {
+    try {
+      this.handleCloseInner(wsId);
+    } catch (error) {
+      // WS close 事件同样不能把清理异常抛回进程；保留 wsId 诊断，避免残留连接静默泄漏。
+      this.reportError(`[YJS-FE] connection close cleanup failed: wsId=${wsId}`, error);
+    }
+  }
+  private handleCloseInner(wsId: string): void {
     this.pendingInitialSync.get(wsId)?.resolve();
     const { registry } = this.dependencies;
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);
     if (!entry) return;
-    entry.syncConnection?.dispose();
+    try {
+      entry.syncConnection?.dispose();
+    } catch (error) {
+      this.reportError(`[YJS-FE] sync connection dispose failed: wsId=${wsId}`, error);
+    }
     clearInterval(entry.keepalive);
-    this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
+    try {
+      this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
+    } catch (error) {
+      this.reportError(`[YJS-FE] relay release failed: wsId=${wsId}`, error);
+    }
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
     this.dependencies.reportLog(`[YJS-FE] Disconnected: wsId=${wsId} agentId=${entry.agentId} duration=${duration}s`);
   }

@@ -4,7 +4,6 @@ import {
   type SyncClientTransport,
   type SyncClientTransportOptions,
 } from "@fenix/chat-channel/sync-client";
-import * as Y from "yjs";
 import type {
   SyncChatConnectionState,
   SyncChatSession,
@@ -13,13 +12,19 @@ import type {
 } from "./sync-chat-state";
 import { INITIAL_SYNC_CHAT_STATE, SYNC_PROTOCOL_VERSION } from "./sync-chat-state";
 import { formatSyncCloseError, logSyncClose } from "./sync-close-diagnostic";
+import { createSyncContentSubscription, type SyncContentSubscription } from "./sync-content-subscription";
 import { createSyncContentTap, noteProcessedAck } from "./sync-content-tap";
-import { createSyncContentProjectionHub, parseContentDocId, type SyncContentProjectionHub } from "./sync-doc-hub";
+import {
+  createSyncContentProjectionHub,
+  parseContentDocId,
+  SYNC_PROJECTION_MESSAGE_STEP,
+  type SyncContentProjectionHub,
+} from "./sync-doc-hub";
+import { createSyncFrameRouter } from "./sync-frame-router";
 import { createSyncHydrationTracker } from "./sync-hydration-tracker";
 import {
   buildSyncChatSocketUrl,
   createBrowserSyncSocket,
-  decodeSyncBase64Payload,
   decodeSyncWireJson,
   resolveYjsWsCloseOutcome,
   type SyncBrowserSocket,
@@ -71,7 +76,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   const retainedDocs = new Set<string>();
   const seenDeliveries = new Set<string>();
   let manifest: SyncManifestSummary | null = null;
-  let directoryDoc: Y.Doc | null = null;
   let manifestHandled = false;
   let expectedGeneration: string | null = options.generation ?? null;
   let reconnectAttempt = 0;
@@ -81,9 +85,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   let localClose = false;
   let disposed = false;
   let driveScheduled = false;
+  let contentSubscription: SyncContentSubscription | null = null;
   function createProjectionHub(): SyncContentProjectionHub {
     return createSyncContentProjectionHub({
       onProjection: (projection) => {
+        contentSubscription?.refreshHistoryState(projection.hiddenMessageCount);
         if (!disposed) options.onProjection?.(projection);
       },
     });
@@ -93,7 +99,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     state = { ...state, ...patch };
     options.onState?.(state);
   }
-
   const hydration = createSyncHydrationTracker({
     onHydratingChange: (hydrating) => setState({ hydrating }),
     timeoutMs: options.syncBaseTimeoutMs,
@@ -128,6 +133,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   }
   function teardownTransport(): void {
     releaseRetainedDocs();
+    contentSubscription?.reset();
     hydration.reset();
     transport?.dispose();
     transport = null;
@@ -157,6 +163,27 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     expectedGeneration: () => expectedGeneration,
     applyProjection: (input) => projectionHub.applyUpdate(input),
     hydration,
+    onBase: (docId) => contentSubscription?.noteBase(docId),
+  });
+  contentSubscription = createSyncContentSubscription({
+    retainedDocs,
+    hydration,
+    subscribe: sendSubscribe,
+    retainDoc: (docId) => {
+      if (transport === null) throw new Error("sync transport is not ready");
+      transport.hub.retain(docId);
+    },
+    onSubscribed: (docIds) => {
+      const next = [...new Set([...state.subscribedDocIds, ...docIds])];
+      if (next.length !== state.subscribedDocIds.length) setState({ subscribedDocIds: Object.freeze(next) });
+    },
+    onHistoryState: ({ hasEarlier, loading }) => {
+      if (state.hasEarlierHistory === hasEarlier && state.historyLoading === loading) return;
+      setState({ hasEarlierHistory: hasEarlier, historyLoading: loading });
+    },
+    hiddenMessageCount: () => projectionHub.snapshot().hiddenMessageCount,
+    growProjectionWindow: () => projectionHub.growWindow(SYNC_PROJECTION_MESSAGE_STEP),
+    fail,
   });
   function scheduleDrive(): void {
     if (disposed || driveScheduled) return;
@@ -177,51 +204,22 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       if (!disposed && (transport?.hub.queueDepth() ?? 0) > 0) scheduleDrive();
     })();
   }
-  function tapDirectoryFrame(frame: Record<string, unknown>): void {
-    const activeManifest = manifest;
-    if (
-      activeManifest === null ||
-      (frame.type !== "DOC_BASE" && frame.type !== "DOC_UPDATE") ||
-      frame.docId !== activeManifest.directoryDocId ||
-      frame.generation !== activeManifest.generation ||
-      typeof frame.payload !== "string"
-    ) {
-      return;
-    }
-    const isBase = frame.type === "DOC_BASE";
-    const deliveryId = typeof frame.deliveryId === "string" ? frame.deliveryId : null;
-    const payload = decodeSyncBase64Payload(frame.payload);
-    if (payload === null) return;
-    try {
-      if (directoryDoc === null) directoryDoc = new Y.Doc();
-      Y.applyUpdate(directoryDoc, payload);
-      const discovered = contentDocIdsFromDirectory().filter(
-        (docId) => parseContentDocId(docId)?.generation === manifest?.generation && !retainedDocs.has(docId),
-      );
-      if (discovered.length > 0 && transport !== null) {
-        for (const docId of discovered) {
-          transport.hub.retain(docId);
-          retainedDocs.add(docId);
-          // 新发现的历史块尚未送达基线；首批 hydrate 必须等它们的 DOC_BASE。
-          hydration.addPending([docId]);
-        }
-        if (!sendSubscribe(discovered, "currentHistory")) {
-          fail("CAPACITY_EXCEEDED", "socket is saturated while sending content SUBSCRIBE");
-          return;
-        }
-        setState({ subscribedDocIds: Object.freeze([...state.subscribedDocIds, ...discovered]) });
-      }
-      if (isBase) hydration.noteBase(frame.docId, deliveryId);
-    } catch (error) {
-      fail("MALFORMED_FRAME", error instanceof Error ? error.message : "failed to apply directory update");
-    }
-  }
+  const frameRouter = createSyncFrameRouter({
+    hydration,
+    getManifest: () => manifest,
+    getContentSubscription: () => contentSubscription,
+    fail,
+  });
   function handleInboundBytes(bytes: Uint8Array): void {
     if (disposed) return;
     // 同一帧只解码一次：directory/content 旁路与协议 transport 都需要结构化视图。
     const frame = decodeSyncWireJson(bytes);
-    if (frame !== null) {
-      tapDirectoryFrame(frame);
+    if (frame === null) {
+      // 新协议帧必须是 UTF-8 JSON（首字节 `{`）；其余二进制帧属于旧 Yjs 通道，直接忽略。
+      // `{` 开头但 JSON 非法的帧仍交给 transport 产生 MALFORMED_FRAME，避免掩盖损坏。
+      if (bytes.byteLength === 0 || bytes[0] !== 0x7b) return;
+    } else {
+      frameRouter.tapDirectoryFrame(frame);
       tapContentFrame(frame);
     }
     const active = transport;
@@ -231,8 +229,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   }
   function handleInboundData(data: unknown): void {
     if (typeof data === "string") {
-      // 新协议要求二进制 JSON；收到文本帧说明对端仍在旧协议上，必须显式失败而不是静默重试。
-      fail("MALFORMED_FRAME", "new sync protocol requires binary frames");
+      // 旧通道控制文本（yjs:sync-request/keep_alive/pong/action ack）与新协议共用 endpoint；
+      // 新协议只认二进制，文本帧属于旧通道，忽略而不是误判 MALFORMED_FRAME。
       return;
     }
     const bytes = syncSocketBytes(data);
@@ -251,13 +249,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     if (docIds.length === 0) return true;
     return sendFrame({ type: "SUBSCRIBE", protocolVersion: SYNC_PROTOCOL_VERSION, docIds, priority });
   }
-  function contentDocIdsFromDirectory(): string[] {
-    const value = directoryDoc?.getMap<unknown>("root").get("contentDocIds");
-    if (value instanceof Y.Array) {
-      return value.toArray().filter((docId): docId is string => typeof docId === "string");
-    }
-    return Array.isArray(value) ? value.filter((docId): docId is string => typeof docId === "string") : [];
-  }
   function applyManifest(input: ManifestFrame | GenerationReplaceFrame): void {
     if (input.protocolVersion !== SYNC_PROTOCOL_VERSION) {
       fail("PROTOCOL_VERSION_UNSUPPORTED", `unsupported sync protocol version ${String(input.protocolVersion)}`);
@@ -268,7 +259,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     const debugContentDocIds = contentDocIds.filter(
       (docId) => parseContentDocId(docId)?.generation === input.generation,
     );
-    const nextDocIds = [...new Set([...entryDocIds, ...debugContentDocIds])];
     const unchanged =
       manifestHandled &&
       manifest !== null &&
@@ -285,8 +275,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     }
 
     releaseRetainedDocs();
-    directoryDoc?.destroy();
-    directoryDoc = new Y.Doc();
+    contentSubscription?.reset();
+    frameRouter.resetDirectory();
     expectedGeneration = input.generation;
     manifestHandled = true;
     manifest = {
@@ -299,11 +289,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       recoveryState: input.type === "MANIFEST" ? input.recoveryState : null,
     };
     projectionHub.reset(input.generation);
-    // 首批 DOC_BASE（入口 Doc + 目录发现的全部内容块）落地前不提交半成品。
-    hydration.begin(nextDocIds);
+    // 首批 DOC_BASE（入口 Doc + 窗口内内容块）落地前不提交半成品；更早块不进入首批等待。
+    hydration.begin(entryDocIds);
 
     try {
-      for (const docId of nextDocIds) {
+      for (const docId of entryDocIds) {
         transport.hub.retain(docId);
         retainedDocs.add(docId);
       }
@@ -312,7 +302,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       return;
     }
 
-    if (!sendSubscribe(entryDocIds, "live") || !sendSubscribe(debugContentDocIds, "currentHistory")) {
+    if (!sendSubscribe(entryDocIds, "live")) {
       fail("CAPACITY_EXCEEDED", "socket is saturated while sending SUBSCRIBE");
       return;
     }
@@ -322,9 +312,13 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       error: null,
       generation: input.generation,
       manifest,
-      subscribedDocIds: Object.freeze(nextDocIds),
+      subscribedDocIds: Object.freeze(entryDocIds),
+      hasEarlierHistory: false,
+      historyLoading: false,
       reconnectAttempt: 0,
     });
+    // 调试后备内容块同样只订阅窗口内的最近块；目录到达后会再次按权威顺序裁决。
+    if (debugContentDocIds.length > 0) contentSubscription?.applyDirectory(debugContentDocIds, true);
   }
   function handleControl(frame: SyncControlFrame): void {
     switch (frame.type) {
@@ -468,6 +462,17 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       if (socket === current) setState({ error: { code: "SOCKET_ERROR", message: "websocket error" } });
     };
   }
+  function loadEarlierHistory(): boolean {
+    if (disposed || contentSubscription === null) return false;
+    const generation = manifest?.generation ?? expectedGeneration;
+    const directoryContentDocIds = frameRouter
+      .readContentDocIds()
+      .filter((docId) => parseContentDocId(docId)?.generation === generation);
+    const fallbackContentDocIds = contentDocIds.filter((docId) => parseContentDocId(docId)?.generation === generation);
+    return contentSubscription.loadEarlier(
+      directoryContentDocIds.length > 0 ? directoryContentDocIds : fallbackContentDocIds,
+    );
+  }
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -488,9 +493,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     }
     teardownTransport();
     projectionHub.dispose();
-    directoryDoc?.destroy();
-    directoryDoc = null;
+    frameRouter.dispose();
   }
 
-  return { connect, dispose, state: () => state };
+  return { connect, dispose, state: () => state, loadEarlierHistory };
 }

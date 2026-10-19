@@ -33,3 +33,19 @@ export function evictDeletedEnvironmentSlots<T extends SessionSlot>(
   ) as Record<string, T>;
   return Object.keys(next).length === Object.keys(slots).length ? slots : next;
 }
+
+/**
+ * 切换会话后驱逐上一槽位：旧投影、DOM 与 WebSocket 不再常驻后台。
+ *
+ * 没有上一槽位或已不存在时返回原对象，避免无意义重建；切回旧会话会重新挂载并按历史窗口
+ * 只拉最近块，这是「切走后释放旧数据」的代价。
+ */
+export function evictPreviousSessionSlot<T extends SessionSlot>(
+  slots: Record<string, T>,
+  previousKey: string | null,
+): Record<string, T> {
+  if (previousKey === null || !(previousKey in slots)) return slots;
+  const next = { ...slots };
+  delete next[previousKey];
+  return next;
+}

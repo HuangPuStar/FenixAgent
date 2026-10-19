@@ -14,7 +14,7 @@ import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
-import { encodeYjsReplaceFrame } from "../protocol/update-frame";
+import { encodeYjsReplaceFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
@@ -276,9 +276,14 @@ export class DocManager {
       const oldSession = this.sessionDocs.get(rcsSessionId);
       preserveAgentProjection(oldSession?.ydoc, session.ydoc);
 
-      // 在 generation 提交前完成编码验证；失败时新 provider 只存在于未激活私有 channel。
-      encodeYjsReplaceFrame(`chat:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(chat.ydoc));
-      encodeYjsReplaceFrame(`session:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(session.ydoc));
+      // 超限 replacement 交给 broadcaster 丢帧并留诊断；换代本身不得在提交前失败。
+      for (const [docName, update] of [
+        [`chat:${rcsSessionId}`, Y.encodeStateAsUpdate(chat.ydoc)],
+        [`session:${rcsSessionId}`, Y.encodeStateAsUpdate(session.ydoc)],
+      ] as const) {
+        if (update.byteLength > MAX_YJS_SYNC_PAYLOAD_BYTES) continue;
+        encodeYjsReplaceFrame(docName, generation, update);
+      }
       if (redis && !(await publishActiveGeneration(redis, rcsSessionId, expectedGeneration, generation))) {
         throw new Error("projection generation changed concurrently");
       }

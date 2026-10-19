@@ -42,6 +42,8 @@ export interface UseChatHydrationOptions {
   readonly liveActive?: boolean;
   /** 新协议基线（首批 DOC_BASE 的 APPLY_ACK）尚未齐备时暂缓放行。 */
   readonly blocked?: boolean;
+  /** 新协议已进入不可恢复终态：必须结束骨架，让旧通道内容/空状态与输入区恢复可用。 */
+  readonly syncTerminalError?: boolean;
   /** 本地新建会话：没有历史回放，不得用骨架替换空状态。 */
   readonly noReplaySession?: boolean;
 }
@@ -67,6 +69,7 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     replayActive = false,
     liveActive = false,
     blocked = false,
+    syncTerminalError = false,
     noReplaySession = false,
   } = options;
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope 只作为重建合并器的驱动键，合并器函数体不读取它。
@@ -168,6 +171,21 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     }
   }, [replayActive, liveActive]);
 
+  // 同步终态错误优先于回放标志：结束骨架，旧通道消息或空状态立即可见，输入区不被伪 loading 禁用。
+  useEffect(() => {
+    if (!syncTerminalError) return;
+    // scope 是换代触发键：gateRef 在 scope effect 中重建，换代后必须重新收口。
+    void scope;
+    const gate = gateRef.current;
+    if (gate === null) return;
+    // 旧通道未就绪也必须收口：否则错误卡与骨架会一起长期停留。
+    gate.activate();
+    gate.setBlocked(false);
+    gate.setReplayActive(false);
+    gate.markComplete();
+    gate.notify();
+  }, [scope, syncTerminalError]);
+
   // 消息引用或基线阻塞状态变化才通知；notify 通过 latest ref 读取内容。
   // biome-ignore lint/correctness/useExhaustiveDependencies: legacy/sync/blocked 是刻意的触发依赖。
   useEffect(() => {
@@ -185,11 +203,17 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
 export function applyChatHydration(
   legacy: LegacySessionState,
   hydration: ChatHydrationState,
-  options: { readonly syncEnabled: boolean; readonly legacyFallback: boolean; readonly noReplaySession?: boolean },
+  options: {
+    readonly syncEnabled: boolean;
+    readonly legacyFallback: boolean;
+    readonly noReplaySession?: boolean;
+    /** 同步终态错误时清掉骨架 loading，保证输入区可用。 */
+    readonly syncTerminalError?: boolean;
+  },
 ): LegacySessionState {
   // 新建会话没有历史可等：不挂伪 loading，空状态立即保持原样。
   const gated = hydration.hydrating && !(options.noReplaySession && legacy.structuredMessages.length === 0);
-  const loading = gated ? (legacy.loading ?? HYDRATION_LOADING) : legacy.loading;
+  const loading = gated ? (legacy.loading ?? HYDRATION_LOADING) : options.syncTerminalError ? null : legacy.loading;
   if (!options.syncEnabled || options.legacyFallback) {
     return hydration.hydrating ? { ...legacy, structuredMessages: EMPTY_CHAT_MESSAGES, loading } : legacy;
   }

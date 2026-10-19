@@ -20,6 +20,10 @@ const RUNTIME_DOC = `sync/runtime/${GENERATION}/0/runtime`;
 const DIRECTORY_DOC = `sync/directory/${GENERATION}/0/directory`;
 const CONTENT_DOC = `sync/content/${GENERATION}/1/content_a`;
 const CONTENT_DOC_2 = `sync/content/${GENERATION}/2/content_b`;
+const CONTENT_DOC_3 = `sync/content/${GENERATION}/3/content_c`;
+const CONTENT_DOC_4 = `sync/content/${GENERATION}/4/content_d`;
+const CONTENT_DOC_5 = `sync/content/${GENERATION}/5/content_e`;
+const CONTENT_DOC_6 = `sync/content/${GENERATION}/6/content_f`;
 const URL_UNDER_TEST = "ws://test.local/acp/yjs/env_1?chatSync=1";
 
 class FakeSocket implements SyncBrowserSocket {
@@ -308,6 +312,62 @@ describe("sync chat 浏览器会话", () => {
     ]);
   });
 
+  // 目录列出全部历史块时只订阅最近四块；显式“显示更早”才订阅上一批，且完成后入口消失。
+  test("目录历史分页：首屏四块，加载更早再订阅上一批", async () => {
+    const harness = createHarness({ generation: undefined, contentDocIds: [] });
+    harness.socket.open();
+    harness.socket.receive(manifest());
+    harness.socket.receive(
+      directoryBase("dlv_directory_window", [
+        CONTENT_DOC,
+        CONTENT_DOC_2,
+        CONTENT_DOC_3,
+        CONTENT_DOC_4,
+        CONTENT_DOC_5,
+        CONTENT_DOC_6,
+      ]),
+    );
+    const contentSubscribes = (): string[][] =>
+      sentFrames(harness.socket)
+        .filter((frame): frame is Extract<SyncFrame, { type: "SUBSCRIBE" }> => frame.type === "SUBSCRIBE")
+        .filter((frame) => frame.priority === "currentHistory")
+        .map((frame) => [...frame.docIds]);
+    expect(contentSubscribes().at(-1)).toEqual([CONTENT_DOC_3, CONTENT_DOC_4, CONTENT_DOC_5, CONTENT_DOC_6]);
+    expect(harness.states.at(-1)?.hasEarlierHistory).toBe(true);
+
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_3, "dlv_content_3", contentUpdate("doc 3", "doc3:assistant")),
+    );
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_4, "dlv_content_4", contentUpdate("doc 4", "doc4:assistant")),
+    );
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_5, "dlv_content_5", contentUpdate("doc 5", "doc5:assistant")),
+    );
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_6, "dlv_content_6", contentUpdate("doc 6", "doc6:assistant")),
+    );
+    await flush();
+    expect(harness.projections.at(-1)?.messages.map((message) => message.id)).toEqual([
+      "doc3:assistant",
+      "doc4:assistant",
+      "doc5:assistant",
+      "doc6:assistant",
+    ]);
+
+    expect(harness.session.loadEarlierHistory()).toBe(true);
+    expect(contentSubscribes().at(-1)).toEqual([CONTENT_DOC, CONTENT_DOC_2]);
+    expect(harness.states.at(-1)?.historyLoading).toBe(true);
+    harness.socket.receive(docBaseWithPayload(CONTENT_DOC, "dlv_content_1", contentUpdate("doc 1", "doc1:assistant")));
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_2, "dlv_content_2", contentUpdate("doc 2", "doc2:assistant")),
+    );
+    await flush();
+    expect(harness.projections.at(-1)?.messages).toHaveLength(6);
+    expect(harness.states.at(-1)?.hasEarlierHistory).toBe(false);
+    expect(harness.states.at(-1)?.historyLoading).toBe(false);
+  });
+
   // 开启后第一条出站帧必须是二进制 HELLO，携带协议版本、scope 与 stateful:false。
   test("建连后发送二进制 HELLO", () => {
     const harness = createHarness();
@@ -520,11 +580,34 @@ describe("sync chat 浏览器会话", () => {
     expect(scheduled).toHaveLength(0);
   });
 
-  // 文本帧说明对端仍是旧协议：必须显式失败，不能把旧帧喂给新解码器或静默重试。
-  test("收到文本帧显式失败", () => {
+  // 旧通道的 yjs:sync-request 与 keep_alive 等文本控制帧与新协议共用 endpoint，必须忽略而不是打成 MALFORMED_FRAME。
+  test("旧通道文本控制帧被忽略", () => {
     const harness = createHarness();
     harness.socket.open();
-    harness.socket.receiveRaw('{"type":"MANIFEST"}');
+    harness.socket.receiveRaw(
+      '{"type":"yjs:sync-request","docs":[{"docName":"chat:rcs_1","generation":"gen_session0001"},{"docName":"session:rcs_1","generation":"gen_session0001"}]}',
+    );
+    expect(harness.states.at(-1)?.status).not.toBe("error");
+    expect(harness.socket.closed).toHaveLength(0);
+    harness.socket.receive(manifest());
+    expect(harness.states.at(-1)?.status).toBe("ready");
+  });
+
+  // 旧 Yjs 二进制 update（首字节 0x01）同样共用 endpoint；新协议旁路必须忽略，不能交给 JSON 解码器。
+  test("旧通道二进制帧被忽略", () => {
+    const harness = createHarness();
+    harness.socket.open();
+    harness.socket.receiveRaw(new Uint8Array([0x01, 0x00, 0x03, 0x61, 0x62, 0x63]));
+    expect(harness.states.at(-1)?.status).not.toBe("error");
+    harness.socket.receive(manifest());
+    expect(harness.states.at(-1)?.status).toBe("ready");
+  });
+
+  // `{` 开头但 JSON 非法仍是新协议损坏：必须显式失败，不能被“忽略旧帧”掩盖。
+  test("畸形的新协议 JSON 帧显式失败", () => {
+    const harness = createHarness();
+    harness.socket.open();
+    harness.socket.receiveRaw(new TextEncoder().encode('{"type":'));
     expect(harness.states.at(-1)?.status).toBe("error");
     expect(harness.states.at(-1)?.error?.code).toBe("MALFORMED_FRAME");
   });

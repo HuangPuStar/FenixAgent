@@ -115,6 +115,14 @@ export interface ChatInterfaceProps {
    * 未复制进包），改为宿主注入；未提供时渲染条目为空。
    */
   projectEntries?: (structuredMessages: readonly StructuredMessage[]) => ThreadEntry[];
+  /** 协议层仍有更早历史可加载。 */
+  hasEarlierHistory?: boolean;
+  /** 协议层更早历史加载中。 */
+  historyLoading?: boolean;
+  /** 会话/投影换代键；变化时重置首屏窗口，包含同实例切换会话。 */
+  historyScopeKey?: string;
+  /** 显式加载协议层更早历史；返回是否产生了新工作。 */
+  onLoadEarlierHistory?: () => boolean | undefined;
   /**
    * 取出并清空当前作用域的上下文队列（源为宿主 `@/src/lib/context-queue` 的 `flushContext`）。
    * 该队列是有状态模块级 Map（`pushContext` / `removeContext` 由宿主页面与 composer 调用），未随纯函数

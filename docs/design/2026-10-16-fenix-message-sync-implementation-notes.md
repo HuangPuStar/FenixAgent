@@ -87,6 +87,66 @@
 15. **final / 非文本内容未进入新投影**：final 元信息与 history/tool 对象暂无完整的生产映射，前端投影不呈现
     这些内容。
 
+### 3.1 历史加载窗口（2026-10-19）
+
+- 协议层：目录仍声明全部已封口内容块，但客户端首屏只 retain/SUBSCRIBE 目录末尾 4 块
+  （`SYNC_HISTORY_INITIAL_BLOCKS`）；更早块仅在用户点击“显示更早”时每次再订阅 4 块。
+  未订阅块不 retain，content 旁路直接忽略其帧，因此不产生 `DOC_BASE` 下行。
+- 投影层：单个内容块仍可能包含大量短消息，`SyncContentProjectionHub` 默认只输出最近 600 条
+  （`SYNC_PROJECTION_MESSAGE_WINDOW`）并暴露 `hiddenMessageCount`；加载更早时先扩大投影窗口，
+  再按需拉取更早块。
+- 渲染层：`ChatInterface` 的数据层窗口首屏 100 条（`CHAT_RENDER_WINDOW_INITIAL`），每次“显示更早”
+  最多再揭示 300 条（`CHAT_RENDER_WINDOW_STEP`）；`ChatView` 在 `preWindowed` 下不再做第二层裁剪，
+  避免揭示后又被裁掉。
+  会话/投影换代键（DocHub `replacementVersion`）变化即重置窗口，覆盖同实例切换会话。
+- 会话槽位：`ChatArea` 只保留当前 session 的 `ChatPanel`；切换会话时驱逐上一槽位并卸载，
+  旧投影/DOM/WebSocket 随之释放；切回旧会话按同一窗口重新加载最近块。
+- 边界：旧 Chat Doc 仍持有完整回放（第 12 条偏差），旧通道的下行未在本轮收敛；本轮收敛的是新协议
+  路径的订阅量、投影条目与 DOM 挂载量。移除条件 = 新协议具备完整历史恢复并下线旧通道。
+
+### 3.2 Legacy 超限帧与连接隔离（2026-10-19）
+
+- 根因：旧 Yjs 通道在 `state-vector` 握手时对 Chat Doc 做全量 `sendDiff`；大会话的 update 可超过
+  `MAX_YJS_SYNC_PAYLOAD_BYTES`（8MiB），`encodeGenerationFrame` 抛错后沿 `Gateway.handleMessage`
+  的 fire-and-forget 调用进入未处理拒绝，直接结束服务进程（生产实测 11,570,054 字节）。
+- 策略：`YjsBroadcaster.encodeLegacyFrame` 是所有 legacy 帧编码的唯一入口；payload 超限或编码失败时
+  只丢弃该帧并记录 `prefix/bytes/limit`，不抛回消息循环。旧通道与新同步协议共用同一条 socket，
+  因此不能为一个 legacy 帧关闭整条连接；新协议的首屏窗口继续可用，旧 UI 的大会话历史则不送达。
+  `DocManager.replaceProjection` 的 legacy 编码预检同样跳过超限 replacement，避免大会话换代在提交前失败。
+- 隔离：`Gateway.handleMessage` 捕获任何分派/出站异常，记录带 `wsId` 的诊断，仅关闭受影响连接
+  （1011）并清理登记；`sendToYjsWs`、广播 flush 与慢消费者追赶的发送/编码同样按单连接/单帧隔离。
+- 取舍：当前帧契约没有可安全拆分任意 Yjs update 的分片格式，故不做“截断分片”（会制造损坏副本）。
+  若显式关闭新协议且会话超过 8MiB，旧 UI 将看不到该段历史；移除条件 = 旧通道退役，或协议增加
+  可验证的安全分片/按需历史恢复。
+- 证据：9MiB 合成 Chat Doc 修复前 `Yjs payload too large: 9437203 bytes`、进程退出码 1；修复后进程
+  存活、无 legacy 二进制帧、记录 dropped 诊断；模拟出站抛错时只关闭该连接（1011）。
+
+### 3.3 同 endpoint 的旧通道帧分流（2026-10-19）
+
+- `Gateway.handleOpen` 对所有 `/acp/yjs` 连接都会经 `synchronizeInitialDocs` 发送旧通道文本帧
+  `{"type":"yjs:sync-request","docs":[...]}`（`gateway-sync.ts:39-42`）；500ms 未收到 state-vector 时
+  还会发送旧 Yjs 快照（`gateway-sync.ts:45-46`，首字节 `0x01`）。
+- 新同步客户端此前把文本帧直接判为 `MALFORMED_FRAME`，随后把旧二进制快照交给新协议解码器；
+  两者都会让直连会话停在错误卡 + hydrate 骨架。
+- 分流规则：文本帧属于旧控制通道，忽略；二进制帧只有首字节 `{` 才属于新协议，其余（旧 Yjs
+  `0x01/0x02/0x03/0xa7`）忽略；首字节 `{` 但 JSON/schema 非法仍显式 `MALFORMED_FRAME`，不扩大回退范围。
+- 终态出口：同步进入 `error`/带错误的 `closed` 时，`useChatHydration` 立即解除 blocked/replay 并
+  `markComplete`；旧通道内容或空状态在 settle 后可见，输入区恢复可用，错误卡仍保留供诊断。
+
+### 3.4 1 天规模上限（2026-10-19 压测）
+
+- 目录 Doc：`contentDocIds` 以 Y.Array 全量放在目录 base；`4000` 个 ID 时 payload `198,934B`、
+  `DOC_BASE` 帧 `265,583B`（上限 `294,912B`），`6000` 个 ID 时帧 `398,915B` 已被帧层拒绝。
+  按当前 100MB/722 块的打包比例，约 **5–6 亿字节历史 / 4,000 块**就是目录单帧上限。
+- 浏览器 20,000 条 / 50MB / 400 块：首屏 `200` 投影、`100` DOM、`722,403B` / `8` 帧、
+  首屏可见 `123.5ms`；连续 10 次“显示更早”后 DOM `1200`、累计下行 `4,222,915B`，最大单帧
+  `175,026B`；卸载后 DOM `0`，JS heap `215.5MB → 62.5MB`。首屏有界，但显式加载按次累积。
+- 服务端 20,000 对象 / 100MB 真实导入：`722` 块、`3.52s`、峰值 RSS `492,814,336B`；按线性外推
+  1.2GB 约 `5.9GB`、2.4GB 约 `11.8GB`，当前内存 adapter 无归档/淘汰，GB 级历史存在 OOM 风险。
+- 结论：低速率 1 天（约 8.6 万条 / 120MB / 千级块）可落在目录阈值内；高速率 1 天
+  （48 万条 / 1.2GB / 万级块）会同时触发目录帧超限与 GB 级 RSS，当前协议不可行。
+  硬问题修复方向是目录分页/归档，不是调大单帧上限。
+
 ## 4. 验证证据
 
 - 包内测试：**1464 通过 / 0 失败**（75 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。

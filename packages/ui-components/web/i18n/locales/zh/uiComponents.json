@@ -126,7 +126,8 @@
         },
         "startConversation": "开始对话",
         "startConversationDesc": "输入消息开始聊天",
-        "loadEarlier": "显示更早的消息（还有 {{count}} 条）"
+        "loadEarlier": "显示更早的消息（还有 {{count}} 条）",
+        "loadEarlierUnknown": "显示更早的消息"
       },
       "commandMenu": {
         "connected": "已连接",

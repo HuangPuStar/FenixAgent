@@ -21,14 +21,22 @@ import * as Y from "yjs";
 /** 只读投影结果；`messages` 与旧 Chat Doc 派生的 StructuredMessage[] 同形。 */
 export interface SyncChatProjection {
   readonly messages: readonly StructuredMessage[];
+  /** 已解析、但被首屏窗口挡在 `messages` 之外的条目数；用于“显示更早”入口。 */
+  readonly hiddenMessageCount: number;
   readonly contentDocCount: number;
   readonly recordCount: number;
   readonly skippedRecords: number;
   readonly invalidUpdates: number;
 }
 
+/** 首屏投影条目上限：即使单个内容块包含大量短消息，React 也只接收最近 N 条。 */
+export const SYNC_PROJECTION_MESSAGE_WINDOW = 600;
+/** 每次“显示更早”扩大的投影窗口条目数。 */
+export const SYNC_PROJECTION_MESSAGE_STEP = 300;
+
 const EMPTY_PROJECTION: SyncChatProjection = Object.freeze({
   messages: Object.freeze([]),
+  hiddenMessageCount: 0,
   contentDocCount: 0,
   recordCount: 0,
   skippedRecords: 0,
@@ -55,13 +63,17 @@ export function parseContentDocId(docId: string): { generation: string; blockInd
 export interface SyncContentProjectionHubOptions {
   /** 每次镜像内容变化后回调一次（microtask 合并，同一批 update 只重算一次）。 */
   readonly onProjection: (projection: SyncChatProjection) => void;
+  /** 首屏投影条目上限；缺省 200。 */
+  readonly messageWindow?: number;
 }
 
 export interface SyncContentProjectionHub {
   /** 应用一段 content Doc 的 Yjs update；非 content doc / 异代次返回 false。 */
   applyUpdate(input: { readonly docId: string; readonly generation: string; readonly payload: Uint8Array }): boolean;
-  /** 换代/重连：销毁全部镜像 Doc 并把可见投影清空。 */
+  /** 换代/重连：销毁全部镜像 Doc 并把可见投影清空，窗口回到首屏上限。 */
   reset(generation: string | null): void;
+  /** 用户显式加载更早：扩大可见投影条目上限。 */
+  growWindow(count?: number): void;
   snapshot(): SyncChatProjection;
   dispose(): void;
 }
@@ -203,6 +215,8 @@ function parseDoc(mirror: MirrorDoc): {
 }
 
 export function createSyncContentProjectionHub(options: SyncContentProjectionHubOptions): SyncContentProjectionHub {
+  const initialMessageWindow = Math.max(1, Math.floor(options.messageWindow ?? SYNC_PROJECTION_MESSAGE_WINDOW));
+  let messageWindow = initialMessageWindow;
   const docs = new Map<string, MirrorDoc>();
   const entries = new Map<string, GlobalEntry>();
   let generation: string | null = null;
@@ -359,7 +373,8 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     }
 
     return Object.freeze({
-      messages: Object.freeze(messages),
+      messages: Object.freeze(messages.slice(Math.max(0, messages.length - messageWindow))),
+      hiddenMessageCount: Math.max(0, messages.length - messageWindow),
       contentDocCount: orderedDocs.length,
       recordCount,
       skippedRecords,
@@ -435,7 +450,15 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     reset(nextGeneration: string | null): void {
       if (disposed) return;
       generation = nextGeneration;
+      messageWindow = initialMessageWindow;
       clearAll();
+      dirty = true;
+      scheduleNotify();
+    },
+
+    growWindow(count = SYNC_PROJECTION_MESSAGE_STEP): void {
+      if (disposed) return;
+      messageWindow += Math.max(1, Math.floor(count));
       dirty = true;
       scheduleNotify();
     },

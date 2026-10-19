@@ -1,10 +1,10 @@
 // 新协议默认启用；旧连接仍承担历史、非文本与动作通道，不由本 hook 释放。
 // 明确不支持协议时锁定旧路径，只有会话/组织切换或显式重新启用才允许再次尝试。
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SyncChatProjection } from "../yjs/sync-doc-hub";
 import { emptySyncChatProjection } from "../yjs/sync-doc-hub";
-import type { SyncChatConnectionState } from "../yjs/sync-transport";
+import type { SyncChatConnectionState, SyncChatSession } from "../yjs/sync-transport";
 import { createSyncChatSession, INITIAL_SYNC_CHAT_STATE } from "../yjs/sync-transport";
 import type { SyncBrowserSocketFactory } from "../yjs/yjs-ws";
 
@@ -28,12 +28,29 @@ export interface SyncChatState {
   readonly connection: SyncChatConnectionState;
   readonly projection: SyncChatProjection;
   readonly legacyFallback: boolean;
+  readonly history: SyncChatHistoryState;
 }
+
+export interface SyncChatHistoryState {
+  /** 仍有更早内容可加载（未订阅块或投影窗口外条目）。 */
+  readonly hasEarlier: boolean;
+  /** 更早块基线尚在途。 */
+  readonly loading: boolean;
+  /** 显式加载一批更早内容；返回是否产生了新工作。 */
+  readonly loadEarlier: () => boolean;
+}
+
+const NO_HISTORY: SyncChatHistoryState = Object.freeze({
+  hasEarlier: false,
+  loading: false,
+  loadEarlier: () => false,
+});
 
 const EMPTY_STATE: SyncChatState = {
   connection: INITIAL_SYNC_CHAT_STATE,
   projection: emptySyncChatProjection(),
   legacyFallback: false,
+  history: NO_HISTORY,
 };
 
 /**
@@ -61,6 +78,7 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
   ]);
   const [snapshot, setSnapshot] = useState({ scope, state: EMPTY_STATE });
   const fallbackScope = useRef<string | null>(null);
+  const sessionRef = useRef<SyncChatSession | null>(null);
   const contentKey = options.contentDocIds?.join(",") ?? "";
 
   useEffect(() => {
@@ -129,6 +147,7 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
             connection,
             legacyFallback,
             projection: legacyFallback ? emptySyncChatProjection() : previous.state.projection,
+            history: previous.state.history,
           },
         }));
         if (legacyFallback) {
@@ -148,10 +167,12 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
       },
     });
     session.connect();
+    sessionRef.current = session;
     return () => {
       active = false;
       cancelFrame();
       pendingProjection = null;
+      if (sessionRef.current === session) sessionRef.current = null;
       session.dispose();
     };
   }, [
@@ -167,5 +188,15 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     options.url,
   ]);
 
-  return snapshot.scope === scope ? snapshot.state : EMPTY_STATE;
+  const loadEarlier = useCallback((): boolean => sessionRef.current?.loadEarlierHistory() ?? false, []);
+
+  if (snapshot.scope !== scope) return EMPTY_STATE;
+  return {
+    ...snapshot.state,
+    history: {
+      hasEarlier: snapshot.state.connection.hasEarlierHistory,
+      loading: snapshot.state.connection.historyLoading,
+      loadEarlier,
+    },
+  };
 }

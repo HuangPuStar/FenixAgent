@@ -9,11 +9,12 @@
  *   实现直接依赖 `@fenix/identity/web`、`@fenix/resource-task/web` 与宿主 `@/src/*`；本次把这些跨域能力
  *   改成宿主注入（逐项理由见包内 `chat-panel-host-ports.ts`）、把文案键随实现迁入包字典后，回包不再
  *   产生任何越界依赖。
- * - **壳留宿主**：本文件只负责「把某个 Environment 的某个实例装进哪个槽位」——keep-alive 槽位表、懒加载
- *   边界、`ChatPageVisibleContext` 接线与宿主能力注入。判据是**状态归属**：槽位集合由宿主路由态决定
- *   （URL 里的 agent/session、侧栏的实例重启事件、实例删除集合），跨页面切换时槽位必须保持挂载，而包内的
- *   `ChatPanel` 只认识自己那一个 session。槽位表若进包，包就会持有宿主路由语义，分享页
- *   （`@fenix/resource-prod-view/web` 的 `chatArea` 端口）与工作流编辑器也都得跟着宿主路由走。
+ * - **壳留宿主**：本文件只负责「把某个 Environment 的某个实例装进哪个槽位」——当前会话槽位表、懒加载
+ *   边界、`ChatPageVisibleContext` 接线与宿主能力注入。判据是**状态归属**：槽位切换由宿主路由态决定
+ *   （URL 里的 agent/session、侧栏的实例重启事件、实例删除集合），跨页面切换时当前槽位保持挂载，切到
+ *   另一个会话时上一槽位立即驱逐；包内的 `ChatPanel` 只认识自己那一个 session。槽位表若进包，包就会
+ *   持有宿主路由语义，分享页（`@fenix/resource-prod-view/web` 的 `chatArea` 端口）与工作流编辑器也都
+ *   得跟着宿主路由走。
  * - 右侧工件面板的装配在同目录 `chat-workspace-artifacts.tsx`（宿主页面布局与宿主偏好，不属于聊天域）。
  *
  * 样式：本文件不再导入任何样式表。工件面板的伴随表 `artifacts-workspace.css` 已于 2026-09-28 退役：
@@ -43,6 +44,7 @@ import { loadBoundMcps } from "@fenix/agent-config/web";
 import type { ChatPanelHostPorts } from "@fenix/agent-runtime/web";
 import {
   evictDeletedEnvironmentSlots,
+  evictPreviousSessionSlot,
   resolveActiveChatEnvironmentId,
   type SessionSlot,
 } from "@fenix/agent-runtime/web/agent-panel/chat-area-lifecycle";
@@ -53,7 +55,7 @@ import type { ProdViewModulesConfig } from "@fenix/resource-prod-view/web";
 import { useTaskViews } from "@fenix/resource-task/web/hooks/use-task-views";
 import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useRequest } from "ahooks";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 import { ChatWorkspaceArtifacts } from "./chat-workspace-artifacts";
 
@@ -73,10 +75,10 @@ interface ChatAreaProps {
 /**
  * ChatArea — 始终挂载的聊天区域容器。
  *
- * 两层 keep-alive：
+ * 两层生命周期：
  * 1. 页面级：通过 CSS display 控制可见性，切到非 chat 页面时保持挂载
- * 2. Session 级：缓存所有访问过的 session 的 ChatPanel 实例，
- *    同一 agent 下切换 session 时通过 CSS display 切换，不重建 WebSocket 连接
+ * 2. Session 级：只保留当前 session 的 ChatPanel；切换会话时驱逐上一槽位并卸载，
+ *    释放旧投影/DOM/WebSocket，切回时按历史窗口重新挂载
  *
  * agentId/sessionId 从 DefaultAppShell 的 URL 解析传入（而非 Route.useParams），
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
@@ -110,10 +112,12 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     [authState, userId, boundMcps],
   );
 
-  // ── Session keep-alive 缓存 ──
-  // 缓存所有访问过的 session slot，key 为 sessionId 或 agent-level 兜底 key
+  // ── Session 槽位 ──
+  // 只保留当前 session：切换后立即驱逐上一槽位，释放旧投影、DOM 与 WebSocket。
+  // 旧实现缓存所有访问过的 session，会把整段历史与面板 DOM 常驻后台，与历史窗口目标冲突。
   const [sessionSlots, setSessionSlots] = useState<Record<string, SessionSlot>>({});
   const currentSessionKey = sessionId ?? (activeAgentId ? `__agent_${activeAgentId}` : null);
+  const previousSessionKeyRef = useRef<string | null>(null);
 
   // 新 session 首次访问时注册到缓存，触发重渲染以包含新的 ChatPanel 实例
   useEffect(() => {
@@ -124,6 +128,14 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
       }));
     }
   }, [currentSessionKey, activeAgentId, sessionId, sessionSlots]);
+
+  // 切换会话：上一槽位移出状态，ChatPanel 卸载后释放投影/DOM/WS；切回时按历史窗口重新挂载。
+  useEffect(() => {
+    const previousKey = previousSessionKeyRef.current;
+    previousSessionKeyRef.current = currentSessionKey;
+    if (previousKey === null || previousKey === currentSessionKey) return;
+    setSessionSlots((prev) => evictPreviousSessionSlot(prev, previousKey));
+  }, [currentSessionKey]);
 
   // 当前 slot 会在清理缓存后立即回填，必须单独递增重连版本以重新获取新实例的 capabilities。
   const [agentRestartVersions, setAgentRestartVersions] = useState<Record<string, number>>({});
@@ -167,17 +179,16 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     allSlots[currentSessionKey] = { agentId: activeAgentId, sessionId: sessionId ?? null };
   }
 
-  // 聊天面板列表：每个 slot 一个 ChatPanel 实例，通过 CSS display 切换
-  // 活跃面板使用 display:contents 使其在布局中透明，让 ChatPanel 直接作为 flex 子元素继承高度
-  // 每个 ChatPanel 用独立的 ChatPageVisibleContext 包裹，传递 isActive，
-  // 使非活跃面板的 SessionsProvider 能感知到自己被隐藏，从而停止轮询
+  // 当前会话面板：切换后 allSlots 只剩当前槽位；页面不可见时仍保留挂载。
+  // 活跃面板使用 display:contents 使其在布局中透明，让 ChatPanel 直接作为 flex 子元素继承高度；
+  // ChatPageVisibleContext 传递 isActive，使隐藏页面的 SessionsProvider 停止轮询。
   const chatPanels = Object.entries(allSlots).map(([key, slot]) => {
     const isActive = key === currentSessionKey && visible;
     const restartVersion = agentRestartVersions[slot.agentId] ?? 0;
     return (
       <ChatPageVisibleContext.Provider key={`${key}:${restartVersion}`} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>
-          {/* boundMcps 只注入当前活跃 slot：keep-alive 的隐藏 slot 若拿到活跃 agent 的列表，
+          {/* boundMcps 只注入当前活跃 slot：隐藏页面上的槽位若拿到活跃 agent 的列表，
               重新激活时会短暂显示另一个 agent 的 MCP 条目 */}
           <ChatPanel
             agentId={slot.agentId}

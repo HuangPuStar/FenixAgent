@@ -24,6 +24,8 @@ export interface SyncContentTapDependencies {
     readonly payload: Uint8Array;
   }) => boolean;
   readonly hydration: Pick<SyncHydrationTracker, "noteBase">;
+  /** 任意已保留 Doc 的基线到达；用于结束“加载更早”的等待状态。 */
+  readonly onBase?: (docId: string) => void;
 }
 
 /** 出站 processed APPLY_ACK 是基线完成的确定性事实；发送失败时由调用方等待重试/超时。 */
@@ -47,7 +49,10 @@ export function createSyncContentTap(deps: SyncContentTapDependencies): (frame: 
     const expectedGeneration = deps.expectedGeneration();
     if (expectedGeneration !== null && frame.generation !== expectedGeneration) return;
     const deliveryId = typeof frame.deliveryId === "string" ? frame.deliveryId : null;
-    if (type === "DOC_BASE") deps.hydration.noteBase(frame.docId, deliveryId);
+    if (type === "DOC_BASE") {
+      deps.hydration.noteBase(frame.docId, deliveryId);
+      deps.onBase?.(frame.docId);
+    }
     if (parseContentDocId(frame.docId) === null) return;
 
     if (deliveryId !== null) {

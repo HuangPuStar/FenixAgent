@@ -1,6 +1,6 @@
 import "./ChatView.css";
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
@@ -41,6 +41,16 @@ interface ChatViewProps {
   onOpenWorkspaceFile?: (envId: string, path: string) => void;
   /** 空状态品牌图地址，默认与源实现一致：宿主 `public/brand/fenix-agent-logo-mark.png`。 */
   emptyLogoSrc?: string;
+  /** 协议层仍有更早历史可加载（未订阅块或投影窗口外条目）。 */
+  hasEarlierHistory?: boolean;
+  /** 上层数据窗口已加载但尚未展示的条目数；用于按钮文案。 */
+  earlierMessageCount?: number;
+  /** 协议层更早历史加载中。 */
+  historyLoading?: boolean;
+  /** 显式加载协议层更早历史。 */
+  onLoadEarlierHistory?: () => void;
+  /** 上层已经把 entries 截成窗口；true 时本组件不再做第二层窗口，避免“揭示后又被裁掉”。 */
+  preWindowed?: boolean;
 }
 
 function renderSubAgentToolGroup(entries: ToolCallEntry[]) {
@@ -93,12 +103,27 @@ export const ChatView = React.memo(
     onQuote,
     onOpenWorkspaceFile,
     emptyLogoSrc,
+    hasEarlierHistory = false,
+    earlierMessageCount = 0,
+    historyLoading = false,
+    onLoadEarlierHistory,
+    preWindowed = false,
   }: ChatViewProps) {
     const { t } = useTranslation(UI_COMPONENTS_NS);
     const finalEmptyTitle = emptyTitle ?? t("chat.components.chatView.startConversation");
     const finalEmptyDescription = emptyDescription ?? t("chat.components.chatView.startConversationDesc");
-    // 大基线只挂载最近 1000 条，避免单次提交 >1s；更早消息由用户显式加载。
-    const { visible: visibleEntries, hiddenCount, loadEarlier } = useChatRenderWindow(entries, sessionId);
+    // 大基线只挂载最近 100 条，避免单次提交 >500ms；更早消息由用户显式加载。
+    const { visible: visibleEntries, hiddenCount, loadEarlier } = useChatRenderWindow(entries, sessionId, !preWindowed);
+    // 数据层已经截到 100 条时，ChatView 自身 hiddenCount 为 0；协议层还剩更早历史时仍要保留入口。
+    const earlierCount = Math.max(hiddenCount, earlierMessageCount);
+    const showEarlier = earlierCount > 0 || hasEarlierHistory;
+    const handleLoadEarlier = useCallback(() => {
+      if (hiddenCount > 0) {
+        loadEarlier();
+        return;
+      }
+      onLoadEarlierHistory?.();
+    }, [hiddenCount, loadEarlier, onLoadEarlierHistory]);
     // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
     const renderBlocks = useMemo(() => buildChatRenderBlocks(visibleEntries), [visibleEntries]);
     const hasMessages = renderBlocks.length > 0;
@@ -136,7 +161,14 @@ export const ChatView = React.memo(
               )
             ) : (
               <>
-                {hiddenCount > 0 && <ChatLoadEarlier hiddenCount={hiddenCount} onLoadEarlier={loadEarlier} />}
+                {showEarlier && (
+                  <ChatLoadEarlier
+                    hiddenCount={earlierCount}
+                    onLoadEarlier={handleLoadEarlier}
+                    loading={historyLoading}
+                    scrollToFirstNew={hiddenCount > 0}
+                  />
+                )}
                 {renderBlocks.map((block, blockIndex) => {
                   if (block.type === "activity_chain") {
                     const previousBlock = renderBlocks[blockIndex - 1];
