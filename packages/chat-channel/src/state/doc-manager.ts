@@ -63,6 +63,15 @@ export type QuestionRequestedHandler = (
   question: { questionId: string; expiresAt: string },
 ) => void;
 
+/**
+ * 已驻留 Doc 的快路径复核结果。
+ * `stale` 携带复核起点的 fence 快照：重载期间 close 可能落在 map 删除之后、内部快照
+ * 捕获之前，只有这份快照能观察到那次关闭。
+ */
+type ExistingDocRevalidation<D> =
+  | { readonly kind: "current"; readonly doc: D }
+  | { readonly kind: "stale"; readonly closeGuard: FenceSnapshot };
+
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
@@ -169,6 +178,15 @@ export class DocManager {
   }
 
   /**
+   * open 的关闭判定：除内部快照外还要看快路径复核起点的快照。close 可能落在旧 Doc
+   * 从 map 删除之后、内部快照捕获之前，此时内部快照拿到的是新建 fence，看不到关闭。
+   */
+  private isClosedForOpen(snapshot: FenceSnapshot, closeGuard?: FenceSnapshot): boolean {
+    if (this.fences.isClosed(snapshot)) return true;
+    return closeGuard !== undefined && this.fences.isClosed(closeGuard);
+  }
+
+  /**
    * 加载完成后的安装收口。与旧实现的区别是把“换代失败”从“关闭”中拆开：
    * - 关闭：丢弃并拒绝；
    * - 换代成功：返回 map 中的新世代 Doc；
@@ -179,6 +197,7 @@ export class DocManager {
     kind: ProjectionDocKind,
     rcsSessionId: string,
     snapshot: FenceSnapshot,
+    closeGuard: FenceSnapshot | undefined,
     docs: Map<string, D>,
     doc: D,
     redis: Redis | Cluster | null,
@@ -193,7 +212,7 @@ export class DocManager {
         await this.discardOpenedDoc(doc, context);
         return { kind: "current", doc: current };
       }
-      if (this.fences.isClosed(snapshot)) {
+      if (this.isClosedForOpen(snapshot, closeGuard)) {
         await this.discardOpenedDoc(doc, context);
         throw new Error(`${kind} doc was closed during open`);
       }
@@ -214,7 +233,7 @@ export class DocManager {
         await this.discardOpenedDoc(doc, context);
         return { kind: "current", doc: settledCurrent };
       }
-      if (this.fences.isClosed(snapshot)) {
+      if (this.isClosedForOpen(snapshot, closeGuard)) {
         await this.discardOpenedDoc(doc, context);
         throw new Error(`${kind} doc was closed during open`);
       }
@@ -249,6 +268,49 @@ export class DocManager {
     return (await getActiveGeneration(redis, rcsSessionId)) === generation;
   }
 
+  /**
+   * Redis 模式下已驻留 Doc 的快路径复核：跨进程换代不会触碰本地 fence，只能以只读
+   * active generation 判定。返回 `current` 表示可直接复用；返回 `stale` 表示已驻留 Doc
+   * 过期，并携带复核起点的 fence 快照，供重载流程在安装前识别同一窗口内的 close。
+   */
+  private async revalidateExistingDoc<D extends ChatDoc | SessionDoc>(
+    kind: ProjectionDocKind,
+    rcsSessionId: string,
+    existing: D,
+    docs: Map<string, D>,
+  ): Promise<ExistingDocRevalidation<D>> {
+    const redis = this.getRedis();
+    // 内存模式没有跨进程换代，保持原有直接返回语义。
+    if (!redis) return { kind: "current", doc: existing };
+
+    // 先捕获 fence 快照再 await：复核窗口内 close 必须让本次 open 放弃，不得复活。
+    const snapshot = this.fences.snapshot(kind, rcsSessionId);
+    const active = await getActiveGeneration(redis, rcsSessionId);
+
+    if (this.fences.isClosed(snapshot)) throw new Error(`${kind} doc was closed during open`);
+    const current = docs.get(rcsSessionId);
+    // 复核窗口内已被 close（map 为空）或 replace（map 已换对象）：以 map 当前值为准。
+    if (current !== existing) {
+      return current ? { kind: "current", doc: current } : { kind: "stale", closeGuard: snapshot };
+    }
+    if (active === existing.generation) return { kind: "current", doc: existing };
+    return { kind: "stale", closeGuard: snapshot };
+  }
+
+  /**
+   * open 返回前的同步复核：close 可能落在安装完成之后、调用方续体之前。
+   * map 为空说明关闭已发生，拒绝返回已销毁 Doc；已被换代则返回 map 中的当前对象。
+   */
+  private requireCurrentDoc<D extends ChatDoc | SessionDoc>(
+    kind: ProjectionDocKind,
+    rcsSessionId: string,
+    docs: Map<string, D>,
+  ): D {
+    const current = docs.get(rcsSessionId);
+    if (current) return current;
+    throw new Error(`${kind} doc was closed during open`);
+  }
+
   private isStaleHydration(error: unknown): error is SnapshotHydrationError {
     return error instanceof SnapshotHydrationError && error.outcome.status === "stale";
   }
@@ -271,21 +333,44 @@ export class DocManager {
    */
   async openChat(rcsSessionId: string): Promise<ChatDoc> {
     const existing = this.chatDocs.get(rcsSessionId);
-    if (existing) return existing;
+    let closeGuard: FenceSnapshot | undefined;
+    if (existing) {
+      const checked = await this.revalidateExistingDoc("chat", rcsSessionId, existing, this.chatDocs);
+      if (checked.kind === "current") return this.requireCurrentDoc("chat", rcsSessionId, this.chatDocs);
+      // 快路径复核起点写入的 fence 快照：覆盖 map 删除后、重载内部快照前的 close。
+      closeGuard = checked.closeGuard;
+    }
 
     const inflight = this.chatOpens.get(rcsSessionId);
-    if (inflight) return inflight;
+    if (inflight) {
+      await inflight;
+      return this.requireCurrentDoc("chat", rcsSessionId, this.chatDocs);
+    }
 
-    const opening = this.openChatInternal(rcsSessionId);
+    // 快路径复核后的 compare-and-delete 与 opening 登记必须在同一同步段完成：
+    // 并发调用者只会看到完整删除或已登记的 opening，不会重复加载 / 销毁。
+    const stale = existing && this.chatDocs.get(rcsSessionId) === existing ? existing : null;
+    if (stale) this.chatDocs.delete(rcsSessionId);
+    const opening = (async () => {
+      if (stale) {
+        await this.discardOpenedDoc(stale, `[DocManager] destroy stale chat doc for ${rcsSessionId}`);
+      }
+      return this.openChatInternal(rcsSessionId, closeGuard);
+    })();
     this.chatOpens.set(rcsSessionId, opening);
     try {
-      return await opening;
+      await opening;
+      return this.requireCurrentDoc("chat", rcsSessionId, this.chatDocs);
     } finally {
       if (this.chatOpens.get(rcsSessionId) === opening) this.chatOpens.delete(rcsSessionId);
     }
   }
 
-  private async openChatInternal(rcsSessionId: string): Promise<ChatDoc> {
+  /**
+   * @param closeGuard 快路径 stale 时捕获的 fence 快照；安装前复核，识别旧 Doc 已从 map
+   * 删除、但本方法尚未捕获内部快照期间发生的 close。
+   */
+  private async openChatInternal(rcsSessionId: string, closeGuard?: FenceSnapshot): Promise<ChatDoc> {
     // 快照在首次 await 前捕获并贯穿所有重试：即便 close 随后移除了 fence 登记，
     // 本次 open 仍通过对象引用观察到关闭。
     const snapshot = this.fences.snapshot("chat", rcsSessionId);
@@ -312,7 +397,15 @@ export class DocManager {
         continue;
       }
 
-      const resolution = await this.finalizeOpenedDoc("chat", rcsSessionId, snapshot, this.chatDocs, doc, redis);
+      const resolution = await this.finalizeOpenedDoc(
+        "chat",
+        rcsSessionId,
+        snapshot,
+        closeGuard,
+        this.chatDocs,
+        doc,
+        redis,
+      );
       if (resolution.kind === "current") return resolution.doc;
       if (resolution.kind === "installed") return doc;
       if (attempt === maxRetries) {
@@ -352,21 +445,40 @@ export class DocManager {
   async openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
     await this.closingSessionDocs.get(rcsSessionId);
     const existing = this.sessionDocs.get(rcsSessionId);
-    if (existing) return existing;
+    let closeGuard: FenceSnapshot | undefined;
+    if (existing) {
+      const checked = await this.revalidateExistingDoc("session", rcsSessionId, existing, this.sessionDocs);
+      if (checked.kind === "current") return this.requireCurrentDoc("session", rcsSessionId, this.sessionDocs);
+      // 与 openChat 相同：把复核起点快照带入重载，覆盖 delete 后的 close 窗口。
+      closeGuard = checked.closeGuard;
+    }
 
     const inflight = this.sessionOpens.get(rcsSessionId);
-    if (inflight) return inflight;
+    if (inflight) {
+      await inflight;
+      return this.requireCurrentDoc("session", rcsSessionId, this.sessionDocs);
+    }
 
-    const opening = this.openSessionInternal(rcsSessionId);
+    // 与 openChat 相同：compare-and-delete 与 opening 登记在同一同步段，并发调用共享一次重载。
+    const stale = existing && this.sessionDocs.get(rcsSessionId) === existing ? existing : null;
+    if (stale) this.sessionDocs.delete(rcsSessionId);
+    const opening = (async () => {
+      if (stale) {
+        await this.discardOpenedDoc(stale, `[DocManager] destroy stale session doc for ${rcsSessionId}`);
+      }
+      return this.openSessionInternal(rcsSessionId, closeGuard);
+    })();
     this.sessionOpens.set(rcsSessionId, opening);
     try {
-      return await opening;
+      await opening;
+      return this.requireCurrentDoc("session", rcsSessionId, this.sessionDocs);
     } finally {
       if (this.sessionOpens.get(rcsSessionId) === opening) this.sessionOpens.delete(rcsSessionId);
     }
   }
 
-  private async openSessionInternal(rcsSessionId: string): Promise<SessionDoc> {
+  /** 与 openChatInternal 相同：closeGuard 覆盖快路径删除旧 Doc 后的关闭窗口。 */
+  private async openSessionInternal(rcsSessionId: string, closeGuard?: FenceSnapshot): Promise<SessionDoc> {
     const snapshot = this.fences.snapshot("session", rcsSessionId);
     const redis = this.getRedis();
     const snapshotConfig = this.resolveSnapshotPersistConfig();
@@ -409,7 +521,15 @@ export class DocManager {
         throw error;
       }
 
-      const resolution = await this.finalizeOpenedDoc("session", rcsSessionId, snapshot, this.sessionDocs, doc, redis);
+      const resolution = await this.finalizeOpenedDoc(
+        "session",
+        rcsSessionId,
+        snapshot,
+        closeGuard,
+        this.sessionDocs,
+        doc,
+        redis,
+      );
       if (resolution.kind === "current") return resolution.doc;
       if (resolution.kind === "installed") return doc;
       if (attempt === maxRetries) {

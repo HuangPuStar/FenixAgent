@@ -77,6 +77,97 @@ class GatedEvalRedis extends ProdRedis {
   }
 }
 
+/** 让快路径的 active generation 复核停在 await 窗口，验证并发 open 共享同一 opening。 */
+class GatedFastPathRedis extends ProdRedis {
+  gatedGets = 0;
+  private armed = false;
+  private gate: Promise<void> | null = null;
+  private releaseGate: (() => void) | null = null;
+
+  arm(): void {
+    this.armed = true;
+    this.gatedGets = 0;
+    this.gate = new Promise<void>((resolve) => {
+      this.releaseGate = resolve;
+    });
+  }
+
+  release(): void {
+    this.armed = false;
+    this.releaseGate?.();
+  }
+
+  override async get(key: string): Promise<string | null> {
+    const value = await super.get(key);
+    if (this.armed && key.startsWith("yjs:active-generation:")) {
+      this.gatedGets += 1;
+      await this.gate;
+    }
+    return value;
+  }
+}
+
+/** 在 Doc 安装完成后、open 外层续体前触发 close，复现「返回已销毁 Doc」的窗口。 */
+class ReturnWindowRedis extends ProdRedis {
+  private bufferDone = false;
+  private generationGetsAfterBuffer = 0;
+
+  constructor(private readonly onWindow: () => void) {
+    super();
+  }
+
+  override async getBuffer(key: string): Promise<Buffer | null> {
+    const value = await super.getBuffer(key);
+    this.bufferDone = true;
+    return value;
+  }
+
+  override get(key: string): Promise<string | null> {
+    const base = super.get(key);
+    if (!this.bufferDone || !key.startsWith("yjs:active-generation:")) return base;
+    this.generationGetsAfterBuffer += 1;
+    if (this.generationGetsAfterBuffer !== 2) return base;
+    return new Promise<string | null>((resolve) => {
+      base.then((value) => {
+        resolve(value);
+        // get → getActiveGeneration → isGenerationCurrent + finalize 返回共 4 层微任务：
+        // close 恰好落在安装完成之后、openChat/openSession 外层续体之前。
+        queueMicrotask(() =>
+          queueMicrotask(() =>
+            queueMicrotask(() =>
+              queueMicrotask(() => {
+                this.onWindow();
+              }),
+            ),
+          ),
+        );
+      });
+    });
+  }
+}
+
+/**
+ * 在指定旧世代 Doc 的 Y.Doc.destroy 处暂停。此时旧 Doc 已从 map 删除、provider 已释放，
+ * 但 openInternal 尚未捕获内部 fence 快照，正好暴露快路径删除后的关闭窗口。
+ */
+function gateYDocDestroy(guid: string): { hit: Promise<void>; release: () => void; restore: () => void } {
+  const original = Y.Doc.prototype.destroy;
+  const hit = deferred();
+  const gate = deferred();
+  Y.Doc.prototype.destroy = function (this: Y.Doc) {
+    if (this.guid !== guid) return original.call(this);
+    hit.resolve();
+    return gate.promise.then(() => original.call(this));
+  };
+  return {
+    hit: hit.promise,
+    release: gate.resolve,
+    restore: () => {
+      Y.Doc.prototype.destroy = original;
+    },
+  };
+}
+
 function snapshotOf(init: (doc: Y.Doc) => void): Uint8Array {
   const doc = new Y.Doc();
   doc.clientID = 1;
@@ -457,6 +548,260 @@ describe("DocManager 投影生命周期栅栏", () => {
     } finally {
       Y.Doc.prototype.destroy = originalDestroy;
       if (discardedDoc) originalDestroy.call(discardedDoc);
+      await manager.closeAll();
+    }
+  });
+
+  // Redis 快路径必须复核 active generation：外部换代后再次 openChat 收敛到新世代并释放旧连接。
+  test("快路径在外部换代后重新加载 Chat Doc 并释放旧连接", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_chat";
+    const broadcasts: string[] = [];
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, GENERATION, chatSnapshotWithText("old-history"));
+    const manager = createManager(() => redis, { onYjsUpdate: (docName) => broadcasts.push(docName) });
+
+    const first = await manager.openChat(rcsSessionId);
+    expect(first.generation).toBe(GENERATION);
+    expect(redis.persistences.length).toBe(1);
+    expect(redis.subscribers.length).toBe(1);
+
+    // 另一进程推进 active generation 并落盘新世代历史；本进程 map 仍驻留旧 Doc。
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, REPLACED_EXTERNALLY, chatSnapshotWithText("new-history"));
+
+    const second = await manager.openChat(rcsSessionId);
+
+    expect(second).not.toBe(first);
+    expect(second.generation).toBe(REPLACED_EXTERNALLY);
+    expect(historyValues(second.ydoc)).toEqual(["new-history"]);
+    expect(manager.getChat(rcsSessionId)).toBe(second);
+    // 旧世代的持久化与订阅连接已释放，新世代仍连接。
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    expect(redis.persistences[1]?.disconnected).toBe(false);
+    expect(redis.subscribers[1]?.disconnected).toBe(false);
+    // 广播只绑定新世代：旧 Doc 不会产生任何更新。
+    second.ydoc.getMap("root").set("fastpath-probe", "ok");
+    expect(broadcasts).toEqual([`chat:${rcsSessionId}`]);
+    await manager.closeAll();
+  });
+
+  // Session 快路径同语义：外部换代后 openSession 收敛到新世代并释放旧连接。
+  test("快路径在外部换代后重新加载 Session Doc 并释放旧连接", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_session";
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`session:${rcsSessionId}`, GENERATION, snapshotOf(initSessionDocStructure));
+    const manager = createManager(() => redis);
+
+    const first = await manager.openSession("user-1", "agent-1", rcsSessionId);
+    expect(first.generation).toBe(GENERATION);
+
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`session:${rcsSessionId}`, REPLACED_EXTERNALLY, snapshotOf(initSessionDocStructure));
+
+    const second = await manager.openSession("user-1", "agent-1", rcsSessionId);
+
+    expect(second).not.toBe(first);
+    expect(second.generation).toBe(REPLACED_EXTERNALLY);
+    expect(manager.getSession(rcsSessionId)).toBe(second);
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    expect(redis.persistences[1]?.disconnected).toBe(false);
+    expect(redis.subscribers[1]?.disconnected).toBe(false);
+    await manager.closeAll();
+  });
+
+  // 两个并发 openChat 在旧世代复核窗口内必须共享一次重载，不重复创建 provider。
+  test("并发 openChat 在快路径复核期间只重载一次", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_concurrent_chat";
+    const broadcasts: string[] = [];
+    const redis = new GatedFastPathRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, GENERATION, chatSnapshotWithText("old-history"));
+    const manager = createManager(() => redis, { onYjsUpdate: (docName) => broadcasts.push(docName) });
+
+    const first = await manager.openChat(rcsSessionId);
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, REPLACED_EXTERNALLY, chatSnapshotWithText("new-history"));
+    redis.arm();
+
+    const openingA = manager.openChat(rcsSessionId);
+    const openingB = manager.openChat(rcsSessionId);
+    await waitFor(() => redis.gatedGets === 2, "both fast-path generation checks");
+    redis.release();
+
+    const [a, b] = await Promise.all([openingA, openingB]);
+
+    expect(a).toBe(b);
+    expect(a).not.toBe(first);
+    expect(a.generation).toBe(REPLACED_EXTERNALLY);
+    expect(historyValues(a.ydoc)).toEqual(["new-history"]);
+    expect(manager.getChat(rcsSessionId)).toBe(a);
+    // 初始 + 一次重载各一对 provider；若并发重复加载这里会是 3 对。
+    expect(redis.persistences.length).toBe(2);
+    expect(redis.subscribers.length).toBe(2);
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    expect(redis.persistences[1]?.disconnected).toBe(false);
+    expect(redis.subscribers[1]?.disconnected).toBe(false);
+    expect(broadcasts).toEqual([]);
+    await manager.closeAll();
+  });
+
+  // Session 并发快路径同样共享一次重载，不泄漏重复 provider。
+  test("并发 openSession 在快路径复核期间只重载一次", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_concurrent_session";
+    const redis = new GatedFastPathRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`session:${rcsSessionId}`, GENERATION, snapshotOf(initSessionDocStructure));
+    const manager = createManager(() => redis);
+
+    const first = await manager.openSession("user-1", "agent-1", rcsSessionId);
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`session:${rcsSessionId}`, REPLACED_EXTERNALLY, snapshotOf(initSessionDocStructure));
+    redis.arm();
+
+    const openingA = manager.openSession("user-1", "agent-1", rcsSessionId);
+    const openingB = manager.openSession("user-1", "agent-1", rcsSessionId);
+    await waitFor(() => redis.gatedGets === 2, "both fast-path generation checks");
+    redis.release();
+
+    const [a, b] = await Promise.all([openingA, openingB]);
+
+    expect(a).toBe(b);
+    expect(a).not.toBe(first);
+    expect(a.generation).toBe(REPLACED_EXTERNALLY);
+    expect(manager.getSession(rcsSessionId)).toBe(a);
+    expect(redis.persistences.length).toBe(2);
+    expect(redis.subscribers.length).toBe(2);
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    expect(redis.persistences[1]?.disconnected).toBe(false);
+    expect(redis.subscribers[1]?.disconnected).toBe(false);
+    await manager.closeAll();
+  });
+
+  // close 落在安装完成之后、openChat 返回之前：必须拒绝，不得把已销毁 Doc 交给调用方。
+  test("close 落在安装后返回前时 openChat 拒绝并释放连接", async () => {
+    const rcsSessionId = "rcs_fence_return_window_chat";
+    let manager: DocManager | null = null;
+    let installedAtClose = false;
+    const redis = new ReturnWindowRedis(() => {
+      installedAtClose = manager?.getChat(rcsSessionId) !== undefined;
+      void manager?.closeChat(rcsSessionId);
+    });
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    manager = createManager(() => redis);
+
+    await expect(manager.openChat(rcsSessionId)).rejects.toThrow("chat doc was closed during open");
+    await waitFor(() => redis.persistences[0]?.disconnected === true, "close destroy chat provider");
+
+    expect(installedAtClose).toBe(true);
+    expect(manager.getChat(rcsSessionId)).toBeUndefined();
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    await manager.closeAll();
+  });
+
+  // Session 的同一返回窗口：closeSession 落在安装后，openSession 必须拒绝。
+  test("close 落在安装后返回前时 openSession 拒绝并释放连接", async () => {
+    const rcsSessionId = "rcs_fence_return_window_session";
+    let manager: DocManager | null = null;
+    let installedAtClose = false;
+    const redis = new ReturnWindowRedis(() => {
+      installedAtClose = manager?.getSession(rcsSessionId) !== undefined;
+      void manager?.closeSession(rcsSessionId);
+    });
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    manager = createManager(() => redis);
+
+    await expect(manager.openSession("user-1", "agent-1", rcsSessionId)).rejects.toThrow(
+      "session doc was closed during open",
+    );
+    await waitFor(() => redis.persistences[0]?.disconnected === true, "close destroy session provider");
+
+    expect(installedAtClose).toBe(true);
+    expect(manager.getSession(rcsSessionId)).toBeUndefined();
+    expect(redis.persistences[0]?.disconnected).toBe(true);
+    expect(redis.subscribers[0]?.disconnected).toBe(true);
+    await manager.closeAll();
+  });
+
+  // 快路径 stale 删除旧 Chat Doc 后、重载安装前 close：open 必须拒绝且不得复活。
+  test("快路径 stale 重载期间 closeChat 不复活 Chat Doc", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_close_window_chat";
+    const broadcasts: string[] = [];
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, GENERATION, chatSnapshotWithText("old-history"));
+    const manager = createManager(() => redis, { onYjsUpdate: (docName) => broadcasts.push(docName) });
+
+    const first = await manager.openChat(rcsSessionId);
+    expect(first.generation).toBe(GENERATION);
+
+    // 另一进程推进世代：下一次 open 走快路径 stale → 删除 → 重载。
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, REPLACED_EXTERNALLY, chatSnapshotWithText("new-history"));
+
+    const destroyGate = gateYDocDestroy(`chat:${rcsSessionId}:${GENERATION}`);
+    try {
+      const opening = manager.openChat(rcsSessionId);
+      // 暂停点：旧 Doc 已从 map 删除，openChatInternal 尚未捕获内部 fence 快照。
+      await destroyGate.hit;
+      expect(manager.getChat(rcsSessionId)).toBeUndefined();
+
+      await manager.closeChat(rcsSessionId);
+      destroyGate.release();
+
+      await expect(opening).rejects.toThrow("chat doc was closed during open");
+
+      expect(manager.getChat(rcsSessionId)).toBeUndefined();
+      // 旧 Doc 与本次重载的 Doc 均释放 provider 连接，且重载结果从未注册广播。
+      expect(redis.persistences.map((connection) => connection.disconnected)).toEqual([true, true]);
+      expect(redis.subscribers.map((connection) => connection.disconnected)).toEqual([true, true]);
+      expect(broadcasts).toEqual([]);
+    } finally {
+      destroyGate.release();
+      destroyGate.restore();
+      await manager.closeAll();
+    }
+  });
+
+  // Session 的同一窗口：快路径 stale 删除旧 Doc 后、重载安装前 close，open 必须拒绝。
+  test("快路径 stale 重载期间 closeSession 不复活 Session Doc", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_close_window_session";
+    const broadcasts: string[] = [];
+    const redis = new ProdRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`session:${rcsSessionId}`, GENERATION, snapshotOf(initSessionDocStructure));
+    const manager = createManager(() => redis, { onYjsUpdate: (docName) => broadcasts.push(docName) });
+
+    const first = await manager.openSession("user-1", "agent-1", rcsSessionId);
+    expect(first.generation).toBe(GENERATION);
+
+    redis.seedActiveGeneration(rcsSessionId, REPLACED_EXTERNALLY);
+    redis.seedSnapshot(`session:${rcsSessionId}`, REPLACED_EXTERNALLY, snapshotOf(initSessionDocStructure));
+
+    const destroyGate = gateYDocDestroy(`session:${rcsSessionId}:${GENERATION}`);
+    try {
+      const opening = manager.openSession("user-1", "agent-1", rcsSessionId);
+      await destroyGate.hit;
+      expect(manager.getSession(rcsSessionId)).toBeUndefined();
+
+      await manager.closeSession(rcsSessionId);
+      destroyGate.release();
+
+      await expect(opening).rejects.toThrow("session doc was closed during open");
+
+      expect(manager.getSession(rcsSessionId)).toBeUndefined();
+      expect(redis.persistences.map((connection) => connection.disconnected)).toEqual([true, true]);
+      expect(redis.subscribers.map((connection) => connection.disconnected)).toEqual([true, true]);
+      expect(broadcasts).toEqual([]);
+    } finally {
+      destroyGate.release();
+      destroyGate.restore();
       await manager.closeAll();
     }
   });
