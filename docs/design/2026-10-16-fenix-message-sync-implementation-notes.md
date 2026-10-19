@@ -351,7 +351,7 @@
 | T07 / T21 持久化分支 | 未覆盖 | 需真实 SQL 幂等语义与进程重启；进程内等价物已覆盖 fencing 与指针单调 |
 | 多标签共享 | 进程内已实施 | 同 scope 共享 `SyncStoreRegistry` 的 store 与一次历史引导，follower 从共享已提交边界追赶；runtime/provider/订阅仍按连接隔离。Redis 快照水合时序已覆盖（延迟加载、无快照、加载失败重试），但投影 store 的跨进程与 Redis 共享仍未覆盖，需持久化 adapter |
 | 历史重建 | 旧 Chat Doc 已实施 | 握手时等待 Redis 快照水合后再读旧 Chat Doc 的已提交时间线；无快照才是可缓存的「无历史」，读取失败/代次失效明确失败且下次重试。Peri 持久历史契约不存在（`importHistory` 零命中，ACP `load_session` 仅增量），已留可注入 `SyncHistorySource` 接缝；导入后的新稳定条目不追补 |
-| Redis 快照恢复 | 已覆盖 | `loadChatDoc` / `loadSessionDoc` 先 `Y.applyUpdate` 再幂等补结构；provider 在 `GETBUFFER` 前与 apply 后各校验一次 active generation，窗口内换代记为 `stale` 而非 `loaded`。DocManager 为每个 rcsSessionId 维护单调 open/close fence：水合期间发生 `replaceProjection` / `closeChat` / `closeSession` 时，在途 open 销毁自己加载的旧 Doc，不写 map、不注册广播；换代则返回 map 中的新世代 Doc，纯关闭则明确报错。回归覆盖 Chat/Session 换代、关闭后复活与 apply 前换代；跨进程并发换代仍只以进程内 fence 覆盖 |
+| Redis 快照恢复 | 已覆盖 | `loadChatDoc` / `loadSessionDoc` 先 `Y.applyUpdate` 再幂等补结构；provider 在 `GETBUFFER` 前与 apply 后各校验一次 active generation，窗口内换代记为 `stale` 而非 `loaded`。DocManager 为每个 rcsSessionId 区分 `closeEpoch` 与 `replaceEpoch` 并登记在途换代 Promise：close 优先，在途 open 与 replace 都放弃；replace 成功时在途 open 返回 map 中的新世代 Doc；replace 失败（active generation 未变）时 open 复核世代后安装自己的加载结果。open 在安装前等待在途换代，未落定的换代绝不写 map / 注册广播；closeAll 一并清理 fence 登记。回归覆盖 Chat/Session 换代、publish await 窗口内的 open/close、CAS 失败、closeAll 与 apply 前换代；跨进程并发换代仍只以进程内 fence 覆盖 |
 | final / 非文本展示 | 未覆盖 | final descriptor、history/tool 对象尚未接入新投影 |
 | UI 渲染 | 文本已退役旧通道 | 用户/助手文本以新投影为准；未配对旧纯文本不再进入合并视图，工具/计划/思考/错误仍依赖旧 Doc。移除条件 = final/工具对象接入新投影 |
 | 旧全量通道退役 | 服务端与展示层已实施 | `chatSync=1` 连接跳过旧快照、旧 Doc 广播与 state-vector；动作与非文本仍走旧 Yjs WS。删除旧通道的前置条件见 §3.8 |
