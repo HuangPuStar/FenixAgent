@@ -61,6 +61,12 @@ export interface SyncConnection {
   acceptUserMessage(turnId: string, text: string): void;
   /** 连接窗口快照（观测/测试）；不改变账目。 */
   diagnostics?(): SyncTransportDiagnostics;
+  /** live ingress 失败计数与显式停止状态；连接层按需观测，不影响投影。 */
+  ingressDiagnostics?(): {
+    readonly total: number;
+    readonly lastCode: string | null;
+    readonly stopped: boolean;
+  };
   /** 连接关闭时释放 runtime、定时器与内存投影。 */
   dispose(): void;
 }
@@ -89,6 +95,14 @@ export interface ClientConnection {
   agentStatusReceived: boolean;
   /** 新同步协议连接级运行时；开关关闭或创建失败时缺省。 */
   syncConnection?: SyncConnection;
+  /**
+   * 客户端声明该连接只消费新同步协议（`chatSync=1`）。
+   *
+   * 此类连接不再接收旧全量快照、旧 Doc 广播与 legacy state-vector 差量，但保留文本 action
+   * （会话切换/取消/权限响应等）与同步 runtime ingress；旧客户端（无标记或 `chatSync=0`）
+   * 的旧链路行为逐字节不变。
+   */
+  syncOnly?: boolean;
 }
 
 /**

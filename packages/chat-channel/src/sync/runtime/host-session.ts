@@ -21,7 +21,8 @@ import type { SyncFrameTransport } from "./egress";
 import { ensureBaselineGeneration } from "./host-baseline";
 import { normalizeAcpSessionUpdate, type SyncIngressEvent } from "./ingress";
 import { createIngressFailureReporter } from "./ingress-failure-reporter";
-import { createSyncScopeRuntime, type SyncTransportDiagnostics } from "./scope-runtime";
+import { createSyncScopeRuntime, type SyncScopeRuntime, type SyncTransportDiagnostics } from "./scope-runtime";
+import { isScopeBusy, type SyncStoreRegistry, uniqueOwner } from "./store-registry";
 
 /** 宿主连接可注入的运行时旋钮（宽限期由 env 装配给出，本层不提供默认值）。 */
 export interface SyncHostRuntimeConfig {
@@ -45,6 +46,24 @@ export interface SyncHostNormalizedEvent {
   readonly update: Record<string, unknown>;
   readonly content?: Record<string, unknown> | null;
   readonly turnId?: string | null;
+}
+
+/** 一条可导入的稳定历史记录：`value` 原样进入保真序列化，`meta` 决定身份与拼接位置。 */
+export interface SyncHistoryRecord {
+  readonly value: unknown;
+  readonly meta: HistoryRecordMeta;
+}
+
+/**
+ * 稳定历史源接缝。
+ *
+ * 仓库内没有 Peri 持久化历史的读取契约（ACP `load_session` 只回放增量流）；生产装配把旧 Chat Doc
+ * 的已提交时间线映射成记录后经此接口注入。`acpSessionId` 只是代次元数据，空字符串表示来源没有
+ * ACP 会话标识，不阻止导入。
+ */
+export interface SyncHistorySource {
+  readonly acpSessionId: string;
+  read(): Promise<readonly SyncHistoryRecord[]>;
 }
 
 export interface SyncHostSession {
@@ -73,8 +92,8 @@ export interface SyncHostSession {
   tick(): Promise<void>;
   /** 连接窗口快照（观测/测试）；不改变账目。 */
   diagnostics(): SyncTransportDiagnostics;
-  /** live ingress 失败计数（有界日志的观测出口）；不改变投影。 */
-  ingressDiagnostics(): { readonly total: number; readonly lastCode: string | null };
+  /** live ingress 失败计数与停止状态（有界日志的观测出口）；不改变投影。 */
+  ingressDiagnostics(): { readonly total: number; readonly lastCode: string | null; readonly stopped: boolean };
   /** 释放 runtime、定时器与内存投影；幂等。 */
   dispose(): Promise<void>;
   readonly closed: boolean;
@@ -109,6 +128,15 @@ export async function createSyncHostSession(input: {
   readonly overrides?: Omit<SyncRuntimeConfigOverrides, "lifecycle" | "spoolRootDir">;
   /** 存储替身（测试或未来 DB adapter）；缺省为独立内存 store。 */
   readonly store?: ProjectionStore;
+  /**
+   * 同 scope 共享投影存储：多标签页必须看到同一份已提交事实。
+   *
+   * 只共享 store 与一次历史引导，**不共享 runtime**；每个连接仍各自持有 provider 会话与传输绑定，
+   * 抢不到单写者租约的连接按 follower 降级。
+   */
+  readonly storeRegistry?: SyncStoreRegistry;
+  /** 稳定历史源；缺省或读取为空时回退空基线。读取失败不缓存，下一次连接可重试。 */
+  readonly historySource?: SyncHistorySource;
   readonly owner?: string;
   readonly onError?: (message: string, error: unknown) => void;
 }): Promise<SyncHostSession> {
@@ -138,7 +166,14 @@ export async function createSyncHostSession(input: {
     },
     spoolRootDir: input.runtimeConfig.spoolRootDir,
   });
+  const sharedStore = input.storeRegistry?.acquire(
+    scope,
+    () =>
+      input.store ??
+      new MemoryProjectionStore({ clock, digest, capacity: config.capacity, lifecycle: config.lifecycle }),
+  );
   const store =
+    sharedStore?.store ??
     input.store ??
     new MemoryProjectionStore({
       clock,
@@ -146,25 +181,109 @@ export async function createSyncHostSession(input: {
       capacity: config.capacity,
       lifecycle: config.lifecycle,
     });
-  const runtime = await createSyncScopeRuntime({
-    scope,
-    config,
-    clock,
-    digest,
-    random,
-    store,
-  });
+  let runtime: SyncScopeRuntime;
+  try {
+    runtime = await createSyncScopeRuntime({
+      scope,
+      config,
+      clock,
+      digest,
+      random,
+      store,
+    });
+  } catch (error) {
+    sharedStore?.release();
+    throw error;
+  }
   runtime.attachTransport(input.transport);
 
   const reportError = input.onError ?? noop;
-  const owner = input.owner ?? `${scope.organizationId}:${scope.rcsSessionId}`;
   const key = scopeKey(scope);
+  // 共享 store 的写者租约按 owner 区分：同一用户同一实例的两个标签页会传入相同基础 owner，
+  // 不加后缀时存储会把第二个连接当成「同 owner 续租」，两个写者于是同时持有写权。
+  const owner = uniqueOwner(input.owner ?? `${scope.organizationId}:${scope.rcsSessionId}`, random);
   let cachedGeneration: string | null = null;
+  let localBootstrap: Promise<string> | null = null;
 
-  /** 为 stateless 首次连接读取/建立空基线代次（实现集中在 host-baseline.ts）。 */
+  const commitHistory = async (
+    acpSessionId: string,
+    records: readonly SyncHistoryRecord[],
+  ): Promise<{ generation: string; pointerRevision: number; contentDocIds: readonly string[] }> => {
+    await runtime.history.begin({ scope, acpSessionId, owner, leaseTtlMs: HISTORY_LEASE_TTL_MS });
+    for (const record of records) {
+      await runtime.history.accept(record.value, record.meta);
+    }
+    await runtime.history.receivingComplete();
+    await runtime.history.buildAndCommit();
+    const result = await runtime.history.finalize();
+    cachedGeneration = result.generation;
+    const generation = await store.readGeneration(key, result.generation);
+    return {
+      generation: result.generation,
+      pointerRevision: result.pointerRevision,
+      contentDocIds: generation?.entryRefs.contentDocIds ?? [],
+    };
+  };
+
+  /**
+   * 读取或导入当前代次（每个共享 store 只执行一次）：
+   * 1. 已提交且确实包含导入记录 → 直接复用（重启/掉线不重复扫描旧投影）；
+   * 2. 有稳定源 → 读取并导入；空列表回退空基线（不得把「无历史」伪装成导入成功）；
+   * 3. 无稳定源或读取失败 → 空基线。
+   *
+   * 失败刻意从引导任务中抛出：注册表不缓存失败，下一次连接会重试；本次连接由调用方回退基线。
+   */
+  const bootstrapGeneration = async (): Promise<string> => {
+    const pointer = await store.readScopePointer(key);
+    if (pointer?.currentGeneration != null) {
+      const current = await store.readGeneration(key, pointer.currentGeneration);
+      // `importEndOrdinal > 0` 是可恢复的已导入代次；空基线（0）允许下一次连接在源恢复后重试导入。
+      if (current?.state === "committed" && (current.importEndOrdinal ?? 0) > 0) return current.generation;
+    }
+    const source = input.historySource;
+    if (source === undefined) return await ensureBaseline();
+    const records = await source.read();
+    if (records.length === 0) return await ensureBaseline();
+    const result = await commitHistory(source.acpSessionId, records);
+    return result.generation;
+  };
+
+  /**
+   * 空基线兜底：并发连接可能同时因引导失败走到这里，只有一个能取得写权，其余按 `SCOPE_BUSY`
+   * 短暂退避后重读指针复用赢家提交的代次（否则一次恢复失败会让部分标签页握手失败）。
+   */
+  const ensureBaseline = async (): Promise<string> => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await ensureBaselineGeneration({ store, scope, owner, clock, digest, random });
+      } catch (error) {
+        if (attempt >= 40 || !isScopeBusy(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+  };
+
+  /** 同一 store 的引导只跑一次；失败不落缓存（`localBootstrap` 归零，注册表也不缓存拒绝）。 */
+  const bootstrapOnce = (): Promise<string> => {
+    if (sharedStore !== undefined) return sharedStore.bootstrap(bootstrapGeneration);
+    if (localBootstrap === null) {
+      localBootstrap = bootstrapGeneration().catch((error: unknown) => {
+        localBootstrap = null;
+        throw error;
+      });
+    }
+    return localBootstrap;
+  };
+
+  /** 为 stateless 首次连接读取/建立当前代次（历史导入优先，失败回退空基线）。 */
   const ensureGeneration = async (): Promise<string> => {
     if (cachedGeneration !== null) return cachedGeneration;
-    cachedGeneration = await ensureBaselineGeneration({ store, scope, owner, clock, digest, random });
+    try {
+      cachedGeneration = await bootstrapOnce();
+    } catch (error) {
+      reportError("sync host history bootstrap failed; falling back to empty baseline", error);
+      cachedGeneration = await ensureBaseline();
+    }
     return cachedGeneration;
   };
 
@@ -196,9 +315,12 @@ export async function createSyncHostSession(input: {
   };
 
   let closed = false;
+  /** 入口停止只作用于新协议投影旁路；旧 relay 投影路径不受影响，连接本身也不关闭。 */
+  let stopped = false;
   const tickInterval = input.runtimeConfig.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
   if (!Number.isSafeInteger(tickInterval) || tickInterval <= 0) {
     await runtime.dispose();
+    sharedStore?.release();
     throw new Error("sync host config rejected: tickIntervalMs must be a positive integer");
   }
 
@@ -215,16 +337,37 @@ export async function createSyncHostSession(input: {
   }, tickInterval) as ReturnType<typeof setInterval> & { unref?: () => void };
   timer.unref?.();
 
-  /** 把映射结果按顺序交给 runtime；失败只记录，不阻塞旧 relay 投影。 */
+  /**
+   * 入口失败即停止新投影：失败事件不推进 ingressSeq，继续接收会在同一条流里留下永久缺口。
+   * 只报告触发停止的第一次失败（reporter 自身仍按时间窗有界输出），后续事件直接丢弃、不再排队。
+   */
   const ingressFailures = createIngressFailureReporter({ report: reportError, now: () => clock.now() });
+  const stopIngress = (error: unknown): void => {
+    if (stopped) return;
+    stopped = true;
+    ingressFailures.report(error);
+  };
+  /**
+   * 同 scope 已有其他连接的写者时，本连接是 follower：实时入口丢弃，靠 tick 从共享 store 追赶。
+   * 这是多标签页的正常竞争，不得把投影入口升级成 `stopped`（那会同时停掉订阅与追赶）。
+   * 短暂退避避免每条增量都打一次存储；时钟前进后会再次尝试，leader 退出后可自然接管。
+   */
+  const FOLLOWER_RETRY_MS = 1_000;
+  let writerRetryAtMs = 0;
   const acceptEvents = (events: readonly SyncIngressEvent[]): void => {
-    if (events.length === 0) return;
+    if (stopped || events.length === 0) return;
     void (async () => {
       for (const event of events) {
+        if (stopped) return;
+        if (writerRetryAtMs > clock.now()) continue;
         try {
           await runtime.acceptIngress(event);
         } catch (error) {
-          ingressFailures.report(error);
+          if (isScopeBusy(error)) {
+            writerRetryAtMs = clock.now() + FOLLOWER_RETRY_MS;
+            continue;
+          }
+          stopIngress(error);
           return;
         }
       }
@@ -314,25 +457,7 @@ export async function createSyncHostSession(input: {
       if (historyInput.records.length === 0) {
         throw new Error("sync host history import requires a non-empty stable object list");
       }
-      await runtime.history.begin({
-        scope,
-        acpSessionId: historyInput.acpSessionId,
-        owner,
-        leaseTtlMs: HISTORY_LEASE_TTL_MS,
-      });
-      for (const record of historyInput.records) {
-        await runtime.history.accept(record.value, record.meta);
-      }
-      await runtime.history.receivingComplete();
-      await runtime.history.buildAndCommit();
-      const result = await runtime.history.finalize();
-      cachedGeneration = result.generation;
-      const generation = await store.readGeneration(key, result.generation);
-      return {
-        generation: result.generation,
-        pointerRevision: result.pointerRevision,
-        contentDocIds: generation?.entryRefs.contentDocIds ?? [],
-      };
+      return await commitHistory(historyInput.acpSessionId, historyInput.records);
     },
     async tick(): Promise<void> {
       await tickLoop();
@@ -340,8 +465,8 @@ export async function createSyncHostSession(input: {
     diagnostics(): SyncTransportDiagnostics {
       return runtime.transportDiagnostics();
     },
-    ingressDiagnostics(): { total: number; lastCode: string | null } {
-      return ingressFailures.diagnostics();
+    ingressDiagnostics(): { total: number; lastCode: string | null; stopped: boolean } {
+      return { ...ingressFailures.diagnostics(), stopped };
     },
     async dispose(): Promise<void> {
       if (closed) return;
@@ -351,6 +476,8 @@ export async function createSyncHostSession(input: {
         await runtime.dispose();
       } catch (error) {
         reportError("sync host dispose failed", error);
+      } finally {
+        sharedStore?.release();
       }
     },
   };

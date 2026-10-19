@@ -50,9 +50,44 @@ class StubWriter implements LiveWriter {
   }
 }
 
-function makeIngress(maxRecords = 8): { ingress: LiveIngress; writer: StubWriter } {
+/** 可阻塞写者替身：`block()` 后 accept 挂起，用于验证 pending 预算而非累计历史上限。 */
+class GatedWriter implements LiveWriter {
+  readonly inputs: LiveInput[] = [];
+  private gate: Promise<void> | null = null;
+  private releaseGate: (() => void) | null = null;
+
+  readonly acquire: LiveWriter["acquire"] = () => unusedWriterMethod("acquire");
+  readonly commit: LiveWriter["commit"] = () => unusedWriterMethod("commit");
+  readonly seal: LiveWriter["seal"] = () => unusedWriterMethod("seal");
+  readonly rotateRuntime: LiveWriter["rotateRuntime"] = () => unusedWriterMethod("rotateRuntime");
+  readonly recover: LiveWriter["recover"] = () => unusedWriterMethod("recover");
+  readonly close: LiveWriter["close"] = () => unusedWriterMethod("close");
+
+  block(): void {
+    this.gate = new Promise<void>((resolve) => {
+      this.releaseGate = resolve;
+    });
+  }
+
+  release(): void {
+    this.releaseGate?.();
+    this.releaseGate = null;
+    this.gate = null;
+  }
+
+  async accept(input: LiveInput): Promise<void> {
+    this.inputs.push(input);
+    const gate = this.gate;
+    if (gate !== null) await gate;
+  }
+}
+
+function makeIngress(
+  maxRecords = 8,
+  extra: { readonly maxBytes?: number; readonly diagnosticLimit?: number } = {},
+): { ingress: LiveIngress; writer: StubWriter } {
   const writer = new StubWriter();
-  return { ingress: createLiveIngress({ writer, maxRecords }), writer };
+  return { ingress: createLiveIngress({ writer, maxRecords, ...extra }), writer };
 }
 
 function textEvent(delta: string): SyncIngressEvent {
@@ -286,26 +321,116 @@ describe("LiveIngress 编号、容量与快照", () => {
     expect(asLiveInput.semantic?.kind).toBe("tool");
   });
 
-  // 有界入口：达到上限即抛容量错误，既不静默丢弃也不把该条交给写者。
-  test("记录数达到上限后抛 CAPACITY_EXCEEDED，写者不再收到该条", async () => {
-    const { ingress, writer } = makeIngress(2);
-    await ingress.accept(textEvent("a"));
-    await ingress.accept(textEvent("b"));
+  // maxRecords 现在是 pending 预算而非累计历史上限：即时写者逐条释放额度，累计接收可以无限增长。
+  test("即时写者下累计接收 3000 条不受 maxRecords 限制，lastIngressSeq 持续递增", async () => {
+    const { ingress, writer } = makeIngress(8);
+    const total = 3000;
 
-    const error = await rejectionOf(ingress.accept(textEvent("c")));
-    expect(error.code).toBe("CAPACITY_EXCEEDED");
-    expect(error.message).toContain("2 of 2");
-    expect(ingress.lastIngressSeq()).toBe(2);
-    expect(ingress.records()).toHaveLength(2);
-    expect(writer.inputs).toEqual([textEvent("a"), textEvent("b")]);
+    for (let index = 0; index < total; index += 1) {
+      const record = await ingress.accept(textEvent(`chunk-${index}`));
+      if (index === 0 || index === total - 1) expect(record.ingressSeq).toBe(index + 1);
+    }
+
+    expect(ingress.lastIngressSeq()).toBe(total);
+    expect(writer.inputs).toHaveLength(total);
+    expect(ingress.records().map((record) => record.ingressSeq)).toEqual([
+      2993, 2994, 2995, 2996, 2997, 2998, 2999, 3000,
+    ]);
   });
 
-  // maxRecords 是构造期容量参数：非法值按容量配置的统一口径拒绝（ADMISSION_REJECTED）。
-  test("maxRecords 非正整数在构造期被拒", () => {
+  // 慢写者会让在飞 + 排队事件累积；额度必须在入队前预留，超限调用立即失败而不是挂到 tail 后面。
+  test("慢写者阻塞时 pending 条数有界，超限 accept 立即拒绝", async () => {
+    const writer = new GatedWriter();
+    const ingress = createLiveIngress({ writer, maxRecords: 2, maxBytes: 1024 * 1024 });
+    writer.block();
+
+    const first = ingress.accept(textEvent("a"));
+    const second = ingress.accept(textEvent("b"));
+    // 写者仍阻塞时第三条就应被拒：这条 rejection 在 release 之前完成，证明没有先排队再检查。
+    const error = await rejectionOf(ingress.accept(textEvent("c")));
+    expect(error.code).toBe("CAPACITY_EXCEEDED");
+    expect(error.message).toContain("pending events");
+    expect(ingress.lastIngressSeq()).toBe(0);
+
+    writer.release();
+    const [firstRecord, secondRecord] = await Promise.all([first, second]);
+    expect([firstRecord.ingressSeq, secondRecord.ingressSeq]).toEqual([1, 2]);
+    expect(writer.inputs).toEqual([textEvent("a"), textEvent("b")]);
+
+    // 任务完成即释放额度，后续接收恢复且编号继续无洞。
+    expect((await ingress.accept(textEvent("c"))).ingressSeq).toBe(3);
+  });
+
+  // 写者失败也必须释放 pending 额度：否则一次失败会让入口在 maxRecords 很小时永久拒绝后续事件。
+  test("写者失败后释放 pending 额度，后续接收不被容量拒绝", async () => {
+    const { ingress, writer } = makeIngress(1);
+    writer.failNext(new Error("writer boom"));
+
+    let failure: unknown;
+    try {
+      await ingress.accept(textEvent("a"));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure instanceof Error ? failure.message : null).toBe("writer boom");
+    expect(ingress.lastIngressSeq()).toBe(0);
+
+    // maxRecords=1：若失败路径漏掉 finally，这次调用会因 pending 仍为 1 而被容量拒绝。
+    expect((await ingress.accept(textEvent("b"))).ingressSeq).toBe(1);
+    expect(ingress.records().map((record) => record.event)).toEqual([textEvent("b")]);
+  });
+
+  // 字节预算同样在快照后的入队前检查：超限事件不占用 tail、不进入写者、不推进序号。
+  test("pending 字节预算在入队前拒绝超限事件", async () => {
+    const { ingress, writer } = makeIngress(8, { maxBytes: 64 });
+
+    const error = await rejectionOf(ingress.accept(textEvent("x".repeat(1024))));
+    expect(error.code).toBe("CAPACITY_EXCEEDED");
+    expect(error.message).toContain("pending bytes");
+    expect(ingress.lastIngressSeq()).toBe(0);
+    expect(ingress.records()).toEqual([]);
+    expect(writer.inputs).toEqual([]);
+  });
+
+  // 慢写者下累计的 pending 字节同样有界：预算只够一条时，第二条在写者释放前就被拒绝。
+  test("慢写者阻塞时 pending 字节有界，累计超预算的 accept 立即拒绝", async () => {
+    const writer = new GatedWriter();
+    // 每条 textEvent 的 JSON 估算为 128B；200B 预算只够一条。
+    const ingress = createLiveIngress({ writer, maxRecords: 8, maxBytes: 200 });
+    writer.block();
+
+    const first = ingress.accept(textEvent("a"));
+    const error = await rejectionOf(ingress.accept(textEvent("b")));
+    expect(error.code).toBe("CAPACITY_EXCEEDED");
+    expect(error.message).toContain("pending bytes");
+
+    writer.release();
+    expect((await first).ingressSeq).toBe(1);
+    expect(writer.inputs).toEqual([textEvent("a")]);
+  });
+
+  // records() 只是有界诊断窗口：更早记录被淘汰，累计进度只由 lastIngressSeq 表达。
+  test("records() 只保留最近 diagnosticLimit 条，不承担全量接收历史", async () => {
+    const { ingress } = makeIngress(8, { diagnosticLimit: 3 });
+
+    for (const delta of ["a", "b", "c", "d", "e"]) await ingress.accept(textEvent(delta));
+
+    expect(ingress.records().map((record) => record.ingressSeq)).toEqual([3, 4, 5]);
+    expect(ingress.records().map((record) => record.event)).toEqual([textEvent("c"), textEvent("d"), textEvent("e")]);
+    expect(ingress.lastIngressSeq()).toBe(5);
+  });
+
+  // maxRecords / maxBytes / diagnosticLimit 都是构造期容量参数：非法值按统一口径拒绝（ADMISSION_REJECTED）。
+  test("maxRecords / maxBytes / diagnosticLimit 非正整数在构造期被拒", () => {
     const writer = new StubWriter();
     for (const invalid of [0, -1, 1.5, Number.NaN]) {
-      const error = rejectionOfSync(() => createLiveIngress({ writer, maxRecords: invalid }));
-      expect(error.code).toBe("ADMISSION_REJECTED");
+      expect(rejectionOfSync(() => createLiveIngress({ writer, maxRecords: invalid })).code).toBe("ADMISSION_REJECTED");
+      expect(rejectionOfSync(() => createLiveIngress({ writer, maxRecords: 8, maxBytes: invalid })).code).toBe(
+        "ADMISSION_REJECTED",
+      );
+      expect(rejectionOfSync(() => createLiveIngress({ writer, maxRecords: 8, diagnosticLimit: invalid })).code).toBe(
+        "ADMISSION_REJECTED",
+      );
     }
   });
 

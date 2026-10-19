@@ -903,8 +903,8 @@ export class RelayEventHandler {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
     }
     // 旧投影路径已完成；新协议旁路只消费实时事件。回放 turn（turn_replay_*）的历史由旧
-    // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（2048 记录上限，且回放工具事件无
-    // 可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
+    // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（入口只有 pending 预算，且回放工具
+    // 事件无可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
     try {
       const boundTurnId =
         event.turnId ??

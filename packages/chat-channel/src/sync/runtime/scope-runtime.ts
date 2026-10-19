@@ -39,7 +39,7 @@ import { MemoryProjectionStore } from "../store/memory-store";
 import type { ProjectionStore } from "../store/types";
 import { type SyncRuntimeConfig, validateSyncRuntimeConfig } from "./config";
 import { createSyncFrameGateway, type SyncFrameGateway, type SyncFrameTransport } from "./egress";
-import { createLiveIngress, type SyncIngressEvent } from "./ingress";
+import { createLiveIngress, LIVE_INGRESS_DIAGNOSTIC_LIMIT, type SyncIngressEvent } from "./ingress";
 
 /** 释放时的关闭理由。 */
 const DISPOSED_REASON = "scope runtime disposed";
@@ -179,8 +179,14 @@ export async function createSyncScopeRuntime(input: {
     limits: config.limits,
     rotation: config.rotation,
   });
-  // 入口记录上限沿用「单 Doc 记录数上限」：profile 没有独立的入口记录预算，超限抛 CAPACITY_EXCEEDED 而非静默丢弃。
-  const ingress = createLiveIngress({ writer, maxRecords: config.capacity.inputs.maxRecordsPerDoc });
+  // 入口容量是 pending 预算（在飞 + 排队），不是累计已接收历史：条数沿用单 Doc 记录上限，字节取 live 等待预算。
+  // 诊断窗口单独限定为小常量，避免把已接收事件以第二份全量数组留在内存里。
+  const ingress = createLiveIngress({
+    writer,
+    maxRecords: config.capacity.inputs.maxRecordsPerDoc,
+    maxBytes: config.capacity.concurrency.liveWaitPerScopeBytes,
+    diagnosticLimit: LIVE_INGRESS_DIAGNOSTIC_LIMIT,
+  });
   /** 共存额度账目：预留的持有方是轮换控制器，释放路径见 `releaseCoexistence`。 */
   const rotation: RotationController = createRotationController(config.rotation);
   const pool = new BlockBuildPool(deriveBuildPoolConfig(config.capacity.fairness), admission, clock);

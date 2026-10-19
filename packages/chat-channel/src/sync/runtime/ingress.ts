@@ -4,7 +4,9 @@
 // 编号语义（设计 §15.1 的实时 oracle 单位）：ingressSeq 从 1 起、严格递增、无洞，只在 `writer.accept`
 // 成功后推进——写者抛错时既不推进序号也不留记录，否则 oracle 与写者实际输入会永久错位。编号在分派异步
 // 写入**之前**分配（设计 §6.2「接收边界必须在分派异步任务之前编号」），并发 accept 经内部顺序队列串行化，
-// 保证「编号顺序 = 写者接收顺序」。有界：记录数超过 `maxRecords` 立刻抛 CAPACITY_EXCEEDED，不静默丢弃。
+// 保证「编号顺序 = 写者接收顺序」。有界：`maxRecords` / `maxBytes` 是在飞与排队事件的 pending 预算，
+// 额度在入队前的同步段预留，超限立刻抛 CAPACITY_EXCEEDED；成功接收的历史不再累计，`records()` 只是
+// 最近 `diagnosticLimit` 条的有界诊断窗口（生产没有消费者，不得把它当作全量已接收历史）。
 //
 // 身份绑定（设计 §5「entryId / toolCallId 由已核实的源标识或 Fenix 边界映射生成」）：
 // - turnId 只取自输入对象自身的 `turnId` 字段（relay 规范化事件的同名可选项，须由接线层补齐）；ACP 载荷
@@ -49,13 +51,18 @@ export interface NumberedIngressRecord {
 }
 
 export interface LiveIngress {
-  /** 接收一条事件：分配 ingressSeq → 交给 `LiveWriter.accept`；写者抛错时序号不推进，错误原样上抛。 */
+  /** 接收一条事件：同步段完成快照与 pending 额度预留，再排队等待写者；额度不足时立即以 CAPACITY_EXCEEDED 拒绝。 */
   accept(event: SyncIngressEvent): Promise<NumberedIngressRecord>;
-  /** 已接收记录的只读快照（oracle 与观测用）；每次返回新的冻结数组，外部改不动内部状态。 */
+  /**
+   * 最近 `diagnosticLimit` 条已成功记录的只读快照（测试/诊断窗口）。
+   *
+   * 它不是「全量已接收历史」：更早的记录会被淘汰，`lastIngressSeq()` 才是累计接收进度。
+   * 每次返回新的冻结数组，外部改不动内部状态。
+   */
   records(): readonly NumberedIngressRecord[];
   /** 已成功接收的最后一个序号；未接收任何事件时为 0。 */
   lastIngressSeq(): number;
-  /** 清空记录并把编号重置为 0；与 accept 共用同一条顺序队列，在途接收先落定后才生效。 */
+  /** 清空诊断窗口并把编号重置为 0；与 accept 共用同一条顺序队列，在途接收先落定后才生效。 */
   reset(): void;
 }
 
@@ -175,27 +182,84 @@ function snapshotIngressEvent(raw: SyncIngressEvent): SyncIngressEvent {
   });
 }
 
+/**
+ * 生产诊断窗口长度：只保留最近成功记录用于定位，不承担历史。
+ *
+ * 与 pending 预算解耦，避免把「已接收历史」以另一份全量数组重新引入内存；64 条足以覆盖一次失败前后的上下文。
+ */
+export const LIVE_INGRESS_DIAGNOSTIC_LIMIT = 64;
+
+/** 快照不可被 JSON 编码时（例如自定义 toJSON 抛错）的保守计费：宁可少放行，也不让恶意载荷绕过字节预算。 */
+const UNMEASURABLE_EVENT_BYTES = 64 * 1024;
+const UTF8_ENCODER = new TextEncoder();
+
+/**
+ * 事件载荷的字节估算：以 JSON 编码后的 UTF-8 长度近似排队缓冲的内存占用。
+ *
+ * 用 replacer 处理循环引用与 BigInt（JSON.stringify 对二者会抛错）；估算只服务于 pending 预算记账，
+ * 不要求与 wire 字节逐字相等。快照已由 `snapshotIngressEvent` 校验过，估算失败不能反过来否决合法事件。
+ */
+function estimateIngressBytes(event: SyncIngressEvent): number {
+  const seen = new WeakSet<object>();
+  try {
+    const encoded = JSON.stringify(event, (_key: string, value: unknown) => {
+      if (typeof value === "bigint") return `${value.toString()}n`;
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) return "[circular]";
+        seen.add(value);
+      }
+      return value;
+    });
+    return UTF8_ENCODER.encode(encoded ?? "").byteLength;
+  } catch {
+    return UNMEASURABLE_EVENT_BYTES;
+  }
+}
+
 class LiveIngressImpl implements LiveIngress {
-  /** 已提交记录：只在写者成功后追加，失败路径不动它（序号与记录同生共死）。 */
-  private stored: NumberedIngressRecord[] = [];
+  /** 诊断窗口：只保留最近 `diagnosticLimit` 条成功记录，不承担全量接收历史。 */
+  private diagnostics: NumberedIngressRecord[] = [];
   private seq = 0;
-  /** 顺序队列：编号、容量与写者调用都在队列内完成，并发 accept 不得交错。 */
+  /** pending 账目：在飞 + 排队的事件数与估算字节，在入队前的同步段预留、任务结束时释放。 */
+  private pendingRecords = 0;
+  private pendingBytes = 0;
+  /** 顺序队列：编号与写者调用都在队列内完成，并发 accept 不得交错；容量检查已移到入队前。 */
   private tail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly writer: LiveWriter,
     private readonly maxRecords: number,
+    private readonly maxBytes: number,
+    private readonly diagnosticLimit: number,
   ) {}
 
   async accept(event: SyncIngressEvent): Promise<NumberedIngressRecord> {
+    // 容量在入队前检查并预留：拒绝不得先挂到 tail 上，否则慢写者会让调用方无界排队。
+    if (this.pendingRecords >= this.maxRecords) {
+      throw new SyncProtocolError("CAPACITY_EXCEEDED", {
+        message: `live ingress pending events are full: ${this.pendingRecords} of ${this.maxRecords} in flight`,
+      });
+    }
+    // 快照在调用时刻完成：入队后调用方再改对象不影响已排队事件；校验失败也不占用额度。
+    const snapshot = snapshotIngressEvent(event);
+    const bytes = estimateIngressBytes(snapshot);
+    if (this.pendingBytes + bytes > this.maxBytes) {
+      throw new SyncProtocolError("CAPACITY_EXCEEDED", {
+        message:
+          `live ingress pending bytes are full: ${this.pendingBytes + bytes} of ${this.maxBytes} bytes` +
+          ` (event ${bytes} bytes)`,
+      });
+    }
+    this.pendingRecords += 1;
+    this.pendingBytes += bytes;
     // 队列链上挂一个永不 reject 的续段：一次失败不得毒化后续接收（写者自身的停写策略由写者决定）。
-    const task = this.tail.then(() => this.dispatch(event));
+    const task = this.tail.then(() => this.dispatch(snapshot, bytes));
     this.tail = task.then(NOOP, NOOP);
     return await task;
   }
 
   records(): readonly NumberedIngressRecord[] {
-    return Object.freeze([...this.stored]);
+    return Object.freeze([...this.diagnostics]);
   }
 
   lastIngressSeq(): number {
@@ -203,36 +267,57 @@ class LiveIngressImpl implements LiveIngress {
   }
 
   reset(): void {
+    // 只清诊断与编号；pending 属于仍在飞/排队的任务，必须由各任务的 finally 释放，提前归零会让计数变负。
     this.tail = this.tail.then(() => {
-      this.stored = [];
+      this.diagnostics = [];
       this.seq = 0;
     });
   }
 
-  private async dispatch(event: SyncIngressEvent): Promise<NumberedIngressRecord> {
-    const snapshot = snapshotIngressEvent(event);
-    if (this.stored.length >= this.maxRecords) {
-      throw new SyncProtocolError("CAPACITY_EXCEEDED", {
-        message: `live ingress is full: ${this.stored.length} of ${this.maxRecords} records accepted`,
-      });
+  private async dispatch(snapshot: SyncIngressEvent, bytes: number): Promise<NumberedIngressRecord> {
+    try {
+      const record: NumberedIngressRecord = Object.freeze({ ingressSeq: this.seq + 1, event: snapshot });
+      // 抛错即返回：序号不推进、记录不落盘，调用方拿到的错误就是写者的原始错误。
+      await this.writer.accept(snapshot);
+      this.seq = record.ingressSeq;
+      this.diagnostics.push(record);
+      if (this.diagnostics.length > this.diagnosticLimit) this.diagnostics.shift();
+      return record;
+    } finally {
+      this.pendingRecords -= 1;
+      this.pendingBytes -= bytes;
     }
-    const record: NumberedIngressRecord = Object.freeze({ ingressSeq: this.seq + 1, event: snapshot });
-    // 抛错即返回：序号不推进、记录不落盘，调用方拿到的错误就是写者的原始错误。
-    await this.writer.accept(snapshot);
-    this.seq = record.ingressSeq;
-    this.stored.push(record);
-    return record;
   }
 }
 
-export function createLiveIngress(input: { readonly writer: LiveWriter; readonly maxRecords: number }): LiveIngress {
+export function createLiveIngress(input: {
+  readonly writer: LiveWriter;
+  /** pending 条数预算（保留参数名以兼容既有调用方）：在飞 + 排队，不是累计已接收历史的上限。 */
+  readonly maxRecords: number;
+  /** pending 估算字节预算；缺省不设字节上限（生产装配必须显式给出）。 */
+  readonly maxBytes?: number;
+  /** 诊断窗口长度；缺省等于 `maxRecords`，只影响 `records()` 的可观测范围。 */
+  readonly diagnosticLimit?: number;
+}): LiveIngress {
   const { writer, maxRecords } = input;
   if (!Number.isInteger(maxRecords) || maxRecords <= 0) {
     throw new SyncProtocolError("ADMISSION_REJECTED", {
       message: `live ingress maxRecords must be a positive integer, received ${String(maxRecords)}`,
     });
   }
-  return new LiveIngressImpl(writer, maxRecords);
+  const maxBytes = input.maxBytes ?? Number.POSITIVE_INFINITY;
+  if (maxBytes !== Number.POSITIVE_INFINITY && (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)) {
+    throw new SyncProtocolError("ADMISSION_REJECTED", {
+      message: `live ingress maxBytes must be a positive integer, received ${String(input.maxBytes)}`,
+    });
+  }
+  const diagnosticLimit = input.diagnosticLimit ?? maxRecords;
+  if (!Number.isInteger(diagnosticLimit) || diagnosticLimit <= 0) {
+    throw new SyncProtocolError("ADMISSION_REJECTED", {
+      message: `live ingress diagnosticLimit must be a positive integer, received ${String(diagnosticLimit)}`,
+    });
+  }
+  return new LiveIngressImpl(writer, maxRecords, maxBytes, diagnosticLimit);
 }
 
 /**
