@@ -9,15 +9,24 @@
 // 本服务只负责把块的字节与元数据装配成构建入参、把提交结局折算成台账。三条不变式与缺陷记录见
 // build-dispatch.ts 文件头与 `.peri/plans/chat-sync-runtime-profile-result.md` §4。
 
+import * as Y from "yjs";
+
 import type { AdmissionController } from "../capacity/admission";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn, RandomSource } from "../clock";
+import {
+  buildDirectoryPageSnapshot,
+  buildDirectoryRootSnapshot,
+  directoryRootDocId,
+  planDirectoryPages,
+} from "../protocol/directory";
 import { asSyncProtocolError, type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { createGenerationId, createLoadId, type SyncScope, scopeKey } from "../protocol/identity";
 import type {
   CommitOutcome,
   GenerationEntryRefs,
   ProjectionStore,
+  SyncDocRecord,
   SyncGenerationRecord,
   WriterLease,
 } from "../store/types";
@@ -269,7 +278,16 @@ export class HistoryImportService {
       const pointer = await this.store.readScopePointer(attempt.scopeKey);
       const expectedCurrent = pointer?.currentGeneration ?? null;
       const expectedPointerRevision = pointer?.pointerRevision ?? 0;
-      const entryClosure = await this.buildEntryClosure(attempt);
+      const contentDocIds = await this.readCommittedContentDocIds(attempt);
+      // 入口 Doc（控制/运行态/分页目录）必须在 MANIFEST 引用它们之前可读：否则客户端订阅
+      // `directoryDocId` 会直接 DOC_NOT_FOUND，历史导入完成的代次永远无法交付。
+      await this.createEntryDocuments(attempt, contentDocIds);
+      const entryClosure: GenerationEntryRefs = {
+        controlDocId: this.controlDocId(attempt.generation),
+        directoryDocId: directoryRootDocId(attempt.generation),
+        runtimeDocId: this.runtimeDocId(attempt.generation),
+        contentDocIds,
+      };
       const record: SyncGenerationRecord = {
         scopeKey: attempt.scopeKey,
         generation: attempt.generation,
@@ -421,24 +439,100 @@ export class HistoryImportService {
     }
   }
 
-  private async buildEntryClosure(attempt: ImportAttempt): Promise<GenerationEntryRefs> {
+  private controlDocId(generation: string): string {
+    return `sync/control/${generation}/0/control`;
+  }
+
+  private runtimeDocId(generation: string): string {
+    return `sync/runtime/${generation}/0/runtime`;
+  }
+
+  /**
+   * 已提交目录中的内容块（按 ordinal 升序）。
+   *
+   * 目录即权威：不从接收列表推断，也不缓存「可能已提交」的块；读取上限沿用容量档案的
+   * `directoryMaxRefs`，与完整性校验使用同一口径。
+   */
+  private async readCommittedContentDocIds(attempt: ImportAttempt): Promise<string[]> {
     const directory = await this.store.readDirectory({
       generation: attempt.generation,
       limit: this.capacity.inputs.directoryMaxRefs,
     });
+    return directory.entries.filter((entry) => entry.sealed).map((entry) => entry.docId);
+  }
+
+  /**
+   * 创建 MANIFEST 会引用的入口 Doc：控制、运行态、根目录与全部目录页。
+   *
+   * 导入此前只提交内容块，MANIFEST 的 `directoryDocId` 在 store 中不可读，客户端订阅直接
+   * DOC_NOT_FOUND。入口 Doc 必须在 `commitGeneration` 之前落地，否则切换后的代次无法交付。
+   * 页 Doc ID 由 generation + 页号确定，重试同内容时 `createDoc` 返回 `already-committed`。
+   */
+  private async createEntryDocuments(attempt: ImportAttempt, contentDocIds: readonly string[]): Promise<void> {
+    // 长时间导入可能已越过初始租约：先用同一租约续期，再执行 createDoc。
+    attempt.lease = await this.store.renewWriter(attempt.lease, attempt.leaseTtlMs);
+    const plan = planDirectoryPages(attempt.generation, contentDocIds);
+    const emptySnapshot = Y.encodeStateAsUpdate(new Y.Doc());
+    const docs: SyncDocRecord[] = [
+      this.entryDocRecord(attempt, this.controlDocId(attempt.generation), "control", emptySnapshot, null),
+      this.entryDocRecord(attempt, this.runtimeDocId(attempt.generation), "runtime", emptySnapshot, null),
+      this.entryDocRecord(attempt, plan.rootDocId, "directory", buildDirectoryRootSnapshot(plan.latestPageId), null),
+      ...plan.pages.map((page) =>
+        this.entryDocRecord(
+          attempt,
+          page.pageDocId,
+          "directory",
+          buildDirectoryPageSnapshot(page.contentDocIds, page.previousPageId),
+          page.pageNumber,
+        ),
+      ),
+    ];
+    for (const doc of docs) {
+      const created = await this.store.createDoc({ scopeKey: attempt.scopeKey, epoch: attempt.lease.epoch, doc });
+      if (created.outcome === "conflict") {
+        throw new SyncProtocolError("DIGEST_CONFLICT", {
+          message: "import entry document conflicts with committed bytes",
+          safeContext: { generation: attempt.generation, docId: doc.docId },
+        });
+      }
+      if (created.outcome === "unknown") {
+        throw new SyncProtocolError("COMMIT_OUTCOME_UNKNOWN", {
+          message: "import entry document outcome is unknown",
+          safeContext: { generation: attempt.generation, docId: doc.docId },
+        });
+      }
+    }
+  }
+
+  private entryDocRecord(
+    attempt: ImportAttempt,
+    docId: string,
+    kind: SyncDocRecord["kind"],
+    snapshot: Uint8Array,
+    blockIndex: number | null,
+  ): SyncDocRecord {
     return {
-      controlDocId: `sync/control/${attempt.generation}/0/control`,
-      directoryDocId: `sync/directory/${attempt.generation}/0/directory`,
-      runtimeDocId: `sync/runtime/${attempt.generation}/0/runtime`,
-      contentDocIds: directory.entries.filter((entry) => entry.sealed).map((entry) => entry.docId),
+      scopeKey: attempt.scopeKey,
+      generation: attempt.generation,
+      docId,
+      kind,
+      state: "active",
+      snapshot,
+      hash: this.digest(snapshot),
+      baseSeq: 0,
+      finalSeq: null,
+      blockIndex,
+      ordinalStart: null,
+      ordinalEnd: null,
+      dependsOn: [],
     };
   }
 
   private initialEntryClosure(generation: string): GenerationEntryRefs {
     return {
-      controlDocId: `sync/control/${generation}/0/control`,
-      directoryDocId: `sync/directory/${generation}/0/directory`,
-      runtimeDocId: `sync/runtime/${generation}/0/runtime`,
+      controlDocId: this.controlDocId(generation),
+      directoryDocId: directoryRootDocId(generation),
+      runtimeDocId: this.runtimeDocId(generation),
       contentDocIds: [],
     };
   }

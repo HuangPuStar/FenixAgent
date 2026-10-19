@@ -131,9 +131,30 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     retainedDocs.clear();
     seenDeliveries.clear();
   }
+  function releaseSharedDoc(docId: string): void {
+    // 先释放协议侧的 retain 计数，再销毁只读投影镜像；两步都允许对已释放条目幂等。
+    retainedDocs.delete(docId);
+    try {
+      transport?.hub.release(docId);
+    } catch {
+      // 连接拆除期间可能已释放，忽略。
+    }
+    projectionHub.release(docId);
+    if (state.subscribedDocIds.includes(docId)) {
+      setState({
+        subscribedDocIds: Object.freeze(state.subscribedDocIds.filter((item) => item !== docId)),
+      });
+    }
+  }
+  function retainSharedDoc(docId: string): void {
+    if (transport === null) throw new Error("sync transport is not ready");
+    transport.hub.retain(docId);
+    retainedDocs.add(docId);
+  }
   function teardownTransport(): void {
     releaseRetainedDocs();
     contentSubscription?.reset();
+    frameRouter.resetDirectory();
     hydration.reset();
     transport?.dispose();
     transport = null;
@@ -169,9 +190,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     retainedDocs,
     hydration,
     subscribe: sendSubscribe,
-    retainDoc: (docId) => {
-      if (transport === null) throw new Error("sync transport is not ready");
-      transport.hub.retain(docId);
+    retainDoc: retainSharedDoc,
+    releaseDoc: (docId) => {
+      releaseSharedDoc(docId);
+      // 内容块被窗口淘汰后，包含它的页镜像若已无驻留块也应同步释放。
+      frameRouter.prunePageMirrors();
     },
     onSubscribed: (docIds) => {
       const next = [...new Set([...state.subscribedDocIds, ...docIds])];
@@ -183,6 +206,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     },
     hiddenMessageCount: () => projectionHub.snapshot().hiddenMessageCount,
     growProjectionWindow: () => projectionHub.growWindow(SYNC_PROJECTION_MESSAGE_STEP),
+    hasEarlierPages: () => frameRouter.hasEarlierPage(),
+    requestEarlierPage: () => frameRouter.requestEarlierPage(),
     fail,
   });
   function scheduleDrive(): void {
@@ -208,6 +233,10 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     hydration,
     getManifest: () => manifest,
     getContentSubscription: () => contentSubscription,
+    retainedDocs,
+    retainDoc: retainSharedDoc,
+    releaseDoc: releaseSharedDoc,
+    subscribe: sendSubscribe,
     fail,
   });
   function handleInboundBytes(bytes: Uint8Array): void {

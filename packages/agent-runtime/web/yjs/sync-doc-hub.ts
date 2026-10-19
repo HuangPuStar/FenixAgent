@@ -70,6 +70,8 @@ export interface SyncContentProjectionHubOptions {
 export interface SyncContentProjectionHub {
   /** 应用一段 content Doc 的 Yjs update；非 content doc / 异代次返回 false。 */
   applyUpdate(input: { readonly docId: string; readonly generation: string; readonly payload: Uint8Array }): boolean;
+  /** 释放一个不再驻留的 content Doc 镜像；其独占条目从投影移除，跨 Doc 条目重新拼接。 */
+  release(docId: string): boolean;
   /** 换代/重连：销毁全部镜像 Doc 并把可见投影清空，窗口回到首屏上限。 */
   reset(generation: string | null): void;
   /** 用户显式加载更早：扩大可见投影条目上限。 */
@@ -197,7 +199,24 @@ function parseDoc(mirror: MirrorDoc): {
       recordCount += 1;
       continue;
     }
-    if (kind !== "text" && kind !== "text_part") {
+    if (kind === "text_part") {
+      // 历史记录的载荷是保真 JSON：字符串值带引号与转义，直接按 UTF-8 当正文会显示成 `"hello"`。
+      // 实时 `text` 记录才是裸 UTF-8 片段（见 live-writer 的 writeText）。
+      try {
+        const value: unknown = JSON.parse(UTF8_DECODER.decode(payload));
+        if (typeof value !== "string") {
+          skippedRecords += 1;
+          continue;
+        }
+        entry.parts.push({ index, text: value });
+        entry.recordCount += 1;
+        recordCount += 1;
+      } catch {
+        skippedRecords += 1;
+      }
+      continue;
+    }
+    if (kind !== "text") {
       // history_object / tool_object 的保真 JSON 尚无入口映射，不猜正文。
       skippedRecords += 1;
       continue;
@@ -454,6 +473,23 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
       clearAll();
       dirty = true;
       scheduleNotify();
+    },
+
+    release(docId: string): boolean {
+      if (disposed) return false;
+      const mirror = docs.get(docId);
+      if (mirror === undefined) return false;
+      docs.delete(docId);
+      mirror.doc.destroy();
+      // 只失效该 Doc 参与的条目：独占条目直接移除，跨 Doc 条目重新拼接正文。
+      for (const [entryId, entry] of [...entries]) {
+        if (!entry.byDoc.delete(docId)) continue;
+        if (entry.byDoc.size === 0) entries.delete(entryId);
+        else invalidateEntry(entry);
+      }
+      dirty = true;
+      scheduleNotify();
+      return true;
     },
 
     growWindow(count = SYNC_PROJECTION_MESSAGE_STEP): void {

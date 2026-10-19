@@ -1,11 +1,18 @@
 // packages/chat-channel/src/sync/runtime/host-baseline.ts
 // stateless 首次连接的基线代次：只创建空的内容/控制/运行态/目录 Doc，不伪造历史。
 //
-// 目录 Doc 的 `root.contentDocIds` 是客户端发现内容块的权威入口（MANIFEST 不携带全量块列表）。
+// 目录 Doc 分页：根目录只持最新页 ID，每页固定条数并链接上一页；客户端经 MANIFEST 的
+// `directoryDocId` 订阅根目录，再按 `latestPageId` / `previousPageId` 逐页发现内容块。
 // 真实 ACP 历史仍必须由 `HistoryImportService` 以完整稳定对象列表导入。
 
 import * as Y from "yjs";
 import type { Clock, DigestFn, RandomSource } from "../clock";
+import {
+  buildDirectoryPageSnapshot,
+  buildDirectoryRootSnapshot,
+  directoryPageDocId,
+  directoryRootDocId,
+} from "../protocol/directory";
 import { SyncProtocolError } from "../protocol/errors";
 import {
   buildDocId,
@@ -81,12 +88,8 @@ export async function ensureBaselineGeneration(input: {
     const loadId = createLoadId(input.random);
     const controlDocId = buildDocId({ kind: "control", generation, blockIndex: 0, nonce: createBatchId(input.random) });
     const runtimeDocId = buildDocId({ kind: "runtime", generation, blockIndex: 0, nonce: createBatchId(input.random) });
-    const directoryDocId = buildDocId({
-      kind: "directory",
-      generation,
-      blockIndex: 0,
-      nonce: createBatchId(input.random),
-    });
+    const directoryDocId = directoryRootDocId(generation);
+    const pageDocId = directoryPageDocId(generation, 1);
     const contentDocId = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: createBatchId(input.random) });
     const entryRefs: GenerationEntryRefs = {
       controlDocId,
@@ -114,11 +117,9 @@ export async function ensureBaselineGeneration(input: {
     if (registration.outcome === "unknown") {
       throw new SyncProtocolError("COMMIT_OUTCOME_UNKNOWN", { message: "baseline generation outcome is unknown" });
     }
-    const directorySnapshot = encodeSnapshot((doc) => {
-      const ids = new Y.Array<string>();
-      ids.push(entryRefs.contentDocIds);
-      doc.getMap("root").set("contentDocIds", ids);
-    });
+    // 基线只有一个内容块：立即建一页并让根目录指向它，客户端无需等待首次 live 写入。
+    const directorySnapshot = buildDirectoryRootSnapshot(pageDocId);
+    const pageSnapshot = buildDirectoryPageSnapshot(entryRefs.contentDocIds, null);
     const docs: SyncDocRecord[] = [
       docRecordOf({
         scopeKey: key,
@@ -146,6 +147,15 @@ export async function ensureBaselineGeneration(input: {
         snapshot: directorySnapshot,
         digest: input.digest,
         blockIndex: null,
+      }),
+      docRecordOf({
+        scopeKey: key,
+        generation,
+        docId: pageDocId,
+        kind: "directory",
+        snapshot: pageSnapshot,
+        digest: input.digest,
+        blockIndex: 1,
       }),
       docRecordOf({
         scopeKey: key,

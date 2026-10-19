@@ -19,6 +19,12 @@ import {
 } from "../sync/live/live-writer";
 import type { RotationControllerOptions } from "../sync/live/rotation";
 import { createRuntimeDoc, RUNTIME_DOC_LIMITS, type RuntimeEntityRecord } from "../sync/live/runtime-doc";
+import {
+  DIRECTORY_PAGE_SIZE,
+  directoryPageDocId,
+  readDirectoryPage,
+  readDirectoryRoot,
+} from "../sync/protocol/directory";
 import { buildDocId, type DocKind, type SyncScope, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type {
@@ -514,6 +520,50 @@ test("rotateRuntime 返回旧新文档与基线序号，旧版停止写入", asy
   await fix.writer.accept(semantic("error", { entityId: "err-1" }));
   expect(updatesOf(fix, fix.runtimeId)).toHaveLength(sealedUpdates);
   expect(readEntities(fix, rotated.newDocId).map((entity) => entity.entityId)).toEqual(["tool-1", "err-1"]);
+  await fix.writer.close();
+});
+
+// 内容块轮换必须同步维护目录：新块追加到最新页，否则客户端永远发现不了轮换后的 live 内容。
+test("内容块轮换后把 successor 追加到目录页", async () => {
+  const fix = await setup();
+  await fix.writer.accept(textDelta("entry-1", "hello"));
+  await fix.writer.seal();
+
+  const contentDocs = committed(fix).docs.filter((doc) => doc.kind === "content");
+  const successor = contentDocs.find((doc) => doc.state === "active");
+  if (successor === undefined) throw new Error("expected an active successor content doc");
+  expect(contentDocs).toHaveLength(2);
+
+  const rootDoc = rebuild(fix, docIdFor("directory", 0, "directory"));
+  const { latestPageId } = readDirectoryRoot(rootDoc);
+  expect(latestPageId).toBe(directoryPageDocId(GENERATION, 1));
+  if (latestPageId === null) throw new Error("expected latest directory page");
+
+  const pageDoc = rebuild(fix, latestPageId);
+  expect(readDirectoryPage(pageDoc).contentDocIds).toEqual([fix.contentId, successor.docId]);
+  await fix.writer.close();
+});
+
+// 页满后必须滚动到新页：旧页保持固定条数，新页链接旧页，根目录原子切到新页。
+test("目录页满后轮换到新页并保留上一页链接", async () => {
+  const fix = await setup();
+  // 初始页已有入口块，再追加 DIRECTORY_PAGE_SIZE 个 successor 触发一次轮换。
+  for (let index = 0; index < DIRECTORY_PAGE_SIZE; index += 1) {
+    await fix.writer.seal();
+  }
+
+  const rootDoc = rebuild(fix, docIdFor("directory", 0, "directory"));
+  const { latestPageId } = readDirectoryRoot(rootDoc);
+  expect(latestPageId).toBe(directoryPageDocId(GENERATION, 2));
+  if (latestPageId === null) throw new Error("expected rotated directory page");
+
+  const firstPage = readDirectoryPage(rebuild(fix, directoryPageDocId(GENERATION, 1)));
+  expect(firstPage.contentDocIds).toHaveLength(DIRECTORY_PAGE_SIZE);
+  expect(firstPage.previousPageId).toBeNull();
+
+  const secondPage = readDirectoryPage(rebuild(fix, latestPageId));
+  expect(secondPage.contentDocIds).toHaveLength(1);
+  expect(secondPage.previousPageId).toBe(directoryPageDocId(GENERATION, 1));
   await fix.writer.close();
 });
 

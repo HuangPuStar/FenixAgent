@@ -5,6 +5,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "@fenix/chat-channel/server";
+import {
+  buildDirectoryPageSnapshot,
+  buildDirectoryRootSnapshot,
+  directoryPageDocId,
+  directoryRootDocId,
+} from "@fenix/chat-channel/sync-client";
 import * as Y from "yjs";
 import type { SyncChatProjection } from "../../../../packages/agent-runtime/web/yjs/sync-doc-hub";
 import {
@@ -17,7 +23,9 @@ import type { SyncBrowserSocket } from "../../../../packages/agent-runtime/web/y
 const GENERATION = "gen_session0001";
 const CONTROL_DOC = `sync/control/${GENERATION}/0/control`;
 const RUNTIME_DOC = `sync/runtime/${GENERATION}/0/runtime`;
-const DIRECTORY_DOC = `sync/directory/${GENERATION}/0/directory`;
+const DIRECTORY_DOC = directoryRootDocId(GENERATION);
+const DIRECTORY_PAGE_1 = directoryPageDocId(GENERATION, 1);
+const DIRECTORY_PAGE_2 = directoryPageDocId(GENERATION, 2);
 const CONTENT_DOC = `sync/content/${GENERATION}/1/content_a`;
 const CONTENT_DOC_2 = `sync/content/${GENERATION}/2/content_b`;
 const CONTENT_DOC_3 = `sync/content/${GENERATION}/3/content_c`;
@@ -121,18 +129,8 @@ function manifest(): SyncFrame {
   };
 }
 
-function directoryUpdate(docIds: readonly string[]): Uint8Array {
-  const doc = new Y.Doc();
-  const contentDocIds = new Y.Array<string>();
-  contentDocIds.push([...docIds]);
-  doc.getMap<unknown>("root").set("contentDocIds", contentDocIds);
-  const update = Y.encodeStateAsUpdate(doc);
-  doc.destroy();
-  return update;
-}
-
-function directoryBase(deliveryId: string, docIds: readonly string[]): SyncFrame {
-  const payload = directoryUpdate(docIds);
+function directoryRootBase(deliveryId: string, latestPageId = DIRECTORY_PAGE_1): SyncFrame {
+  const payload = buildDirectoryRootSnapshot(latestPageId);
   return {
     type: "DOC_BASE",
     protocolVersion: SYNC_PROTOCOL_VERSION,
@@ -148,6 +146,26 @@ function directoryBase(deliveryId: string, docIds: readonly string[]): SyncFrame
     encodedLength: payload.byteLength,
     payload: base64(payload),
   };
+}
+
+function directoryPageBase(deliveryId: string, docIds: readonly string[]): SyncFrame {
+  return docBaseWithPayload(DIRECTORY_PAGE_1, deliveryId, buildDirectoryPageSnapshot(docIds, null));
+}
+
+/** 指定页的基线：跨页用例需要显式给出上一页链接。 */
+function pageBaseOf(
+  pageDocId: string,
+  deliveryId: string,
+  docIds: readonly string[],
+  previousPageId: string | null,
+): SyncFrame {
+  return docBaseWithPayload(pageDocId, deliveryId, buildDirectoryPageSnapshot(docIds, previousPageId));
+}
+
+/** 根目录基线 + 最新页基线：客户端先发现页，再从页里发现内容块。 */
+function receiveDirectory(socket: FakeSocket, deliveryId: string, docIds: readonly string[]): void {
+  socket.receive(directoryRootBase(`${deliveryId}_root`));
+  socket.receive(directoryPageBase(`${deliveryId}_page`, docIds));
 }
 
 let appendSequence = 0;
@@ -294,7 +312,7 @@ describe("sync chat 浏览器会话", () => {
         priority: "live",
       },
     ] satisfies SyncFrame[]);
-    harness.socket.receive(directoryBase("dlv_directory_1", [CONTENT_DOC]));
+    receiveDirectory(harness.socket, "dlv_directory_1", [CONTENT_DOC]);
     expect(
       sentFrames(harness.socket)
         .filter((frame) => frame.type === "SUBSCRIBE")
@@ -317,16 +335,14 @@ describe("sync chat 浏览器会话", () => {
     const harness = createHarness({ generation: undefined, contentDocIds: [] });
     harness.socket.open();
     harness.socket.receive(manifest());
-    harness.socket.receive(
-      directoryBase("dlv_directory_window", [
-        CONTENT_DOC,
-        CONTENT_DOC_2,
-        CONTENT_DOC_3,
-        CONTENT_DOC_4,
-        CONTENT_DOC_5,
-        CONTENT_DOC_6,
-      ]),
-    );
+    receiveDirectory(harness.socket, "dlv_directory_window", [
+      CONTENT_DOC,
+      CONTENT_DOC_2,
+      CONTENT_DOC_3,
+      CONTENT_DOC_4,
+      CONTENT_DOC_5,
+      CONTENT_DOC_6,
+    ]);
     const contentSubscribes = (): string[][] =>
       sentFrames(harness.socket)
         .filter((frame): frame is Extract<SyncFrame, { type: "SUBSCRIBE" }> => frame.type === "SUBSCRIBE")
@@ -366,6 +382,63 @@ describe("sync chat 浏览器会话", () => {
     expect(harness.projections.at(-1)?.messages).toHaveLength(6);
     expect(harness.states.at(-1)?.hasEarlierHistory).toBe(false);
     expect(harness.states.at(-1)?.historyLoading).toBe(false);
+  });
+
+  // 跨页加载：根目录只指向最新页；点击“显示更早”先订阅上一页，页基线到达后自动续订该页内容块。
+  test("跨页加载：先订阅上一页，页到达后续订更早内容块", async () => {
+    const harness = createHarness({ generation: undefined, contentDocIds: [] });
+    harness.socket.open();
+    harness.socket.receive(manifest());
+    harness.socket.receive(directoryRootBase("dlv_cross_root", DIRECTORY_PAGE_2));
+    harness.socket.receive(
+      pageBaseOf(
+        DIRECTORY_PAGE_2,
+        "dlv_cross_page_2",
+        [CONTENT_DOC_3, CONTENT_DOC_4, CONTENT_DOC_5, CONTENT_DOC_6],
+        DIRECTORY_PAGE_1,
+      ),
+    );
+
+    const subscribes = (): Extract<SyncFrame, { type: "SUBSCRIBE" }>[] =>
+      sentFrames(harness.socket).filter(
+        (frame): frame is Extract<SyncFrame, { type: "SUBSCRIBE" }> => frame.type === "SUBSCRIBE",
+      );
+    expect(subscribes().at(-1)).toEqual({
+      type: "SUBSCRIBE",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      docIds: [CONTENT_DOC_3, CONTENT_DOC_4, CONTENT_DOC_5, CONTENT_DOC_6],
+      priority: "currentHistory",
+    } satisfies SyncFrame);
+    expect(harness.states.at(-1)?.hasEarlierHistory).toBe(true);
+
+    expect(harness.session.loadEarlierHistory()).toBe(true);
+    expect(subscribes().at(-1)).toEqual({
+      type: "SUBSCRIBE",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      docIds: [DIRECTORY_PAGE_1],
+      priority: "currentHistory",
+    } satisfies SyncFrame);
+    expect(harness.states.at(-1)?.historyLoading).toBe(true);
+
+    harness.socket.receive(pageBaseOf(DIRECTORY_PAGE_1, "dlv_cross_page_1", [CONTENT_DOC, CONTENT_DOC_2], null));
+    expect(subscribes().at(-1)).toEqual({
+      type: "SUBSCRIBE",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      docIds: [CONTENT_DOC, CONTENT_DOC_2],
+      priority: "currentHistory",
+    } satisfies SyncFrame);
+    expect(harness.states.at(-1)?.historyLoading).toBe(true);
+
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC, "dlv_cross_content_1", contentUpdate("doc 1", "cross:doc1")),
+    );
+    harness.socket.receive(
+      docBaseWithPayload(CONTENT_DOC_2, "dlv_cross_content_2", contentUpdate("doc 2", "cross:doc2")),
+    );
+    await flush();
+    expect(harness.states.at(-1)?.hasEarlierHistory).toBe(false);
+    expect(harness.states.at(-1)?.historyLoading).toBe(false);
+    expect(harness.projections.at(-1)?.messages.map((message) => message.id)).toEqual(["cross:doc1", "cross:doc2"]);
   });
 
   // 开启后第一条出站帧必须是二进制 HELLO，携带协议版本、scope 与 stateful:false。
@@ -416,7 +489,7 @@ describe("sync chat 浏览器会话", () => {
     harness.socket.receive(manifest());
     expect(harness.states.at(-1)?.hydrating).toBe(true);
 
-    harness.socket.receive(directoryBase("dlv_hydrate_dir", [CONTENT_DOC]));
+    receiveDirectory(harness.socket, "dlv_hydrate_dir", [CONTENT_DOC]);
     expect(harness.states.at(-1)?.hydrating).toBe(true);
     harness.socket.receive(docBase(CONTROL_DOC, "dlv_hydrate_control"));
     expect(harness.states.at(-1)?.hydrating).toBe(true);
@@ -435,7 +508,7 @@ describe("sync chat 浏览器会话", () => {
     harness.socket.open();
     harness.socket.dropAcks = true;
     harness.socket.receive(manifest());
-    harness.socket.receive(directoryBase("dlv_ackloss_dir", [CONTENT_DOC]));
+    receiveDirectory(harness.socket, "dlv_ackloss_dir", [CONTENT_DOC]);
 
     const contentDoc = new Y.Doc();
     const basePayload = appendContentUpdate(contentDoc, "hello");

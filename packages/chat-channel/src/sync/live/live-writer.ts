@@ -9,11 +9,24 @@ import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, createBatchId, type DocKind, parseDocId, type SyncScope, scopeKey } from "../protocol/identity";
 import type { CommitOutcome, DocFrontier, ProjectionStore, WriterLease } from "../store/types";
 import { captureChange } from "./change-capture";
+import { ensureWritableContentDoc } from "./content-tail";
+import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController, type RotationControllerOptions } from "./rotation";
 import type { FinalEntityDescriptor, RuntimeDocLimits, RuntimeEntityRecord } from "./runtime-doc";
 import { createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
+import {
+  applyFrontiers,
+  bytes,
+  concatParts,
+  expectedFrontiers,
+  hex,
+  records,
+  requireObject,
+  requireString,
+  splitUtf8,
+} from "./writer-support";
 export type BarrierKind = "tool" | "permission" | "error" | "cancel" | "final";
 export interface LiveInput {
   readonly turnId: string;
@@ -66,7 +79,6 @@ export const LIVE_WRITER_LEASE_TTL_MS = 30_000;
 export const LIVE_COMMIT_MAX_ATTEMPTS = 3;
 const CONTENT_KIND: DocKind = "content";
 const RUNTIME_KIND: DocKind = "runtime";
-const UTF8 = new TextEncoder();
 const NOOP = (): void => {};
 const ENTITY_KINDS: ReadonlySet<string> = new Set(["tool", "permission", "error", "cancel"]);
 type Identity = { readonly entryId: string; readonly contentSlot: string; readonly contentType?: string };
@@ -81,34 +93,8 @@ function fail(code: SyncErrorCode, message: string): never {
 }
 /** 显式标注类型才会让调用点之后被收窄：无注解的 `never` 箭头函数不参与控制流分析。 */
 const malformed: (message: string) => never = (message) => fail("MALFORMED_FRAME", message);
-const bytes = (text: string): Uint8Array => UTF8.encode(text);
 const isEntityKind = (value: unknown): value is FinalEntityDescriptor["kind"] =>
   typeof value === "string" && ENTITY_KINDS.has(value);
-function hex(rand: RandomSource, byteLength: number): string {
-  const value = rand.bytes(byteLength);
-  if (value.length !== byteLength) malformed(`random source returned ${value.length} bytes`);
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function requireString(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key];
-  if (typeof value !== "string" || value.length === 0) malformed(`field ${key} must be a string`);
-  return value;
-}
-function requireObject(value: unknown, field: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) malformed(`bad ${field}`);
-  return value as Record<string, unknown>;
-}
-/** 记录数组：读路径不得创建它（创建 struct 若逃出提交事务，重放者永远看不到这个数组），给了 `append` 才建数组并在同一事务里追加。 */
-function records(doc: Y.Doc, append?: readonly LiveRecordValue[]): Y.Array<LiveRecordValue> | undefined {
-  const root = doc.getMap<unknown>("root");
-  const current = root.get("records");
-  const target = current instanceof Y.Array ? (current as Y.Array<LiveRecordValue>) : undefined;
-  if (append === undefined) return target;
-  const array = target ?? new Y.Array<LiveRecordValue>();
-  if (target === undefined) root.set("records", array);
-  array.push([...append]);
-  return array;
-}
 function entityOf(kind: BarrierKind, payload: Record<string, unknown>): RuntimeEntityRecord {
   if (kind === "final" || !ENTITY_KINDS.has(kind)) malformed(`semantic kind ${kind} is not a runtime entity`);
   const toolCallId = payload.toolCallId;
@@ -125,35 +111,6 @@ function descriptorOf(payload: Record<string, unknown>, entityId: string): Final
   if (!Number.isFinite(completedAt)) malformed("bad descriptor");
   return { entityId, kind, contentRef, digest, byteLength: size, completedAt };
 }
-function expectedFrontiers(slices: readonly Slice[]): DocFrontier[] {
-  const minima = new Map<string, number>();
-  for (const { docId, fromSeq } of slices) minima.set(docId, Math.min(minima.get(docId) ?? fromSeq, fromSeq - 1));
-  return [...minima].map(([docId, lastSeq]) => ({ docId, lastSeq }));
-}
-function applyFrontiers(cursors: ReadonlyMap<string, Cursor>, frontiers: readonly DocFrontier[]): void {
-  for (const { docId, lastSeq } of frontiers) {
-    const cursor = cursors.get(docId);
-    if (cursor !== undefined) cursor.lastSeq = lastSeq;
-  }
-}
-function splitUtf8(text: string, maxBytes: number): string[] {
-  const chunks: string[] = [];
-  for (const char of text) {
-    const last = chunks.at(-1);
-    if (last === undefined || UTF8.encode(last + char).byteLength > maxBytes) chunks.push(char);
-    else chunks[chunks.length - 1] = last + char;
-  }
-  return chunks;
-}
-function concatParts(parts: readonly Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0));
-  let offset = 0;
-  for (const part of parts) {
-    out.set(part, offset);
-    offset += part.byteLength;
-  }
-  return out;
-}
 class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
   private readonly owner: string;
@@ -166,6 +123,7 @@ class LiveWriterImpl implements LiveWriter {
   private lease: WriterLease | null = null;
   private generation: string | null = null;
   private readonly cursors = new Map<DocKind, Cursor>();
+  private readonly directory: DirectoryAppender;
   private closed = false;
   constructor(private readonly options: LiveWriterOptions) {
     const { store, clock, digest, random } = options;
@@ -173,6 +131,7 @@ class LiveWriterImpl implements LiveWriter {
     this.owner = `live_${hex(random, 8)}`;
     this.rotation = createRotationController(options.rotation);
     this.sealing = createSealingMachine({ store, clock, digest, random });
+    this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
     this.merge = this.newMerge();
   }
   async acquire(): Promise<void> {
@@ -224,7 +183,10 @@ class LiveWriterImpl implements LiveWriter {
     if (this.closed) return;
     this.closed = true;
     this.merge.dispose();
+    const lease = this.lease;
     this.lease = null;
+    // 主动让出写权：共享 store 下重连/换标签页必须在旧连接关闭后立即接管，而不是等租约 TTL。
+    if (lease !== null) await this.options.store.releaseWriter?.(lease);
   }
   /** 带屏障的公共动作：复核写者仍活着 → 冲刷已接收文本并等它落地（设计 §6.1「之前已接收的文本先完成写入」）→ 排队执行。 */
   private async run<T>(task: () => Promise<T>): Promise<T> {
@@ -320,6 +282,8 @@ class LiveWriterImpl implements LiveWriter {
       successorInitialState,
     });
     this.cursors.set(kind, this.openCursor(successorDocId, kind, successorInitialState));
+    // 内容轮换后新块必须立刻出现在目录里，否则客户端永远发现不了轮换后的 live 内容。
+    if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
     return result;
   }
   /** 运行态轮换（设计 §6.3）：先取出未结束与交接未完成的实体，再封口使旧版不可写；`requiredBaseSeq` 是新块自身的基线序号。 */
@@ -354,7 +318,7 @@ class LiveWriterImpl implements LiveWriter {
     return { recordId, entryId, contentSlot, contentType: contentType ?? "", partIndex, kind, payload };
   }
   private partIndex(cursor: Cursor, key: { entryId: string; contentSlot: string }): number {
-    const existing = records(cursor.doc)?.toArray() ?? [];
+    const existing = records<LiveRecordValue>(cursor.doc)?.toArray() ?? [];
     return existing.filter((value) => value.entryId === key.entryId && value.contentSlot === key.contentSlot).length;
   }
   private fixBatch(slices: readonly Slice[]): Batch {
@@ -427,8 +391,21 @@ class LiveWriterImpl implements LiveWriter {
     if (["retired", "failed"].includes(generation.state)) fail("RESOURCE_RETIRED", generationId);
     this.generation = generation.generation;
     await this.loadCursor(generation.entryRefs.runtimeDocId, RUNTIME_KIND);
-    const contentDocId = generation.entryRefs.contentDocIds.at(-1);
-    if (contentDocId === undefined) fail("DOC_NOT_FOUND", "generation has no content block entry");
+    await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
+    const closureTail = generation.entryRefs.contentDocIds.at(-1);
+    if (closureTail === undefined) fail("DOC_NOT_FOUND", "generation has no content block entry");
+    // 历史导入的内容块全部已封口；恢复时必须改用/新建 active 尾块，否则第一次实时写入就会
+    // 被存储以 RESOURCE_RETIRED 拒绝（空基线的入口闭包末位本身就是 active 块）。
+    const contentDocId = await ensureWritableContentDoc({
+      store: this.options.store,
+      directory: this.directory,
+      scopeKey: this.scopeKey,
+      generation: generation.generation,
+      importEndOrdinal: generation.importEndOrdinal ?? 0,
+      closureTailDocId: closureTail,
+      lease: this.requireLease(),
+      digest: this.options.digest,
+    });
     await this.loadCursor(contentDocId, CONTENT_KIND);
     this.rotation.reset();
   }

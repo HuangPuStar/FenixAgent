@@ -19,10 +19,20 @@ export interface SyncContentSubscriptionDeps {
   readonly hydration: Pick<SyncHydrationTracker, "addPending" | "extendInitial">;
   readonly subscribe: (docIds: readonly string[], priority: SubscribePriority) => boolean;
   readonly retainDoc: (docId: string) => void;
+  /** 释放已不驻留的块：由宿主导出 Y.Doc / 投影镜像，订阅侧已先将其移出 `retainedDocs`。 */
+  readonly releaseDoc: (docId: string) => void;
+  /** 已订阅块驻留上限；缺省沿用窗口模块的 `SYNC_HISTORY_MAX_RETAINED_BLOCKS`。 */
+  readonly maxRetainedBlocks?: number;
+  /** 首屏订阅块数；缺省沿用窗口模块的 `SYNC_HISTORY_INITIAL_BLOCKS`。 */
+  readonly initialBlocks?: number;
   readonly onSubscribed: (docIds: readonly string[]) => void;
   readonly onHistoryState: (state: { readonly hasEarlier: boolean; readonly loading: boolean }) => void;
   readonly hiddenMessageCount: () => number;
   readonly growProjectionWindow: () => void;
+  /** 页目录中是否还有更早的页尚未订阅；与内容窗口共同决定“显示更早”入口。 */
+  readonly hasEarlierPages?: () => boolean;
+  /** 订阅上一页目录；返回 false 表示无法发出请求。 */
+  readonly requestEarlierPage?: () => boolean;
   readonly fail: (code: string, message: string) => void;
 }
 
@@ -32,6 +42,11 @@ export interface SyncContentSubscription {
   applyDirectory(docIds: readonly string[], initial: boolean): void;
   /** 用户显式加载更早历史；返回是否产生了新工作。 */
   loadEarlier(docIds: readonly string[]): boolean;
+  /**
+   * 更早页的 DOC_BASE 到达：若上一批 `loadEarlier` 在等页目录，自动续订这批更早块。
+   * 返回是否继续产生了订阅请求。
+   */
+  notePageLoaded(docIds: readonly string[]): boolean;
   /** 内容 DOC_BASE 到达；清除该块的等待状态。 */
   noteBase(docId: string): void;
   /** 投影变化后刷新“是否还有更早”状态（不触发订阅）。 */
@@ -40,19 +55,30 @@ export interface SyncContentSubscription {
 }
 
 export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps): SyncContentSubscription {
-  const window = createSyncContentWindow({ initialBlocks: SYNC_HISTORY_INITIAL_BLOCKS });
+  const window = createSyncContentWindow({
+    initialBlocks: deps.initialBlocks ?? SYNC_HISTORY_INITIAL_BLOCKS,
+    maxRetainedBlocks: deps.maxRetainedBlocks,
+  });
   const pendingHistoryDocs = new Set<string>();
   let loading = false;
+  /** 已请求上一页目录、但页 DOC_BASE 尚未到达；此时不能再发页请求。 */
+  let pageLoading = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let pageTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearTimer(): void {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   }
 
+  function clearPageTimer(): void {
+    if (pageTimer !== null) clearTimeout(pageTimer);
+    pageTimer = null;
+  }
+
   function emitHistoryState(hiddenMessageCount = deps.hiddenMessageCount()): void {
     deps.onHistoryState({
-      hasEarlier: window.hasEarlier() || hiddenMessageCount > 0,
+      hasEarlier: window.hasEarlier() || hiddenMessageCount > 0 || pageLoading || (deps.hasEarlierPages?.() ?? false),
       loading,
     });
   }
@@ -98,9 +124,84 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     }, HISTORY_BASE_TIMEOUT_MS);
   }
 
+  function endPageWait(): void {
+    clearPageTimer();
+    pageLoading = false;
+    loading = false;
+  }
+
+  function schedulePageTimeout(): void {
+    clearPageTimer();
+    // 页基线超时只解除等待，不把连接判死：用户可再次点击，页仍可能在后续到达。
+    pageTimer = setTimeout(() => {
+      pageTimer = null;
+      if (!pageLoading) return;
+      endPageWait();
+      emitHistoryState();
+    }, HISTORY_BASE_TIMEOUT_MS);
+  }
+
+  function releaseContentDocs(docIds: readonly string[]): void {
+    for (const docId of docIds) {
+      if (!deps.retainedDocs.delete(docId)) continue;
+      deps.releaseDoc(docId);
+    }
+  }
+
+  /** 加载更早内容的单一实现；`loadEarlier` 与页到达后的自动续订共用。 */
+  function loadEarlierInternal(docIds: readonly string[]): boolean {
+    if (loading) return false;
+    // 已订阅块内仍有被投影窗口挡住的条目：先扩大投影窗口，不产生网络请求。
+    if (deps.hiddenMessageCount() > 0) {
+      deps.growProjectionWindow();
+      emitHistoryState();
+      return true;
+    }
+    if (window.hasEarlier()) {
+      const plan = window.loadEarlier(docIds, deps.retainedDocs, SYNC_HISTORY_LOAD_BLOCKS);
+      if (plan.retain.length === 0) {
+        emitHistoryState();
+        return false;
+      }
+      // 双向淘汰：向历史方向扩展时释放最新块，并等新批次基线到达后再结束 loading。
+      releaseContentDocs(plan.release);
+      loading = true;
+      for (const docId of plan.retain) pendingHistoryDocs.add(docId);
+      if (!retainAndSubscribe(plan.retain, "currentHistory", "pending")) {
+        window.restoreEarlier(plan.retain);
+        pendingHistoryDocs.clear();
+        loading = false;
+        emitHistoryState();
+        return false;
+      }
+      // 先扩一档窗口，保证新到的更早块不会被“最近 N 条”再次挡掉；剩余条目由下一次点击继续揭示。
+      deps.growProjectionWindow();
+      scheduleTimeout();
+      emitHistoryState();
+      return true;
+    }
+    // 已知内容块已全部订阅：若页目录还有更早页，先订阅上一页，页基线到达后自动续订内容。
+    if (deps.hasEarlierPages?.()) {
+      loading = true;
+      pageLoading = true;
+      emitHistoryState();
+      schedulePageTimeout();
+      if (!(deps.requestEarlierPage?.() ?? false)) {
+        endPageWait();
+        emitHistoryState();
+        return false;
+      }
+      return true;
+    }
+    emitHistoryState();
+    return false;
+  }
+
   return {
     reset(): void {
       clearTimer();
+      clearPageTimer();
+      pageLoading = false;
       window.reset();
       pendingHistoryDocs.clear();
       loading = false;
@@ -109,6 +210,8 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
 
     applyDirectory(docIds, initial): void {
       const plan = window.plan(docIds, deps.retainedDocs, initial);
+      // 先释放再订阅：释放只作用于已驻留块，订阅批次不会与释放批次重叠。
+      releaseContentDocs(plan.release);
       if (
         plan.retain.length > 0 &&
         !retainAndSubscribe(plan.retain, "currentHistory", initial ? "initial" : "pending")
@@ -119,36 +222,18 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     },
 
     loadEarlier(docIds): boolean {
-      if (loading) return false;
-      // 已订阅块内仍有被投影窗口挡住的条目：先扩大投影窗口，不产生网络请求。
-      if (deps.hiddenMessageCount() > 0) {
-        deps.growProjectionWindow();
-        emitHistoryState();
-        return true;
-      }
-      if (!window.hasEarlier()) {
+      return loadEarlierInternal(docIds);
+    },
+
+    notePageLoaded(docIds): boolean {
+      // 只有等待页目录的请求才自动续订内容；首屏最新页或迟到页仅刷新入口状态。
+      if (!pageLoading) {
         emitHistoryState();
         return false;
       }
-      const batch = window.peekEarlier(docIds, SYNC_HISTORY_LOAD_BLOCKS);
-      if (batch.length === 0) {
-        emitHistoryState();
-        return false;
-      }
-      loading = true;
-      for (const docId of batch) pendingHistoryDocs.add(docId);
-      if (!retainAndSubscribe(batch, "currentHistory", "pending")) {
-        pendingHistoryDocs.clear();
-        loading = false;
-        emitHistoryState();
-        return false;
-      }
-      window.consumeEarlier(batch);
-      // 先扩一档窗口，保证新到的更早块不会被“最近 N 条”再次挡掉；剩余条目由下一次点击继续揭示。
-      deps.growProjectionWindow();
-      scheduleTimeout();
+      endPageWait();
       emitHistoryState();
-      return true;
+      return loadEarlierInternal(docIds);
     },
 
     noteBase(docId): void {
@@ -167,7 +252,7 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     },
 
     hasEarlier(): boolean {
-      return window.hasEarlier() || deps.hiddenMessageCount() > 0;
+      return window.hasEarlier() || deps.hiddenMessageCount() > 0 || pageLoading || (deps.hasEarlierPages?.() ?? false);
     },
   };
 }

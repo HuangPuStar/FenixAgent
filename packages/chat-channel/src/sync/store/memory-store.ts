@@ -345,6 +345,12 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     }
     generation.state = "committed";
     generation.entryRefs = copyRefs(input.entryClosure);
+    // 提交记录是代次的权威终值：导入在 staging 后才知道的结尾序号必须随提交落定，
+    // 否则恢复路径无法区分「已导入代次」与「空基线」，会在每次启动时重扫历史。
+    generation.acpSessionId = input.newGeneration.acpSessionId;
+    generation.loadId = input.newGeneration.loadId;
+    generation.importEndOrdinal = input.newGeneration.importEndOrdinal;
+    generation.createdAt = input.newGeneration.createdAt;
     const now = this.clock.now();
     for (const retired of input.retired) {
       const old = this.generations.get(compositeKey(input.scopeKey, retired));

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as Y from "yjs";
 
 import { AdmissionController } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
@@ -19,6 +20,7 @@ import { fidelitySerialize } from "../sync/history/fidelity-json";
 import { type BuildBlockFn, HistoryImportService } from "../sync/history/import-service";
 import type { HistoryRecordMeta } from "../sync/history/ingest";
 import { HistorySpool } from "../sync/history/spool";
+import { directoryPageDocId, readDirectoryPage, readDirectoryRoot } from "../sync/protocol/directory";
 import { SyncProtocolError } from "../sync/protocol/errors";
 import { type SyncScope, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
@@ -629,5 +631,34 @@ describe("历史导入回归（本次修复）", () => {
 
     expect(page.entries.length).toBe(2);
     expect(record?.entryRefs.contentDocIds).toEqual(page.entries.map((entry) => entry.docId));
+  });
+
+  // 导入完成的代次必须能交付 MANIFEST 的 directoryDocId：根目录在 store 中可读且指向页，
+  // 页里按目录顺序列出全部内容块。缺少这一步时客户端订阅目录会直接 DOC_NOT_FOUND。
+  test("导入 finalize 创建可订阅的根目录与分页目录", async () => {
+    const harness = await createHarness();
+    const { generation } = await importAndFinalize(harness, { records: 2 });
+    const record = await harness.store.readGeneration(SCOPE_KEY, generation);
+    const rootDocId = record?.entryRefs.directoryDocId;
+    if (!rootDocId) throw new Error("expected directoryDocId in generation entry refs");
+
+    const rootState = await harness.store.readDocStateAt(rootDocId, 0);
+    if (!rootState) throw new Error("expected committed directory root");
+    const root = new Y.Doc();
+    Y.applyUpdate(root, rootState.snapshot);
+    const { latestPageId } = readDirectoryRoot(root);
+    root.destroy();
+    expect(latestPageId).toBe(directoryPageDocId(generation, 1));
+
+    if (!latestPageId) throw new Error("expected latest directory page");
+    const pageState = await harness.store.readDocStateAt(latestPageId, 0);
+    if (!pageState) throw new Error("expected committed directory page");
+    const pageDoc = new Y.Doc();
+    Y.applyUpdate(pageDoc, pageState.snapshot);
+    const page = readDirectoryPage(pageDoc);
+    pageDoc.destroy();
+    const directory = await harness.store.readDirectory({ generation, limit: 10 });
+    expect(page.contentDocIds).toEqual(directory.entries.map((entry) => entry.docId));
+    expect(page.previousPageId).toBeNull();
   });
 });
