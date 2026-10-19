@@ -63,8 +63,8 @@
         "contextUsed": "{{count}} / {{limit}} tokens used",
         "contextUsedUnknownLimit": "{{count}} tokens used; context limit unknown",
         "fileButton": "File",
-        "fileTooLarge": "A file cannot exceed 100 MB",
-        "filesTooLarge": "The total upload cannot exceed 100 MB",
+        "fileTooLarge": "A file cannot exceed 92 MB",
+        "filesTooLarge": "The total upload cannot exceed 92 MB",
         "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
         "newSession": "New Thread",
         "pastingImages": "Processing {{count}} pasted images…",
@@ -160,7 +160,7 @@
         "totalTooLarge": "Total file size {{total}} exceeds the {{max}} single upload limit, please upload in multiple batches",
         "uploadFailed": "Upload failed",
         "uploadFile": "Upload file",
-        "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit"
+        "uploadTooLarge": "Upload failed: file size exceeds the 92MB limit"
       },
       "fileTree": {
         "openFile": "Open {{name}}"
@@ -399,6 +399,8 @@
     "staleBanner": "File service temporarily unavailable, reconnecting...",
     "title": "File Browser",
     "upload": "Upload",
+    "uploadProgress": "Uploading {{percent}}%",
+    "uploadSaving": "Saving files…",
     "uploadFolder": "Upload Folder",
     "user": "My files",
     "userEmptyState": "No files",

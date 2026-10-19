@@ -189,3 +189,17 @@ describe("文件树视图（Tailwind 迁移锚点）", () => {
     expect(userFeedback).not.toContain("p-5");
   });
 });
+
+// 上传百分比必须可见且可由读屏读取，防止文件区只禁用按钮而没有反馈。
+test("文件上传显示百分比和可访问的进度条", () => {
+  const html = renderTree({ uploading: true, uploadProgress: 42, uploadSaving: false });
+  expect(html).toContain("Uploading 42%");
+  expect(html).toContain('role="progressbar"');
+  expect(html).toContain('aria-valuenow="42"');
+});
+
+// 浏览器发送完毕仍需等服务端确认落盘，不能提前显示上传成功。
+test("传输完成后显示正在保存，结束后隐藏进度", () => {
+  expect(renderTree({ uploading: true, uploadProgress: 100, uploadSaving: true })).toContain("Saving files");
+  expect(renderTree({ uploading: false, uploadProgress: 100 })).not.toContain('role="progressbar"');
+});

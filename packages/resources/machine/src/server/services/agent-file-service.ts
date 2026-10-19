@@ -155,9 +155,7 @@ class AgentFileServiceImpl implements AgentFileService {
   async upload(dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult> {
     const validate = () => validateUploadInputs(dir, files);
     return this.run((b) => {
-      // W8b（P1-11b）：能力上限不对称检查（本地 100MB / 远程 20MB，§2.4 能力上限
-      // 不对称条款）。任一单文件超限即整批拒绝（与路径校验同原子性，避免部分落盘）；
-      // 远程 >20MB 从可上传变 413 是破坏性契约变更，message 面向用户（§7.6 能力回退声明）。
+      // 整批校验后再写入，避免超限文件导致部分落盘。
       const oversized = files.find((f) => f.content.byteLength > b.uploadMaxBytes);
       if (oversized) throw new FileServiceError(REMOTE_UPLOAD_LIMIT_MESSAGE, "payload_too_large", 413);
       return b.upload(this.scope.environmentId, dir, files, this.writeOptions(options));

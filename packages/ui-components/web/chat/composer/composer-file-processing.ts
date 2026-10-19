@@ -48,7 +48,7 @@ export const IMAGE_COMPRESSION_OPTIONS = {
   fileType: "image/jpeg" as const,
 };
 
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 92 * 1024 * 1024;
 
 /** Chat 上传文件的 workspace 目标目录（源 `@/src/api/fs.ts` 的 `CHAT_UPLOAD_DIRECTORY`）。 */
 const CHAT_UPLOAD_DIRECTORY = "user";
@@ -98,7 +98,7 @@ export async function processImageFiles(files: File[], compress?: CompressImage)
 /**
  * 校验并上传普通附件，返回 workspace 相对路径。
  *
- * 体积校验（单个 / 合计 100 MB）保留在本函数，超限时抛出的 `Error.message` 是源命名空间
+ * 体积校验（单个 / 合计 92 MB）保留在本函数，超限时抛出的 `Error.message` 是源命名空间
  * `components` 下的 i18n key（`chatComposer.fileTooLarge` / `chatComposer.filesTooLarge`），
  * 调用方需按包内前缀翻译为 `chat.components.chatComposer.*`。
  */

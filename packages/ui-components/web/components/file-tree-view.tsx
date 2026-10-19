@@ -33,6 +33,8 @@ import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../config/ConfirmDialog";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
+import { Progress } from "../ui/progress";
+import { Spinner } from "../ui/spinner";
 import { FileTreeArborist } from "./file-tree-arborist";
 import type { FileTreeContextMenuState, FileTreeDownloadState } from "./file-tree-context-menu";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
@@ -61,6 +63,9 @@ export interface FileTreeViewProps {
   /** 上次拉取失败但仍在自动重连：显示可重试的横幅而不是空态。 */
   stale: boolean;
   uploading: boolean;
+  /** 当前整次上传的字节进度，保存阶段仍等待服务端确认。 */
+  uploadProgress?: number;
+  uploadSaving?: boolean;
   dragOver: boolean;
   searchQuery: string;
   /** 归一化（去空白 / 小写）后的搜索词；非空时走搜索结果分支。 */
@@ -178,6 +183,18 @@ export function FileTreeView(props: FileTreeViewProps) {
           />
         </div>
       </div>
+
+      {props.uploading && (
+        <div className="mx-2 mb-2 space-y-1.5" aria-busy="true">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted" role="status" aria-live="polite">
+            {props.uploadSaving && <Spinner size="xs" />}
+            {props.uploadSaving
+              ? t("fileTree.uploadSaving")
+              : t("fileTree.uploadProgress", { percent: props.uploadProgress ?? 0 })}
+          </div>
+          <Progress value={props.uploadProgress ?? 0} aria-label={t("fileTree.upload")} className="h-1" />
+        </div>
+      )}
 
       <label className="file-tree-search mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)]">
         <Search className="size-3.25" aria-hidden />

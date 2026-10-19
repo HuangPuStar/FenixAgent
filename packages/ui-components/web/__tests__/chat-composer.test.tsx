@@ -240,7 +240,7 @@ describe("注入式文件处理", () => {
     expect(called.length).toBe(1);
     expect(result).toEqual([{ name: "a.txt", path: "user/a.txt" }]);
 
-    const oversized = { size: 101 * 1024 * 1024, name: "big.bin" } as unknown as File;
+    const oversized = { size: 92 * 1024 * 1024 + 1, name: "big.bin" } as unknown as File;
     await expect(uploadComposerFiles([oversized], async () => [])).rejects.toThrow("chatComposer.fileTooLarge");
   });
 

@@ -134,7 +134,7 @@ OpenSandbox / 端口等部署注意事项见 `docker/README.md`。
    - 随后依次是：启动前取数端口绑定 → 沙盒默认池初始化与崩溃恢复 → Core runtime → 调度器（`RCS_DISABLE_SCHEDULER=true` 时跳过启动，注意它**不是**全局只读模式）→ builtin 同步 → 自定义节点工具注册 → Hermes → RagFlow 体检 → 巡检定时器 → 空闲监视。
    - 业务数据迁移**不在**这条序列里，由发布任务承担（见[升级](./upgrade.md)）。
 4. 构造 Elysia app：注册 CORS、OpenAPI、`/health`、`/`（302 → `/ctrl/`）、`/ctrl/*` 静态资源、`/web/*`、`/api/*` 以及各模块在装配期登记的顶层协议入口（`/acp/*`、`/hooks/*`、`/workflow-ui/*` 等，通配兜底最后注册），最后 `app.listen({ port, hostname })`。
-   前置约束：应用请求体上限 108MB（= 本地 workspace 单文件上限 100MB + multipart 框架余量，取值与理由见 `apps/server/src/plugins/body-limit.ts`；前置反向代理的上限不得低于它，否则恰好 100MB 的文件会在代理层被拒）；WebSocket `maxPayloadLength` 由 `RCS_FILE_WS_MAX_PAYLOAD_MB` 决定。
+   前置约束：应用请求体上限为 108MiB，为固定 92MiB 上传文件上限预留 multipart 余量（见 `apps/server/src/plugins/body-limit.ts`）；前置反向代理的请求体上限不得低于 108MiB。WebSocket 消息预算统一为 128MiB，`RCS_WS_MAX_PAYLOAD_MB` 与 `RCS_FILE_WS_MAX_PAYLOAD_MB` 默认及最高允许值均为 128；远程单文件和 ZIP 下载实际大小上限也为 92MiB。主服务与远程 acp-link 需同步更新下载限制，原有大于 128 的 WS 配置值须删除或调低。
 5. 关闭：`SIGINT` / `SIGTERM` 触发 `shutdownHostRuntime`（总预算 10s，逐阶段独立超时，超时只记日志不阻断后续阶段），完成后 `process.exit(0)`。并发或重复信号只关一次。
 
 ## 5. 启动后自检

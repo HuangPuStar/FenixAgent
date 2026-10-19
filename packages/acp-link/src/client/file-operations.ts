@@ -16,6 +16,9 @@ import {
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { buildWorkspaceZipEnv } from "./workspace-zip-env.js";
 
+// 双向Base64消息共用128MiB预算，原文件为协议元信息保留余量。
+const MAX_DOWNLOAD_BYTES = 92 * 1024 * 1024;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -291,8 +294,15 @@ async function opReadBinary(
   const filePath = resolveAndValidate(workspace, params.path as string);
   if (!filePath) throw new Error("Invalid path: path traversal detected");
 
-  const buffer = await readFile(filePath);
   const info = await stat(filePath);
+  if (info.size > MAX_DOWNLOAD_BYTES) {
+    throw new FileOpError("File exceeds 92MB download limit", "payload_too_large", 413);
+  }
+  const buffer = await readFile(filePath);
+  // 文件可能在stat后增长，编码前再次检查实际读到的字节数。
+  if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
+    throw new FileOpError("File exceeds 92MB download limit", "payload_too_large", 413);
+  }
   const name = basename(filePath);
   const relPath = relative(workspace, filePath);
 
@@ -300,7 +310,7 @@ async function opReadBinary(
     name,
     path: relPath,
     data: buffer.toString("base64"),
-    size: info.size,
+    size: buffer.byteLength,
     mimeType: getMimeType(filePath),
   };
 }
@@ -519,8 +529,8 @@ async function opTree(
   return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
 }
 
-const MAX_ZIP_BYTES = 20 * 1024 * 1024;
-const ZIP_TIMEOUT_MS = 65_000;
+const MAX_ZIP_BYTES = MAX_DOWNLOAD_BYTES;
+const ZIP_TIMEOUT_MS = 101_000;
 const MAX_CONCURRENT_ZIPS = 1;
 const activeFileOps = new Map<string, { controller: AbortController; operation: string }>();
 let uploadBeforeWriteHook: ((targetPath: string) => Promise<void>) | undefined;
@@ -633,7 +643,7 @@ async function opZip(workspace: string, params: Record<string, unknown>, signal:
       });
       childEvents.once("close", (code: number | null) => {
         if (outputBytes > MAX_ZIP_BYTES) {
-          reject(new FileOpError("ZIP archive exceeds 20MB; select a smaller directory", "payload_too_large", 413));
+          reject(new FileOpError("ZIP archive exceeds 92MB; select a smaller directory", "payload_too_large", 413));
         } else if (timedOut) {
           reject(new FileOpError("ZIP operation timed out", "operation_timeout", 503));
         } else if (signal.aborted) {

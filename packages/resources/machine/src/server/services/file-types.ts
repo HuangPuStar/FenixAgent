@@ -3,7 +3,7 @@
 // 自 agent-file-service.ts 拆出的契约层（保持门面单文件 ≤500 行，CLAUDE.md，
 // 与 transport 侧拆出 file-machine-events / file-op-retry / file-ws-requests 的
 // 先例一致）。职责边界：
-// - 能力上限常量（§2.4 能力上限不对称条款）：本地 100MB / 远程 20MB，
+// - 能力上限常量（§2.4 能力上限不对称条款）：本地 / 远程均为 92MB，
 //   W8b 起在 upload 入口强制检查；
 // - 门面契约类型：AgentFileScope / FileWriteOptions / ReadResult / StatResult /
 //   TreeResult / WriteResult / UploadFileInput / UploadResult / FileErrorType；
@@ -14,14 +14,14 @@
 
 // ── 能力上限常量（§2.4 能力上限不对称条款，W8b 起在 upload 入口强制检查）──
 // 改本地上限时必须同步宿主传输层的请求体兜底 `apps/server/src/plugins/body-limit.ts`（它必须**大于**本
-// 上限，差值留给 multipart 框架开销，取等号就是 AOS-BUG-005：恰好 100MB 的文件进不了门面）；
+// 上限，差值留给 multipart 框架开销，取等号就是 AOS-BUG-005：恰好 92MB 的文件进不了门面）；
 // `apps/server/src/__tests__/request-body-limit.test.ts` 钉住这条关系。
-export const LOCAL_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
-export const REMOTE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
-/** upload 超限的 413 用户可读文案（跨 plan 契约固定，测试断言锁定；remote-file-service.ts
- *  的防线重复声明同文案——两模块互相导入会成环，改文案必须两处同步）。 */
-export const REMOTE_UPLOAD_LIMIT_MESSAGE =
-  "单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取";
+/** 本地上传固定安全上限；前端产品上限可在此范围内独立调整。 */
+export const LOCAL_UPLOAD_MAX_BYTES = 92 * 1024 * 1024;
+/** 远程上传固定安全上限，为 Base64 膨胀及协议元信息预留空间。 */
+export const REMOTE_UPLOAD_MAX_BYTES = 92 * 1024 * 1024;
+/** 上传超限时返回的用户可读提示，本地和远程共用。 */
+export const REMOTE_UPLOAD_LIMIT_MESSAGE = "单文件上限 92MB";
 
 // ── 类型定义（契约）──────────────────────────────────────────────
 /**

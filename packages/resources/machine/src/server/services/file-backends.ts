@@ -479,9 +479,7 @@ class RemoteBackend implements BackEnd {
     return { size: r.size, isDirectory: r.isDirectory, modifiedAt: r.modifiedAt };
   }
   async downloadZip(envId: string, path: string): Promise<NodeJS.ReadableStream> {
-    // W16：远程 zip 补齐——file_op "zip" 单帧回传（base64）后解码为流，路由层流式
-    // 转发（Content-Disposition 由路由设置）；>20MB 在 remoteZip 内已 413 拒绝，不截断；
-    // 分块回传（file_op_chunk）属二期，单帧 ≤20MB 为过渡契约
+    // 远程整包回传后解码，路由负责向浏览器输出文件流。
     const base64 = await remoteZip(this.machineId, envId, path);
     return Readable.from(Buffer.from(base64, "base64"));
   }

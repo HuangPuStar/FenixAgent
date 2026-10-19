@@ -32,8 +32,8 @@ const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
  * 字符串按 UTF-8 字节、二进制帧按 byteLength；object 帧（Elysia 默认
  * `createWSMessageParser` 已把 `{` 开头单行 JSON 自动 parse 成对象）必须补
  * 重序列化检查——仅 `typeof === "string"` 检查会绕过（D12 残留），
- * 而 uWS 全局 maxPayloadLength 已放宽到 32MB（file-ws 需要），
- * 若不补检查，本端点真实上限将从 16MB 静默变为 32MB。
+ * 而 uWS 全局 maxPayloadLength 已放宽到 128MB（file-ws 需要），
+ * 若不补检查，本端点真实上限将从 16MB 静默变为 128MB。
  */
 function isOverWsLimit(data: unknown): boolean {
   return (
@@ -43,7 +43,7 @@ function isOverWsLimit(data: unknown): boolean {
 }
 
 /**
- * file-ws 单帧最大载荷（字节），来源模块配置的 `fileWsMaxPayloadMb`（宿主 `RCS_FILE_WS_MAX_PAYLOAD_MB`，默认 32MB，§7.6）。
+ * file-ws 单帧最大载荷（字节），来源模块配置的 `fileWsMaxPayloadMb`（宿主 `RCS_FILE_WS_MAX_PAYLOAD_MB`，默认 128MB，§7.6）。
  *
  * 惰性求值并缓存：模块配置由宿主在装配阶段注入，本模块可能在装配完成前被静态 import，
  * 不能在模块顶层读取；首次消息到达时配置已就绪，取一次后缓存（配置进程内不可变）。
@@ -222,8 +222,8 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
       // 解析出 0 条消息，超大帧不会进入业务处理。
       // 已知框架限制（记录在案）：单行 JSON 对象帧会被默认 parser 提前 parse 成
       // object，到不了本函数的字符串检查——该路径由 uWS 全局 maxPayloadLength
-      // （apps/server/src/main.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
-      // file-ws 32MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
+      // （apps/server/src/main.ts，128MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
+      // file-ws 128MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
       if (typeof message === "string" && getFileWsPort().checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
         logError(`[File-WS] Message too large: ${Buffer.byteLength(message)} bytes`);
         adaptWs(ws).close(1009, "message too large");

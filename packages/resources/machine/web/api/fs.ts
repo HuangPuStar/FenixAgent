@@ -14,10 +14,10 @@ import { ApiError, request, UPLOAD_TIMEOUT_MS, unwrap, WRITE_TIMEOUT_MS } from "
 import { randomUUID } from "../lib/random-uuid";
 
 /**
- * 单次上传大小上限（100MB），与后端保持一致的同源常量。
- * 业务侧统一引用本常量，禁止硬编码（docs/arch/12-files.md §10 P1-12 ⑤）。
+ * 前端单文件上传的产品上限，可独立调整，但不得超过后端固定的 92MiB 硬上限。
+ * 文件区各上传入口共用本常量；调整前端策略不修改后端限制。
  */
-export const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE_BYTES = 92 * 1024 * 1024;
 
 /** 目录列表单条记录 */
 interface FileEntry {

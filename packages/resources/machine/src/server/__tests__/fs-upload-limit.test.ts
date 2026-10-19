@@ -1,9 +1,4 @@
-// fs-upload-limit.test.ts —— W8b（P1-11b）upload 能力上限验证（D8 载荷治理 HTTP 侧）
-// 能力上限不对称（§2.4/§7.6）：本地 100MB / 远程 20MB；远程 >20MB 从可上传变 413
-// payload_too_large 是破坏性契约变更，必须携带用户可读文案。覆盖：
-// 本地 100MB 上限保持（20MB 成功、>100MB 413）；远程 >20MB → 413 + 文案断言；
-// 远程恰好 20MB 边界成功；remoteUploadFiles 发送前防线（base64 反推原大小提前抛错，
-// 不构造 ~27MB 大帧后才被 W8a 32MB 载荷兜底）。
+// 上传容量边界：本地和远程均允许恰好 92MB，超限整批拒绝。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -77,21 +72,21 @@ describe("本地环境（无 machine 配置）", () => {
     expect(await readFile(join(workspaceDir(), "user/sub/same.txt"))).toEqual(Buffer.alloc(1, 1));
   });
 
-  // 本地 upload 100MB 上限保持：20MB 文件应成功上传落盘（不受远程 20MB 限制影响）
-  test("本地 20MB 上传成功", async () => {
-    const response = await fsRoutes.handle(uploadRequest(20 * MB, "big20.bin"));
+  // 本地恰好 92MB 必须完整落盘，不因 multipart 封装而误拒绝。
+  test("本地恰好 92MB 上传成功", async () => {
+    const response = await fsRoutes.handle(uploadRequest(92 * MB, "big92.bin"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
     expect(body.success).toBe(true);
-    expect(body.data.files[0]?.path).toBe("user/sub/big20.bin");
-    const info = await stat(join(workspaceDir(), "user", "sub", "big20.bin"));
-    expect(info.size).toBe(20 * MB);
+    expect(body.data.files[0]?.path).toBe("user/sub/big92.bin");
+    const info = await stat(join(workspaceDir(), "user", "sub", "big92.bin"));
+    expect(info.size).toBe(92 * MB);
   });
 
-  // 本地超过 100MB 上限必须 413 payload_too_large（本地 100MB 上限保持）
-  test("本地 >100MB 上传被拒（413 payload_too_large）", async () => {
-    const response = await fsRoutes.handle(uploadRequest(100 * MB + 1, "huge.bin"));
+  // 本地超过 92MB 上限必须 413 payload_too_large（本地 92MB 上限保持）
+  test("本地 >92MB 上传被拒（413 payload_too_large）", async () => {
+    const response = await fsRoutes.handle(uploadRequest(92 * MB + 1, "huge.bin"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
@@ -111,45 +106,59 @@ describe("远程环境（stub file-ws 在线）", () => {
     stubMachineConfig({ defaultMachineId: MACHINE_ID });
   });
 
-  // 远程 >20MB 上传必须 413 + 用户可读文案（能力回退，破坏性契约变更），且不得向机器端发送任何帧
-  test("远程 >20MB 上传 → 413 + 文案断言，不发送 file_op", async () => {
+  // 远程 >92MB 上传必须 413 + 用户可读文案（能力回退，破坏性契约变更），且不得向机器端发送任何帧
+  test("远程 >92MB 上传 → 413 + 文案断言，不发送 file_op", async () => {
     const sendMock = mock(async () => ({ status: "ok", data: { files: [] } }));
     stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const response = await fsRoutes.handle(uploadRequest(20 * MB + 1, "over.bin"));
+    const response = await fsRoutes.handle(uploadRequest(92 * MB + 1, "over.bin"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
       error: { type: "payload_too_large", message: REMOTE_UPLOAD_LIMIT_MESSAGE },
     });
-    // 门面在发送前拦截：不构造 ~27MB base64 帧
+    // 门面在发送前拦截：不构造 ~133MB base64 帧
     expect(sendMock.mock.calls.length).toBe(0);
   });
 
-  // 远程恰好 20MB 属于允许边界（≤20MB 成功），应正常经 file-ws 发送
-  test("远程恰好 20MB 上传成功", async () => {
+  // 远程恰好 92MB 属于允许边界（≤92MB 成功），应正常经 file-ws 发送
+  test("远程恰好 92MB 上传成功", async () => {
     const sendMock = mock(async () => ({
       status: "ok",
-      data: { files: [{ name: "big20.bin", path: "user/sub/big20.bin", size: 20 * MB }] },
+      data: { files: [{ name: "big92.bin", path: "user/sub/big92.bin", size: 92 * MB }] },
     }));
     stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const response = await fsRoutes.handle(uploadRequest(20 * MB, "big20.bin"));
+    const response = await fsRoutes.handle(uploadRequest(92 * MB, "big92.bin"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
-    expect(body.data.files[0]?.path).toBe("user/sub/big20.bin");
+    expect(body.data.files[0]?.path).toBe("user/sub/big92.bin");
     expect(sendMock.mock.calls.length).toBe(1);
   });
 });
 
 describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => {
-  // 防线：base64 反推原文件 >20MB 时必须提前抛 413，不产生 ~27MB 大帧
-  test("base64 原文件 >20MB 提前抛 413，不调用 sendFileOpAndWait", async () => {
+  // 两个均未超单文件上限的文件也不能合成超过安全预算的 Base64 消息。
+  test("远程多文件总量超过92MB时在发送前拒绝", async () => {
+    const sendMock = mock(async () => ({ status: "ok", data: { files: [] } }));
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    const content = Buffer.alloc(47 * MB).toString("base64");
+    await expect(
+      remoteUploadFiles(MACHINE_ID, ENV_ID, "user", [
+        { name: "a.bin", content, relativePath: "a.bin" },
+        { name: "b.bin", content, relativePath: "b.bin" },
+      ]),
+    ).rejects.toMatchObject({ statusCode: 413, code: "payload_too_large" });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // 防线：base64 反推原文件 >92MB 时必须提前抛 413，不产生 ~133MB 大帧
+  test("base64 原文件 >92MB 提前抛 413，不调用 sendFileOpAndWait", async () => {
     const sendMock = mock(async () => ({ status: "ok", data: { files: [] } }));
     stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const over = Buffer.alloc(20 * MB + 1, 1).toString("base64");
+    const over = Buffer.alloc(92 * MB + 1, 1).toString("base64");
     await expect(
       remoteUploadFiles(MACHINE_ID, ENV_ID, "user/sub", [
         { name: "over.bin", content: over, relativePath: "over.bin" },
@@ -180,20 +189,20 @@ describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => 
     });
   });
 
-  // 防线边界：恰好 20MB 原文件（含 padding 的 base64）必须放行并透传发送
-  test("恰好 20MB 边界放行并透传发送", async () => {
+  // 防线边界：恰好 92MB 原文件（含 padding 的 base64）必须放行并透传发送
+  test("恰好 92MB 边界放行并透传发送", async () => {
     const sendMock = mock(async () => ({
       status: "ok",
-      data: { files: [{ name: "big20.bin", path: "user/sub/big20.bin", size: 20 * MB }] },
+      data: { files: [{ name: "big92.bin", path: "user/sub/big92.bin", size: 92 * MB }] },
     }));
     stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const exact = Buffer.alloc(20 * MB, 1).toString("base64");
+    const exact = Buffer.alloc(92 * MB, 1).toString("base64");
     const result = await remoteUploadFiles(MACHINE_ID, ENV_ID, "user/sub", [
-      { name: "big20.bin", content: exact, relativePath: "big20.bin" },
+      { name: "big92.bin", content: exact, relativePath: "big92.bin" },
     ]);
 
-    expect(result.files[0]?.path).toBe("user/sub/big20.bin");
+    expect(result.files[0]?.path).toBe("user/sub/big92.bin");
     expect(sendMock.mock.calls.length).toBe(1);
   });
 });

@@ -73,6 +73,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ percent: number; saving: boolean } | null>(null);
   const uploadControllerRef = useRef<AbortController | null>(null);
   const envIdRef = useRef(envId);
 
@@ -108,6 +109,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
       uploadControllerRef.current?.abort();
       uploadControllerRef.current = controller;
       setUploading(true);
+      setUploadProgress({ percent: 0, saving: false });
       try {
         const batches = createUploadBatches(files, relativePaths);
         const totalSize = Math.max(
@@ -116,13 +118,19 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
         );
         let uploadedSize = 0;
         for (const batch of batches) {
+          if (controller.signal.aborted) return;
+          setUploadProgress({ percent: Math.round((uploadedSize / totalSize) * 100), saving: false });
           await uploadWorkspaceFiles(envId, batch.files, {
             targetDir: uploadTargetDir,
             relativePaths: batch.relativePaths,
             signal: controller.signal,
-            onProgress: onProgress
-              ? (percent) => onProgress(Math.round(((uploadedSize + (batch.size * percent) / 100) / totalSize) * 100))
-              : undefined,
+            onProgress: (percent) => {
+              if (uploadControllerRef.current !== controller || controller.signal.aborted) return;
+              const overall = Math.round(((uploadedSize + (batch.size * percent) / 100) / totalSize) * 100);
+              // XHR 只确认浏览器到主服务的字节传输；落盘结果以 HTTP 响应为准。
+              setUploadProgress({ percent: overall, saving: percent === 100 });
+              onProgress?.(overall);
+            },
           });
           uploadedSize += batch.size;
         }
@@ -143,6 +151,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
         if (uploadControllerRef.current === controller) {
           uploadControllerRef.current = null;
           setUploading(false);
+          setUploadProgress(null);
         }
       }
     },
@@ -189,6 +198,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
     fileInputRef,
     folderInputRef,
     uploading,
+    uploadProgress,
     uploadFiles,
     uploadDroppedFiles,
     handleFileInputChange,

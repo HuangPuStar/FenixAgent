@@ -150,12 +150,12 @@ interface AgentFileService {
 | list | `listDirectory` | `remoteListDir` |
 | read | `readFileContent` / `createFileStream` | `remoteReadFile` / `remoteReadBinaryFile` |
 | write | `writeFileContent` | `remoteWriteFile` |
-| upload | 本地 multipart 落盘（100MB） | `remoteUploadFiles`（base64，120s，v2 上限 20MB） |
+| upload | 本地 multipart 落盘（92MB） | `remoteUploadFiles`（base64 整包，120s，单文件上限 92MB） |
 | delete | `deleteNode`（**目录递归一次完成**） | `remoteDeleteFile`（v2 明确目录递归语义，§7.6） |
 | mkdir | `mkdirp` | `remoteMkdir` |
 | rename | `renamePath` | `remoteRename` |
 | stat | `stat` + `isTextFile` | `remoteStat` |
-| downloadZip | 系统 `zip` 流式（本地） | `file_op "zip"`（v2，§7.9；现状 501） |
+| downloadZip | 系统 `zip` 流式（本地） | `file_op "zip"`（单包 ≤92MiB，§7.9） |
 
 - 两端**不允许**在接口之外产生额外行为（例如现状"本地 realpath 越界检查、远程不校验"必须在 AgentFileService 统一层消除，backend 只负责执行）。
 
@@ -169,8 +169,8 @@ interface AgentFileService {
 | 响应结构 | 全部 `{ success, data }`，backend 差异不外泄（不出现 `remote_error` 之类的 backend 专属类型）；`/api/*` 文件面（第三套实现 `api-workspace.ts`）收敛到本契约时另行评估（§10） |
 | 变更事件 | 任何 backend 的写操作成功都由 AgentFileService 统一发布 `file_changed`（含 `source`/`actorId`，§4.3） |
 | 条件请求 | 所有读操作由 AgentFileService 统一派生 ETag（§4.2） |
-| **能力上限不对称条款** | 本地/远程的**能力上限差异必须显式声明**（如 upload：本地 100MB、远程 20MB**【已实施**：远程 >20MB 上传返回 413 `payload_too_large`，破坏性契约变更（>20MB 从可上传变 413）声明见 §7.6**】**；zip：远程 ≤100MB），不落入"消费者无感"承诺——无感指结构，不是能力。差异需在响应或文档可查（§7.6） |
-| **请求体上限 ≠ 单文件上限** | 上限校验分两层，取值**不得相等**：产品口径的"单文件 ≤ 100MB（本地）"由 AgentFileService 按文件字节数判定；宿主传输层的请求体兜底要额外留出 multipart 框架开销（boundary、每部分头部、`relativePaths` 字段），取值见 `apps/server/src/plugins/body-limit.ts`（100MB + 8MB）。取等号时恰好 100MB 的文件（前端按 100×1024×1024 放行）会在进入门面前被宿主 413 拦下——AOS-BUG-005 现场，且错误文案会与产品上限混淆 |
+| **文件容量约束** | `/web` 本地与远程上传单文件的后端硬上限固定为 92MiB；前端产品上限独立设置，当前为 92MiB，后续在硬上限内调整仅修改前端。远程 ZIP 下载单包 ≤92MiB，超限返回 413。远程仍为 base64 整包，运行时的 WS 客户端限制见 §7.6。 |
+| **请求体上限 ≠ 单文件上限** | 后端校验分两层，取值**不得相等**：文件服务的单文件硬上限 92MiB 由 AgentFileService 按文件字节数判定；宿主传输层的请求体兜底要额外留出 multipart 框架开销（boundary、每部分头部、`relativePaths` 字段），取值见 `apps/server/src/plugins/body-limit.ts`（108MiB）。取等号时恰好达到单文件上限的文件会在进入门面前被宿主 413 拦下——AOS-BUG-005 现场。前端产品上限调整不影响这两层后端限制。 |
 
 **machineId 配置校验（v2，区分三种根因）**：`getRemoteMachineId` 增加 DB 存在性校验——machineId 不存在于组织 → `422 config_error`（message 提示去管理面检查配置）；存在但 file-ws 未连 → `503 file_service_unavailable`（现状三种根因都归 503，误导排障）。
 
@@ -185,7 +185,7 @@ interface AgentFileService {
 | GET | `/fs/tree` | 递归文件树（黑名单过滤 + mtime） | ETag 条件请求；超大目录分页/深度限制逃生舱（§4.2） |
 | GET | `/fs` | 列目录，`?path=` 相对路径 | ETag 条件请求 |
 | GET | `/fs/*` | 读文件：`?preview=true` 二进制预览；否则 `mode` 显式（v2 移除静默回退） | ETag 条件请求 |
-| POST | `/fs/*` | 上传（multipart / 相对路径数组），本地 100MB / 远程 20MB（已实施，超限 413，§7.6） | 写后广播变更 |
+| POST | `/fs/*` | 上传（multipart / 相对路径数组），本地 / 远程均为 92MB（超限 413，§7.6） | 写后广播变更 |
 | PUT | `/fs/*` | 写入文本内容 | 写后广播变更 |
 | DELETE | `/fs/*` | 删除单个文件（v2 明确目录递归语义） | 写后广播变更 |
 | POST | `/fs/mkdir` | 创建目录 | 写后广播变更 |
@@ -440,10 +440,13 @@ sequenceDiagram
 
 - 数量：单连接 pending 上限 64；pendingRequests 全局上限 1024；超限请求立即返回本地错误帧 `{ type: "file_op_error", request_id, code: "busy" }`。
 - **busy 的 HTTP 映射（运营修订）**：`busy` → **429 + `Retry-After: 1`**（瞬时容量问题，不是服务端故障）；不得映射 503（503 会让集成方误判故障并停止退避）。`busy` 拒绝计入指标。
-- **字节（S2 修复）**：
-  - **WS 消息最大载荷 32MB**：在服务端 WS 层配置 maxPayload 并在**消息解析前**做显式检查——现状 `MAX_WS_MESSAGE_SIZE=10MB` 检查在 Elysia 自动 `JSON.parse`（createWSMessageParser 对 `{` 开头字符串先 parse）之后才生效，对大 JSON 帧**形同虚设**，100MB upload 实际以 ~133MB base64 单帧全量进内存（代码改造点，§10 P1）。
-  - `upload` 单文件上限：**远程 100MB → 20MB**（base64 帧 ~27MB < 32MB 载荷）；本地保持 100MB（multipart 落盘）。**能力回退声明（三视角修订）**：20MB 是能力回退，破坏性契约变更（>20MB 从可上传变 413）；替代通道——分块上传**从二期提前到 P1 边界**（§10），过渡期 413 响应带用户可读文案（"单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取"）；前端上传大小常量必须与后端同源（现状 100MB 硬编码 5 处，改上限必漂移）；**改单文件上限时宿主请求体兜底（`apps/server/src/plugins/body-limit.ts`）必须同步，且始终大于它**——差值就是 multipart 框架余量，取等号即回归 AOS-BUG-005（§2.4「请求体上限 ≠ 单文件上限」，`request-body-limit.test.ts` 钉住）。
-  - `zip` 单包 ≤ 100MB，**分块回传**（`file_op_chunk` 系列帧，单块 ≤ 1MB）；>100MB 返回明确错误（413 + 建议选择子目录），**不得截断**。分块下载需进度信号（首帧携带总大小/块数），无 Content-Length 的下载必须有块计数帧。
+- **字节与进度**：
+  - 双向 file-ws 消息上限统一为 **128MiB**；`RCS_WS_MAX_PAYLOAD_MB` 与 `RCS_FILE_WS_MAX_PAYLOAD_MB` 默认均为 128，且不允许配置更大值。上传及远程下载（单文件和 ZIP）实际文件硬上限均为 **92MiB**，Base64 后约 122.67MiB，保留约 5.33MiB 协议元信息余量。
+  - 后端本地、远程上传单文件硬上限固定为 92MiB；HTTP 请求体兜底仍为 108MiB，高于文件服务硬上限，为 multipart 留出余量。远程单次上传文件总字节数也须 ≤92MiB，超限在发送前返回 413，避免多个合规文件合并后触发客户端断连。前端产品上限当前为 92MiB，后续在此范围内独立调整，不同步修改后端。目录上传按 20MB 文件总字节数分批，大于分批阈值的单文件独占一批；此分批不拆分文件。
+  - 远程上传和下载保留 base64 整包协议；远程单文件与 ZIP 下载均 ≤92MiB，超限返回 413，不截断。上传由主服务发送前校验；下载由机器端编码前校验，ZIP 还由主服务复核。部署须同步更新主服务和远程 acp-link，并删除或降低原有 160MiB 环境变量覆盖值，避免旧机器端发送超出 128MiB 的下载响应。
+  - **运行时约束**：Bun 1.4.2 原生 WebSocket 客户端接收消息固定上限为 128MiB，服务端的 maxPayloadLength 无法覆盖它。100,000,000 字节文件整包编码后仍低于该限制，本地真实文件通道验证通过；100MiB 文件编码后会在该版本的远程客户端接收阶段断开。上传上限因此设为 92MiB；Bun 1.4.2 真实项目通道已验证恰好 96,468,992 字节上传及下载 SHA256 一致，随后 tree 可用、连接存活。
+  - 文件区进度条复用 XHR 上传事件，按批次字节数加权；浏览器发送完成后显示「正在保存文件」，HTTP 成功响应后才结束。切换环境或卸载组件会取消请求，旧进度不得覆盖新任务。
+
 - **重试预算与背压共享**：迁移重发 + 自动重试合计 ≤ 1 次额外执行（§7.3），不放大载荷。
 - **批量删除（三视角修订）**：机器端 `delete` 明确**目录递归语义**（一次 file_op 删整树），`/fs/batch` 对目录只发一次；v2 给批量删除分配 op_id 组幂等（现状远程逐文件 N 次往返，10 万文件目录分钟级起步、断连即部分删除）。
 
@@ -462,9 +465,9 @@ sequenceDiagram
 
 ### 7.9 远程 download-zip（修复 D10 关联）
 
-- 远程 `zip` 操作：file_op `{ operation: "zip", params: { path } }`，机器端打包后以 base64 **分块回传**（`file_op_chunk` 系列帧，单块 ≤ 1MB，总包 ≤ 100MB），主服务流式转发给浏览器（§7.6 载荷治理配套）。
+- 远程 `zip` 操作：file_op `{ operation: "zip", params: { path } }`，机器端打包后以 base64 **整包回传**（总包 ≤92MiB），主服务解码后转发给浏览器（§7.6 载荷治理配套）。
 - 分块传输的超时语义：默认 60s 不够，**按总包大小派生**（如 60s + 总包/2MB 每秒预算），或下载期间续期。
-- 容量边界：≤100MB；GB 级分发不在本通道范围（容量规划明示）。
+- 容量边界：≤92MiB；GB 级分发不在本通道范围（容量规划明示）。
 
 ## 8. 安全与隔离边界
 
@@ -494,7 +497,7 @@ sequenceDiagram
 | D5 | 远程分支 path 直接透传机器端，主服务无校验 | 越界路径依赖机器端自觉 | §7.7 前置校验 + §2 统一层 |
 | D6 | file-ws 断连仅 reject pending，无能力聚合；acp-ws 在线时消费者无感知 | "机器在线但文件 503" / "机器离线但文件可用"双态无表达 | §7.4 degraded 事件 + §4.3 订阅（能力矩阵 §1） |
 | D7 | `getRemoteMachineId` 只查 environment 存在性，归属校验依赖路由层自觉 | service 层被绕过时缺归属校验 | §2 AgentFileService 统一入口 |
-| D8 | upload 整体 base64 单帧（100MB → ~133MB 帧），无分块 | 机器端内存峰值高，大文件易超时 | §7.6 载荷上限 20MB + 分块上传（P1 边界） |
+| D8 | upload 整体 base64 单帧（92MiB → ~122.67MiB 帧），无分块 | 机器端内存峰值高，大文件易超时 | §7.6 92MiB 整包传输 + 运行时验收；后续分块增强 |
 | D9 | GET /fs/* 非 preview：文本读取失败**静默**回退二进制 | 权限/IO 错误被伪装为二进制文件 | §7.8 mode 显式 |
 | D10 | `fs.ts` 每端点 `if (machineId)` 双分支；远程无路径校验、无 download-zip、错误语义与本地分叉 | 双路径行为漂移，新操作改两处 | §2 AgentFileService + BackEnd 抽象 |
 | D11 | 读响应无 ETag/Last-Modified；无变更事件 | 视图过期无界，读多打爆机器 | §4 条件请求 + 变更事件 |
@@ -527,8 +530,8 @@ sequenceDiagram
 8. **路径前置校验（D5/D7 校验侧）**：AgentFileService 统一校验（拒绝绝对路径/`..`/控制字符）+ machineId 存在性校验（`422 config_error` vs `503`）。验证：`/fs/../../etc/passwd` 与不存在 machineId 均被拒（本地与远程一致）；symlink 指向 workspace 外 → 拒绝。
 9. **ETag 条件请求（D11 读侧）**：读操作派生 ETag（tree 用路径排序 hash）+ **事件驱动指纹失效** + `Cache-Control: no-cache`；主消费端配套发送 `If-None-Match`。验证：连续两次请求第二次 304；rename 后 tree ETag 变化；不携带头时恒 200。
 10. **file_changed 事件（D11 写侧 + D6 + D20）**：v2 事件帧（含 `source`/`actorId`，§7.5）；突发合并为 `file_changed_batch`；**本地写路径同限频器**；环境声明 + 增量声明 + 主服务记账；register 成功广播 `invalidate_all`（治理三件套：机器级限频 + 抖动 + 订阅方 coalescing）`[跨仓库]`。验证：机器 touch 文件订阅方收到事件；Agent 连写 50 文件收到 batch 而非全量失效；断连重连后收到 invalidate_all；无订阅零开销。
-11. **载荷治理（D12/D8 第一版）**：WS maxPayload 32MB + 解析前显式检查（修复 Elysia 绕过）；远程 upload 上限 100MB → 20MB + 413 用户可读文案；**分块上传（P1 边界）**。验证：>32MB 帧被拒/连接关闭；20MB 上限文案正确；分块上传大文件成功。
-12. **前端消费配套（用户视角 P0，D19）**：① tree 加载失败**保留旧树 + 过期横幅**（禁止渲染空目录）；② rename/mkdir/newFile 失败 toast；③ 写操作前端超时对齐后端（upload ≥ 120s）+ 自动生成并复用 `X-File-Op-Id`；④ 可见性恢复/订阅重连时 If-None-Match 重校验；⑤ 100MB 硬编码收敛为与后端同源配置。验证：断连期间文件树显示横幅与旧数据；上传慢网络不提前断开；重发复用 op_id。
+11. **载荷治理（D12/D8）**：服务端 WS 上限默认 128MiB，保留解析前检查；上传单文件和远程单次上传总量均为 92MiB，远程 ZIP 单包上限为 92MiB。验证：92MiB 上传边界放行、超限 413；实际机器运行时的整包传输须单独验收（§7.6）。分块传输属于后续增强。
+12. **前端消费配套（用户视角 P0，D19）**：① tree 加载失败**保留旧树 + 过期横幅**（禁止渲染空目录）；② rename/mkdir/newFile 失败 toast；③ 写操作前端超时对齐后端（upload ≥ 120s）+ 自动生成并复用 `X-File-Op-Id`；④ 可见性恢复/订阅重连时 If-None-Match 重校验；⑤ 前端产品容量在后端固定 92MiB 硬上限内独立调整，无需同步修改后端。验证：断连期间文件树显示横幅与旧数据；上传慢网络不提前断开；重发复用 op_id。
 13. **角色化授权（D17）**：`getOwnedEnvironment` 增加角色检查，403/404 分离。验证：只读成员写操作 403；无环境 404。
 
 **P2（一致性增强）**

@@ -34,6 +34,17 @@ const baseInput = {
   WORKFLOW_V2_TICKET_SECRET: "test-ticket-secret",
 };
 
+// 双向消息预算统一为128MiB，避免部署配置再次放开超过客户端能力的消息。
+test("WebSocket默认上限为128MiB且配置不能超过128MiB", () => {
+  const env = parseEnv(baseInput);
+  expect(env.RCS_WS_MAX_PAYLOAD_MB).toBe(128);
+  expect(env.RCS_FILE_WS_MAX_PAYLOAD_MB).toBe(128);
+  for (const key of ["RCS_WS_MAX_PAYLOAD_MB", "RCS_FILE_WS_MAX_PAYLOAD_MB"]) {
+    expect(() => parseEnv({ ...baseInput, [key]: "128" })).not.toThrow();
+    expect(() => parseEnv({ ...baseInput, [key]: "129" })).toThrow();
+  }
+});
+
 /** 把某个模块的 fixture 声明替换进真实清单，其余模块原样保留。 */
 function withEnvDefinitions(moduleId: string, envDefinitions: readonly EnvDefinition[]): readonly ModuleManifest[] {
   const manifests: readonly ModuleManifest[] = generatedModuleManifests.map((manifest) =>

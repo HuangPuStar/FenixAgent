@@ -3,7 +3,7 @@
 // 现场：前端按 100×1024×1024 放行 100MB 的文件，宿主上限与「单文件上限」取同一个数，于是
 // 104,857,599 字节的文件加 multipart 框架开销后超过上限，在宿主层被 413 拦下（
 // `{"error":{"type":"PAYLOAD_TOO_LARGE","message":"Request body exceeds 100MB limit"}}`），
-// 永远到不了文件门面的按文件校验。本文件钉住三件事：恰好 100MB 的文件必须放行；只有真的超过宿主
+// 永远到不了文件门面的按文件校验。本文件钉住三件事：恰好达到单文件上限的文件必须放行；只有真的超过宿主
 // 预算才拒绝；机器包的单文件上限变了以后这里必须同步。
 //
 // 不真发 100MB 请求体：Bun 允许在构造的 Request 上显式给 `content-length`（守卫只读这个头），
@@ -30,8 +30,8 @@ describe("宿主请求体守卫", () => {
     expect(MAX_REQUEST_BODY_BYTES).toBeGreaterThan(LOCAL_UPLOAD_MAX_BYTES);
   });
 
-  // 恰好 100MB 的文件、以及它加上 multipart 框架开销后的请求体，都必须放行——这是报告里失败的那一档。
-  test("恰好 100MB 的文件及其 multipart 开销不触发上限", () => {
+  // 达到文件服务硬上限的文件及其 multipart 开销必须放行。
+  test("恰好达到单文件上限的文件及其 multipart 开销不触发上限", () => {
     expect(isRequestBodyOverLimit(String(LOCAL_UPLOAD_MAX_BYTES))).toBe(false);
     expect(isRequestBodyOverLimit(String(LOCAL_UPLOAD_MAX_BYTES + 512))).toBe(false);
     expect(isRequestBodyOverLimit(String(MAX_REQUEST_BODY_BYTES))).toBe(false);
