@@ -276,7 +276,8 @@
 
 ## 4. 验证证据
 
-- 包内测试：**1464 通过 / 0 失败**（75 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。
+- 包内测试：`bun test packages/chat-channel/src` **1537 通过 / 0 失败**（83 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。
+- 目标两文件：`doc-manager-open-fence.test.ts` + `snapshot-hydration.test.ts` **27 通过 / 0 失败**（含本轮新增的 Redis 故障快路径降级 2 条）。
 - 浏览器测试：**11 通过 / 0 失败**，覆盖默认无代次 HELLO、MANIFEST → directory `contentDocIds` → SUBSCRIBE → 消息投影，以及 ERROR 终态不重连。
 - 端到端接线：`sync-gateway-e2e.test.ts` 用真实 `ChatChannelController` / `Gateway` / `SyncHostSession` / runtime 与假 WebSocket、假时钟，
   贯通开关开启的 stateless HELLO → MANIFEST → 目录 `contentDocIds` → 内容订阅 → `DOC_BASE` → 用户消息 `DOC_UPDATE` → `APPLY_ACK`，
@@ -321,7 +322,7 @@
 
 - 前端默认启用补齐：`sync-chat-session` / `sync-chat-projection` / `use-sync-chat-state` / `sync-chat-messages` 四文件
   **36 通过 / 0 失败**；含假 WebSocket 拒绝回退、切换清理，以及真实用户/助手气泡渲染、历史可见、双写去重与稳定引用。
-  `fastcheck` / `precheck` 均通过（web 308、server/script 981、package 10278 通过，108 跳过）；最终补充精确身份优先与
+  `fastcheck` / `precheck` 均通过；最终补充精确身份优先与
   后到消息排序后，重跑四文件、web 全目录（309 通过 / 0 失败）、server/web 类型检查及生产构建通过。构建仍有 Vite 原生配置、Node 弃用、依赖 externalization 与 Tailwind sourcemap 告警，未验证真实服务多版本部署。
 - 初次加载 hydrate 门控：切换会话后旧/新两路都按批到达（旧路径 ACP 回放、新路径 DOC_BASE/DOC_UPDATE）。展示层以
   确定性事实收口：旧路径在回放窗口开启时由服务端写入 `replay_started`（`presenting=replaying`），load/resume 响应后
@@ -337,9 +338,9 @@
 - 旧全量通道退役（§3.8）：`sync-legacy-retirement.test.ts` 5 pass（无 sync-request/快照、无旧广播、
   忽略 state-vector、action 可达、旧连接不变）；`sync-chat-messages.test.tsx` 13 pass 与
   `use-chat-hydration.test.tsx` 5 pass 覆盖文本退役、非文本保留、空投影与回退。chat-channel 全量
-  **1510 pass / 81 files**，agent-runtime web + apps/web **479 pass / 57 files**；`bun run typecheck`、
-  `bun run build:web`、`bun run fastcheck` 均通过；`bun run precheck` 全绿（web 360、server/script 981、
-  package 10430 通过 / 2 跳过）。
+  **1537 pass / 0 fail / 83 files**，agent-runtime web + apps/web **479 pass / 57 files**；`bun run typecheck`、
+  `bun run build:web`、`bun run fastcheck` 均通过；`bun run precheck` 全绿（package-tests 10457 通过 / 2 跳过 /
+  0 失败、874 files；server-and-script 981；web-app 360）。
 
 ## 5. 未覆盖与不可做
 
@@ -353,6 +354,8 @@
 | 历史重建 | 旧 Chat Doc 已实施 | 握手时等待 Redis 快照水合后再读旧 Chat Doc 的已提交时间线；无快照才是可缓存的「无历史」，读取失败/代次失效明确失败且下次重试。Peri 持久历史契约不存在（`importHistory` 零命中，ACP `load_session` 仅增量），已留可注入 `SyncHistorySource` 接缝；导入后的新稳定条目不追补 |
 | Redis 快照恢复 | 已覆盖 | `loadChatDoc` / `loadSessionDoc` 先 `Y.applyUpdate` 再幂等补结构；provider 在 `GETBUFFER` 前与返回后（无论有无快照）各校验一次 active generation，窗口内换代记为 `stale` 而非 `loaded`/`empty`。DocManager 为每个 rcsSessionId 区分 `closeEpoch` 与 `replaceEpoch` 并登记在途换代 Promise：close 优先，在途 open 与 replace 都放弃；replace 成功时在途 open 返回 map 中的新世代 Doc；replace 失败（active generation 未变）时 open 复核世代后安装自己的加载结果。open 在等待在途换代之后、写 map 之前始终用只读 `getActiveGeneration` 复核 `doc.generation`，不一致则销毁本次加载并最多重试 2 次（仍不一致明确失败）；因此 close 删除 fence 登记后的新 open 与跨进程换代都依赖 active generation 复核而非旧 fence 对象。replace 在 publish 已推进 active generation 后被 close 中止时不回滚 Redis，只记录诊断日志，后续 open 的复核会选中新世代。open 未落定的换代绝不写 map / 注册广播；closeAll 一并清理 fence 登记。回归覆盖 Chat/Session 换代、publish await 窗口内的 open/close、CAS 失败、closeAll、无快照窗口换代与丢弃 Doc 的广播泄漏 |
 | 快路径收敛与返回前校验 | 已实施 | Redis 模式下已驻留 Doc 的 `openChat` / `openSession` 快路径先捕获 fence 快照，再用只读 `getActiveGeneration` 复核 active generation：不一致时 compare-and-delete 旧 Doc、销毁后重新加载；删除 map 与登记 opening 之间无 await，并发调用共享同一 opening，只重载一次。因此重连 / 再次 open 会收敛到新世代。已建立的活跃连接不会因跨进程换代自动迁移：provider 订阅与快照 key 按 generation 隔离，仍需重连或本地 `replaceProjection` 才能切换。open 在 `await opening` 之后、返回调用方之前做无 await 的同步复核：map 为空说明 close 已发生，抛 `chat/session doc was closed during open`；map 已是另一对象时返回该对象，绝不返回已销毁 Doc |
+| 快路径复核的 Redis 故障降级 | 已实施 | 已驻留 Doc 的快路径只读 `getActiveGeneration` 抛错时，经 `onError` 记录带会话与 kind 的诊断并返回内存中的原 Doc：不重载、不销毁、不广播，故障期间用户消息仍可写入。冷启动 / 无缓存加载路径的复核失败仍抛错（无法确定世代）。影响范围：Redis 故障期间已驻留 Doc 不收敛跨进程世代，恢复后的下一次 open 会重新复核并收敛到新世代；旧 Doc 的广播与快照写入仍受 generation 约束，不会污染新世代 |
+| active generation key 短暂缺失 | 残余风险 | Redis flush / 故障转移导致 `yjs:active-generation:<id>` 暂时不存在时，只读复核返回 `null` 并按「与当前世代不一致」处理：已驻留 Doc 被判 stale，销毁后以新建的空世代重新加载。该语义与 `getActiveGeneration` 注释「key 已消失按不一致处理」及 provider 一致；历史权威在 Agent 侧 ACP session，可经 `load_session` 回放重建，但内存投影会暂时回到空视图 |
 | 跨进程世代切换的复核窗口 | 残余风险 | 安装前的 active generation 复核与写 map 之间是无 await 的进程内原子段；其他进程恰在该段内推进世代时，本进程仍会短暂安装旧 Doc。该窗口无法与跨进程切换原子化，但下一次 open（含快路径复核）/ 换代会让会话收敛到新世代；旧 Doc 的广播与快照写入均带 generation 校验，不会污染新世代数据 |
 | final / 非文本展示 | 未覆盖 | final descriptor、history/tool 对象尚未接入新投影 |
 | UI 渲染 | 文本已退役旧通道 | 用户/助手文本以新投影为准；未配对旧纯文本不再进入合并视图，工具/计划/思考/错误仍依赖旧 Doc。移除条件 = final/工具对象接入新投影 |

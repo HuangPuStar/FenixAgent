@@ -285,7 +285,18 @@ export class DocManager {
 
     // 先捕获 fence 快照再 await：复核窗口内 close 必须让本次 open 放弃，不得复活。
     const snapshot = this.fences.snapshot(kind, rcsSessionId);
-    const active = await getActiveGeneration(redis, rcsSessionId);
+    let active: string | null;
+    try {
+      active = await getActiveGeneration(redis, rcsSessionId);
+    } catch (err) {
+      // 已有 Doc 时 Redis 故障优先可用性：不重载、不销毁，避免调用方因 open 失败
+      // 继续写消息而丢事件。代价是故障期间不收敛跨进程换代，恢复后下一次 open 收敛。
+      this.onError?.(
+        `[DocManager] active generation revalidation failed for existing ${kind} doc ${rcsSessionId}; reusing in-memory doc`,
+        err,
+      );
+      return { kind: "current", doc: existing };
+    }
 
     if (this.fences.isClosed(snapshot)) throw new Error(`${kind} doc was closed during open`);
     const current = docs.get(rcsSessionId);

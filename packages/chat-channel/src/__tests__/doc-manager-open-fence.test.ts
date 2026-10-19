@@ -12,6 +12,8 @@ import type { SnapshotPersistConfig } from "../persist/snapshot-config";
 import {
   appendEntryText,
   ensureEntry,
+  getEntriesMap,
+  getEntryOrder,
   initChatDocStructure,
   initSessionDocStructure,
   setEntryStatus,
@@ -107,6 +109,18 @@ class GatedFastPathRedis extends ProdRedis {
   }
 }
 
+/** 让已驻留 Doc 快路径的 active generation 只读复核失败，模拟 Redis 短暂不可用。 */
+class FailActiveGenerationRedis extends ProdRedis {
+  failActiveGeneration = false;
+
+  override get(key: string): Promise<string | null> {
+    if (this.failActiveGeneration && key.startsWith("yjs:active-generation:")) {
+      return Promise.reject(new Error("Redis connection lost (simulated)"));
+    }
+    return super.get(key);
+  }
+}
+
 /** 在 Doc 安装完成后、open 外层续体前触发 close，复现「返回已销毁 Doc」的窗口。 */
 class ReturnWindowRedis extends ProdRedis {
   private bufferDone = false;
@@ -192,12 +206,15 @@ function historyValues(ydoc: Y.Doc): string[] {
 
 function createManager(
   getRedis: () => FakeRedis | null,
-  options?: { onYjsUpdate?: (docName: string, update: Uint8Array) => void },
+  options?: {
+    onYjsUpdate?: (docName: string, update: Uint8Array) => void;
+    onError?: (context: string, err: unknown) => void;
+  },
 ): DocManager {
   const manager = new DocManager({
     getRedis: () => getRedis() as never,
     onYjsUpdate: options?.onYjsUpdate ?? null,
-    onError: () => {},
+    onError: options?.onError ?? (() => {}),
     onLog: () => {},
   });
   manager.setSnapshotPersistConfigSource(() => SNAPSHOT_CONFIG);
@@ -610,6 +627,73 @@ describe("DocManager 投影生命周期栅栏", () => {
     expect(redis.subscribers[0]?.disconnected).toBe(true);
     expect(redis.persistences[1]?.disconnected).toBe(false);
     expect(redis.subscribers[1]?.disconnected).toBe(false);
+    await manager.closeAll();
+  });
+
+  // Redis 故障时 Chat 快路径降级复用已驻留 Doc：不重载、不广播，用户消息仍能写入。
+  test("Redis 故障时 Chat 快路径复用原 Doc 并保留用户消息写入", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_chat_outage";
+    const broadcasts: string[] = [];
+    const errors: Array<{ context: string; error: unknown }> = [];
+    const redis = new FailActiveGenerationRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`chat:${rcsSessionId}`, GENERATION, chatSnapshotWithText("history"));
+    const manager = createManager(() => redis, {
+      onYjsUpdate: (docName) => broadcasts.push(docName),
+      onError: (context, error) => errors.push({ context, error }),
+    });
+
+    const chat = await manager.openChat(rcsSessionId);
+    await manager.openSession("user-1", "agent-1", rcsSessionId);
+    const providerCount = redis.persistences.length;
+    const subscriberCount = redis.subscribers.length;
+    redis.failActiveGeneration = true;
+
+    const reopened = await manager.openChat(rcsSessionId);
+
+    expect(reopened).toBe(chat);
+    expect(manager.getChat(rcsSessionId)).toBe(chat);
+    // 未重载：provider 数量不变且原连接仍在使用；open 本身不产生广播。
+    expect(redis.persistences.length).toBe(providerCount);
+    expect(redis.subscribers.length).toBe(subscriberCount);
+    expect(redis.persistences.every((persistence) => !persistence.disconnected)).toBe(true);
+    expect(redis.subscribers.every((subscriber) => !subscriber.disconnected)).toBe(true);
+    expect(broadcasts).toEqual([]);
+    expect(errors.some(({ context }) => context.includes("active generation revalidation failed"))).toBe(true);
+
+    const entriesBefore = getEntryOrder(chat.ydoc).length;
+    const turnId = manager.registerUserMessage(rcsSessionId, "message during outage");
+
+    expect(typeof turnId).toBe("string");
+    // user entry + 预置的 assistant pending entry 各一条。
+    expect(getEntryOrder(chat.ydoc).length).toBe(entriesBefore + 2);
+    expect(getEntriesMap(chat.ydoc).get(`${turnId}:user`)).toBeDefined();
+    await manager.closeAll();
+  });
+
+  // Session 快路径同一降级语义：active generation 复核失败时返回原 Doc，不重载不销毁。
+  test("Redis 故障时 Session 快路径复用原 Doc", async () => {
+    const rcsSessionId = "rcs_fence_fastpath_session_outage";
+    const errors: Array<{ context: string; error: unknown }> = [];
+    const redis = new FailActiveGenerationRedis();
+    redis.seedActiveGeneration(rcsSessionId, GENERATION);
+    redis.seedSnapshot(`session:${rcsSessionId}`, GENERATION, snapshotOf(initSessionDocStructure));
+    const manager = createManager(() => redis, {
+      onError: (context, error) => errors.push({ context, error }),
+    });
+
+    const first = await manager.openSession("user-1", "agent-1", rcsSessionId);
+    redis.failActiveGeneration = true;
+
+    const reopened = await manager.openSession("user-1", "agent-1", rcsSessionId);
+
+    expect(reopened).toBe(first);
+    expect(manager.getSession(rcsSessionId)).toBe(first);
+    expect(redis.persistences.length).toBe(1);
+    expect(redis.subscribers.length).toBe(1);
+    expect(redis.persistences[0]?.disconnected).toBe(false);
+    expect(redis.subscribers[0]?.disconnected).toBe(false);
+    expect(errors.some(({ context }) => context.includes("active generation revalidation failed"))).toBe(true);
     await manager.closeAll();
   });
 
