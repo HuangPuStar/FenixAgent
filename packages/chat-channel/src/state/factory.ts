@@ -78,6 +78,10 @@ function createLoadTarget(guid: string, options?: LoadDocOptions): Y.Doc {
 /**
  * 等待快照水合并拒绝失败结果。
  *
+ * `failed` / `stale` 一律抛出：`stale` 表示水合窗口内世代已被 `replaceProjection` 取代，
+ * 此时既不能当作“确定无历史”，也不能把旧快照当成功返回。错误由 DocManager 的 fence 与
+ * 上层生命周期统一收口；在这里返回“可用 Doc”会让调用方缓存错误世代。
+ *
  * 失败时销毁 provider / ydoc 再抛出：否则半初始化的空 Doc 会留在 DocManager 里，
  * 后续每次历史源读取都得到“空历史”，引导会一直缓存错误事实。
  */

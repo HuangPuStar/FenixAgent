@@ -350,6 +350,15 @@ export function createRedisProvider(
           // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
           Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(buf.toString(), "base64")), remoteUpdateOrigin);
         }
+        // GETBUFFER / apply 期间可能换代：此时快照已属于被取代的世代，不能报 loaded，
+        // 否则调用方会把旧快照当作当前投影的历史。
+        if (generation && (await r.get(activeGenerationKey)) !== generation) {
+          outcome = {
+            status: "stale",
+            error: new Error("projection generation was replaced during snapshot hydration"),
+          };
+          return;
+        }
         outcome = { status: "loaded" };
       }
     } catch (error) {

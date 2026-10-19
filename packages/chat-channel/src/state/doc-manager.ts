@@ -60,6 +60,12 @@ export type QuestionRequestedHandler = (
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
+  /**
+   * 每个 rcsSessionId 的单调打开/关闭标记，只用于同步判定“在途异步加载是否已失效”。
+   * 换代 / 关闭递增；加载开始时捕获，水合返回后比对，不参与持久化。
+   */
+  private chatFences = new Map<string, number>();
+  private sessionFences = new Map<string, number>();
   /** 同一会话的并发打开共享同一 Promise，避免重复创建 Doc / provider。 */
   private chatOpens = new Map<string, Promise<ChatDoc>>();
   private sessionOpens = new Map<string, Promise<SessionDoc>>();
@@ -129,6 +135,23 @@ export class DocManager {
     return this.snapshotPersistConfig?.();
   }
 
+  private fenceOf(fences: Map<string, number>, rcsSessionId: string): number {
+    return fences.get(rcsSessionId) ?? 0;
+  }
+
+  private bumpFence(fences: Map<string, number>, rcsSessionId: string): void {
+    fences.set(rcsSessionId, this.fenceOf(fences, rcsSessionId) + 1);
+  }
+
+  /** 丢弃水合期间已被换代 / 关闭的本地 Doc；销毁失败只上报，不覆盖主流程结论。 */
+  private async discardOpenedDoc(doc: ChatDoc | SessionDoc, context: string): Promise<void> {
+    try {
+      await doc.destroy();
+    } catch (err) {
+      this.onError?.(context, err);
+    }
+  }
+
   /** 绑定 Y.Doc 的 update 事件到广播回调 */
   private registerDocBroadcast(ydoc: Y.Doc, docName: string): void {
     ydoc.on("update", (update: Uint8Array) => {
@@ -162,6 +185,7 @@ export class DocManager {
   }
 
   private async openChatInternal(rcsSessionId: string): Promise<ChatDoc> {
+    const fence = this.fenceOf(this.chatFences, rcsSessionId);
     const redis = this.getRedis();
     const generation = redis
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
@@ -169,6 +193,16 @@ export class DocManager {
     const doc = redis
       ? await loadChatDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
       : createChatDoc(rcsSessionId, null, generation);
+
+    // 水合期间可能已换代（replaceProjection）或关闭：map 中的 Doc 才代表当前世代。
+    // 此时既不能注册广播也不能覆盖 map，否则旧世代会覆盖新世代、关闭后还会“复活”。
+    const existing = this.chatDocs.get(rcsSessionId);
+    if (existing || this.fenceOf(this.chatFences, rcsSessionId) !== fence) {
+      await this.discardOpenedDoc(doc, `[DocManager] destroy stale chat doc for ${rcsSessionId}`);
+      if (existing) return existing;
+      throw new Error("chat doc was closed during open");
+    }
+
     this.registerDocBroadcast(doc.ydoc, `chat:${rcsSessionId}`);
     this.chatDocs.set(rcsSessionId, doc);
     return doc;
@@ -186,6 +220,8 @@ export class DocManager {
 
   /** 关闭并销毁 Chat Doc */
   async closeChat(rcsSessionId: string): Promise<void> {
+    // 先递增 fence：关闭时仍在途的水合返回后不得再插入 Doc。
+    this.bumpFence(this.chatFences, rcsSessionId);
     const doc = this.chatDocs.get(rcsSessionId);
     if (doc) {
       this.chatDocs.delete(rcsSessionId);
@@ -216,6 +252,7 @@ export class DocManager {
   }
 
   private async openSessionInternal(rcsSessionId: string): Promise<SessionDoc> {
+    const fence = this.fenceOf(this.sessionFences, rcsSessionId);
     const redis = this.getRedis();
     const generation = redis
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
@@ -229,6 +266,15 @@ export class DocManager {
       await doc.destroy();
       throw error;
     }
+
+    // 与 openChat 相同：慢速标题回读 / 水合期间可能已换代或关闭，map 中的 Doc 优先。
+    const existing = this.sessionDocs.get(rcsSessionId);
+    if (existing || this.fenceOf(this.sessionFences, rcsSessionId) !== fence) {
+      await this.discardOpenedDoc(doc, `[DocManager] destroy stale session doc for ${rcsSessionId}`);
+      if (existing) return existing;
+      throw new Error("session doc was closed during open");
+    }
+
     this.registerDocBroadcast(doc.ydoc, `session:${rcsSessionId}`);
     this.sessionDocs.set(rcsSessionId, doc);
     return doc;
@@ -268,6 +314,8 @@ export class DocManager {
   async closeSession(rcsSessionId: string): Promise<void> {
     const existingClose = this.closingSessionDocs.get(rcsSessionId);
     if (existingClose) return existingClose;
+    // 先递增 fence：关闭时仍在途的水合返回后不得再插入 Session Doc。
+    this.bumpFence(this.sessionFences, rcsSessionId);
     this.cancelACPBatch(rcsSessionId);
     const doc = this.sessionDocs.get(rcsSessionId);
     this.sessionDocs.delete(rcsSessionId);
@@ -298,6 +346,10 @@ export class DocManager {
    */
   async replaceProjection(rcsSessionId: string, targetAcpSessionId: string | null): Promise<ProjectionDocs> {
     this.cancelACPBatch(rcsSessionId);
+    // 换代一开始就失效在途 open：否则它们可能在 publishActiveGeneration 的等待窗口内
+    // 先把旧世代写入 map，造成调用方拿到即将被销毁的 Doc 或 provider 泄漏。
+    this.bumpFence(this.chatFences, rcsSessionId);
+    this.bumpFence(this.sessionFences, rcsSessionId);
     const generation = `gen_${crypto.randomUUID()}`;
     const redis = this.getRedis();
     const expectedGeneration = redis
@@ -326,10 +378,16 @@ export class DocManager {
         throw new Error("projection generation changed concurrently");
       }
 
+      // 落 map 前后再次递增：覆盖在换代等待窗口内才完成的 open，确保它们一定观察到
+      // fence 变化并丢弃自己的旧 Doc，而不是覆盖刚写入的新世代。
+      this.bumpFence(this.chatFences, rcsSessionId);
+      this.bumpFence(this.sessionFences, rcsSessionId);
       this.registerDocBroadcast(chat.ydoc, `chat:${rcsSessionId}`);
       this.registerDocBroadcast(session.ydoc, `session:${rcsSessionId}`);
       this.chatDocs.set(rcsSessionId, chat);
       this.sessionDocs.set(rcsSessionId, session);
+      this.bumpFence(this.chatFences, rcsSessionId);
+      this.bumpFence(this.sessionFences, rcsSessionId);
 
       try {
         await Promise.all([oldChat?.destroy(), oldSession?.destroy()]);
