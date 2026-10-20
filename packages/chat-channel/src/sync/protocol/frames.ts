@@ -30,6 +30,14 @@ export const MAX_DATA_FRAME_BYTES = 288 * 1024;
 export const MAX_FRAME_HEADER_BYTES = 4 * 1024;
 
 /**
+ * 任意可提交 Doc 快照的原始字节上限：按数据帧总预算扣除最大合法头与 base64 封装反推。
+ *
+ * 存储、实时轮换、历史构建、目录与运行态都只能引用本值；单独放宽任一层都会产生「写入成功、
+ * 空客户端却无法用单帧重建」的快照。
+ */
+export const MAX_DOC_SNAPSHOT_BYTES = Math.floor((MAX_DATA_FRAME_BYTES - MAX_FRAME_HEADER_BYTES - 13) / 4) * 3;
+
+/**
  * `SEALED.dependsOn` 条目上限。
  *
  * 与 §10.2 `inputs.dependsOnMax` 同值：超限一律拒绝而不是截断——截断会静默丢掉依赖，

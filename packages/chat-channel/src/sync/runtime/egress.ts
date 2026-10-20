@@ -258,6 +258,7 @@ export function createSyncFrameGateway(deps: SyncFrameGatewayDeps): SyncFrameGat
       withhold(frame, sinceMs, "transport");
       return;
     }
+    frame.onHandedOff?.();
     registerDelivery(frame);
   }
 

@@ -8,7 +8,7 @@
 // 场景结论表（每条结论都由本文件对应 describe 内的断言支撑；失败与缺口逐条写在「未覆盖」段）：
 // | 场景 | 结论 | 断言口径 |
 // | --- | --- | --- |
-// | T08 | 通过 | 接收期（重复对象）/构建期（池额度、单条超限）/提交期（封口提交）/finalize（换代提交）各注入一次失败：失败尝试不落地、指针与修订号不动；重试后输入对象逐条保留、不重复、目录连续 |
+// | T08 | 通过 | 接收期（重复对象）/构建期（池额度）/提交期（封口提交）/finalize（换代提交）各注入一次失败：失败尝试不落地、指针与修订号不动；超大对象分片后导入成功，重试后输入逐条保留、不重复、目录连续 |
 // | T09 | 通过 | 慢端与后台标签页：在途字节 ≤ 连接窗口且不重复投递；快端与写入侧不受影响；恢复后一次补齐、不重复、队列归零 |
 // | T10 | 通过 | 回执丢失/重复/旧代次都不改变在途账目；丢帧与重复帧后缺口经 RESYNC 补齐（应用序号 1..max 连续、增量区间不重叠）；RESYNC 次数有界 |
 // | T11 | 通过 | 同一时刻只有一个有效写者（SCOPE_BUSY 且存储未变）；租约过期与旧 epoch 写入被拒；换写者后旧已提交字节可重发；旧 pointerRevision 不使客户端回退 |
@@ -250,7 +250,7 @@ describe("T08 load 每个阶段失败后重试", () => {
     });
   });
 
-  test("构建期失败（单条超硬限）后重试：剔除超限对象，其余对象逐条保留且只有一次", async () => {
+  test("超大文本按记录预算分片后导入成功：同 entry 片段逐条保留且不重复", async () => {
     await withHarness({}, async (harness) => {
       const primary = primaryOf(harness);
       await primary.handshake();
@@ -259,26 +259,25 @@ describe("T08 load 每个阶段失败后重试", () => {
 
       const attempt = await harness.beginImport();
       await harness.acceptHistoryText(HISTORY_PARTS[0], { entryId: "h1", partIndex: 0 });
-      // 接收本身有界通过（远小于 raw 帧上限），超限在构建期以明确错误暴露，而不是静默截断。
+      // 单条超过块硬限不再停写：接收期按记录预算拆成多个可传输分片，构建期逐片提交。
       await harness.acceptHistoryText(oversized, { entryId: "h1", partIndex: 1 });
-      await harness.history().receivingComplete();
-      await expectImportFailure(harness, () => harness.history().buildAndCommit(), "CAPACITY_EXCEEDED", true);
-
-      expect(await harness.currentGeneration()).toBe(harness.seedGeneration);
-      expect(await harness.generationState(attempt.generation)).not.toBe("committed");
-
-      // 重试（把单条超限对象挡在接收边界之外）：其余对象逐条保留、不重复。
-      const retry = await harness.beginImport();
-      await receiveHistory(harness, HISTORY_PARTS.slice(0, 2));
       const finished = await harness.finishImport();
       expect(finished.outcome).toBe("committed");
-      expect(finished.generation).toBe(retry.generation);
+      expect(finished.generation).toBe(attempt.generation);
 
       const records = await harness.flatRecords();
-      expect(records.length).toBe(2);
-      expect(textOfRecords(records, "h1", 0)).toBe(historyJson(HISTORY_PARTS.slice(0, 2)));
+      const decoder = new TextDecoder();
+      const text = records
+        .filter((record) => record.entryId === "h1" && record.contentSlot === 0)
+        .sort((left, right) => left.partIndex - right.partIndex)
+        .map((record) => JSON.parse(decoder.decode(record.payload)) as string)
+        .join("");
+      expect(text).toBe(`${HISTORY_PARTS[0]}${oversized}`);
       expect(duplicateRecordIds(records)).toEqual([]);
-      expect(await harness.coverage()).toEqual({ gaps: [], duplicates: [], maxOrdinal: 2 });
+      const coverage = await harness.coverage();
+      expect(coverage.gaps).toEqual([]);
+      expect(coverage.duplicates).toEqual([]);
+      expect(coverage.maxOrdinal).toBe(records.length);
     });
   });
 

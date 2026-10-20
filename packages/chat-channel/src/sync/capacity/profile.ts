@@ -8,6 +8,7 @@
 // 要么更糟——某个池参与的比较因为 NaN 恒为 false，从而静默放行一切。
 
 import { SyncProtocolError } from "../protocol/errors";
+import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 
 /** 单进程同步资源预留总量（设计 §10.1）：512MiB。不等于全应用 RSS 上限，运行时与其他业务另计。 */
 export const SERVER_TOTAL_BYTES = 536870912;
@@ -67,9 +68,9 @@ export const INPUT_LIMITS = freezeBudgetTable({
   jsonMaxNodes: 65536,
   // 大帧解析：>1MiB 交由固定解析 worker，源必须先拿到 raw 缓冲额度，不能在 SDK 内部无限排队。
   largeFrameThresholdBytes: 1048576,
-  // 历史构建块：目标载荷 128KiB，编码 snapshot 硬限 256KiB。
+  // 历史构建块：目标载荷 128KiB，编码 snapshot 硬限由数据帧上限反推。
   historyBlockTargetPayloadBytes: 131072,
-  historyBlockHardBytes: 262144,
+  historyBlockHardBytes: MAX_DOC_SNAPSHOT_BYTES,
   // 正文记录：扁平头 ≤4KiB、载荷片段 ≤16KiB，每 Doc 的记录与事务数上限。
   recordHeaderMaxBytes: 4096,
   payloadChunkMaxBytes: 16384,
@@ -80,21 +81,21 @@ export const INPUT_LIMITS = freezeBudgetTable({
   liveMergeMaxBytes: 16384,
   // active 正文：软水位按载荷计，硬限按 snapshot/update 编码后字节计。
   activeSoftPayloadBytes: 131072,
-  activeHardEncodedBytes: 262144,
+  activeHardEncodedBytes: MAX_DOC_SNAPSHOT_BYTES,
   // 运行态：存活元数据总和、实体数、单实体大小、快照水位与轮换次数。
   runtimeLivePayloadBytes: 65536,
   runtimeMaxEntities: 256,
   runtimeEntityMaxBytes: 1024,
   runtimeSoftSnapshotBytes: 131072,
-  runtimeHardSnapshotBytes: 262144,
+  runtimeHardSnapshotBytes: MAX_DOC_SNAPSHOT_BYTES,
   runtimeRotationsPerScope: 1,
   // 控制 Doc：固定入口 8KiB、soft 32KiB / hard 64KiB，大参数不进入控制 Doc。
   controlEntryBytes: 8192,
   controlSoftBytes: 32768,
   controlHardBytes: 65536,
-  // 目录页：soft 128KiB / hard 256KiB、最多 2048 引用；定位页 ≤64 项且 ≤32KiB。
+  // 目录页：soft 128KiB / hard 由数据帧上限反推、最多 2048 引用；定位页 ≤64 项且 ≤32KiB。
   directorySoftBytes: 131072,
-  directoryHardBytes: 262144,
+  directoryHardBytes: MAX_DOC_SNAPSHOT_BYTES,
   directoryMaxRefs: 2048,
   locatePageMaxItems: 64,
   locatePageMaxBytes: 32768,
@@ -380,6 +381,17 @@ export function validateCapacityProfile(profile: unknown): void {
     "RECORD_HEADER_ABSOLUTE_MAX_BYTES",
     RECORD_HEADER_ABSOLUTE_MAX_BYTES,
   );
+
+  // 能提交的 Doc 必须能由空客户端以单帧完整重建，禁止各层独立扩大硬限。
+  for (const field of [
+    "historyBlockHardBytes",
+    "activeHardEncodedBytes",
+    "runtimeHardSnapshotBytes",
+    "directoryHardBytes",
+    "controlHardBytes",
+  ] as const) {
+    assertFitsCapacity(`inputs.${field}`, inputs[field], "MAX_DOC_SNAPSHOT_BYTES", MAX_DOC_SNAPSHOT_BYTES);
+  }
 
   // 6. 客户端各池之和必须等于客户端总预算（池的构成见 CLIENT_BUDGET 的注释）。
   assertSumEquals(

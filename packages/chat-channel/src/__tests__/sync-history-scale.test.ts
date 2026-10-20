@@ -209,36 +209,103 @@ function requireNumber(value: unknown, docId: string, field: string): number {
   return value;
 }
 
+/** 对象分片信封键：与生产契约同名，但重组逻辑由本测试独立实现，不复用被测分片器。 */
+const OBJECT_PART_KEY = "__fenixSyncObjectPart";
+
+interface ObjectPartEnvelope {
+  readonly [OBJECT_PART_KEY]: number;
+  readonly kind: string;
+  readonly partIndex: number;
+  readonly partCount: number;
+  readonly totalBytes: number;
+  readonly digest: string;
+  readonly data: string;
+}
+
+function objectPartOf(value: unknown): ObjectPartEnvelope | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  return typeof record[OBJECT_PART_KEY] === "number" ? (record as unknown as ObjectPartEnvelope) : null;
+}
+
 /**
- * 逐块校验已提交目录：ordinal 区间必须连续、无缝地覆盖 `[1, expectedCount]`，且每条载荷
- * `JSON.parse` 后与输入对象深比较相等（顺序按目录 ordinal 区间，不依赖提交完成顺序）。
+ * 逐块校验已提交目录：物理 ordinal 必须连续覆盖块内记录，逻辑对象逐条与输入深比较。
+ *
+ * 超大对象被拆成多个自描述信封；本函数按 `partIndex` 独立拼接并核对总摘要，输入对象数由
+ * 完成的分片组计数，不把物理分片数误当成逻辑对象数。
  */
 async function expectDirectoryMatches(
   harness: Harness,
   generation: string,
   generated: { count: number; payloadBytes: (ordinal: number) => number },
-): Promise<number> {
+): Promise<{ blocks: number; physicalCount: number; logicalCount: number; physicalBytes: number }> {
   const page = await harness.store.readDirectory({ generation, limit: DIRECTORY_LIMIT });
   expect(page.gaps).toEqual([]);
   expect(page.complete).toBe(true);
   const entries = [...page.entries].sort((left, right) => left.ordinalStart - right.ordinalStart);
   const decoder = new TextDecoder();
-  let expectedOrdinal = 1;
+  let physicalOrdinal = 1;
+  let physicalBytes = 0;
+  let logicalOrdinal = 1;
+  let pending: { readonly envelope: ObjectPartEnvelope; readonly chunks: Uint8Array[]; nextPart: number } | null = null;
+
+  const finishObject = (bytes: Uint8Array): void => {
+    expect(logicalOrdinal).toBeLessThanOrEqual(generated.count);
+    const size = generated.payloadBytes(logicalOrdinal);
+    expect(JSON.parse(decoder.decode(bytes))).toEqual(historyObject(logicalOrdinal, size));
+    logicalOrdinal += 1;
+  };
+
   for (const entry of entries) {
     const block = await readContentBlock(harness.store, entry.docId);
-    expect(block.ordinalStart).toBe(expectedOrdinal);
+    expect(block.ordinalStart).toBe(physicalOrdinal);
     expect(block.ordinalStart).toBe(entry.ordinalStart);
+    expect(block.ordinalEnd).toBe(physicalOrdinal + block.payloads.length - 1);
     expect(block.ordinalEnd).toBe(entry.ordinalEnd);
     for (const payload of block.payloads) {
-      expect(payload.byteLength).toBe(generated.payloadBytes(expectedOrdinal));
-      expect(JSON.parse(decoder.decode(payload))).toEqual(
-        historyObject(expectedOrdinal, generated.payloadBytes(expectedOrdinal)),
-      );
-      expectedOrdinal += 1;
+      physicalBytes += payload.byteLength;
+      const parsed: unknown = JSON.parse(decoder.decode(payload));
+      const envelope = objectPartOf(parsed);
+      if (envelope === null) {
+        expect(pending).toBeNull();
+        finishObject(payload);
+      } else {
+        if (pending === null) {
+          expect(envelope.partIndex).toBe(0);
+          expect(envelope.partCount).toBeGreaterThan(1);
+          expect(envelope.totalBytes).toBeGreaterThan(0);
+          pending = { envelope, chunks: [], nextPart: 0 };
+        }
+        expect(envelope.partCount).toBe(pending.envelope.partCount);
+        expect(envelope.totalBytes).toBe(pending.envelope.totalBytes);
+        expect(envelope.digest).toBe(pending.envelope.digest);
+        expect(envelope.partIndex).toBe(pending.nextPart);
+        pending.chunks.push(new Uint8Array(Buffer.from(envelope.data, "base64")));
+        pending.nextPart += 1;
+        if (pending.nextPart === pending.envelope.partCount) {
+          const joined = new Uint8Array(pending.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
+          let offset = 0;
+          for (const chunk of pending.chunks) {
+            joined.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+          expect(joined.byteLength).toBe(pending.envelope.totalBytes);
+          expect(sha256Digest(joined)).toBe(pending.envelope.digest);
+          finishObject(joined);
+          pending = null;
+        }
+      }
+      physicalOrdinal += 1;
     }
   }
-  expect(expectedOrdinal - 1).toBe(generated.count);
-  return entries.length;
+  expect(pending).toBeNull();
+  expect(logicalOrdinal - 1).toBe(generated.count);
+  return {
+    blocks: entries.length,
+    physicalCount: physicalOrdinal - 1,
+    logicalCount: logicalOrdinal - 1,
+    physicalBytes,
+  };
 }
 
 /** 捕获同步协议错误：其它异常原样抛出，避免把断言失败误判成「确实抛了错」。 */
@@ -283,7 +350,13 @@ describe("历史导入：突发规模", () => {
     expect(status.committedBlocks).toBeGreaterThan(6);
     expect(payloadBytes).toBe(SEVEN_BLOCK_OBJECTS * BURST_SMALL_BYTES);
 
-    await expectDirectoryMatches(harness, began.generation, shape);
+    const coverage = await expectDirectoryMatches(harness, began.generation, shape);
+    expect(coverage).toMatchObject({
+      blocks: status.committedBlocks,
+      physicalCount: shape.count,
+      logicalCount: shape.count,
+      physicalBytes: SEVEN_BLOCK_OBJECTS * BURST_SMALL_BYTES,
+    });
     await harness.service.finalize();
     expect(harness.service.status().state).toBe("importComplete");
   }, 60_000);
@@ -298,22 +371,26 @@ describe("历史导入：突发规模", () => {
         ordinal <= BURST_SMALL_OBJECTS ? BURST_SMALL_BYTES : BURST_LARGE_BYTES,
     };
     const began = await harness.service.begin(beginInput());
-    const payloadBytes = await receive(harness.service, shape);
+    await receive(harness.service, shape);
 
     await harness.service.buildAndCommit();
     const status = harness.service.status();
     expect(status.state).toBe("importComplete");
     expect(status.failure).toBeUndefined();
-    expect(status.receivedOrdinal).toBe(shape.count);
+    // `receivedOrdinal` 是物理记录边界：超大对象拆成多个可传输片段后必须覆盖全部片段。
+    expect(status.receivedOrdinal).toBeGreaterThanOrEqual(shape.count);
     expect(status.gaps).toEqual([]);
     const expectedBytes = BURST_SMALL_OBJECTS * BURST_SMALL_BYTES + BURST_LARGE_OBJECTS * BURST_LARGE_BYTES;
-    expect(payloadBytes).toBe(expectedBytes);
-    expect(payloadBytes).toBeGreaterThan(95 * 1024 * 1024);
 
     // 目录项数与载荷总量都必须落在设计形状的量级上（默认块目标 ≈131KiB ⇒ 数百个块）。
-    const blockCount = await expectDirectoryMatches(harness, began.generation, shape);
-    expect(blockCount).toBe(status.committedBlocks);
-    expect(blockCount).toBeGreaterThan(100);
+    const coverage = await expectDirectoryMatches(harness, began.generation, shape);
+    expect(status.receivedOrdinal).toBe(coverage.physicalCount);
+    expect(coverage.logicalCount).toBe(shape.count);
+    expect(coverage.blocks).toBe(status.committedBlocks);
+    expect(coverage.blocks).toBeGreaterThan(100);
+    // 分片信封含 base64 与摘要，物理字节只允许增加；逻辑内容已由目录逐条重组校验。
+    expect(coverage.physicalBytes).toBeGreaterThanOrEqual(expectedBytes);
+    expect(coverage.physicalBytes).toBeGreaterThan(95 * 1024 * 1024);
     await harness.service.finalize();
   }, 300_000);
 });

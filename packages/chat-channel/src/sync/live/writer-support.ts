@@ -46,13 +46,26 @@ export function records<T>(doc: Y.Doc, append?: readonly T[]): Y.Array<T> | unde
   return array;
 }
 
+/** 按码点线性扫描 UTF-8 长度，只在片段边界切字符串，不重复编码累积前缀。 */
 export function splitUtf8(text: string, maxBytes: number): string[] {
   const chunks: string[] = [];
+  let start = 0;
+  let offset = 0;
+  let size = 0;
   for (const char of text) {
-    const last = chunks.at(-1);
-    if (last === undefined || UTF8.encode(last + char).byteLength > maxBytes) chunks.push(char);
-    else chunks[chunks.length - 1] = last + char;
+    const code = char.codePointAt(0)!;
+    const width = code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+    if (width > maxBytes)
+      throw new SyncProtocolError("CAPACITY_EXCEEDED", { message: "chunk cannot fit one code point" });
+    if (size + width > maxBytes) {
+      chunks.push(text.slice(start, offset));
+      start = offset;
+      size = 0;
+    }
+    offset += char.length;
+    size += width;
   }
+  if (offset > start) chunks.push(text.slice(start));
   return chunks;
 }
 

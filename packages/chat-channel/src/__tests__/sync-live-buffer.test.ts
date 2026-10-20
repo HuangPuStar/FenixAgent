@@ -259,7 +259,8 @@ describe("运行态 Doc（设计 §6.2 / §6.3）", () => {
       maxEntities: 256,
       maxEntityMetadataBytes: 1024,
       softRotateBytes: 131072,
-      hardLimitBytes: 262144,
+      // 由数据帧上限反推：任何可提交 Doc 都必须能由空客户端以单帧重建。
+      hardLimitBytes: 218100,
     });
     expect(CONTROL_DOC_LIMITS).toEqual({ entryBytes: 8192, softBytes: 32768, hardBytes: 65536 });
   });

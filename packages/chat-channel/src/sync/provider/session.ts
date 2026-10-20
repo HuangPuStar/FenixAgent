@@ -1,11 +1,4 @@
-// packages/chat-channel/src/sync/provider/session.ts
-// E 阶段单连接 provider 会话（设计 §8.3–§8.5）：握手、订阅、base → BASE_READY → tail、ACK 与换代。三条不可换的规则：
-// 1. 顺序：DOC_BASE →（processed 回执）→ BASE_READY → S+1 起的连续 DOC_UPDATE；apply 返回与序号追平都不构成基线证明，故 BASE_READY 只由回执驱动。
-//    本层不持有写权、不缓存正文、不构造 ERROR 帧：载荷由规划器从已提交边界现取，协议错误一律抛出（未握手用 `MALFORMED_FRAME`）。
-// 2. 额度先于编码：构建前探窗口、构建后按实际编码字节申请，被拒即丢弃该帧、只留一位有界任务引用（设计 §8.4）。
-// 3. 一次 attempt 一条命：订阅与 resync 都换新 epoch/attemptId，旧投递只结清原账本、迟到回执不改新游标（设计 §8.3）。
-// 偏差（影响 + 移除条件）：`referenceRevision` 与 `pointerRevision` 同源（存储只有该列），客户端分不清「会话入口」与「运行态引用」变更，待存储新增独立引用修订列；
-// 控制帧线上不带 deliveryId、客户端无从回执，故按瞬时计费（申请成功即归还）只保留总预算检查，待帧层加回执字段；socket 水位以未结算字节作上界，待传输层传真实值；`deps.clock`/`deps.digest` 未被使用、保留只为固定装配形状；`ledger.onRelease` 必须接到**同一个** `quota`。
+// provider：握手、订阅、planned → socket 交接 → processed ACK；放弃投递必须恢复调度责任。
 
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn, RandomSource } from "../clock";
@@ -23,10 +16,11 @@ import {
   type SyncFrame,
 } from "../protocol/frames";
 import * as identity from "../protocol/identity";
-import type { ProjectionStore, SyncGenerationRecord } from "../store/types";
+import type { ProjectionStore } from "../store/types";
 import type { AckLedger } from "./ack-ledger";
 import type { BasePlanner } from "./base-plan";
 import type { QuotaController, TaskClass } from "./quota";
+import type { DocAttempt, ManifestSource, ManifestState, ReplaceInput } from "./session-internal";
 import type { TailPlanner } from "./tail-plan";
 
 export type AttemptState = "handshaking" | "ready" | "syncing" | "resync-required" | "closed";
@@ -56,6 +50,8 @@ export interface OutboundFrame {
   readonly frame: SyncFrame;
   readonly taskClass: TaskClass;
   readonly deliveryId: string;
+  /** 仅 socket 接受字节后调用；planned 预留不等于交接成功。 */
+  readonly onHandedOff?: () => void;
 }
 
 export interface SubscribeInput {
@@ -70,12 +66,7 @@ export interface ProviderSession {
   handshake(input: HandshakeInput): Promise<readonly OutboundFrame[]>;
   subscribe(request: SubscribeInput): Promise<readonly OutboundFrame[]>;
   onAck(deliveryId: string, result: "processed" | "rejected"): Promise<readonly OutboundFrame[]>;
-  /**
-   * 出帧网关在交接前丢弃了一条已登记的投递（搁置位被新帧顶替）：由会话把该投递的窗口字节自结算归还。
-   *
-   * 缺口不在这里补偿——被丢弃的是冗余发送任务，客户端的序号缺口检测会申请补齐（设计 §8.5、§8.3）；本方法
-   * 只保证「从未上线的投递不占窗口」，否则慢端连接的额度会被一次瞬时饱和永久吃掉。重复调用与未知 id 无副作用。
-   */
+  /** 交接前放弃投递：退还预留并恢复可调度性，不能依赖尚无基线的客户端发现缺口。 */
   abandonDelivery(deliveryId: string): void;
   /** 追赶由 ACK、独立调度 tick 与订阅请求触发（设计 §8.5）。 */
   tick(): Promise<readonly OutboundFrame[]>;
@@ -93,50 +84,6 @@ const TASK_CLASS_BY_PRIORITY: Readonly<Record<SubscribePriority, TaskClass>> = {
   currentHistory: "history-current",
   backgroundHistory: "history-background",
 };
-
-interface EntryRevision {
-  readonly generation: string;
-  readonly pointerRevision: number;
-  readonly referenceRevision: number;
-  readonly controlDocId: string;
-  readonly runtimeDocId: string;
-  readonly directoryDocId: string;
-}
-
-interface ManifestState {
-  readonly scope: identity.SyncScope;
-  readonly entry: EntryRevision;
-  readonly recoveryState: RecoveryState;
-}
-
-interface DocAttempt {
-  readonly docId: string;
-  readonly subscriptionEpoch: string;
-  readonly syncAttemptId: string;
-  readonly taskClass: TaskClass;
-  /** 有界任务引用：base 尚未送出（含因额度不足而暂缓）。 */
-  needsBase: boolean;
-  /** 回执确认前不得发 BASE_READY，未 READY 不得发 tail；`upToSeq` 即 `DOC_BASE.baseSeq`。 */
-  base: { readonly deliveryId: string; readonly upToSeq: number; acked: boolean; readySent: boolean } | null;
-  /** 客户端已确认 processed 的应用边界；`sendCursor` 是可领先它的已发送边界，尾部据此续发而不重复构建。 */
-  appliedSeq: number;
-  sendCursor: number;
-  resyncRequired: boolean;
-  resyncNotice: { readonly previousSubscriptionEpoch: string; readonly previousSyncAttemptId: string } | null;
-  /** pump 串行化标记：await 期间同一 Doc 不会被第二次构建出重复帧。 */
-  busy: boolean;
-  readonly clientStateVector?: Uint8Array;
-  readonly requestedFromSeq?: number;
-}
-
-type ManifestSource = {
-  scope: identity.SyncScope;
-  generation: string;
-  pointerRevision: number;
-  record: SyncGenerationRecord;
-};
-
-type ReplaceInput = { generation: string; pointerRevision: number };
 
 /** 载荷编码：帧层只接受标准 base64（RFC 4648），浏览器 `atob` 亦然。 */
 const toBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
@@ -174,8 +121,8 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
   const { store, random, capacity, quota, ledger, base, tail } = deps;
   const transportEpoch = identity.createTransportEpoch(random);
   const attempts = new Map<string, DocAttempt>();
-  /** 已发送未回执的数据投递：持 attempt **引用**，「回执属于当前 attempt」因此是一次引用比较，迟到回执只结清原账本。 */
-  const plans = new Map<string, { attempt: DocAttempt; toSeq: number }>();
+  /** planned 只占预留；handedOff 后才允许 ACK 推进 appliedSeq。 */
+  const plans = new Map<string, { attempt: DocAttempt; toSeq: number; handedOff: boolean }>();
   const declaredDocs = new Map<string, Uint8Array | undefined>();
   let manifest: ManifestState | null = null;
   let pendingGenerationNotice = false;
@@ -207,7 +154,15 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
     if (!quota.tryReserve(taskClass, bytes.length, quota.snapshot().outstandingBytes)) return false;
     if (range === null) quota.release(taskClass, bytes.length);
     else ledger.record({ transportEpoch, deliveryId, ...range, bytes: bytes.length, taskClass });
-    out.push({ frame, taskClass, deliveryId });
+    out.push({
+      frame,
+      taskClass,
+      deliveryId,
+      onHandedOff: () => {
+        const plan = plans.get(deliveryId);
+        if (plan) plan.handedOff = true;
+      },
+    });
     return true;
   }
 
@@ -307,7 +262,7 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
           payload: toBase64(planned.payload),
         };
         if (!emit(frame, deliveryId, doc.taskClass, range, out)) return false;
-        plans.set(deliveryId, { attempt: doc, toSeq: range.toSeq });
+        plans.set(deliveryId, { attempt: doc, toSeq: range.toSeq, handedOff: false });
         doc.needsBase = false;
         doc.base = { deliveryId, upToSeq: planned.upToSeq, acked: false, readySent: false };
         doc.sendCursor = planned.upToSeq;
@@ -337,7 +292,7 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
           payload: toBase64(batch.payload),
         };
         if (!emit(frame, deliveryId, doc.taskClass, range, out)) return false;
-        plans.set(deliveryId, { attempt: doc, toSeq: range.toSeq });
+        plans.set(deliveryId, { attempt: doc, toSeq: range.toSeq, handedOff: false });
         doc.sendCursor = batch.toSeq;
       }
       return batches.length === 0;
@@ -426,10 +381,11 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
 
   async function onAck(deliveryId: string, result: "processed" | "rejected"): Promise<readonly OutboundFrame[]> {
     if (state === "closed") return EMPTY_FRAMES;
-    // 先结清传输额度（未知/重复/异代次回执返回 0，不产生额度），再决定是否推进业务边界：两者是两件事。
-    ledger.settle({ transportEpoch, deliveryId, result });
     const plan = plans.get(deliveryId);
     if (plan === undefined) return EMPTY_FRAMES;
+    ledger.settle({ transportEpoch, deliveryId, result });
+    // 未交接的回执可能是传输层「已写但 send 返回 false」：只结清预留，不能越过尚未发生的交接推进基线顺序。
+    if (!plan.handedOff) return EMPTY_FRAMES;
     plans.delete(deliveryId);
     // 引用不等即旧 attempt 的迟到回执：只结清原账本，不改动新 attempt 的 base/游标（设计 §8.3）。
     if (attempts.get(plan.attempt.docId) !== plan.attempt) return EMPTY_FRAMES;
@@ -446,13 +402,26 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
     return pump();
   }
 
-  /**
-   * 交接前被丢弃的投递：只退窗口字节，不动游标、不产帧。游标按「已发出」推进过也没关系——客户端会因序号缺口
-   * 申请补齐，服务端随后按新 attempt 重发（设计 §8.5：丢弃的是冗余发送任务，不是唯一内容）。
-   */
+  /** 基线未上线可原子回滚；tail 已可能乱序交接，换 attempt 并通告重建。 */
   function abandonDelivery(deliveryId: string): void {
-    if (state === "closed") return;
+    const plan = plans.get(deliveryId);
+    if (state === "closed" || !plan || plan.handedOff) return;
     ledger.abandon({ transportEpoch, deliveryId });
+    plans.delete(deliveryId);
+    const doc = plan.attempt;
+    if (attempts.get(doc.docId) !== doc) return;
+    if (doc.base?.deliveryId === deliveryId) {
+      doc.base = null;
+      doc.needsBase = true;
+      doc.sendCursor = 0;
+    } else {
+      const next = createAttempt(doc.docId, doc.taskClass, doc.requestedFromSeq);
+      next.resyncNotice = {
+        previousSubscriptionEpoch: doc.subscriptionEpoch,
+        previousSyncAttemptId: doc.syncAttemptId,
+      };
+      attempts.set(doc.docId, next);
+    }
   }
 
   async function resync(docId: string): Promise<readonly OutboundFrame[]> {

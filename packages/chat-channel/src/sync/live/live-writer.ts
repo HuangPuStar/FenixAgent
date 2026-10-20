@@ -226,30 +226,29 @@ class LiveWriterImpl implements LiveWriter {
     this.queue = run.then(NOOP, NOOP);
     return run;
   }
-  /** 正文增量：一条记录一个事务；超限走重拆出口（设计 §6.1）——不持久化不发布，先查询确认该批未提交，再恢复原 canonical + tail 并封口，最后把同一份输入拆小写进新块；`resplit` 保证最多重拆一次，仍超限即报容量错误并停写。 */
-  private async writeText(request: MergeFlushRequest, resplit = false): Promise<void> {
-    const cursor = this.cursor(CONTENT_KIND);
+  /** 输入按目录块序和块内记录序提交；每片固定批次重试，已提交前缀不重放，未知结果仍走 fencing 失败出口。 */
+  private async writeText(request: MergeFlushRequest): Promise<void> {
     const chunkLimit = this.options.capacity.inputs.payloadChunkMaxBytes;
     const chunkBytes = Math.max(1, Math.min(chunkLimit, Math.floor(this.limitOf(CONTENT_KIND) / 2)));
-    const texts = resplit ? splitUtf8(request.text, chunkBytes) : [request.text];
-    const base = this.partIndex(cursor, request.key);
-    const slices: Slice[] = [];
-    let recordBytes = 0;
-    for (const [index, text] of texts.entries()) {
-      const record = this.buildRecord(request.key, "text", bytes(text), base + index);
-      recordBytes = Math.max(recordBytes, record.payload.byteLength);
-      this.capture(slices, cursor, () => records(cursor.doc, [record]));
+    for (const text of splitUtf8(request.text, chunkBytes)) {
+      let cursor = this.cursor(CONTENT_KIND);
+      for (;;) {
+        const record = this.buildRecord(request.key, "text", bytes(text), this.partIndex(cursor, request.key));
+        const slices: Slice[] = [];
+        const hadRecords = (records(cursor.doc)?.length ?? 0) > 0;
+        this.capture(slices, cursor, () => records(cursor.doc, [record]));
+        const overflow = this.overflowOf(slices, record.payload.byteLength);
+        if (overflow === null) {
+          await this.persist(slices);
+          break;
+        }
+        // 试写尚未交给存储；只丢弃本片，已提交前缀从 canonical + tail 恢复，绝不重放整个输入。
+        await this.loadCursor(cursor.docId, cursor.kind);
+        if (!hadRecords) throw this.stop("CAPACITY_EXCEEDED", `record cannot fit an empty doc: ${overflow}`);
+        await this.sealActive(CONTENT_KIND);
+        cursor = this.cursor(CONTENT_KIND);
+      }
     }
-    const overflow = this.overflowOf(slices, recordBytes);
-    if (overflow === null) return await this.persist(slices);
-    if (resplit) throw this.stop("CAPACITY_EXCEEDED", `re-split still exceeds the hard limit: ${overflow}`);
-    // 被污染的私有投影只能丢弃（不变量 ②）：确认未提交后重放原谱系并封口，写入口随后指向新块。
-    const probe = await this.confirmBatch(this.fixBatch(slices));
-    if (probe.status === "committed") return applyFrontiers(this.cursorsOf(slices), probe.frontiers);
-    if (probe.status === "ambiguous") throw this.stop("COMMIT_OUTCOME_UNKNOWN", `undecidable batch: ${overflow}`);
-    await this.loadCursor(cursor.docId, cursor.kind);
-    await this.sealActive(CONTENT_KIND);
-    await this.writeText(request, true);
   }
   /** 语义事件：带终态描述符的事件（`kind: "final"`，或声明实体类别并携带描述符的等价形态）把描述符写进内容块并在同批次移出实体，其余按实体身份更新运行态；语义实体不可拆分，拆一半比一次明确失败更糟。 */
   private async writeSemantic(semantic: NonNullable<LiveInput["semantic"]>): Promise<void> {

@@ -446,18 +446,16 @@ test("unknown 且查询到异摘要：写者停写", async () => {
   await fix.writer.close();
 });
 
-// 写后超硬上限时不持久化不发布：先确认该批未提交，恢复原 canonical + tail 并封口，再把同输入拆小写进新块。
-test("超硬上限的正文先封口再拆小写入新块", async () => {
+// 记录超限只拆记录；Doc 仍有空间时不得无谓封口或生成空前驱块。
+test("正文按记录预算拆分且复用仍有空间的块", async () => {
   const capacity = cappedCapacity({ activeHardEncodedBytes: 4_096, payloadChunkMaxBytes: 64 });
   const fix = await setup({ capacity });
   const text = "x".repeat(200);
   await fix.writer.accept(textDelta("entry-1", text));
   await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
-  expect(updatesOf(fix, fix.contentId)).toHaveLength(0);
-  expect(docOf(fix, fix.contentId)?.state).toBe("sealed");
-  const successor = committed(fix).docs.find((doc) => doc.kind === "content" && doc.state === "active");
-  expect(successor).toBeDefined();
-  const pieces = readRecords(fix, successor?.docId ?? "");
+  expect(updatesOf(fix, fix.contentId)).toHaveLength(4);
+  expect(docOf(fix, fix.contentId)?.state).toBe("active");
+  const pieces = readRecords(fix, fix.contentId);
   expect(pieces.length).toBeGreaterThan(1);
   expect(pieces.map(textOf).join("")).toBe(text);
   for (const piece of pieces) expect(piece.payload.byteLength).toBeLessThanOrEqual(64);

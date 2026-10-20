@@ -221,6 +221,8 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 
 旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。
 
+**新协议可传输不变量**：任何已提交 Doc 的 canonical snapshot 都必须能由空客户端用一帧 `DOC_BASE` 完整重建。存储、实时轮换、历史构建、目录与运行态统一引用 `MAX_DOC_SNAPSHOT_BYTES`（288KiB 数据帧上限扣除最大头与 base64 封装后的 218,100B），启用期由容量 profile 校验；禁止单层调高硬限。历史逻辑对象超过单记录预算时在导入入口拆成自描述 `object_part` 记录，物理记录仍逐条满足上限，逻辑对象按 part 元数据重组。投递分 planned / socket 已交接 / 已应用三态：未交接的回执只结清额度，不得推进基线顺序；被放弃的基线必须回滚 attempt 或换新 attempt 重发。
+
 **新旧协议分流**：`/acp/yjs/:agentId` 的 query `chatSync=1` 声明该连接只消费新同步协议（`syncOnly`）。这类连接跳过上述 `yjs:sync-request`/全量快照握手，不接收旧 Chat/Session Doc 广播，也忽略 legacy `state-vector`；文本 JSON Action（会话切换、取消、权限响应等）与同步 runtime ingress 保持不变。无该标记或 `chatSync=0` 的连接逐字节保持旧全量链路，同一会话允许多个新旧标签页共存。前端旧 Yjs WS 与同步 WS 是两个独立连接：旧连接继续承载动作与非文本文档能力，展示层在同步投影已含文本时只退役未配对的纯文本旧消息，工具、计划、思考与错误仍由旧 Doc 补充。旧通道的删除条件见 `docs/design/2026-10-16-fenix-message-sync-implementation-notes.md` §3.8（需新投影覆盖非文本、持久化跨重启与真实历史契约）。
 
 **建立失败的终态关闭码**（`channel/gateway.ts`，客户端据此决定是否自动重连）：
