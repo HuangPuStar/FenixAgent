@@ -906,11 +906,13 @@ export class RelayEventHandler {
     // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（入口只有 pending 预算，且回放工具
     // 事件无可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
     try {
+      // 子 Agent / callback 事件自身不带 turnId 时不得借用主 Agent 的活动 turn：
+      // 两者已有独立归属键（sourceAgentId / callbackEntryId），借用会把输出混入主回复。
+      const canBindActiveTurn =
+        !event.sourceAgentId && !event.callbackEntryId && SYNC_TURN_BOUND_EVENTS.has(event.type);
       const boundTurnId =
         event.turnId ??
-        (SYNC_TURN_BOUND_EVENTS.has(event.type)
-          ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId
-          : null);
+        (canBindActiveTurn ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId : null);
       if (boundTurnId?.startsWith("turn_replay_")) return;
       this.dependencies.onNormalizedEvent?.(
         shared.rcsSessionId,
