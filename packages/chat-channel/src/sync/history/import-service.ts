@@ -267,7 +267,7 @@ export class HistoryImportService {
         if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
           throw new SyncProtocolError("MALFORMED_FRAME", {
             message: "directory cursor did not advance",
-            safeContext: { generation: attempt.generation, afterOrdinal: last.ordinalEnd },
+            safeContext: { generation: attempt.generation, ordinal: last.ordinalEnd },
           });
         }
         afterOrdinal = last.ordinalEnd;
@@ -508,7 +508,7 @@ export class HistoryImportService {
       if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
         throw new SyncProtocolError("MALFORMED_FRAME", {
           message: "directory cursor did not advance",
-          safeContext: { generation: attempt.generation, afterOrdinal: last.ordinalEnd },
+          safeContext: { generation: attempt.generation, ordinal: last.ordinalEnd },
         });
       }
       afterOrdinal = last.ordinalEnd;
