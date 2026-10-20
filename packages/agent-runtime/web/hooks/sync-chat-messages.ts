@@ -1,6 +1,6 @@
 import type { StructuredMessage } from "@fenix/chat-channel";
 
-/** 异 ID 双写仅在同角色、完全相同正文且时间差不超过 5 秒时配对。 */
+/** 助手消息异 ID 双写的实时配对窗口；用户消息按出现次数与轮次锚点配对，不受该窗口限制。 */
 export const SYNC_MESSAGE_MATCH_WINDOW_MS = 5000;
 
 type TextMessage = Extract<StructuredMessage, { type: "user_message" | "assistant_message" }>;
@@ -139,7 +139,8 @@ export interface SyncMessageMergerOptions {
 
 /**
  * 每个会话持有一个合并器：别名一对一锁定，已显示的 key/相对顺序不因双写追平改变。
- * 无协议时间戳的记录用首次观察时间，仅用于跨来源配对，不拿未知时间 0 去匹配任意历史。
+ * 无协议时间戳的记录用首次观察时间，仅用于助手消息的跨来源配对，不拿未知时间 0 去匹配任意历史；
+ * 用户消息改用出现顺序与相邻助手锚点，因为重连晚到会让同一条双写超出时间窗。
  *
  * 复杂度：身份/别名/正文均为一次索引，缺省历史按线性链表顺序插入；大基线 hydrate 时
  * 不会因逐条 `Array.find` / `slice().reverse()` 退化为 O(n²)（旧实现 5k 条双写可达 19s）。

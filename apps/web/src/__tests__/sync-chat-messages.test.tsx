@@ -226,20 +226,21 @@ describe("新旧消息合并视图", () => {
     expect(html.match(/完整回答/g)).toHaveLength(1);
   });
 
-  // ID 不同但角色、正文和时间窗口相同的一对双写只保留一条。
-  test("异 ID 按角色正文及五秒窗口一对一去重", () => {
+  // 用户消息双写可能因重连晚到而超出五秒窗口，按出现次数与轮次锚点配对，不能重复展示。
+  test("异 ID 用户消息跨五秒窗口仍按出现次数去重", () => {
     const union = () => createSyncMessageMerger(undefined, { retireLegacyText: false });
     expect(union()([user("old", "收到")], [user("new", "收到", 14000)])).toHaveLength(1);
-    expect(union()([user("old", "收到")], [user("new", "收到", 16000)])).toHaveLength(2);
+    expect(union()([user("old", "收到")], [user("new", "收到", 16000)])).toHaveLength(1);
     expect(union()([user("old", "收到")], [assistant("new", "收到")])).toHaveLength(2);
+    // 旧通道多出的一次是真实重复提问，不能被新投影的一条消息抵消。
     expect(union()([user("a", "收到"), user("b", "收到")], [user("c", "收到")])).toHaveLength(2);
   });
 
-  // 无 final 时间戳只能使用首次观察窗口，不能吞掉很久以前相同正文。
-  test("未知时间使用首次观察时间且不会误吞旧历史", () => {
+  // 缺少协议时间戳时仍要按出现顺序配对，不能因首次观察时间较晚而重复展示同一条。
+  test("未知时间的用户消息按出现顺序配对", () => {
     const unionAt = (time: number) => createSyncMessageMerger(() => time, { retireLegacyText: false });
     expect(unionAt(10000)([user("a", "收到")], [user("b", "收到", 0)])).toHaveLength(1);
-    expect(unionAt(30000)([user("a", "收到")], [user("b", "收到", 0)])).toHaveLength(2);
+    expect(unionAt(30000)([user("a", "收到")], [user("b", "收到", 0)])).toHaveLength(1);
   });
 
   // 双写追平或时间戳更新不能重挂已显示条目，追加消息也不能重建未变气泡对象。
