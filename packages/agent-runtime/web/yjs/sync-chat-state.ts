@@ -73,4 +73,6 @@ export interface SyncChatSession {
   state(): SyncChatConnectionState;
   /** 显式加载一批更早历史；没有可加载内容时返回 false，不产生网络请求。 */
   loadEarlierHistory(): boolean;
+  /** 回到最新位置：重新订阅被历史加载淘汰的块。 */
+  returnToLatestHistory(): void;
 }

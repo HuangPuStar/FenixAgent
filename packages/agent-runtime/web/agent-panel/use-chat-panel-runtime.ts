@@ -432,6 +432,9 @@ export function useChatPanelRuntime({
   const callbacks = useMemo(
     (): ChatPanelCallbacks => ({
       onSendPrompt: (contentBlocks: unknown[]) => {
+        // 用户发送新消息即回到最新位置：回看历史时被窗口淘汰的块需要重新订阅，
+        // 否则本次流式回复永远进不了投影（旧通道文本已退役）。
+        syncChat.returnToLatestHistory?.();
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
         // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
         // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
@@ -478,7 +481,7 @@ export function useChatPanelRuntime({
         sendAction({ action: "set_session_mode", modeId });
       },
     }),
-    [sendAction, sessionState.acpSessionId],
+    [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory],
   );
   return {
     authState,

@@ -91,4 +91,33 @@ describe("SyncStoreRegistry", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(registry.size).toBe(0);
   });
+
+  // 引用归零后引导失败：条目仍要清理，且不得因清理派生出未处理的 rejection。
+  test("引用归零后引导失败：清理条目且不产生未处理拒绝", async () => {
+    const registry = new SyncStoreRegistry();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const shared = registry.acquire(SCOPE, fakeStore);
+      let rejectTask: (error: Error) => void = () => {};
+      const task = new Promise<string>((_resolve, reject) => {
+        rejectTask = reject;
+      });
+      const bootstrap = shared.bootstrap(() => task);
+      shared.release();
+      expect(registry.size).toBe(1);
+      rejectTask(new Error("bootstrap failed"));
+      await expect(bootstrap).rejects.toThrow("bootstrap failed");
+      // 给清理回调和 unhandledRejection 派发留出事件循环轮次。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(registry.size).toBe(0);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });

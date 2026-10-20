@@ -29,6 +29,11 @@ export interface SyncChatState {
   readonly projection: SyncChatProjection;
   readonly legacyFallback: boolean;
   readonly history: SyncChatHistoryState;
+  /**
+   * 发送新消息时回到最新位置：重新订阅被历史加载淘汰的块，实时内容不再中断。
+   * 快照状态可缺省，hook 返回时总会提供实现。
+   */
+  readonly returnToLatestHistory?: () => void;
 }
 
 export interface SyncChatHistoryState {
@@ -51,6 +56,7 @@ const EMPTY_STATE: SyncChatState = {
   projection: emptySyncChatProjection(),
   legacyFallback: false,
   history: NO_HISTORY,
+  returnToLatestHistory: () => {},
 };
 
 /**
@@ -189,10 +195,14 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
   ]);
 
   const loadEarlier = useCallback((): boolean => sessionRef.current?.loadEarlierHistory() ?? false, []);
+  const returnToLatestHistory = useCallback((): void => {
+    sessionRef.current?.returnToLatestHistory();
+  }, []);
 
   if (snapshot.scope !== scope) return EMPTY_STATE;
   return {
     ...snapshot.state,
+    returnToLatestHistory,
     history: {
       hasEarlier: snapshot.state.connection.hasEarlierHistory,
       loading: snapshot.state.connection.historyLoading,

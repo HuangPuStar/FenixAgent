@@ -7,8 +7,9 @@
 //
 // 双向淘汰：
 // - live 追加把窗口向前推，最旧的已订阅块移入 `earlier`（仍可重新加载）；
-// - 显式加载更早历史把窗口向后拉，超过驻留预算时释放最新的已订阅块并移入 `later`，
-//   避免“加载越早、驻留越多”，也避免下一次目录刷新把它们自动订阅回来。
+// - 显式加载更早历史把窗口向后拉，超过驻留预算时释放除最新块外的已订阅块并移入 `later`，
+//   避免“加载越早、驻留越多”，也避免下一次目录刷新把它们自动订阅回来；最新块（live tail）
+//   始终保留，否则流式回复会随淘汰一并消失。
 
 /** 首屏订阅的最近内容块数。单块目标载荷 128KiB，四块把首屏下行控制在约 512KiB 量级。 */
 export const SYNC_HISTORY_INITIAL_BLOCKS = 4;
@@ -34,7 +35,7 @@ export interface ContentWindowPlan {
 export interface ContentWindowLoadPlan {
   /** 本轮从 `earlier` 取出的块（按目录顺序，旧 → 新）。 */
   readonly retain: readonly string[];
-  /** 为保持驻留预算而释放的最新已订阅块（按目录顺序，旧 → 新）。 */
+  /** 为保持驻留预算而释放的已订阅块（不含最新块，按目录顺序，旧 → 新）。 */
   readonly release: readonly string[];
   readonly hasEarlier: boolean;
 }
@@ -53,7 +54,8 @@ export interface SyncContentWindow {
    * - 首次（尚无内容块被 retain）保留目录末尾 `initialBlocks` 块，其余进入更早集合；
    * - 后续目录追加按位置分流：位于最旧已 retain 块之前的进入更早集合，之后的立即订阅
    *   （覆盖 live 轮换与迟到的历史导入，避免迟到历史被当成“最新块”全量订阅）。
-   * - 用户正在回看历史（`later` 非空）时，新出现的最新块不再自动订阅，避免阅读锚点被推走。
+   * - `later` 只记录被历史加载淘汰的旧块，目录刷新不会自动重新订阅；新出现的块（fresh）
+   *   仍会立即订阅，保证回看历史期间实时内容不中断。
    */
   plan(allDocIds: readonly string[], retained: ReadonlySet<string>, initial: boolean): ContentWindowPlan;
   /**
@@ -71,6 +73,11 @@ export interface SyncContentWindow {
   hasEarlier(): boolean;
   /** 当前更早集合，按目录顺序过滤；空目录参数会丢弃已不存在的块。 */
   earlierDocIds(allDocIds: readonly string[]): readonly string[];
+  /**
+   * 回到最新位置：清空 `later`，让被历史加载淘汰的块在下一次 `plan()` 中作为 fresh 重新订阅。
+   * 不改变 `earlier` / `order`。
+   */
+  returnToLatest(): void;
   /** 因向历史方向扩展而被淘汰的最新块；用于测试与诊断。 */
   laterDocIds(allDocIds: readonly string[]): readonly string[];
 }
@@ -132,12 +139,9 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
         else newer.push(docId);
       }
       for (const docId of older) earlier.add(docId);
-      // 用户已向历史方向扩展：最新块只记录位置，不自动订阅，避免阅读窗口被 live 内容推走。
-      // 仍在最新位置时，新块立即订阅并淘汰最旧块。
-      const retain = later.size > 0 ? [] : newer;
-      if (later.size > 0) {
-        for (const docId of newer) later.add(docId);
-      }
+      // later 只挡被历史加载淘汰的旧块（已通过 fresh 排除）；新出现的块始终立即订阅，
+      // 否则用户回看几次历史后，流式回复与新块会永久停在 later 中不再显示。
+      const retain = newer;
       const release = retainedContent.slice(0, Math.max(0, retainedContent.length + retain.length - maxRetainedBlocks));
       for (const docId of release) earlier.add(docId);
       return { retain, release, hasEarlier: earlier.size > 0 };
@@ -149,7 +153,11 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
       if (batch.length === 0) return { retain: [], release: [], hasEarlier: earlier.size > 0 };
       const retainedContent = order.filter((docId) => retained.has(docId));
       const overflow = Math.max(0, retainedContent.length + batch.length - maxRetainedBlocks);
-      const release = overflow === 0 ? [] : retainedContent.slice(-overflow);
+      // 最新 retained 块是 live tail（流式回复所在块），任何情况下都不得淘汰；
+      // 可释放集合不足时只释放其余块，允许窗口暂时超出预算。
+      const releasable = retainedContent.slice(0, -1);
+      const releaseCount = Math.min(overflow, releasable.length);
+      const release = releaseCount === 0 ? [] : releasable.slice(-releaseCount);
       for (const docId of release) later.add(docId);
       for (const docId of batch) earlier.delete(docId);
       return { retain: batch, release, hasEarlier: earlier.size > 0 };
@@ -171,6 +179,10 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
           earlier.add(docId);
         }
       }
+    },
+
+    returnToLatest(): void {
+      later = new Set();
     },
 
     hasEarlier(): boolean {

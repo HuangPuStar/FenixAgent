@@ -180,7 +180,8 @@
   跨页 `contentDocIds` 并交给订阅窗口。`hasEarlierPage` 依据最早已知页的 `previousPageId`，
   用户点击「显示更早」时先订阅上一页，页基线到达后自动续订该页内容。
 - 双向淘汰：内容窗口在 live 追加超过 `SYNC_HISTORY_MAX_RETAINED_BLOCKS` 时释放最旧块；向历史
-  扩展时释放最新块并记入 `later`，回看期间新块不再自动推走阅读锚点。释放动作同时移出
+  扩展时释放除最新块（live tail）外的已订阅块并记入 `later`，回看期间新块仍立即订阅，发送消息时
+  经 `returnToLatestHistory` 清空 `later` 重新订阅被淘汰块。释放动作同时移出
   `retainedDocs`、协议 retain、投影镜像与 Y.Doc；页镜像在页内无驻留块且不是最新页时释放，
   页元数据（块列表 + `previousPageId`）保留，因此释放后仍可重新加载。
 - 实施中发现并修复：目录 appender 自举/建页时把同一份快照编码了两次（一次落库、一次作为本地
@@ -189,7 +190,7 @@
 - 验证：`sync-directory-pagination.test.ts` 覆盖 64/64/2 切页、6000 块时根目录尺寸有界与页
   快照低于单帧上限；`sync-live-writer.test.ts` 覆盖轮换追加 successor、页满切换第 2 页与链接；
   `sync-import-service.test.ts` 覆盖导入后根/页可读；`sync-content-window.test.ts` 覆盖驻留预算
-  淘汰、释放后重新加载与回看期间不自动订阅；`sync-chat-session.test.ts` 覆盖跨页加载、首屏四块、
+  淘汰、释放后重新加载、回看期间新块仍订阅与 `returnToLatest` 重新订阅；`sync-chat-session.test.ts` 覆盖跨页加载、首屏四块、
   基线与 ACK。chat-channel 同步面 **781 pass / 0 fail**，agent-runtime web + 浏览器会话
   **137 pass / 0 fail**，`tsc-rs` 类型检查通过。
 
@@ -370,4 +371,4 @@
 2. 接入 Peri 持久历史契约后替换 `SyncHistorySource` 适配器；当前以旧 Chat Doc 已提交时间线为源，ACP `load_session` 仅有增量。
 3. 经用户批准表结构后实现 DB adapter，把进程内共享 store 扩展为跨进程/重启共享，并解决现有内存 store 的恢复限制。
 4. 按 §3.8 的移除前置条件推进：接入 final/工具对象与真实历史契约、完成持久化与灰度后，再删除旧 Yjs WS 与 `chatSync=0` 回退。
-4. 补齐 final / 非文本内容映射并接入 UI 渲染；随后验收 T13、T23、T07/T21 持久化分支及固定 profile 性能门槛。
+5. 补齐 final / 非文本内容映射并接入 UI 渲染；随后验收 T13、T23、T07/T21 持久化分支及固定 profile 性能门槛。

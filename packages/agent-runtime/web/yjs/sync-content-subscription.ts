@@ -43,6 +43,11 @@ export interface SyncContentSubscription {
   /** 用户显式加载更早历史；返回是否产生了新工作。 */
   loadEarlier(docIds: readonly string[]): boolean;
   /**
+   * 回到最新位置：清空 `later` 并按当前目录重新裁决，被历史加载淘汰的块会重新订阅。
+   * 发送新消息时调用，避免回看历史后实时回复不再显示。
+   */
+  returnToLatest(docIds: readonly string[]): void;
+  /**
    * 更早页的 DOC_BASE 到达：若上一批 `loadEarlier` 在等页目录，自动续订这批更早块。
    * 返回是否继续产生了订阅请求。
    */
@@ -197,6 +202,16 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     return false;
   }
 
+  function applyDirectory(docIds: readonly string[], initial: boolean): void {
+    const plan = window.plan(docIds, deps.retainedDocs, initial);
+    // 先释放再订阅：释放只作用于已驻留块，订阅批次不会与释放批次重叠。
+    releaseContentDocs(plan.release);
+    if (plan.retain.length > 0 && !retainAndSubscribe(plan.retain, "currentHistory", initial ? "initial" : "pending")) {
+      return;
+    }
+    emitHistoryState();
+  }
+
   return {
     reset(): void {
       clearTimer();
@@ -208,21 +223,15 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
       emitHistoryState(0);
     },
 
-    applyDirectory(docIds, initial): void {
-      const plan = window.plan(docIds, deps.retainedDocs, initial);
-      // 先释放再订阅：释放只作用于已驻留块，订阅批次不会与释放批次重叠。
-      releaseContentDocs(plan.release);
-      if (
-        plan.retain.length > 0 &&
-        !retainAndSubscribe(plan.retain, "currentHistory", initial ? "initial" : "pending")
-      ) {
-        return;
-      }
-      emitHistoryState();
-    },
+    applyDirectory,
 
     loadEarlier(docIds): boolean {
       return loadEarlierInternal(docIds);
+    },
+
+    returnToLatest(docIds): void {
+      window.returnToLatest();
+      applyDirectory(docIds, false);
     },
 
     notePageLoaded(docIds): boolean {

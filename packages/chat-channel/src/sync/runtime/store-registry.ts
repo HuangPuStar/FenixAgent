@@ -72,9 +72,11 @@ export class SyncStoreRegistry {
         }
         // 引用归零但引导仍在途：等它落定后再决定是否丢弃（成功或失败都不影响已建立连接）。
         if (owned.refs <= 0) {
-          void owned.bootstrapInflight?.finally(() => {
+          const cleanup = (): void => {
             if (owned.refs <= 0 && this.entries.get(key) === owned) this.entries.delete(key);
-          });
+          };
+          // 用 then 的成功/失败双回调代替 finally：finally 会派生一个未处理的 rejected promise。
+          void owned.bootstrapInflight?.then(cleanup, cleanup);
         }
       },
     };

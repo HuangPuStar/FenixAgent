@@ -491,16 +491,25 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       if (socket === current) setState({ error: { code: "SOCKET_ERROR", message: "websocket error" } });
     };
   }
-  function loadEarlierHistory(): boolean {
-    if (disposed || contentSubscription === null) return false;
+  /** 当前代次的内容块目录：优先权威目录 Doc，调试注入仅作后备。 */
+  function windowContentDocIds(): readonly string[] {
     const generation = manifest?.generation ?? expectedGeneration;
     const directoryContentDocIds = frameRouter
       .readContentDocIds()
       .filter((docId) => parseContentDocId(docId)?.generation === generation);
-    const fallbackContentDocIds = contentDocIds.filter((docId) => parseContentDocId(docId)?.generation === generation);
-    return contentSubscription.loadEarlier(
-      directoryContentDocIds.length > 0 ? directoryContentDocIds : fallbackContentDocIds,
-    );
+    if (directoryContentDocIds.length > 0) return directoryContentDocIds;
+    return contentDocIds.filter((docId) => parseContentDocId(docId)?.generation === generation);
+  }
+  function loadEarlierHistory(): boolean {
+    if (disposed || contentSubscription === null) return false;
+    return contentSubscription.loadEarlier(windowContentDocIds());
+  }
+  function returnToLatestHistory(): void {
+    if (disposed || contentSubscription === null) return;
+    const docIds = windowContentDocIds();
+    // 目录尚未到达时没有可恢复的块，避免空目录提前推进窗口状态机。
+    if (docIds.length === 0) return;
+    contentSubscription.returnToLatest(docIds);
   }
   function dispose(): void {
     if (disposed) return;
@@ -525,5 +534,5 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     frameRouter.dispose();
   }
 
-  return { connect, dispose, state: () => state, loadEarlierHistory };
+  return { connect, dispose, state: () => state, loadEarlierHistory, returnToLatestHistory };
 }
