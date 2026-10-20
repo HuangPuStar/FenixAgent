@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import type { ChatPanelHostPorts } from "./chat-panel-host-ports";
 import { useChatPanelPorts } from "./chat-panel-ports";
+import { restoreLatestThenScroll } from "./return-to-latest";
 import { useChatPanelRuntime } from "./use-chat-panel-runtime";
 
 /**
@@ -138,6 +139,7 @@ function ChatPanelView({
     classifiedError,
     actionError,
     historyRecovery,
+    historyRecoveryRetrying,
     syncDegradedBlocked,
     retryHistoryRecovery,
     autoReconnecting,
@@ -170,16 +172,9 @@ function ChatPanelView({
    * “先恢复最新区间、后滚动”的顺序；消息区根节点带 `role="log"`，就近从面板祖先查找。
    */
   const handleReturnToLatest = useCallback(async () => {
-    const ready = await syncChat.history.returnToLatest();
-    if (!ready) return;
-    const panelRoot =
-      historyNoticeRef.current?.closest(".chat-main-column") ??
-      historyNoticeRef.current?.parentElement?.parentElement ??
-      null;
-    const scroller = panelRoot?.querySelector<HTMLElement>('[role="log"]') ?? null;
-    if (scroller === null) return;
-    requestAnimationFrame(() => {
-      scroller.scrollTop = scroller.scrollHeight;
+    await restoreLatestThenScroll({
+      notice: historyNoticeRef.current,
+      returnToLatest: syncChat.history.returnToLatest,
     });
   }, [syncChat.history.returnToLatest]);
 
@@ -270,10 +265,12 @@ function ChatPanelView({
               <span>{t("historyRecoveryIncomplete", { count: historyRecovery.docs.length })}</span>
               <button
                 type="button"
-                className="rounded border border-destructive/30 px-2 py-0.5 font-medium hover:bg-destructive/10"
+                className="rounded border border-destructive/30 px-2 py-0.5 font-medium hover:bg-destructive/10 disabled:opacity-50"
+                disabled={historyRecoveryRetrying}
+                aria-busy={historyRecoveryRetrying}
                 onClick={retryHistoryRecovery}
               >
-                {t("historyRecoveryRetry")}
+                {historyRecoveryRetrying ? t("historyRecoveryRetrying") : t("historyRecoveryRetry")}
               </button>
             </div>
           </div>

@@ -15,8 +15,9 @@
   "historyGap": "Some history in the middle is not loaded",
   "historyGapLoad": "Load missing history",
   "historyGapLatest": "Back to latest",
-  "historyRecoveryIncomplete": "History sync incomplete: {{count}} documents exceed the transfer limit; tool and thinking content may be missing.",
+  "historyRecoveryIncomplete": "History sync incomplete: {{count}} document(s) could not be restored; tool and thinking content may be missing.",
   "historyRecoveryRetry": "Retry history sync",
+  "historyRecoveryRetrying": "Retrying history sync...",
   "filePicker": {
     "title": "Select File"
   }
