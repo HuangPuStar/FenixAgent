@@ -179,15 +179,20 @@ export class HistoryCommitter {
    * `limit` 只截断条目，不影响 `gaps` / `complete`——它们是整个代次已提交范围的性质，而不是这一页的
    * 性质（分页未取完用 `blocks.length < limit` 判断）。排序在本方法内重做一次：目录顺序是存储的实现
    * 细节，本类的输出契约要求升序，任何 adapter 都得满足。
+   *
+   * `afterOrdinal` 缺省时从目录起点读取；调用方按上一页最后一个 `ordinalEnd` 推进即可覆盖全部内容块。
    */
-  async listDirectory(limit: number): Promise<{ blocks: CommittedBlockRef[]; gaps: OrdinalGap[]; complete: boolean }> {
+  async listDirectory(
+    limit: number,
+    afterOrdinal?: number,
+  ): Promise<{ blocks: CommittedBlockRef[]; gaps: OrdinalGap[]; complete: boolean }> {
     if (!Number.isSafeInteger(limit) || limit <= 0) {
       throw new SyncProtocolError("MALFORMED_FRAME", {
         message: "directory limit must be a positive safe integer",
         safeContext: { generation: this.generation },
       });
     }
-    const page = await this.store.readDirectory({ generation: this.generation, limit });
+    const page = await this.store.readDirectory({ generation: this.generation, afterOrdinal, limit });
     const blocks = page.entries
       // 未封口条目不进目录输出：它的字节仍在被写入，宣称成已提交块会让导入方按残缺范围收尾。
       .filter((entry) => entry.sealed)

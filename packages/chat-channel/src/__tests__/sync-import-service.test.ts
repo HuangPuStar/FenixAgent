@@ -62,6 +62,12 @@ function capacityWithBlockTarget(targetPayloadBytes: number): SyncCapacityProfil
   };
 }
 
+/** 在块目标之外再压小目录页大小，用于构造「第一页满、第二页剩余」的真实跨页目录。 */
+function capacityWithDirectoryPage(pageSize: number): SyncCapacityProfile {
+  const base = capacityWithBlockTarget(BLOCK_TARGET_BYTES);
+  return { ...base, inputs: { ...base.inputs, directoryMaxRefs: pageSize } };
+}
+
 /** 内存适配器的构造参数；`lifecycle` 必填（适配器不内置宽限期默认值）。 */
 function storeOptions(capacity: SyncCapacityProfile): {
   clock: Clock;
@@ -642,6 +648,23 @@ describe("HistoryImportService 换代与幂等", () => {
 });
 
 describe("历史导入回归（本次修复）", () => {
+  // 回归：目录超过单页上限时，完整性校验与入口闭包都必须覆盖后续页，不能把第一页当成全部。
+  test("目录跨页时构建与 finalize 覆盖全部内容块", async () => {
+    const harness = await createHarness({ capacity: capacityWithDirectoryPage(2) });
+    const began = await harness.service.begin(beginInput());
+    // 3 条记录、每页 2 块：第一页满，第二页只剩 1 块。
+    await receiveAll(harness.service, 3);
+
+    await harness.service.buildAndCommit();
+    expect(harness.service.status()).toMatchObject({ state: "importComplete", committedBlocks: 3 });
+
+    expect((await harness.service.finalize()).outcome).toBe("committed");
+    const record = await harness.store.readGeneration(SCOPE_KEY, began.generation);
+    const directory = await harness.store.readDirectory({ generation: began.generation, limit: 10 });
+    expect(directory.entries).toHaveLength(3);
+    expect(record?.entryRefs.contentDocIds).toEqual(directory.entries.map((entry) => entry.docId));
+  });
+
   // 回归：曾把存储的起始游标误判成缺口（本次修复）：MemoryProjectionStore.readDirectory 的 `previous` 从 -1 起算，
   // 首个块（ordinalStart=1）也被报成「ordinal 0 缺失」，complete 因此恒为 false；assertComplete 见到 !complete
   // 直接抛 IMPORT_INCOMPLETE，于是真实存储上任何完整导入都停在 failed。期望：完整导入达到 importComplete。

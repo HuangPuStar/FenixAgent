@@ -38,7 +38,7 @@ import {
 } from "./block-builder";
 import { BlockDispatcher } from "./build-dispatch";
 import type { BlockBuildPool } from "./build-pool";
-import { HistoryCommitter } from "./committer";
+import { type CommittedBlockRef, HistoryCommitter } from "./committer";
 import { HistoryIngest, type HistoryRecordMeta, type IngestedRecord } from "./ingest";
 import type { HistorySpool } from "./spool";
 
@@ -250,12 +250,30 @@ export class HistoryImportService {
       await dispatcher.dispatch(blocks);
       attempt.committedBlocks = dispatcher.committedBlocks();
       await this.pool.drain();
-      const directory = await committer.listDirectory(this.capacity.inputs.directoryMaxRefs);
-      attempt.committedBlocks = directory.blocks.length;
-      // 缺口由存储按已提交块之间的断裂给出；此处不再过滤「首块之前」的虚报缺口——那属于存储侧
-      // 的目录语义（见 memory-store-state.ts 的 readDirectory）。
-      attempt.gaps = directory.gaps;
-      this.assertComplete(attempt, directory.blocks, attempt.gaps.length === 0);
+      // 目录按 limit 分页：单页只保证有界读取，完整性必须覆盖整个代次，不能把第一页当成全部。
+      const pageSize = this.capacity.inputs.directoryMaxRefs;
+      const committedRefs: CommittedBlockRef[] = [];
+      let afterOrdinal: number | undefined;
+      let complete = false;
+      for (;;) {
+        const page = await committer.listDirectory(pageSize, afterOrdinal);
+        committedRefs.push(...page.blocks);
+        // gaps / complete 是整个代次的性质；任一分页返回的结论相同，取最后一页即可。
+        attempt.gaps = page.gaps;
+        complete = page.complete;
+        if (page.blocks.length < pageSize) break;
+        const last = page.blocks[page.blocks.length - 1];
+        // 游标必须严格前进：存储返回满页却回退/停滞时继续循环会永远读不完。
+        if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
+          throw new SyncProtocolError("MALFORMED_FRAME", {
+            message: "directory cursor did not advance",
+            safeContext: { generation: attempt.generation, afterOrdinal: last.ordinalEnd },
+          });
+        }
+        afterOrdinal = last.ordinalEnd;
+      }
+      attempt.committedBlocks = committedRefs.length;
+      this.assertComplete(attempt, committedRefs, complete);
       attempt.state = "importComplete";
     } catch (error) {
       await this.fail(error);
@@ -462,15 +480,40 @@ export class HistoryImportService {
   /**
    * 已提交目录中的内容块（按 ordinal 升序）。
    *
-   * 目录即权威：不从接收列表推断，也不缓存「可能已提交」的块；读取上限沿用容量档案的
-   * `directoryMaxRefs`，与完整性校验使用同一口径。
+   * 目录即权威：不从接收列表推断，也不缓存「可能已提交」的块；读取按容量档案的
+   * `directoryMaxRefs` 分页，逐页累加直到目录结束，避免大目录只取到第一页就丢掉内容块。
    */
   private async readCommittedContentDocIds(attempt: ImportAttempt): Promise<string[]> {
-    const directory = await this.store.readDirectory({
-      generation: attempt.generation,
-      limit: this.capacity.inputs.directoryMaxRefs,
-    });
-    return directory.entries.filter((entry) => entry.sealed).map((entry) => entry.docId);
+    const pageSize = this.capacity.inputs.directoryMaxRefs;
+    if (!Number.isSafeInteger(pageSize) || pageSize <= 0) {
+      throw new SyncProtocolError("MALFORMED_FRAME", {
+        message: "directory limit must be a positive safe integer",
+        safeContext: { generation: attempt.generation },
+      });
+    }
+    const docIds: string[] = [];
+    let afterOrdinal: number | undefined;
+    for (;;) {
+      const page = await this.store.readDirectory({
+        generation: attempt.generation,
+        afterOrdinal,
+        limit: pageSize,
+      });
+      for (const entry of page.entries) {
+        if (entry.sealed) docIds.push(entry.docId);
+      }
+      if (page.entries.length < pageSize) break;
+      const last = page.entries[page.entries.length - 1];
+      // 与构建阶段同一防御：游标不前进会让分页循环永不停。
+      if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
+        throw new SyncProtocolError("MALFORMED_FRAME", {
+          message: "directory cursor did not advance",
+          safeContext: { generation: attempt.generation, afterOrdinal: last.ordinalEnd },
+        });
+      }
+      afterOrdinal = last.ordinalEnd;
+    }
+    return docIds;
   }
 
   /**
