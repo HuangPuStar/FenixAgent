@@ -8,6 +8,7 @@ import type {
   RefreshInstanceEnvironmentRequest,
 } from "../types/launch-request";
 import type { RuntimeInstanceSnapshot } from "../types/runtime-instance";
+import { createRelayLease, RuntimeRelayConnection } from "./relay-lease";
 import type { RuntimeInstanceStore } from "./runtime-instance-store";
 
 /**
@@ -60,6 +61,7 @@ export interface CreateInstanceOrchestratorOptions {
  */
 export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOptions): InstanceOrchestrator {
   const { pluginRegistry, nodeRegistry, store, onInstanceStarted, runtimeResolver } = options;
+  const relayConnections = new Map<EngineRuntime, RuntimeRelayConnection>();
   const environmentRefreshes = new Map<string, Promise<RuntimeInstanceSnapshot>>();
 
   /**
@@ -240,6 +242,11 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
      * 失败时保留上一次成功的 launchSpec 与 running 状态，现有会话可继续使用。
      */
     async refreshEnvironment(request) {
+      const requestedRecord = store.require(request.instanceId);
+      const requestedRuntime = store.getRuntimeEntry(request.instanceId)?.runtime;
+      if (requestedRecord.status !== "running" || !requestedRuntime) {
+        throw toInvalidStateError(request.instanceId, requestedRecord.status, "refreshEnvironment");
+      }
       const environmentKey = [
         request.launchSpec.organizationId,
         request.launchSpec.userId,
@@ -260,6 +267,13 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
               instanceId: request.instanceId,
             });
           }
+          if (
+            runtimeEntry.runtime !== requestedRuntime ||
+            record.runtimeGeneration !== requestedRecord.runtimeGeneration ||
+            record.serverEpoch !== requestedRecord.serverEpoch
+          ) {
+            throw toInvalidStateError(request.instanceId, record.status, "begin stale refreshEnvironment");
+          }
           const node = nodeRegistry.require(record.nodeId);
           await runtimeEntry.runtime.prepareEnvironment({
             instanceId: request.instanceId,
@@ -269,10 +283,16 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
             launchSpec: request.launchSpec,
             engineType: node.mode === "remote" ? undefined : record.engineType,
           });
-          return store.update(request.instanceId, {
-            status: "running",
-            launchSpec: request.launchSpec,
-          });
+          const current = store.get(request.instanceId);
+          if (
+            current?.status !== "running" ||
+            store.getRuntimeEntry(request.instanceId)?.runtime !== runtimeEntry.runtime ||
+            current.runtimeGeneration !== record.runtimeGeneration ||
+            current.serverEpoch !== record.serverEpoch
+          ) {
+            throw toInvalidStateError(request.instanceId, current?.status ?? "missing", "commit refreshEnvironment");
+          }
+          return store.update(request.instanceId, { launchSpec: request.launchSpec });
         });
 
       environmentRefreshes.set(environmentKey, refresh);
@@ -289,37 +309,65 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
      * 仅允许 `running` 态实例建立 relay，并优先复用已打开的连接。
      */
     async connectRelay(request) {
-      store.require(request.instanceId);
-
+      const record = store.require(request.instanceId);
+      if (record.status !== "running") {
+        throw toInvalidStateError(request.instanceId, record.status, "connectRelay");
+      }
+      const entry = store.getRuntimeEntry(request.instanceId);
+      if (!entry) throw createCoreRuntimeError("INSTANCE_NOT_FOUND", `Runtime entry not found: ${request.instanceId}`);
+      let connection = relayConnections.get(entry.runtime);
+      if (entry.relay?.state === "open" && !connection) return createRelayLease(entry.relay);
+      if (!connection) {
+        connection = new RuntimeRelayConnection(
+          () =>
+            entry.runtime.connectRelay({
+              instanceId: request.instanceId,
+              instanceUid: request.instanceId,
+              runtimeGeneration: record.runtimeGeneration,
+              serverEpoch: record.serverEpoch,
+              sessionId: request.sessionId,
+            }),
+          () => {
+            const current = store.get(request.instanceId);
+            if (
+              current?.status !== "running" ||
+              store.getRuntimeEntry(request.instanceId)?.runtime !== entry.runtime ||
+              current.runtimeGeneration !== record.runtimeGeneration ||
+              current.serverEpoch !== record.serverEpoch
+            ) {
+              throw toInvalidStateError(request.instanceId, current?.status ?? "missing", "commit relay");
+            }
+          },
+        );
+        relayConnections.set(entry.runtime, connection);
+      }
       try {
-        const record = store.require(request.instanceId);
-        if (record.status !== "running") {
-          throw toInvalidStateError(request.instanceId, record.status, "connectRelay");
+        const relay = await connection.promise;
+        const current = store.get(request.instanceId);
+        if (
+          current?.status !== "running" ||
+          store.getRuntimeEntry(request.instanceId)?.runtime !== entry.runtime ||
+          current.runtimeGeneration !== record.runtimeGeneration ||
+          current.serverEpoch !== record.serverEpoch
+        ) {
+          await connection.close();
+          throw toInvalidStateError(request.instanceId, current?.status ?? "missing", "commit relay lease");
         }
-
-        const runtimeEntry = store.getRuntimeEntry(request.instanceId);
-        if (!runtimeEntry) {
-          throw createCoreRuntimeError("INSTANCE_NOT_FOUND", `Runtime entry not found: ${request.instanceId}`, {
-            instanceId: request.instanceId,
-          });
-        }
-
-        if (runtimeEntry.relay && runtimeEntry.relay.state === "open") {
-          return runtimeEntry.relay;
-        }
-
-        const relay = await runtimeEntry.runtime.connectRelay({
-          instanceId: request.instanceId,
-          instanceUid: request.instanceId,
-          runtimeGeneration: record.runtimeGeneration,
-          serverEpoch: record.serverEpoch,
-          sessionId: request.sessionId,
-        });
         store.setRelay(request.instanceId, relay);
-        return relay;
+        return createRelayLease(relay);
       } catch (error) {
-        markInstanceError(request.instanceId, error);
+        const current = store.get(request.instanceId);
+        if (
+          current?.status === "running" &&
+          store.getRuntimeEntry(request.instanceId)?.runtime === entry.runtime &&
+          current.runtimeGeneration === record.runtimeGeneration &&
+          current.serverEpoch === record.serverEpoch
+        ) {
+          markInstanceError(request.instanceId, error);
+        }
         throw error;
+      } finally {
+        if (relayConnections.get(entry.runtime) === connection) relayConnections.delete(entry.runtime);
       }
     },
 
@@ -339,6 +387,9 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
           throw createCoreRuntimeError("INSTANCE_NOT_FOUND", `Runtime entry not found: ${instanceId}`, { instanceId });
         }
 
+        const pendingRelay = relayConnections.get(runtimeEntry.runtime);
+        relayConnections.delete(runtimeEntry.runtime);
+        await pendingRelay?.close();
         if (runtimeEntry.relay?.state === "open") {
           await runtimeEntry.relay.close();
         }
