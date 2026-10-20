@@ -159,14 +159,17 @@ describe("useChatHydration", () => {
     expect(latest.current?.messages).toHaveLength(1);
     expect(latest.current?.hydrating).toBe(false);
 
-    // 基线齐备：一次合并全部 100 条；旧通道纯文本历史已由新投影覆盖，不再重复进入。
+    // 基线齐备：100 条一次并入，不逐条追加；未被基线正文覆盖的旧助手文本按退役规则保留。
     options = { ...options, blocked: false };
     act(() => root.render(createElement(Probe)));
     await act(async () => {
       await wait(40);
     });
-    expect(latest.current?.messages).toHaveLength(100);
-    expect(latest.current?.messages.map((message) => message.id)).toEqual(baseline.map((message) => message.id));
+    expect(latest.current?.messages).toHaveLength(101);
+    expect(latest.current?.messages.map((message) => message.id)).toEqual([
+      "turn_1:assistant",
+      ...baseline.map((message) => message.id),
+    ]);
     act(() => root.unmount());
   }, 30_000);
 
