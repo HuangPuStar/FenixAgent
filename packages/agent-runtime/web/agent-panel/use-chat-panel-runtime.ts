@@ -20,9 +20,14 @@ import {
   type ActionAck,
   type ActionError,
   createDeterministicRcsSessionId,
+  PERI_USER_INPUT_QUEUE_CAPABILITY,
   type PublicErrorInfo,
   type TerminalWsUiCode,
 } from "@fenix/chat-channel";
+import type {
+  UserInputQueueEnqueueRequest,
+  UserInputQueueView,
+} from "@fenix/ui-components/chat/shell/chat-interface-types";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,6 +40,7 @@ import { useChatState } from "../hooks/use-chat-state";
 import { useDocHubReplacementVersion } from "../hooks/use-doc-hub-replacement";
 import { useSessionState } from "../hooks/use-session-state";
 import { useSyncChatState } from "../hooks/use-sync-chat-state";
+import { useUserInputQueue } from "../hooks/use-user-input-queue";
 import { useYjsDebugDump } from "../hooks/use-yjs-debug-dump";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
@@ -48,6 +54,7 @@ import {
   type YjsWsState,
 } from "../yjs/yjs-ws";
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
+import { createUserInputQueueSendPorts } from "./chat-panel-user-input-queue";
 
 /** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
 export interface ChatPanelCallbacks {
@@ -61,6 +68,13 @@ export interface ChatPanelCallbacks {
   onRespondPermission: (requestId: string, optionId: string | null) => void;
   onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   onSetMode: (modeId: string) => void;
+  // ── 待发送队列（peri steer）：`inputId`/`commandId` 都在本层生成（同 `send_prompt` 的出站口径）──
+  /** 入队：返回是否真正写入 socket（false 由渲染层给出可重试提示） */
+  onEnqueueUserInput: (request: UserInputQueueEnqueueRequest) => boolean;
+  /** 单发（一项）/ 全发（全部 queued 项） */
+  onDispatchUserInputs: (inputIds: string[]) => boolean;
+  /** 取回待发送项 */
+  onTakebackUserInput: (inputId: string) => boolean;
 }
 /** `ACPMain` 需要的派生展示态（从 Chat Doc 的能力/模型/模式子树投影）。 */
 export interface ChatPanelDerivedState {
@@ -71,6 +85,8 @@ export interface ChatPanelDerivedState {
   availableModes: { id: string; name: string }[];
   currentModeId: string | null;
   supportsModeSelection: boolean;
+  /** 能力位 `capabilities['peri.userInputQueue']`（Session Doc agent.capabilities 派生） */
+  supportsUserInputQueue: boolean;
   tokenUsage: ReturnType<typeof useChatState>["state"]["tokenUsage"];
 }
 /**
@@ -106,6 +122,8 @@ export interface ChatPanelRuntime {
   syncChat: ReturnType<typeof useSyncChatState>;
   periTasks: PeriTaskViewsResult["state"]["tasks"];
   periTasksLoaded: boolean;
+  /** 待发送队列投影（Session Doc `userInputQueue` 子树；未启用时为 enabled=false） */
+  userInputQueue: UserInputQueueView;
   derivedState: ChatPanelDerivedState;
   callbacks: ChatPanelCallbacks;
 }
@@ -277,6 +295,9 @@ export function useChatPanelRuntime({
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
   useYjsDebugDump(chatState, sessionState);
+
+  // 待发送队列 — 同样只订阅 Session Doc（root.userInputQueue 子树），Chat Doc 的流式更新不触发重派生。
+  const { state: userInputQueue } = useUserInputQueue(docHubKey);
 
   // ── Action commandId（C3：幂等键，同会话唯一）──
   // 同一 action 意图（action + 业务参数）重试复用同一 commandId；
@@ -474,6 +495,9 @@ export function useChatPanelRuntime({
       availableModes: mds?.availableModes ?? [],
       currentModeId: mds?.currentModeId ?? null,
       supportsModeSelection: mds != null && (mds.availableModes?.length ?? 0) > 0,
+      // 待发送队列能力位：peri steer 契约键 `peri.userInputQueue`，缺省（旧 agent）为假——
+      // 未声明的 agent 上队列交互整体不启用，提交维持直发。
+      supportsUserInputQueue: caps?.[PERI_USER_INPUT_QUEUE_CAPABILITY] === true,
       tokenUsage: chatState.tokenUsage,
     };
   }, [
@@ -537,6 +561,8 @@ export function useChatPanelRuntime({
       onSetMode: (modeId: string) => {
         sendAction({ action: "set_session_mode", modeId });
       },
+      // ── 待发送队列（peri steer 控制面）──
+      ...createUserInputQueueSendPorts(sendAction),
     }),
     [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory],
   );
@@ -554,6 +580,7 @@ export function useChatPanelRuntime({
     syncChat,
     periTasks: periTaskState.tasks,
     periTasksLoaded: periTaskState.loaded,
+    userInputQueue,
     derivedState,
     callbacks,
   };

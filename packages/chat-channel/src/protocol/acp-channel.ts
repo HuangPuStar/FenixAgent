@@ -17,6 +17,8 @@ import {
   type NormalizedEvent,
   type NormalizedEventType,
   type NormalizedPeriTaskEvent,
+  type NormalizedUserInputQueueEvent,
+  PERI_AGENT_EVENT_DONE_METHOD,
   PERI_AGENT_EVENT_METHOD,
   PERI_AGENT_EVENT_TYPES,
   PERI_TASK_FALLBACK_TITLE,
@@ -26,6 +28,14 @@ import {
   PERI_UNSTABLE_EVENT_METHOD,
   PERI_UNSTABLE_EVENT_NAMES,
   truncateUtf8Safe,
+  USER_INPUT_CONTENT_MAX,
+  USER_INPUT_DRAFT_MAX,
+  USER_INPUT_IMAGE_PLACEHOLDER,
+  USER_INPUT_QUEUE_MAX_ITEMS,
+  USER_INPUT_STATES,
+  type UserInputQueueItemProjection,
+  type UserInputQueueSnapshot,
+  type UserInputState,
 } from "../schema";
 
 /**
@@ -240,11 +250,173 @@ function readBool(record: Record<string, unknown>, key: string, fallback: boolea
 }
 
 /**
- * 解析 `peri/agent_event` 的 event_json（AcpEvent DTO 的 JSON 字符串）。
- * 只接收 subagent_started / subagent_stopped；JSON 解析失败、缺字段、其他 event
- * type 返回 null。result 只作为有界摘要候选（截断 + 脱敏，不保留完整内容）。
+ * 多键读取字符串：同一字段在 peri 的两种序列化形态间不稳定——
+ * JSON-RPC params 是 camelCase（UserInputQueueSnapshot DTO），事件载荷经 serde
+ * 序列化为 snake_case，投影层不接受"赌一种写法"导致的静默空队列。
  */
-function normalizePeriAgentEvent(eventJson: string, acpSessionId: string | null): NormalizedPeriTaskEvent | null {
+function readVariantString(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = readString(record, key);
+    if (value) return value;
+  }
+  return null;
+}
+
+/** 多键读取原始值（同上，用于 content / items / revision 这类非字符串字段） */
+function readVariant(record: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) return value;
+  }
+  return;
+}
+
+// ── Peri 待发送队列事件规范化（steer）──
+
+/** peri/agent_event 中的待发送队列三事件（与 Subagent 事件共用同一通道） */
+const PERI_USER_INPUT_EVENT_NAMES: ReadonlySet<string> = new Set([
+  "user_input_queue_changed",
+  "user_input_run_started",
+  "user_input_delivered",
+]);
+
+/**
+ * 把 peri MessageContent（untagged union：纯字符串 | ContentBlock[]）归一化为可展示文本。
+ * - 纯文本消息直接是字符串（peri 侧无包裹），原样返回；
+ * - 块数组只取文本块；图片块（{ type: "image", source: { type: "base64", media_type, data } }）
+ *   只留占位标记——base64 数据既不进 Y.Doc（首帧同步体积）也不回显前端；
+ * - 未知块类型忽略（只展示可展示的内容，不猜语义）。
+ */
+function extractUserInputText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (!Array.isArray(raw)) return "";
+  const parts: string[] = [];
+  for (const block of raw) {
+    if (typeof block === "string") {
+      if (block.length > 0) parts.push(block);
+      continue;
+    }
+    if (typeof block !== "object" || block === null) continue;
+    const record = block as Record<string, unknown>;
+    if (record.type === "image") {
+      parts.push(USER_INPUT_IMAGE_PLACEHOLDER);
+      continue;
+    }
+    const text = readString(record, "text");
+    if (text) parts.push(text);
+  }
+  return parts.join("\n");
+}
+
+/** 队列项状态归一化：未知取值收敛为 unknown（前向兼容，状态机由 peri 权威） */
+function normalizeUserInputState(raw: unknown): UserInputState {
+  return typeof raw === "string" && (USER_INPUT_STATES as ReadonlySet<string>).has(raw)
+    ? (raw as UserInputState)
+    : "unknown";
+}
+
+/** 归一化单个队列项；缺 inputId 的项无法按键控与去重，直接丢弃 */
+function normalizeUserInputItem(raw: unknown): UserInputQueueItemProjection | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  const inputId = readVariantString(record, "input_id", "inputId");
+  if (!inputId) return null;
+  return {
+    inputId,
+    content: truncateUtf8Safe(extractUserInputText(readVariant(record, "content")), USER_INPUT_CONTENT_MAX),
+    originalDraft: truncateUtf8Safe(
+      readVariantString(record, "original_draft", "originalDraft") ?? "",
+      USER_INPUT_DRAFT_MAX,
+    ),
+    state: normalizeUserInputState(readVariant(record, "state")),
+  };
+}
+
+/**
+ * 归一化队列快照：generation 是换代键，缺失即无法判定换代，整条快照丢弃；
+ * revision 非法按 0 处理（投影侧仍按 generation + revision 单调收敛）；
+ * items 按键去重并截断到 PENDING_CAPACITY——重复/超量项会让前端渲染出不存在的气泡。
+ */
+function normalizeUserInputSnapshot(raw: unknown): UserInputQueueSnapshot | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  const generation = readVariantString(record, "generation");
+  if (!generation) return null;
+  const revision = readVariant(record, "revision");
+  const items: UserInputQueueItemProjection[] = [];
+  const seen = new Set<string>();
+  const rawItems = readVariant(record, "items");
+  if (Array.isArray(rawItems)) {
+    for (const entry of rawItems) {
+      const item = normalizeUserInputItem(entry);
+      if (!item || seen.has(item.inputId)) continue;
+      seen.add(item.inputId);
+      items.push(item);
+      if (items.length >= USER_INPUT_QUEUE_MAX_ITEMS) break;
+    }
+  }
+  return {
+    generation,
+    revision: typeof revision === "number" && Number.isFinite(revision) && revision >= 0 ? revision : 0,
+    activeRequestId: readVariantString(record, "active_request_id", "activeRequestId"),
+    items,
+  };
+}
+
+/**
+ * 解析 `peri/agent_event` 中的待发送队列事件（user_input_*，与 Subagent 共用通道）。
+ * 字段缺失/类型非法一律返回 null：不生成半成品事件，避免投影写出不可信的待发送项。
+ * 展示文本走基类 content（{ type: "text", text }，与 user_message 同形）。
+ */
+function normalizePeriUserInputEvent(
+  type: string,
+  data: Record<string, unknown>,
+  acpSessionId: string | null,
+): NormalizedUserInputQueueEvent | null {
+  if (type === "user_input_queue_changed") {
+    const snapshot = normalizeUserInputSnapshot(readVariant(data, "snapshot"));
+    if (!snapshot) return null;
+    return { type: "user_input_queue_changed", update: {}, content: null, acpSessionId, snapshot };
+  }
+  const generation = readVariantString(data, "generation");
+  if (!generation) return null;
+  if (type === "user_input_run_started") {
+    const requestId = readVariantString(data, "request_id", "requestId");
+    if (!requestId) return null;
+    return {
+      type: "user_input_run_started",
+      update: {},
+      content: null,
+      acpSessionId,
+      generation,
+      request_id: requestId,
+    };
+  }
+  const inputId = readVariantString(data, "input_id", "inputId");
+  const rawContent = readVariant(data, "content");
+  // content 必须是字符串或块数组（peri MessageContent 的两种形态），其余视为协议违规
+  if (!inputId || (typeof rawContent !== "string" && !Array.isArray(rawContent))) return null;
+  const text = truncateUtf8Safe(extractUserInputText(rawContent), USER_INPUT_CONTENT_MAX);
+  return {
+    type: "user_input_delivered",
+    update: {},
+    content: { type: "text", text },
+    acpSessionId,
+    generation,
+    input_id: inputId,
+  };
+}
+
+/**
+ * 解析 `peri/agent_event` 的 event_json（AcpEvent DTO 的 JSON 字符串）。
+ * 接收 Subagent 生命周期（subagent_started / subagent_stopped）与待发送队列
+ * （user_input_*）事件；JSON 解析失败、缺字段、其他 event type 返回 null。
+ * result / content 只作为有界展示候选（截断 + 脱敏，不保留完整内容）。
+ */
+function normalizePeriAgentEvent(
+  eventJson: string,
+  acpSessionId: string | null,
+): NormalizedPeriTaskEvent | NormalizedUserInputQueueEvent | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(eventJson);
@@ -258,6 +430,13 @@ function normalizePeriAgentEvent(eventJson: string, acpSessionId: string | null)
   const value = record.value;
   if (typeof value !== "object" || value === null) return null;
   const data = value as Record<string, unknown>;
+
+  // 待发送队列（steer）：载荷为 snapshot / generation / request_id / input_id / content，
+  // 与 Subagent 事件共享通道但不共享身份字段（无 instance_id），必须先分流
+  if (PERI_USER_INPUT_EVENT_NAMES.has(type)) {
+    return normalizePeriUserInputEvent(type, data, acpSessionId);
+  }
+
   const instanceId = readString(data, "instance_id");
   if (!instanceId) return null;
   const agentName = readString(data, "agent_name");
@@ -426,6 +605,25 @@ export function normalizeAcpMessage(rawMessage: unknown, msgType?: string): Norm
   if (rpc?.method === PERI_UNSTABLE_EVENT_METHOD) {
     const params = rpc.params as Record<string, unknown> | undefined;
     return normalizePeriUnstableEvent(params?.event, params?.data, acpSessionId);
+  }
+
+  // 1.6. Peri TurnDone 通知（peri/agent_event_done）：ACP v1 没有 turn_done 的
+  // SessionUpdate tag，peri 用它承载 turn 终态，params 平铺为
+  // { sessionId, stopReason, requestId? }（不是 event_json 包裹）。
+  // steer run 由 peri 内部队列驱动、不经过 session/prompt，其终态只可能由此到达；
+  // requestId 与 user_input_run_started 的 request_id 同源，聚合层据此做 run 归属校验。
+  if (rpc?.method === PERI_AGENT_EVENT_DONE_METHOD) {
+    const params = rpc.params as Record<string, unknown> | undefined;
+    const stopReason = typeof params?.stopReason === "string" ? params.stopReason : null;
+    const rawRequestId = params?.requestId;
+    return {
+      // peri 的结束原因："end_turn"（正常）、"cancelled"（用户中断/steer 打断）、"error"
+      type: stopReason === "cancelled" ? "turn_cancelled" : stopReason === "error" ? "turn_failed" : "turn_completed",
+      update: params ?? {},
+      content: null,
+      acpSessionId,
+      requestId: typeof rawRequestId === "string" && rawRequestId.length > 0 ? rawRequestId : null,
+    };
   }
 
   // 2. JSON-RPC 响应中的 prompt 结果（含 stopReason → turn 终态）与 cancel 确认

@@ -68,6 +68,7 @@
         "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
         "newSession": "New Thread",
         "pastingImages": "Processing {{count}} pasted images…",
+        "queueSend": "Add to send queue",
         "send": "Send",
         "skillButton": "Skill",
         "stop": "Stop",
@@ -102,6 +103,18 @@
         "sendPromptFailed": "The message could not be sent. Please try again.",
         "sessionCreateFailed": "The session could not be created; the message was not sent.",
         "waitingSession": "Waiting for session..."
+      },
+      "userInputQueue": {
+        "actionFailed": "The queue action did not reach the server. Please try again.",
+        "dismiss": "Dismiss notice",
+        "dispatchAll": "Send all",
+        "dispatchOne": "Send this one",
+        "retry": "Retry",
+        "stateQueued": "Queued",
+        "stateSending": "Sending…",
+        "stateUnknown": "Unknown state",
+        "takeback": "Take back",
+        "title": "Pending"
       },
       "chatStatus": {
         "added": "Added",

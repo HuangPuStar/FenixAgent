@@ -22,6 +22,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { createNotification } from "../json-rpc";
 import {
   isPeriTaskNotificationMethod,
+  PERI_AGENT_EVENT_DONE_METHOD,
   PERI_AGENT_EVENT_METHOD,
   PERI_UNSTABLE_EVENT_METHOD,
 } from "../peri-task-capability";
@@ -179,6 +180,31 @@ describe("SDK 未知 notification 穿透（Slice 0A spike）", () => {
 
     await waitFor(() => harness.periNotifications.length === 1);
     expect(harness.periNotifications[0]).toEqual({ method: PERI_UNSTABLE_EVENT_METHOD, params: payload });
+  });
+
+  // TurnDone 通道：peri/agent_event_done（params 平铺，不是 event_json 包裹）必须原样到达。
+  // steer run 由 peri 内部队列驱动、不经过 session/prompt，这是它唯一的 turn 终态来源；
+  // 被白名单吞掉会让新 turn 永久停在 loading。
+  test("peri/agent_event_done reaches the client factory extNotification as-is", async () => {
+    const harness = setupSpike({
+      buildFactory: ({ onPeriNotification, onSessionUpdate }) => ({
+        sessionUpdate: async (params: Record<string, unknown>) => onSessionUpdate(params),
+        readTextFile: async () => ({ content: "" }),
+        writeTextFile: async () => ({}),
+        extNotification: async (method: string, params: Record<string, unknown>) => onPeriNotification(method, params),
+      }),
+    });
+
+    await harness.clientConnection.initialize({
+      protocolVersion: acp.PROTOCOL_VERSION,
+      clientInfo: { name: "rcs-spike", version: "1.0.0" },
+      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+    });
+    const payload = { sessionId: "ses_1", stopReason: "end_turn", requestId: "req_1" };
+    await harness.agentConnection.notify(PERI_AGENT_EVENT_DONE_METHOD, payload);
+
+    await waitFor(() => harness.periNotifications.length === 1);
+    expect(harness.periNotifications[0]).toEqual({ method: PERI_AGENT_EVENT_DONE_METHOD, params: payload });
   });
 
   // 不返回 -32601：extNotification 返回 Handled.yes()，SDK 不把未知 notification

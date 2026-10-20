@@ -1,4 +1,4 @@
-import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
+import { ArrowUp, Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -25,6 +25,14 @@ interface ComposerToolbarProps {
   canCancel: boolean;
   isCancelling: boolean;
   canSend: boolean;
+  /**
+   * 运行中是否仍给出「入队」发送按钮（队列可用时由 `ChatComposer` 传入）。
+   *
+   * 为真时发送按钮与停止按钮并列，且发送按钮保持在它在本组件里的常驻位置（最右侧）：
+   * 运行中的停止按钮因此左移一格。取舍理由——「最右侧是发送」是其它所有状态下的位置，
+   * 而停止按钮的辨识靠品牌色方块与既有图标，不靠绝对位置。
+   */
+  showQueueSubmit?: boolean;
   supportsAttachments: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onFileSelect: () => void;
@@ -49,6 +57,7 @@ export function ComposerToolbar({
   canCancel,
   isCancelling,
   canSend,
+  showQueueSubmit = false,
   supportsAttachments,
   fileInputRef,
   onFileSelect,
@@ -138,8 +147,8 @@ export function ComposerToolbar({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={canCancel ? onInterrupt : onSubmit}
-          disabled={isCancelling || (!canCancel && !canSend)}
+          onClick={showStop ? onInterrupt : onSubmit}
+          disabled={showStop ? isCancelling : !canSend}
           className={`grid h-8.5 w-8.5 place-items-center rounded-lg p-0 has-[>svg]:p-0 ${
             showStop ? "bg-brand text-white" : canSend ? "bg-blue-500 text-white" : "bg-slate-200 text-gray-400"
           }`}
@@ -148,6 +157,26 @@ export function ComposerToolbar({
         >
           {showStop ? <Square fill="currentColor" /> : <Send />}
         </Button>
+        {/* 待发送队列可用时，运行中仍保留发送（入队）入口：不做这一格，用户就只能等 turn 结束再发，
+            与「运行中提交不打断而是入队」的交互相悖。运行中常驻位必是停止按钮（`showStop` 含
+            `isLoading && !canCancel` 的取消中态），因此这一格不会与它重复。 */}
+        {showQueueSubmit ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onSubmit}
+            disabled={!canSend}
+            className={`grid h-8.5 w-8.5 place-items-center rounded-lg p-0 has-[>svg]:p-0 ${
+              canSend ? "bg-blue-500 text-white" : "bg-slate-200 text-gray-400"
+            }`}
+            data-slot="chat-composer-queue-send"
+            aria-label={t("chat.components.chatComposer.queueSend")}
+            title={t("chat.components.chatComposer.queueSend")}
+          >
+            <ArrowUp />
+          </Button>
+        ) : null}
       </div>
     </div>
   );

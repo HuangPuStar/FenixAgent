@@ -6,9 +6,38 @@
 // WsConnection 为最小 WebSocket 抽象（纯接口，无框架依赖），宿主侧适配注入。
 
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import type { PublicErrorType } from "../public-error";
 import type { SyncTransportDiagnostics } from "../sync/runtime/scope-runtime";
 
 export type RelayMessage = EngineRelayMessage;
+
+/** steer（session/input/*）请求类别：只用于诊断与响应形状判定 */
+export type UserInputRequestKind = "snapshot" | "enqueue" | "dispatch" | "takeback";
+
+/**
+ * 在途 steer 请求的收敛结果。失败一律携带可直接回给浏览器的公开错误类型：
+ * 队列操作不接受静默失败，也不做自动重试（用户看到提示后手动重试即可）。
+ * `not_withdrawable`：peri 回执成功但未真撤出（项已被投递，见 user-input-queue-wire.ts）。
+ */
+export type UserInputRequestOutcome =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "rejected" | "timeout" | "relay_closed" | "not_withdrawable";
+      publicErrorType: PublicErrorType;
+    };
+
+/** 在途 steer 请求的等待句柄（命令执行与能力补拉共用） */
+export interface UserInputRequestHandle {
+  completed: Promise<UserInputRequestOutcome>;
+  cancel: () => void;
+}
+
+/** 在途 steer 请求登记条目：relay 响应侧（relay-event-handler）按 rpcId settle */
+export interface PendingUserInputRequest {
+  kind: UserInputRequestKind;
+  settle: (outcome: UserInputRequestOutcome) => void;
+}
 
 /**
  * load_session 回放窗口时长（ms）。load/resume 的 RPC 转发时开启（早于 Agent 历史
@@ -75,6 +104,12 @@ export interface SyncConnection {
 export interface ClientConnection {
   ws: WsConnection;
   userId: string;
+  /**
+   * 环境属主（gateway 从已认证 environment 注入）。与 userId 不一致 = 只读观察者：
+   * 当前 /acp/yjs 只放行属主（route 的 resolveOwnedEnvironment + authorizeEnvironment），
+   * 该字段为连接层放开只读接入时的写入判定留出唯一事实来源。
+   */
+  ownerUserId?: string;
   agentId: string;
   relayHandle: EngineRelayHandle;
   keepalive: ReturnType<typeof setInterval>;
@@ -138,6 +173,22 @@ export interface SharedRelay {
   pendingSessionSyncIds?: Set<number | string>;
   /** 会话变更按 RPC id 等待 Agent 结果，避免发送成功被误报为持久化成功。 */
   pendingSessionMutations?: Map<number | string, (succeeded: boolean) => void>;
+  /**
+   * 在途 steer（session/input/*）请求登记：JSON-RPC 响应帧只有 id 无 method，无法区分
+   * 响应来源（prompt / 会话同步 / 队列操作），必须按请求出口登记。响应到达即收敛并删除；
+   * relay 断连（relay_closed / 引用计数归零释放）时全部收敛为失败，不留悬挂等待器。
+   */
+  pendingUserInputRequests?: Map<number | string, PendingUserInputRequest>;
+  /**
+   * 能力协商结果（status.capabilities 的 `peri.userInputQueue`，含 _meta 回显形状）。
+   * false/未定义 = 该会话不支持待发送队列（不补拉快照，读取侧 enabled 兜底为 false）。
+   */
+  userInputQueueCapability?: boolean;
+  /**
+   * 已完成快照补拉的 ACP sessionId。队列代号与待发送项属于单个 ACP 会话：
+   * 同一会话只补拉一次（status 会重复 resend），换会话按新 id 重新补拉。
+   */
+  userInputSnapshotSessionId?: string | null;
   /**
    * 最近一次发出的会话同步请求 rpcId（create/load/resume）。
    * 同一 relay 上可能同时存在多个在途会话同步请求（用户在响应到达前再次切换会话，

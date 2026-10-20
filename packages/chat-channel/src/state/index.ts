@@ -1,4 +1,4 @@
-export { type ApplyResult, applyNormalizedEvent, type DocPair } from "./aggregator";
+export { type ApplyResult, applyNormalizedEvent, applyUserInputDeliveredMessage, type DocPair } from "./aggregator";
 export {
   appendEntryText,
   bumpProjectionVersion,
@@ -17,9 +17,13 @@ export {
   getSessionInfo,
   getSessionRoot,
   getToolCallsMap,
+  getUserInputQueue,
+  getUserInputQueueItems,
   hasChatDocContent,
   initChatDocStructure,
   initSessionDocStructure,
+  removeUserInputQueueItem,
+  replaceUserInputQueueItems,
   setActiveTurn,
   setAgentStatus,
   setEntryStatus,
@@ -27,6 +31,7 @@ export {
   setSessionAvailableCommands,
   setSessionInfo,
   setToolCallStatus,
+  setUserInputQueueState,
   type ToolCallInit,
   upsertPendingPermission,
   upsertPendingQuestion,
@@ -49,6 +54,13 @@ export {
 } from "./factory";
 export { expireQuestion, respondQuestion } from "./question";
 export { createRedisSessionTitleStore, type SessionTitleStore } from "./session-title-store";
+export {
+  applyUserInputQueueEvent,
+  readUserInputQueue,
+  resetUserInputQueue,
+  setUserInputQueueEnabled,
+  type UserInputQueueApplyResult,
+} from "./user-input-queue";
 export {
   applyRemoteDocUpdate,
   createYjsStore,

@@ -68,6 +68,7 @@
         "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
         "newSession": "新会话",
         "pastingImages": "正在处理 {{count}} 张粘贴的图片…",
+        "queueSend": "加入待发送队列",
         "send": "发送",
         "skillButton": "技能",
         "stop": "停止",
@@ -102,6 +103,18 @@
         "sendPromptFailed": "消息发送失败，请重试",
         "sessionCreateFailed": "创建会话失败，消息未发送",
         "waitingSession": "等待会话..."
+      },
+      "userInputQueue": {
+        "actionFailed": "队列操作未送达，请重试",
+        "dismiss": "关闭提示",
+        "dispatchAll": "全部发送",
+        "dispatchOne": "发送这一条",
+        "retry": "重试",
+        "stateQueued": "待发送",
+        "stateSending": "发送中…",
+        "stateUnknown": "状态未知",
+        "takeback": "取回",
+        "title": "待发送"
       },
       "chatStatus": {
         "added": "新增",

@@ -19,11 +19,12 @@ export type { PublicError, PublicErrorType } from "./public-error";
 export const CHAT_DOC_SCHEMA_VERSION = 2;
 /**
  * Session Doc 结构版本。3：新增根级 sessions 投影位（agent 级会话列表）；
- * 4：新增根级 tasks / taskOrder 投影位（Peri Subagent / Background Task 轻量视图）。
+ * 4：新增根级 tasks / taskOrder 投影位（Peri Subagent / Background Task 轻量视图）；
+ * 5：新增根级 userInputQueue 投影位（Peri 待发送队列 / steer）。
  * loadSessionDoc 会幂等补齐旧快照缺失的 subtree；YJS 并发键冲突可能使
  * schemaVersion 暂时保留旧值，因此结构存在性而非版本号才是运行时能力信号。
  */
-export const SESSION_DOC_SCHEMA_VERSION = 4;
+export const SESSION_DOC_SCHEMA_VERSION = 5;
 /** Chat Doc 初始投影版本（每次成功投影后 +1，见 bumpProjectionVersion） */
 export const INITIAL_PROJECTION_VERSION = 1;
 
@@ -246,7 +247,12 @@ export type NormalizedEventType =
   // peri/unstable_event 规范化而来，聚合层经 applyPeriTaskEvent 投影）
   | "peri_task_started"
   | "peri_task_completed"
-  | "peri_task_cancelled";
+  | "peri_task_cancelled"
+  // Peri 待发送队列（同上通道，聚合层经 state/user-input-queue.ts 投影到
+  // Session Doc root.userInputQueue；delivered 另写入 Chat Doc 用户 entry）
+  | "user_input_queue_changed"
+  | "user_input_run_started"
+  | "user_input_delivered";
 
 /**
  * 规范化事件：聚合层唯一允许消费的 ACP 入站形态。
@@ -263,6 +269,12 @@ export interface NormalizedEvent {
   /** Peri 子 Agent 事件来源身份；存在时不得投影到主 Agent assistant entry。 */
   sourceAgentId?: string | null;
   turnId?: string | null;
+  /**
+   * 终态事件携带的 run 身份（peri/agent_event_done 的 requestId，与
+   * user_input_run_started 的 request_id 同源）。只在 steer run 场景使用：
+   * 只有与投影 activeRequestId 匹配的 requestId 才有权终结该 run。
+   */
+  requestId?: string | null;
   /** callback 流本地关联键，仅用于隔离无 turnId 的 Peri callback 历史输出。 */
   callbackEntryId?: string | null;
 }
@@ -331,6 +343,61 @@ export interface PeriTaskViewProjection {
   detailAvailability: PeriTaskDetailAvailability;
 }
 
+// ── Peri 待发送队列（steer）schema（Session Doc root.userInputQueue，切片 1）──
+// peri 在协商 `peri.userInputQueue` 能力后，用 session/input/{snapshot,enqueue,dispatch,takeback}
+// 维护会话级待发送队列；本投影只承载前端渲染待发送项所需的展示字段：
+// 不承载 base64 图片数据（content 归一化为有界可展示文本，见 acp-channel.ts），
+// 也不承载队列的操作凭据（generation 仅作换代判定）。
+
+/**
+ * 队列项状态机（peri UserInputState）：Queued → Dispatching → Claimed → Delivered，
+ * Queued → Withdrawn；未知取值收敛为 "unknown"（前向兼容，不因新状态拒绝整条快照）。
+ */
+export type UserInputState = "queued" | "dispatching" | "claimed" | "delivered" | "withdrawn" | "unknown";
+
+/** peri 认识的队列项状态取值（normalizer 的 allowlist；越界收敛为 unknown） */
+export const USER_INPUT_STATES: ReadonlySet<UserInputState> = new Set([
+  "queued",
+  "dispatching",
+  "claimed",
+  "delivered",
+  "withdrawn",
+  "unknown",
+]);
+
+/** 待发送队列项投影（物理结构为 userInputQueue.items 数组元素的 Y.Map） */
+export interface UserInputQueueItemProjection {
+  inputId: string;
+  /** 可展示文本（peri MessageContent 归一化 + 截断；图片块只有占位标记，绝不含 base64） */
+  content: string;
+  /** 用户提交时的原始草稿（纯文本） */
+  originalDraft: string;
+  state: UserInputState;
+}
+
+/** 规范化后的队列快照（事件载荷，投影写入前的一致性单元） */
+export interface UserInputQueueSnapshot {
+  /** peri 队列代号；变化即换代（peri 队列不跨进程持久，旧代号项一律丢弃） */
+  generation: string;
+  /** 单调递增；乱序或回退的 revision 由投影层丢弃 */
+  revision: number;
+  activeRequestId: string | null;
+  items: UserInputQueueItemProjection[];
+}
+
+/**
+ * 待发送队列投影（Session Doc root.userInputQueue 扁平键 + items 数组）。
+ * 读取一律经 state/user-input-queue.ts 的 readUserInputQueue（含能力协商兜底）。
+ */
+export interface UserInputQueueProjection {
+  /** 能力协商结果（clientCapabilities._meta 的 `peri.userInputQueue`）；false 表示该会话不支持，前端回退旧路径 */
+  enabled: boolean;
+  generation: string | null;
+  revision: number;
+  activeRequestId: string | null;
+  items: UserInputQueueItemProjection[];
+}
+
 /**
  * Peri 通知 wire method。权威名称为下划线版本 `peri/unstable_event`
  * （Peri 发射：peri-acp event_sink.rs push_unstable_event），不是计划中的
@@ -338,13 +405,31 @@ export interface PeriTaskViewProjection {
  */
 export const PERI_AGENT_EVENT_METHOD = "peri/agent_event";
 export const PERI_UNSTABLE_EVENT_METHOD = "peri/unstable_event";
+/**
+ * turn 结束（TurnDone）通知的 wire method。ACP v1 没有 turn_done 的 SessionUpdate
+ * tag，peri 用它承载 turn 终态（params 为平铺的 { sessionId, stopReason, requestId? }，
+ * 不是 event_json 包裹）。协商 `peri.userInputQueue` 后必发——steer run 由 peri
+ * 内部队列驱动、不经过 session/prompt，这条通知是新 turn 唯一的终态来源。
+ */
+export const PERI_AGENT_EVENT_DONE_METHOD = "peri/agent_event_done";
 
 /** initialize clientCapabilities._meta 中的 capability key（PeriCaps::from_client_meta 解析键） */
 export const PERI_AGENT_EVENT_CAPABILITY = "peri.agentEvent";
 export const PERI_UNSTABLE_EVENT_CAPABILITY = "peri.unstableEvent";
+/** 待发送队列扩展方法（session/input/*）的 capability key；未协商时 peri 回 -32601 且不发事件 */
+export const PERI_USER_INPUT_QUEUE_CAPABILITY = "peri.userInputQueue";
 
-/** peri/agent_event 的 event_json（AcpEvent DTO，serde tag/content 结构）只接收的 event type */
-export const PERI_AGENT_EVENT_TYPES: ReadonlySet<string> = new Set(["subagent_started", "subagent_stopped"]);
+/**
+ * peri/agent_event 的 event_json（AcpEvent DTO，serde tag/content 结构）只接收的 event type。
+ * user_input_* 三项为 Peri 待发送队列（steer）事件，与 Subagent 事件共用同一通道。
+ */
+export const PERI_AGENT_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "subagent_started",
+  "subagent_stopped",
+  "user_input_queue_changed",
+  "user_input_run_started",
+  "user_input_delivered",
+]);
 /** peri/unstable_event 只接收的 event 名 */
 export const PERI_UNSTABLE_EVENT_NAMES: ReadonlySet<string> = new Set([
   "bg-task-started",
@@ -361,6 +446,13 @@ export const PERI_TASK_EVENT_TYPES: ReadonlySet<NormalizedEventType> = new Set([
   "peri_task_cancelled",
 ]);
 
+/** 规范化待发送队列事件类型集合（聚合层分支使用） */
+export const USER_INPUT_QUEUE_EVENT_TYPES: ReadonlySet<NormalizedEventType> = new Set([
+  "user_input_queue_changed",
+  "user_input_run_started",
+  "user_input_delivered",
+]);
+
 /**
  * 携带 params.sessionId 的 session-bound notification method 集合。
  * relay binding 校验（relay-event-handler）统一检查这些 method：与 active ACP
@@ -370,6 +462,7 @@ export const SESSION_BOUND_NOTIFICATION_METHODS: ReadonlySet<string> = new Set([
   "session/update",
   PERI_AGENT_EVENT_METHOD,
   PERI_UNSTABLE_EVENT_METHOD,
+  PERI_AGENT_EVENT_DONE_METHOD,
 ]);
 
 /** Session Doc 中保留的 Task View 上限，防止快照与首帧同步无界增长。 */
@@ -380,6 +473,21 @@ export const PERI_TASK_TITLE_MAX = 120;
 export const PERI_TASK_SUMMARY_MAX = 500;
 /** background started 的 title 安全 fallback（summary 缺失/为空时） */
 export const PERI_TASK_FALLBACK_TITLE = "Background task";
+
+/**
+ * Peri 待发送队列项上限（peri PENDING_CAPACITY = 32）。
+ * 投影同样按此上限截断：Session Doc 首帧会整体同步到浏览器，必须硬性有界。
+ */
+export const USER_INPUT_QUEUE_MAX_ITEMS = 32;
+/** 队列项 content 展示文本上限（code point 数；远超单条输入的合理长度即为异常输入） */
+export const USER_INPUT_CONTENT_MAX = 4000;
+/** 队列项 originalDraft 展示文本上限（code point 数） */
+export const USER_INPUT_DRAFT_MAX = 4000;
+/**
+ * 图片内容块的展示占位标记：peri MessageContent 的图片块携带 base64 data，
+ * 既不进 Y.Doc（体积与首帧同步成本）也不回显前端，只保留"这里有图"的信号。
+ */
+export const USER_INPUT_IMAGE_PLACEHOLDER = "[image]";
 
 /**
  * UTF-8 安全截断：按 code point 截断，不切断多字节字符。
@@ -426,4 +534,34 @@ export type NormalizedPeriTaskEvent =
       reasonCode: "cancelled";
       receivedAt: string;
       detailAvailability: "unavailable";
+    });
+
+/**
+ * Peri 待发送队列规范化事件（与 NormalizedPeriTaskEvent 同构：discriminated union
+ * 携带扁平字段，保留 update/content/acpSessionId/turnId 以便穿透既有 relay pipeline）。
+ * 扁平字段名与 peri wire 保持一致（snapshot / generation / request_id / input_id），
+ * 不转写成 camelCase——三处消费方（投影、控制面、测试）共用同一份契约，改名即漂移。
+ *
+ * 注意 delivered 的展示文本走基类 `content`（`{ type: "text", text }`，与 user_message 同形）：
+ * NormalizedEvent.content 是既有协议载荷字段，另立同名扁平字段会在交叉类型中收敛为 never。
+ */
+export type NormalizedUserInputQueueEvent =
+  | (NormalizedEvent & {
+      type: "user_input_queue_changed";
+      /** 队列全量快照；投影按 generation（换代）+ revision（单调）收敛，见 state/user-input-queue.ts */
+      snapshot: UserInputQueueSnapshot;
+    })
+  | (NormalizedEvent & {
+      type: "user_input_run_started";
+      /** peri 队列代号（换代信号，与快照同源） */
+      generation: string;
+      /** 本次注入 run 的 request id，投影为 activeRequestId */
+      request_id: string;
+    })
+  | (NormalizedEvent & {
+      type: "user_input_delivered";
+      generation: string;
+      /** 已写入 canonical transcript 的用户输入 id；同时作为 Chat Doc 用户 entry 的 entryId（live/replay 去重） */
+      input_id: string;
+      /** 展示文本见基类 content.text（MessageContent 归一化 + 截断） */
     });

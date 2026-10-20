@@ -22,6 +22,7 @@ import {
   SESSION_DOC_SCHEMA_VERSION,
   type SessionSummaryProjection,
   type TurnStatus,
+  type UserInputQueueItemProjection,
 } from "../schema";
 import type { LoadingState, SessionStatus } from "../types";
 
@@ -90,6 +91,20 @@ export function getPeriTaskOrder(ydoc: Y.Doc): Y.Array<string> {
   return getSessionRoot(ydoc).get("taskOrder") as Y.Array<string>;
 }
 
+/**
+ * Session Doc 根级 Peri 待发送队列投影（root.userInputQueue：扁平键
+ * enabled / generation / revision / activeRequestId + items 数组）。
+ * 读取请用 state/user-input-queue.ts 的 readUserInputQueue（含能力协商兜底）。
+ */
+export function getUserInputQueue(ydoc: Y.Doc): Y.Map<unknown> {
+  return getSessionRoot(ydoc).get("userInputQueue") as Y.Map<unknown>;
+}
+
+/** 待发送队列项数组（元素键 inputId / content / originalDraft / state） */
+export function getUserInputQueueItems(ydoc: Y.Doc): Y.Array<Y.Map<unknown>> {
+  return getUserInputQueue(ydoc).get("items") as Y.Array<Y.Map<unknown>>;
+}
+
 // ── 结构初始化（幂等：重复初始化不破坏已有内容）──
 
 /** 初始化 Chat Doc 结构（新建或旧 schema 升级路径） */
@@ -145,6 +160,18 @@ export function initSessionDocStructure(ydoc: Y.Doc): void {
     }
     if (!(root.get("taskOrder") instanceof Y.Array)) {
       root.set("taskOrder", new Y.Array<string>());
+    }
+    // v5：Peri 待发送队列投影位（旧 v4 快照恢复后自动补齐）。
+    // 不在结构初始化时写 enabled：能力协商结果由控制面写入，缺失时读取侧回退
+    // agent.capabilities 判定（见 user-input-queue.ts readUserInputQueue），
+    // 若此处写死 false 会与快照并发合并争锁、把已协商的会话压回旧路径。
+    if (!(root.get("userInputQueue") instanceof Y.Map)) {
+      const queue = new Y.Map<unknown>();
+      queue.set("generation", null);
+      queue.set("revision", 0);
+      queue.set("activeRequestId", null);
+      queue.set("items", new Y.Array<Y.Map<unknown>>());
+      root.set("userInputQueue", queue);
     }
   });
 }
@@ -663,6 +690,62 @@ export function upsertPeriTaskView(ydoc: Y.Doc, view: PeriTaskViewProjection): {
     order.delete(evictedIndex, 1);
   }
   return { created: true };
+}
+
+// ── Peri 待发送队列（Session Doc root.userInputQueue，切片 1）──
+// writer 只负责物理写入原语；换代清空 / revision 单调收敛 / 项摘除时机等
+// 状态规则在 state/user-input-queue.ts（禁止把 generation 相关判断写在这里）。
+
+/**
+ * 覆盖式写入队列标量字段（enabled / generation / revision / activeRequestId）。
+ * 同值短路（与 setSessionInfo 一致）：重复的快照/协商帧不产生多余 op。
+ */
+export function setUserInputQueueState(
+  ydoc: Y.Doc,
+  patch: {
+    enabled?: boolean;
+    generation?: string | null;
+    revision?: number;
+    activeRequestId?: string | null;
+  },
+): void {
+  const queue = getUserInputQueue(ydoc);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (queue.get(key) !== value) queue.set(key, value);
+  }
+}
+
+/**
+ * 覆盖式写入队列项数组（全量替换语义）：先清空再按入参重建，
+ * 因此同一 snapshot 重复应用不会产生重复项。in-place 修改而非换数组实例，
+ * 保持 items 引用稳定（首帧同步与前端订阅读取同一实例）。
+ */
+export function replaceUserInputQueueItems(ydoc: Y.Doc, items: UserInputQueueItemProjection[]): void {
+  const array = getUserInputQueueItems(ydoc);
+  ydoc.transact(() => {
+    if (array.length > 0) array.delete(0, array.length);
+    if (items.length === 0) return;
+    array.push(
+      items.map((item) => {
+        const map = new Y.Map<unknown>();
+        map.set("inputId", item.inputId);
+        map.set("content", item.content);
+        map.set("originalDraft", item.originalDraft);
+        map.set("state", item.state);
+        return map;
+      }),
+    );
+  });
+}
+
+/** 按 inputId 摘除队列项（delivered / takeback 即时生效，不等下一次快照）；返回是否命中 */
+export function removeUserInputQueueItem(ydoc: Y.Doc, inputId: string): boolean {
+  const array = getUserInputQueueItems(ydoc);
+  const index = array.toArray().findIndex((item) => item.get("inputId") === inputId);
+  if (index < 0) return false;
+  array.delete(index, 1);
+  return true;
 }
 
 // ── 清理（领域 tombstone：不物理删除权威记录）──

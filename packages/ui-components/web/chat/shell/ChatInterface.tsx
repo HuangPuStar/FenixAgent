@@ -35,6 +35,7 @@ import { classifyToolSemantic } from "../lib/tool-semantic";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
+import { UserInputQueuePanel } from "../panels/user-input-queue-panel";
 import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import { useChatMessageWindow } from "../view/chat-render-window";
@@ -42,6 +43,7 @@ import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-t
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
 import { useComposerInputBridge } from "./internal/use-composer-input-bridge";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
+import { useUserInputQueueActions } from "./internal/use-user-input-queue-actions";
 
 /** 稳定空数组：会话未加载时窗口 hook 不应因新的空数组引用重复计算。 */
 const EMPTY_STRUCTURED_MESSAGES: StructuredMessage[] = [];
@@ -86,6 +88,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onLoadEarlierHistory,
     flushContext,
     onNotice,
+    supportsUserInputQueue,
+    userInputQueue,
+    onEnqueueUserInput,
+    onDispatchUserInputs,
+    onTakebackUserInput,
     onStatsChange,
     onOpenWorkspaceFile,
     uploadFiles,
@@ -182,10 +189,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [emitComposerInput],
   );
 
+  // ── 待发送队列（peri steer）──
+  // 队列只读 Session Doc 投影（不另建本地队列状态）：三个操作发出控制面 action，界面等 Y.Doc 回推收敛。
+  // 「取回」把草稿交回输入岛：输入岛非空时不覆盖（判定在 ChatComposer 侧，那里才读得到半受控草稿）。
+  const queue = useUserInputQueueActions({
+    supportsUserInputQueue,
+    queue: userInputQueue,
+    onEnqueueUserInput,
+    onDispatchUserInputs,
+    onTakebackUserInput,
+    restoreDraft: useCallback(
+      (text: string) => emitComposerInput({ type: "restore-draft", prompt: text }),
+      [emitComposerInput],
+    ),
+    actionFailedMessage: t("chat.components.userInputQueue.actionFailed"),
+  });
+
+  // 提交分流（peri steer 交互 1）：队列可用且（turn 运行中 或 队列非空）时，提交入队而不是直发——
+  // 运行中提交不打断当前执行；队列非空时也不越过队首直接插队。
+  const queueSubmitActive = queue.enabled && (isLoading || queue.hasItems);
+
   // 提交链路（归一化 ContentBlock[] + 无会话时缓存 prompt 并等待就绪）
   const handleChatInputSubmit = useChatInputSubmit({
     isLoading,
     activeSessionId,
+    queueSubmitActive,
+    onEnqueuePrompt: queue.enqueue,
     scenePrompt,
     contextScope: composerContextScope,
     flushContext,
@@ -392,6 +421,25 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             </div>
           )}
 
+          {/* 待发送队列（peri steer）：贴在输入岛上方，与状态面板同宽同台阶。
+              有失败提示时即使队列为空也要渲染——否则「第一次入队就没送达」的提示无处可见。 */}
+          {queue.enabled && (queue.hasItems || queue.failure) && (
+            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                <UserInputQueuePanel
+                  items={queue.items}
+                  queuedIds={queue.queuedIds}
+                  canDispatch={queue.canDispatch}
+                  canTakeback={queue.canTakeback}
+                  onDispatch={queue.dispatch}
+                  onTakeback={queue.takeback}
+                  failure={queue.failure}
+                  onDismissFailure={queue.dismissFailure}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Error banner */}
           {errorMessage && (
             <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
@@ -417,6 +465,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 isLoading={isLoading}
                 onInterrupt={handleCancel}
                 canCancel={canCancel}
+                queueSubmitEnabled={queue.enabled}
                 disabled={!sessionReady}
                 placeholder={
                   sessionReady

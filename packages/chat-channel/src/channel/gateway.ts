@@ -15,6 +15,8 @@ import type { SessionChannel, SessionConnection } from "./session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
 import { markSessionTimelineEmpty } from "./session-timeline-flag";
 import { flushPendingSyncFrames, type GatewaySyncHostOverrides } from "./sync-connection";
+import { failPendingUserInputRequests, registerUserInputRequest } from "./user-input-pending";
+import { ensureUserInputQueueSnapshot } from "./user-input-queue-action";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -270,6 +272,7 @@ export class Gateway {
     const entry: ClientConnection = {
       ws,
       userId,
+      ownerUserId,
       agentId,
       relayHandle: shared.handle,
       keepalive,
@@ -314,7 +317,17 @@ export class Gateway {
         | { get: (key: string) => unknown }
         | undefined;
       const activeSessionId = sessionInfo?.get("sessionId");
-      if (typeof activeSessionId === "string" && activeSessionId.length > 0) entry.acpSessionId = activeSessionId;
+      if (typeof activeSessionId === "string" && activeSessionId.length > 0) {
+        entry.acpSessionId = activeSessionId;
+        // 重连恢复：会话 Doc 里的 acpSessionId 已绑定，能力若在 status 先行到达时
+        // 因无 sessionId 而跳过补拉，在此补一次（同一 ACP 会话幂等，不重复请求）。
+        void ensureUserInputQueueSnapshot({
+          shared,
+          sessionId: activeSessionId,
+          docManager: this.dependencies.docManager,
+          reportError: this.dependencies.reportError,
+        });
+      }
       markSessionTimelineEmpty(sessionDoc.ydoc, !this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId));
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] Failed to initialize Yjs docs:", err);
@@ -426,6 +439,8 @@ export class Gateway {
     shared.pendingPromptIds?.clear();
     shared.pendingPromptTurns?.clear();
     failPendingSessionMutations(shared);
+    // 在途 steer 请求随 relay 释放一并失败：回执不再可达，悬挂会让前端停在"发送中"
+    failPendingUserInputRequests(shared);
     // 回放窗口定时器一并清理（同泄漏语义），窗口判定缓存随之重置
     if (shared.replayWindowTimer) {
       clearTimeout(shared.replayWindowTimer);
@@ -481,6 +496,7 @@ export class Gateway {
   private toSessionConnection(entry: ClientConnection, shared: SharedRelay | undefined): SessionConnection {
     return {
       userId: entry.userId,
+      ownerUserId: entry.ownerUserId,
       agentId: entry.agentId,
       instanceId: entry.instanceId,
       rcsSessionId: entry.rcsSessionId,
@@ -512,6 +528,10 @@ export class Gateway {
         if (!shared) return { completed: Promise.resolve(false), cancel: () => {} };
         return waitForSessionMutation(shared, rpcId);
       },
+      // 在途 steer 请求登记：与 prompt / 会话同步同模式挂在 SharedRelay 上，响应由
+      // relay-event-handler 按 rpcId 收敛；relay 释放（引用计数归零）时统一失败。
+      awaitUserInputRequest: (rpcId, kind, timeoutMs) =>
+        shared ? registerUserInputRequest(shared, { rpcId, kind, timeoutMs }) : undefined,
     };
   }
 }
