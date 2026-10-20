@@ -272,6 +272,15 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
     },
   });
 
+  /**
+   * 同一 WebSocket 的入站消息串行链。
+   *
+   * binary 与 text 帧由 uWS 并发投递：首个同步帧尚在 attach（等待新建 SessionConnection）时，
+   * 紧随其后的 send_prompt 可能读到尚未写入的 `entry.syncConnection`，用户消息因此不进新投影。
+   * 按连接串行化后，后续帧一定看到前一帧完成后的连接状态。
+   */
+  const yjsMessageTails = new WeakMap<object, Promise<void>>();
+
   /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
   const withYjsWs: AnyElysia = declareAcpWsRoute(withFileWs, "/yjs/:agentId", {
     detail: {
@@ -368,13 +377,23 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
                 : data instanceof ArrayBuffer
                   ? new Uint8Array(data)
                   : JSON.stringify(data);
-        // 兜底：Gateway.handleMessage 已隔离错误；这里再吞掉极端情况下的拒绝，避免 WS 事件循环出现未处理 Promise。
-        void getChatChannelController()
-          .gateway.handleMessage(adaptWs(ws), yjsWsId, payload)
+        // 同一连接的 binary/text 帧必须按到达顺序处理；前一条失败不阻塞后续帧。
+        const previous = yjsMessageTails.get(ws) ?? Promise.resolve();
+        const current = previous
+          .catch(() => {})
+          .then(() => getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload))
+          // 兜底：Gateway.handleMessage 已隔离错误；这里再吞掉极端情况下的拒绝，避免 WS 事件循环出现未处理 Promise。
           .catch((error) => logError("[YJS-WS] message handler failed", error));
+        yjsMessageTails.set(ws, current);
+        void current.finally(() => {
+          // 只清自己的链尾：期间若又排入新帧，tails 已指向新 Promise，不能误删。
+          if (yjsMessageTails.get(ws) === current) yjsMessageTails.delete(ws);
+        });
       }
     },
     close(ws) {
+      // 关闭后不再保留串行链，避免 WeakMap 之外的引用延迟连接回收。
+      yjsMessageTails.delete(ws);
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
