@@ -59,6 +59,8 @@ export interface PendingBatch {
 }
 export interface LiveWriter {
   acquire(): Promise<void>;
+  /** 续租当前写权；失权时清空本地租约但不把错误变成永久失败，调用方可重新竞争。 */
+  renew(): Promise<void>;
   accept(input: LiveInput): Promise<void>;
   commit(pending: PendingBatch): Promise<CommitOutcome>;
   seal(): Promise<SealResult>;
@@ -139,6 +141,16 @@ class LiveWriterImpl implements LiveWriter {
     // 租约被占或已过期时存储直接拒绝（SCOPE_BUSY）；本层不排队等待，等待会让「谁在写」不可判定。
     this.lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
     await this.rebuildFromCommitted();
+  }
+  async renew(): Promise<void> {
+    this.assertLive(true);
+    try {
+      this.lease = await this.options.store.renewWriter(this.requireLease(), LIVE_WRITER_LEASE_TTL_MS);
+    } catch (error) {
+      // 空闲过期是常规状态迁移：保留错误给调用方观测，但不能把它记成永久停写原因。
+      this.lease = null;
+      throw error;
+    }
   }
   async accept(input: LiveInput): Promise<void> {
     this.assertLive(true);
@@ -259,8 +271,14 @@ class LiveWriterImpl implements LiveWriter {
       this.capture(slices, runtime, () => target.removeEntity(entityId));
       recordBytes = descriptor.byteLength;
     } else {
-      const record = entityOf(semantic.kind, semantic.payload);
-      this.capture(slices, runtime, () => target.upsertEntity(record));
+      const entityId = requireString(semantic.payload, "entityId");
+      if (semantic.payload.terminal === true) {
+        // 终态内容留在旧通道；新运行态只保留未结束实体，终态直接移出，避免累计占满 256。
+        this.capture(slices, runtime, () => target.removeEntity(entityId));
+      } else {
+        const record = entityOf(semantic.kind, semantic.payload);
+        this.capture(slices, runtime, () => target.upsertEntity(record));
+      }
     }
     const overflow = this.overflowOf(slices, recordBytes);
     if (overflow !== null) throw this.stop("CAPACITY_EXCEEDED", `semantic event exceeds the hard limit: ${overflow}`);

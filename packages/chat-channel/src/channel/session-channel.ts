@@ -105,6 +105,11 @@ export interface SessionChannelDependencies {
   replaceProjection: (projection: ProjectionDocs) => void;
   /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */
   syncSessionId: (connection: SessionConnection, newSessionId: string) => void;
+  /**
+   * 用户消息写入唯一同步入口：按 rcsSessionId 扇出到该会话所有同步连接。
+   * 发起动作的旧 socket 通常没有 sync runtime，不能只写它自己的连接。
+   */
+  publishUserMessage?: (rcsSessionId: string, turnId: string, text: string) => void;
   reportError: (message: string, error: unknown) => void;
   /** 公开错误安全事件 sink；不得记录原始异常或 Action payload。 */
   reportLog?: (message: string) => void;
@@ -214,7 +219,7 @@ export class SessionChannel {
     if (!connection || !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)) {
       throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
     }
-    if (command.type === "load_session") {
+    if (command.type === "load_session" || command.type === "resume_session") {
       const sessionId = command.payload.sessionId;
       if (typeof sessionId !== "string" || sessionId.length === 0) {
         throw new CommandExecutionError("ACTION.INVALID_STATE");
@@ -256,7 +261,7 @@ export class SessionChannel {
       if (!connection.agentStatusReceived) return {};
     }
 
-    if (command.type === "load_session") {
+    if (command.type === "load_session" || command.type === "resume_session") {
       const shouldForward = await this.prepareLoadSession(connection, command.payload.sessionId);
       if (!shouldForward) return {};
     }
@@ -455,7 +460,8 @@ export class SessionChannel {
     }
     const turnId = this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
     // 用户消息只由后端写入：turnId 来自 registerUserMessage 的可信绑定，Agent 回显不进入新协议入口。
-    if (turnId) connection.syncConnection?.acceptUserMessage(turnId, text);
+    // 同步连接可能属于另一个 socket，必须经会话级入口扇出，而不是查询发起动作的连接。
+    if (turnId) this.dependencies.publishUserMessage?.(connection.rcsSessionId, turnId, text);
     return turnId;
   }
 

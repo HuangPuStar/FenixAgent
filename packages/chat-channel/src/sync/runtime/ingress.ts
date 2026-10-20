@@ -463,7 +463,17 @@ function toolEvents(update: Record<string, unknown>, turnId: string | null): rea
     const value = optionalString(update[field]);
     if (value !== null) metadata[field] = value;
   }
-  return [semanticEvent(turnId, assistantEntryId(turnId), "tool", { entityId: toolCallId, toolCallId, metadata })];
+  // 终态工具必须移出运行态实体；只把 completed 写进 metadata 会让实体永久占位（累计 257 个即停写）。
+  const status = optionalString(update.status);
+  const terminal = status === "completed" || status === "failed";
+  return [
+    semanticEvent(turnId, assistantEntryId(turnId), "tool", {
+      entityId: toolCallId,
+      toolCallId,
+      metadata,
+      ...(terminal ? { terminal: true } : {}),
+    }),
+  ];
 }
 
 /** 权限实体：请求与决议共用 `permissionId ?? requestId` 作实体身份，决议只加状态与 decision。 */
@@ -490,6 +500,8 @@ function permissionEvents(
   }
   const payload: Record<string, unknown> = { entityId: permissionId, metadata };
   if (toolCallId !== null) payload.toolCallId = toolCallId;
+  // 决议即终态：权限实体不能再占用运行态活动表。
+  if (status === "resolved") payload.terminal = true;
   return [semanticEvent(turnId, assistantEntryId(turnId), "permission", payload)];
 }
 

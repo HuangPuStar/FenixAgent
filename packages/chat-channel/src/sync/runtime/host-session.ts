@@ -144,6 +144,8 @@ export async function createSyncHostSession(input: {
   readonly storeBinding?: string;
   readonly owner?: string;
   readonly onError?: (message: string, error: unknown) => void;
+  /** 入口永久停写：宿主据此让客户端重建投影，不能只留服务端日志。 */
+  readonly onIngressStopped?: (error: unknown) => void;
 }): Promise<SyncHostSession> {
   assertIdentifier(input.scope.organizationId, "scope.organizationId");
   assertIdentifier(input.scope.rcsSessionId, "scope.rcsSessionId");
@@ -210,6 +212,8 @@ export async function createSyncHostSession(input: {
   const owner = uniqueOwner(input.owner ?? `${scope.organizationId}:${scope.rcsSessionId}`, random);
   let cachedGeneration: string | null = null;
   let localBootstrap: Promise<string> | null = null;
+  /** 同一连接内用户消息按 turnId 幂等：重试或双入口不得重复追加正文。 */
+  const acceptedUserTurns = new Set<string>();
 
   const commitHistory = async (
     acpSessionId: string,
@@ -352,6 +356,7 @@ export async function createSyncHostSession(input: {
     if (stopped) return;
     stopped = true;
     ingressFailures.report(error);
+    input.onIngressStopped?.(error);
   };
   /**
    * 同 scope 已有其他连接的写者时，本连接是 follower：实时入口丢弃，靠 tick 从共享 store 追赶。
@@ -443,6 +448,8 @@ export async function createSyncHostSession(input: {
     },
     acceptUserMessage(turnId: string, text: string): void {
       if (closed || turnId.length === 0 || text.length === 0) return;
+      if (acceptedUserTurns.has(turnId)) return;
+      acceptedUserTurns.add(turnId);
       acceptEvents([
         {
           kind: "text-delta",

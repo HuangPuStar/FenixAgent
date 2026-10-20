@@ -74,6 +74,7 @@ interface HostOptions {
   readonly storeBinding?: string;
   readonly onError?: (message: string, error: unknown) => void;
   readonly randomSeed?: string;
+  readonly clock?: Clock;
 }
 
 async function createHost(
@@ -89,7 +90,7 @@ async function createHost(
     scope: SCOPE,
     runtimeConfig: { ...RUNTIME_CONFIG, spoolRootDir: join(tempRoot(), "spool") },
     transport,
-    clock: CLOCK,
+    clock: options.clock ?? CLOCK,
     digest: sha256Digest,
     random: deterministicRandomSource(options.randomSeed ?? "sync-host-session"),
     owner: "test-owner",
@@ -679,6 +680,39 @@ describe("sync host session 生命周期", () => {
       stopped: true,
     });
     expect(session.closed).toBe(false);
+    await session.dispose();
+  });
+  // 空闲超过写者租约后下一轮仍必须写入：tick 续租/重竞争，不得把 LEASE_EXPIRED 固化为永久停写（B03）。
+  test("空闲 31 秒后写者重新取得租约，下一轮不被停写", async () => {
+    let nowMs = now;
+    const mutableClock: Clock = { now: () => nowMs };
+    const { session } = await createHost({}, { clock: mutableClock, randomSeed: "lease-renew" });
+    await sendStatelessHello(session);
+    session.acceptUserMessage("turn-1", "first round");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    nowMs += 30_001;
+    await session.tick();
+    session.acceptUserMessage("turn-2", "second round");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
+    await session.dispose();
+  });
+
+  // 串行完成 300 个不同工具不得占满运行态实体表：终态同批移出，第 257 个之后仍可写入（B06）。
+  test("串行完成 300 个工具后投影未停写", async () => {
+    const { session } = await createHost({}, { randomSeed: "tool-terminal" });
+    await sendStatelessHello(session);
+    for (let index = 1; index <= 300; index += 1) {
+      session.acceptNormalizedEvent({
+        type: "tool_call_completed",
+        update: { toolCallId: `tool-${index}`, title: `tool ${index}`, status: "completed" },
+        turnId: "turn-tools",
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
     await session.dispose();
   });
 });

@@ -44,6 +44,32 @@ async function renderMessages(messages: StructuredMessage[]): Promise<string> {
 }
 
 describe("新旧消息合并视图", () => {
+  // 工具把旧助手正文切成 entryId / entryId#1 时，必须保留完整旧结构；新投影的合并文本不得顶掉最终答案（B02）。
+  test("工具分段 entry 保留最终答案与顺序", () => {
+    const thoughtAndText: StructuredMessage = {
+      type: "assistant_message",
+      id: "entry-1",
+      chunks: [
+        { type: "thought", text: "思考" },
+        { type: "message", text: "前文" },
+      ],
+      seq: 0,
+      ts: 10000,
+    };
+    const tool: StructuredMessage = {
+      type: "tool_call",
+      id: "tool-1",
+      title: "Read",
+      status: "complete",
+      content: [],
+    };
+    const finalAnswer = assistant("entry-1#1", "最终答案", 10000);
+    const combined = assistant("entry-1", "前文最终答案", 10000);
+    const merged = createSyncMessageMerger()([thoughtAndText, tool, finalAnswer], [combined]);
+    expect(merged.map((message) => message.id)).toEqual(["entry-1", "tool-1", "entry-1#1"]);
+    expect(merged.at(-1)).toMatchObject({ id: "entry-1#1" });
+  });
+
   // 新投影已含文本时，旧通道纯文本历史退役；工具/计划/思考/错误仍由旧通道补充。
   test("新投影覆盖文本后旧纯文本退役且非文本保留", () => {
     const tool: StructuredMessage = {

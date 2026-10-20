@@ -27,6 +27,23 @@ function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): S
   return textOf(sync).length >= textOf(legacy).length ? sync : legacy;
 }
 
+function entryBaseId(id: string): string {
+  const separator = id.indexOf("#");
+  return separator < 0 ? id : id.slice(0, separator);
+}
+
+/**
+ * 旧展示模型按工具位置把一条助手 entry 拆成 `entryId` / `entryId#1` 多段。
+ * 新投影按整条 entry 导入为一条文本，无法表达段间工具顺序；这类 entry 必须保留完整旧结构。
+ */
+function segmentedEntryBases(legacy: readonly StructuredMessage[]): Set<string> {
+  const bases = new Set<string>();
+  for (const message of legacy) {
+    if (message.id.includes("#")) bases.add(entryBaseId(message.id));
+  }
+  return bases;
+}
+
 /**
  * 纯文本旧消息：用户消息，或无错误、只含 message chunk 的助手消息。
  * 工具、计划、思考与错误属于旧通道仍需保留的非文本能力。
@@ -74,6 +91,8 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     const legacyKeys: string[] = [];
     const used = new Set<string>();
     // 新投影已有文本即视为文本覆盖成立；不因某次实时帧暂时为空而回退旧全量。
+    // 分段 entry 除外：新投影只能表达合并后的整条正文，覆盖证明不成立。
+    const segmentedBases = segmentedEntryBases(legacy);
     const syncCoversText = retireLegacyText && sync.some(isText);
 
     const legacyTimes = new WeakMap<StructuredMessage, number>();
@@ -112,6 +131,8 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
 
     const pairs = new Map<string, StructuredMessage>();
     for (const message of sync) {
+      // 整条 entry 被旧结构分段表达时，新投影的单条合并文本不参与配对，也不作为独立消息加入。
+      if (segmentedBases.has(message.id)) continue;
       const alias = aliases.get(`sync:${message.id}`);
       let match = legacyById.get(message.id);
       if (!match && alias !== undefined) match = aliasToLegacy.get(alias);
@@ -122,6 +143,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
           match = bucket.find(
             (item) =>
               !used.has(item.id) &&
+              !segmentedBases.has(entryBaseId(item.id)) &&
               syncTime !== undefined &&
               Math.abs((legacyTimes.get(item) ?? 0) - syncTime) <= matchWindowMs,
           );
@@ -136,7 +158,9 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     for (const message of legacy) {
       const pair = pairs.get(message.id);
       // 未配对纯文本：新投影已覆盖文本，旧副本只会造成重复或绕过分页。
-      if (pair === undefined && syncCoversText && isPureText(message)) continue;
+      // 分段 entry 必须整组保留，否则工具后的最终答案会被当作“未配对纯文本”删除。
+      if (pair === undefined && syncCoversText && isPureText(message) && !segmentedBases.has(entryBaseId(message.id)))
+        continue;
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(`sync:${pair.id}`, key);
@@ -145,6 +169,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       legacyKeys.push(key);
     }
     for (const message of sync) {
+      if (segmentedBases.has(message.id)) continue;
       if (nextAliases.has(`sync:${message.id}`)) continue;
       const key = aliases.get(`sync:${message.id}`) ?? message.id;
       nextAliases.set(`sync:${message.id}`, key);

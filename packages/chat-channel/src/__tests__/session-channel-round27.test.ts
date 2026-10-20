@@ -518,12 +518,12 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(harness.sent.map((message) => message.id)).toEqual([1, 2]);
   });
 
-  // resume_session 不会替换当前投影，等待 Agent 返回后再由事件层同步。
-  test("resume_session 不提前替换投影", async () => {
+  // resume_session 切换 ACP 会话时同样必须换代，不能把目标会话历史写进旧投影。
+  test("resume_session 切换会话时替换投影", async () => {
     const harness = await createHarness();
-    await submit(harness, { action: "resume_session", commandId: "resume-no-replace", sessionId: "ses-2" });
-    expect(harness.replacements).toEqual([]);
-    expect(harness.synced).toEqual([]);
+    await submit(harness, { action: "resume_session", commandId: "resume-replace", sessionId: "ses-2" });
+    expect(harness.replacements).toHaveLength(1);
+    expect(harness.synced).toEqual(["ses-2"]);
   });
 
   // 取消前没有活动 turn 时依旧只发送取消协议请求。

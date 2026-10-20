@@ -84,6 +84,18 @@ export class ChatChannelController {
       refreshInstanceEnvironment: (connection) =>
         dependencies.refreshInstanceEnvironment(connection.instanceId, connection.agentId, connection.userId),
       replaceProjection: (projection) => {
+        this.registry.forEachByRcsSession(projection.rcsSessionId, (client) => {
+          if (!client.syncConnection && !client.syncOnly) return;
+          client.syncClosed = true;
+          const connection = client.syncConnection;
+          client.syncConnection = undefined;
+          try {
+            client.ws.close(1012, "projection replaced");
+            connection?.dispose();
+          } catch (error) {
+            dependencies.reportError("[YJS-FE] projection connection invalidation failed", error);
+          }
+        });
         const chatName = `chat:${projection.rcsSessionId}`;
         const sessionName = `session:${projection.rcsSessionId}`;
         this.broadcaster.registerYjsDocListener(projection.chat.ydoc, chatName, projection.generation);
@@ -97,6 +109,11 @@ export class ChatChannelController {
         this.registry.forEachByRcsSession(connection.rcsSessionId, (other) => {
           other.acpSessionId = newSessionId;
           other.sessionLoaded = true;
+        });
+      },
+      publishUserMessage: (rcsSessionId, turnId, text) => {
+        this.registry.forEachByRcsSession(rcsSessionId, (client) => {
+          client.syncConnection?.acceptUserMessage(turnId, text);
         });
       },
       reportError: dependencies.reportError,
