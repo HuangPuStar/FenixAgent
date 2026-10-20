@@ -176,6 +176,67 @@ test("订阅层回看期间仍订阅新块，returnToLatest 重新订阅淘汰�
   subscription.reset();
 });
 
+// 受保护的块仍在等待 DOC_BASE：即使最旧且超预算也不得释放，但仍计入预算，让未保护的旧块照常淘汰。
+test("protected 块不进入 release 且仍计入驻留预算", () => {
+  const window = createSyncContentWindow({ initialBlocks: 2, maxRetainedBlocks: 4 });
+  const all = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  window.plan(all.slice(0, 4), new Set(), true);
+
+  // 模拟 a-d 均已驻留（a 是等待基线的历史批次），目录追加 e-h：overflow=4，候选只剩 b/c/d。
+  const plan = window.plan(all, new Set(["a", "b", "c", "d"]), false, new Set(["a"]));
+  expect(plan.retain).toEqual(["e", "f", "g", "h"]);
+  expect(plan.release).toEqual(["b", "c", "d"]);
+  expect(plan.release).not.toContain("a");
+});
+
+// 等待基线的历史块被目录刷新误释放后，后续 DOC_BASE 会被当作未订阅帧丢弃；returnToLatest 必须保护它。
+test("等待基线期间 returnToLatest 不释放 pending 块并能在基线到达后结束加载", () => {
+  const retainedDocs = new Set<string>();
+  const released: string[] = [];
+  const subscribed: string[][] = [];
+  const historyStates: { hasEarlier: boolean; loading: boolean }[] = [];
+  const subscription = createSyncContentSubscription({
+    retainedDocs,
+    initialBlocks: 2,
+    maxRetainedBlocks: 3,
+    hydration: { addPending: () => {}, extendInitial: () => {} },
+    subscribe: (docIds) => {
+      subscribed.push([...docIds]);
+      return true;
+    },
+    retainDoc: () => {},
+    releaseDoc: (docId) => released.push(docId),
+    onSubscribed: () => {},
+    onHistoryState: (state) => historyStates.push(state),
+    hiddenMessageCount: () => 0,
+    growProjectionWindow: () => {},
+    fail: (code, message) => {
+      throw new Error(`${code}: ${message}`);
+    },
+  });
+
+  const base = ["a", "b", "c"];
+  subscription.applyDirectory(base, true);
+  expect([...retainedDocs]).toEqual(["b", "c"]);
+
+  // 回看更早历史：a 进入 pending，等待 DOC_BASE 期间 loading=true。
+  expect(subscription.loadEarlier(base)).toBe(true);
+  expect(retainedDocs.has("a")).toBe(true);
+  expect(historyStates.at(-1)?.loading).toBe(true);
+
+  // pending 期间回到最新且目录追加导致超预算：只释放未受保护的 b/c，a 必须仍驻留。
+  subscription.returnToLatest([...base, "d", "e", "f"]);
+  expect(released).toEqual(["b", "c"]);
+  expect(retainedDocs.has("a")).toBe(true);
+  expect(subscribed.at(-1)).toEqual(["d", "e", "f"]);
+  expect(retainedDocs.has("d") && retainedDocs.has("e") && retainedDocs.has("f")).toBe(true);
+  expect(historyStates.at(-1)?.loading).toBe(true);
+
+  // 基线到达后清除等待：加载结束，不再依赖 5 秒超时。
+  subscription.noteBase("a");
+  expect(historyStates.at(-1)?.loading).toBe(false);
+});
+
 // 投影镜像与协议 retain 是两份驻留：释放必须同时销毁只读镜像，否则 Y.Doc 仍留在内存里。
 test("释放 content Doc 镜像后不再计入投影驻留数", () => {
   const projections: number[] = [];

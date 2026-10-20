@@ -56,8 +56,16 @@ export interface SyncContentWindow {
    *   （覆盖 live 轮换与迟到的历史导入，避免迟到历史被当成“最新块”全量订阅）。
    * - `later` 只记录被历史加载淘汰的旧块，目录刷新不会自动重新订阅；新出现的块（fresh）
    *   仍会立即订阅，保证回看历史期间实时内容不中断。
+   *
+   * `protectedDocIds` 中的块即使最旧且超预算也不会进入 `release`（仍在等待 DOC_BASE 的历史批次
+   * 一旦被释放，后续基线帧会被忽略、加载只能超时）；它们仍计入驻留预算，因此不会凭空放大窗口。
    */
-  plan(allDocIds: readonly string[], retained: ReadonlySet<string>, initial: boolean): ContentWindowPlan;
+  plan(
+    allDocIds: readonly string[],
+    retained: ReadonlySet<string>,
+    initial: boolean,
+    protectedDocIds?: ReadonlySet<string>,
+  ): ContentWindowPlan;
   /**
    * 从更早集合取一批，并按驻留预算释放最新的已订阅块。
    *
@@ -104,10 +112,34 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
     for (const docId of [...later]) if (!known.has(docId)) later.delete(docId);
   }
 
-  function retainNewest(fresh: readonly string[], retainedContent: readonly string[]): ContentWindowPlan {
+  /**
+   * 按驻留预算选择本轮释放块。
+   *
+   * 预算把受保护的已驻留块一并计入（不能被保护集合悄悄抬高上限）；释放候选只排除受保护块，
+   * 候选不足时允许窗口暂时超出预算，与 `loadEarlier` 的既有取舍一致。
+   */
+  function selectRelease(
+    retainedContent: readonly string[],
+    incomingCount: number,
+    protectedDocIds?: ReadonlySet<string>,
+  ): string[] {
+    const overflow = Math.max(0, retainedContent.length + incomingCount - maxRetainedBlocks);
+    if (overflow === 0) return [];
+    const candidates =
+      protectedDocIds === undefined || protectedDocIds.size === 0
+        ? retainedContent
+        : retainedContent.filter((docId) => !protectedDocIds.has(docId));
+    return candidates.slice(0, overflow);
+  }
+
+  function retainNewest(
+    fresh: readonly string[],
+    retainedContent: readonly string[],
+    protectedDocIds?: ReadonlySet<string>,
+  ): ContentWindowPlan {
     const keep = fresh.slice(-initialBlocks);
     earlier = new Set(fresh.slice(0, Math.max(0, fresh.length - keep.length)));
-    const release = retainedContent.slice(0, Math.max(0, retainedContent.length + keep.length - maxRetainedBlocks));
+    const release = selectRelease(retainedContent, keep.length, protectedDocIds);
     for (const docId of release) earlier.add(docId);
     return { retain: keep, release, hasEarlier: earlier.size > 0 };
   }
@@ -120,7 +152,7 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
       chosen = false;
     },
 
-    plan(allDocIds, retained, _initial): ContentWindowPlan {
+    plan(allDocIds, retained, _initial, protectedDocIds): ContentWindowPlan {
       refreshOrder(allDocIds);
       const retainedContent = order.filter((docId) => retained.has(docId));
       const fresh = order.filter((docId) => !retained.has(docId) && !earlier.has(docId) && !later.has(docId));
@@ -128,7 +160,7 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
       if (!chosen || retainedContent.length === 0) {
         if (!chosen) later = new Set();
         chosen = true;
-        return retainNewest(fresh, retainedContent);
+        return retainNewest(fresh, retainedContent, protectedDocIds);
       }
 
       const oldestRetained = Math.min(...retainedContent.map((docId) => order.indexOf(docId)));
@@ -142,7 +174,7 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
       // later 只挡被历史加载淘汰的旧块（已通过 fresh 排除）；新出现的块始终立即订阅，
       // 否则用户回看几次历史后，流式回复与新块会永久停在 later 中不再显示。
       const retain = newer;
-      const release = retainedContent.slice(0, Math.max(0, retainedContent.length + retain.length - maxRetainedBlocks));
+      const release = selectRelease(retainedContent, retain.length, protectedDocIds);
       for (const docId of release) earlier.add(docId);
       return { retain, release, hasEarlier: earlier.size > 0 };
     },

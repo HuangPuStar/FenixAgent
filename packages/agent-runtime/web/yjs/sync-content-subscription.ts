@@ -203,7 +203,9 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
   }
 
   function applyDirectory(docIds: readonly string[], initial: boolean): void {
-    const plan = window.plan(docIds, deps.retainedDocs, initial);
+    // 等待 DOC_BASE 的历史批次仍在 retainedDocs 中，但此刻释放会让后续基线帧被忽略、
+    // 加载只能超时；目录刷新必须把这些块排除在释放候选之外。
+    const plan = window.plan(docIds, deps.retainedDocs, initial, pendingHistoryDocs);
     // 先释放再订阅：释放只作用于已驻留块，订阅批次不会与释放批次重叠。
     releaseContentDocs(plan.release);
     if (plan.retain.length > 0 && !retainAndSubscribe(plan.retain, "currentHistory", initial ? "initial" : "pending")) {
