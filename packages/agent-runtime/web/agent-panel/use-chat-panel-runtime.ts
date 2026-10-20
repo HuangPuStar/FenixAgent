@@ -292,6 +292,10 @@ export function useChatPanelRuntime({
   const syncTerminalError =
     syncChat.connection.status === "error" ||
     (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
+  // 换代（load/create）后旧通道才是这一代历史的权威：同步连接在新世代的空 Doc 上握手，
+  // 回放又不进入同步 ingress，基线里没有可等的内容。继续让 blocked 等它只会把切换拖成 loading。
+  // 首次连接（version 0）仍等同步基线，避免首屏先空/半截再补齐。
+  const hydrationBlockedBySync = syncChat.connection.hydrating && replacementVersion === 0;
   const hydration = useChatHydration({
     scope: mergeScope,
     legacy: legacySessionState.structuredMessages,
@@ -299,7 +303,7 @@ export function useChatPanelRuntime({
     sourceReady: connectionState === "connected",
     replayActive: legacySessionState.status === "replaying",
     liveActive: legacySessionState.status === "responding",
-    blocked: syncChat.connection.hydrating,
+    blocked: hydrationBlockedBySync,
     syncTerminalError,
     noReplaySession,
   });
