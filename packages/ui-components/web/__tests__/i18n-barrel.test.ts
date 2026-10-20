@@ -47,8 +47,18 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  *   （空值、循环引用、嵌套过深、条目截断、展开/收起），341 → 347。
  * 2026-10-15 文档预览批次（markdown 数学 + `.tex` 结构渲染）：`fileTree.preview.*` 加 6 键——
  *   渲染/源码标签、空文件、超上限提示、两条 KaTeX 降级提示，347 → 353。
+ * 2026-10-15 会话分组批次（chat space + 拖放归入）：`chat.components.acpMain.*` 加 13 键——默认分组名
+ *   `defaultSpace`、新建空间入口 `newSpace` / `spaceNamePlaceholder`、组头折叠与重命名 `collapseSpace` /
+ *   `expandSpace` / `renameSpace`、组内新建 `newSessionInSpace`、行内菜单标题 `moveToSpace`（该键已于
+ *   2026-10-16 随菜单删除，见下）、拖动中目标分组的提示 `dropHereHint`，以及四条写失败提示
+ *   `createSpaceFailed` / `renameSpaceFailed` / `assignSpaceFailed` / `moveToSpaceFailed`，353 → 366。
+ * 2026-10-15 会话分组 review 修复：分组列表加载失败的可重试错误态加 2 键——`spacesLoadFailed` /
+ *   `retry`，366 → 368。
+ * 2026-10-16 用户反馈修正（chat space）：按「不要『移动到』这个按钮，用拖拽就是最好的」删除会话行的
+ *   归属菜单，只服务于它的 `acpMain.moveToSpace` 一键随之清掉（拖放失败提示 `moveToSpaceFailed`
+ *   仍由拖拽路径使用，保留），368 → 367（实测两份字典扁平键数均为 367）。
  */
-const KEY_BASELINE = 353;
+const KEY_BASELINE = 367;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

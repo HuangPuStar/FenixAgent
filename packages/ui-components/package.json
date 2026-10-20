@@ -100,6 +100,10 @@
       "types": "./web/chat/lib/simplify-model-display-name.ts",
       "default": "./web/chat/lib/simplify-model-display-name.ts"
     },
+    "./chat/lib/space-grouping": {
+      "types": "./web/chat/lib/space-grouping.ts",
+      "default": "./web/chat/lib/space-grouping.ts"
+    },
     "./chat/lib/strip-html-tags": {
       "types": "./web/chat/lib/strip-html-tags.ts",
       "default": "./web/chat/lib/strip-html-tags.ts"
@@ -681,6 +685,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.4.0",
     "@open-file-viewer/core": "^0.1.17",
     "@open-file-viewer/react": "^0.1.17",

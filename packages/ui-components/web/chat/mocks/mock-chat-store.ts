@@ -102,8 +102,8 @@ export interface MockChatSession {
   respondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   /** 切换会话模式。 */
   setSessionMode: (modeId: string) => void;
-  /** 新建空会话并切换过去。 */
-  createSession: () => Promise<void>;
+  /** 新建空会话并切换过去；回执为 `null`（mock 没有 `session/new` 往返，接不出 session id）。 */
+  createSession: () => Promise<string | null>;
   /** 切换活跃会话（内容按记录恢复；未产生过消息的会话呈现空状态）。 */
   selectSession: (sessionId: string) => void;
   /** 恢复初始样本（demo 的重置入口）。 */
@@ -186,8 +186,11 @@ export function useMockChatSession(options: UseMockChatSessionOptions = {}): Moc
     dispatch({ type: "respond-question", questionId, answers });
   }, []);
   const setSessionMode = useCallback((modeId: string) => dispatch({ type: "set-mode", modeId }), []);
-  const createSession = useCallback(async () => {
+  // 返回 null 而不是新会话 id：mock 在 reducer 内部生成 id，没有可关联的创建往返。
+  // 消费方（`ChatInterface`）按「无回执」处理——demo 的组内新建归属由示例自身 overlay 兑现。
+  const createSession = useCallback(async (): Promise<string | null> => {
     dispatch({ type: "create-session" });
+    return null;
   }, []);
   const selectSession = useCallback((sessionId: string) => dispatch({ type: "select-session", sessionId }), []);
   const reset = useCallback(() => dispatch({ type: "reset" }), []);

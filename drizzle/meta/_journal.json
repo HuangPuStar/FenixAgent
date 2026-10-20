@@ -239,6 +239,13 @@
       "when": 1791873276135,
       "tag": "0033_common-git-tickets-tables",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792464214644,
+      "tag": "0034_agent-runtime-chat-space",
+      "breakpoints": true
     }
   ]
 }

@@ -56,11 +56,20 @@ import {
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
 import { createUserInputQueueSendPorts } from "./chat-panel-user-input-queue";
 
-/** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
-export interface ChatPanelCallbacks {
+/** 创建回执等待上限（毫秒）：服务端等 Agent 的上限是 10s，留出往返余量。 */
+const CREATE_RECEIPT_TIMEOUT_MS = 15_000;
+
+/** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */ export interface ChatPanelCallbacks {
   onSendPrompt: (contentBlocks: unknown[]) => void;
   onCancel: () => void;
-  onCreateSession: () => void;
+  /**
+   * 创建会话并等待服务端创建回执。
+   *
+   * 返回 Agent 实际创建出的 ACP session id；`null` 表示本次没有确认的创建结果
+   * （发送失败 / Agent 拒绝 / 超时 / 断连）。调用方据此把「本次点击的归属」绑定到
+   * 本页本次创建，而不是把共享 active session 的任何变化当成创建结果。
+   */
+  onCreateSession: () => Promise<string | null>;
   onLoadSession: (sid: string) => void;
   onResumeSession: (sid: string) => void;
   onRenameSession: (sid: string, title: string) => void;
@@ -317,13 +326,33 @@ export function useChatPanelRuntime({
     }
   }, []);
 
+  /**
+   * create_session 回执等待者：commandId → 结算函数。
+   *
+   * 回执由服务端按 commandId 定向回给发起连接（`action_ack.sessionId`），因此
+   * 「本页本次创建出了哪个会话」可以被精确回答；共享投影里的 active session 变化
+   * 无法回答这个问题（同一 Y.Doc 上别的标签页创建/切换同样会改它）。
+   */
+  const pendingCreateReceiptsRef = useRef(new Map<string, (sessionId: string | null) => void>());
+
+  const settleCreateReceipt = useCallback((commandId: string, sessionId: string | null) => {
+    const settle = pendingCreateReceiptsRef.current.get(commandId);
+    if (!settle) return;
+    pendingCreateReceiptsRef.current.delete(commandId);
+    settle(sessionId);
+  }, []);
+
   const handleActionAck = useCallback(
     (ack: ActionAck) => {
       // accepted 仅表示入队（服务端去重表中为 in_flight），commandId 必须保留供重试复用；
       // committed/duplicate 才释放（实现与注释对齐）
-      if (ack.status === "committed" || ack.status === "duplicate") releaseCommandId(ack.commandId);
+      if (ack.status === "committed" || ack.status === "duplicate") {
+        releaseCommandId(ack.commandId);
+        // 只有 committed/duplicate 才带创建回执：accepted 先于 Agent 响应到达，此时还没有 sessionId。
+        settleCreateReceipt(ack.commandId, ack.sessionId ?? null);
+      }
     },
-    [releaseCommandId],
+    [releaseCommandId, settleCreateReceipt],
   );
 
   // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId。
@@ -356,6 +385,35 @@ export function useChatPanelRuntime({
     },
     [sendViaWs, t],
   );
+
+  /**
+   * 创建会话并等待创建回执（见 {@link ChatPanelCallbacks.onCreateSession}）。
+   *
+   * 回执超时必须比服务端等待 Agent 的结果更宽（服务端 10s 内必回 committed，无论成败），
+   * 否则会把「服务端还在等 Agent」误判成「没有回执」，用户刚点的分组归属被静默丢掉。
+   */
+  const createSessionWithReceipt = useCallback(async (): Promise<string | null> => {
+    const commandId = randomUUID();
+    const receipt = new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => settleCreateReceipt(commandId, null), CREATE_RECEIPT_TIMEOUT_MS);
+      pendingCreateReceiptsRef.current.set(commandId, (sessionId) => {
+        clearTimeout(timer);
+        resolve(sessionId);
+      });
+    });
+    // sendAction 已负责「WS 未就绪/背压」的提示；这里只把等待者结算成「无回执」。
+    if (!sendAction({ action: "create_session", commandId })) settleCreateReceipt(commandId, null);
+    return receipt;
+  }, [sendAction, settleCreateReceipt]);
+
+  // 卸载时不留悬挂等待者：页面已不在，创建结果不再有归属消费者。
+  useEffect(() => {
+    const pending = pendingCreateReceiptsRef.current;
+    return () => {
+      for (const settle of Array.from(pending.values())) settle(null);
+      pending.clear();
+    };
+  }, []);
 
   // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
   // `connectionState` 是**有意义的依赖**：重连会替换 `yjsWsRef.current` 指向的 socket，状态回到 connected
@@ -458,6 +516,8 @@ export function useChatPanelRuntime({
         // 服务端错误路径已 clearDedup：释放缓存使同意图重试生成新 commandId，
         // 避免跨轮复用歧义；同时展示 transient banner（不污染 errorCode 连接状态机）
         releaseCommandId(err.commandId);
+        // 创建被拒时同样结算：等待者拿到「无回执」而不是挂到超时。
+        settleCreateReceipt(err.commandId, null);
         showActionError(err);
       },
     });
@@ -472,7 +532,17 @@ export function useChatPanelRuntime({
     // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
     // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
     // rcsSessionKey 变化触发重建（建连守卫，见上）；authState 变化驱动登录态守卫
-  }, [agentId, sessionId, rcsSessionKey, authState, sendViaWs, handleActionAck, releaseCommandId, showActionError]);
+  }, [
+    agentId,
+    sessionId,
+    rcsSessionKey,
+    authState,
+    sendViaWs,
+    handleActionAck,
+    releaseCommandId,
+    showActionError,
+    settleCreateReceipt,
+  ]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
   const derivedState = useMemo((): ChatPanelDerivedState => {
@@ -534,7 +604,7 @@ export function useChatPanelRuntime({
       },
       onCreateSession: () => {
         noReplaySessionRef.current = true;
-        sendAction({ action: "create_session" });
+        return createSessionWithReceipt();
       },
       onLoadSession: (sid: string) => {
         noReplaySessionRef.current = false;
@@ -564,7 +634,7 @@ export function useChatPanelRuntime({
       // ── 待发送队列（peri steer 控制面）──
       ...createUserInputQueueSendPorts(sendAction),
     }),
-    [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory],
+    [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory, createSessionWithReceipt],
   );
   return {
     authState,

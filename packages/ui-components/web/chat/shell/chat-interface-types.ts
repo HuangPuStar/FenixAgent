@@ -118,6 +118,25 @@ export interface ChatNotice {
   message: string;
 }
 
+/**
+ * 会话空间（chat space）条目，宿主投影给侧栏的只读视图。
+ *
+ * 归属关系由 `sessionIds` 表达：命中的会话归入该 space，未命中的落侧栏「默认」分组。
+ * `sessionIds` 里允许出现 agent 侧已删除的会话 id（宿主快照可能滞后），
+ * 消费方按「忽略未知 id」处理，见 `../lib/space-grouping`。
+ */
+export interface ChatSpaceItem {
+  id: string;
+  name: string;
+  sessionIds: readonly string[];
+}
+
+/**
+ * 创建会话的回执：Agent 实际创建出的 ACP session id；`null` / `undefined` 表示本次没有确认的
+ * 创建结果（忙碌被拒、发送失败、Agent 拒绝、超时、断连）。
+ */
+export type SessionCreateReceipt = string | null | undefined;
+
 /** ChatInterface 属性。复制自源 `chat-interface-types.ts`，字段名保持一致。 */
 export interface ChatInterfaceProps {
   agentId?: string;
@@ -128,6 +147,10 @@ export interface ChatInterfaceProps {
    * 活跃会话变化回调（首条消息懒创建、切换会话、服务端恢复都会触发）。
    * 原本组件还会把会话 ID 写入 localStorage（键 `acp_last_session_<agentId>`），该持久化属宿主策略，
    * 已移出组件：宿主可在此回调中自行落盘。
+   *
+   * **不是创建回执**：它挂在共享会话投影的 active session 上，同一 Y.Doc 上别的标签页创建或切换
+   * 会话同样会触发。需要「本次创建出了哪个会话」时用 `onCreateSession()` 的返回值（见
+   * {@link ChatInterfaceProps.onCreateSession}），不要用这里的 sessionId 反推。
    */
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
@@ -137,7 +160,14 @@ export interface ChatInterfaceProps {
   chatState?: ChatStateSnapshot;
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
   onCancel: () => void;
-  onCreateSession: () => Promise<void>;
+  /**
+   * 创建会话。返回服务端的**创建回执**：Agent 实际创建出的 ACP session id；
+   * `null`（或宿主的旧实现返回 `undefined`）表示本次没有确认的创建结果——忙碌被拒、发送失败、
+   * Agent 拒绝、超时或断连。
+   *
+   * 消费方要绑定「本次点击产生的归属」时只能用它，不能用 `onSessionCreated`（见该字段说明）。
+   */
+  onCreateSession: () => SessionCreateReceipt | Promise<SessionCreateReceipt>;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
   onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   availableCommands: AvailableCommand[];
@@ -232,7 +262,8 @@ export interface ChatInterfaceProps {
 
 /** ChatInterface 命令式句柄。复制自源 `chat-interface-types.ts`。 */
 export interface ChatInterfaceHandle {
-  newSession: () => void;
+  /** 新建会话；resolve 为创建回执（session id），忙碌被拒或失败时为 null */
+  newSession: () => Promise<string | null>;
   /** 当前是否正在等待 agent 响应。 */
   isLoading: boolean;
 }

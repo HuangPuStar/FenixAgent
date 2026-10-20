@@ -12,7 +12,7 @@ import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } f
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
-import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
+import { failPendingSessionMutations, waitForSessionCreation, waitForSessionMutation } from "./session-mutation";
 import { markSessionTimelineEmpty } from "./session-timeline-flag";
 import { flushPendingSyncFrames, type GatewaySyncHostOverrides } from "./sync-connection";
 import { failPendingUserInputRequests, registerUserInputRequest } from "./user-input-pending";
@@ -532,6 +532,11 @@ export class Gateway {
       // relay-event-handler 按 rpcId 收敛；relay 释放（引用计数归零）时统一失败。
       awaitUserInputRequest: (rpcId, kind, timeoutMs) =>
         shared ? registerUserInputRequest(shared, { rpcId, kind, timeoutMs }) : undefined,
+      awaitSessionCreation: (rpcId) => {
+        // 没有共享 relay 就没有「谁来结算回执」的一方，直接以空回执完成，避免调用方挂到超时。
+        if (!shared) return { completed: Promise.resolve(null), cancel: () => {} };
+        return waitForSessionCreation(shared, rpcId);
+      },
     };
   }
 }

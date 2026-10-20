@@ -11,7 +11,7 @@ import {
   uploadComposerFiles,
 } from "@fenix/ui-components/chat/composer/composer-file-processing";
 import { PeriTaskDetailSheet } from "@fenix/ui-components/chat/panels/PeriTaskDetailSheet";
-import type { ChatNotice, ChatStatsSummary } from "@fenix/ui-components/chat/shell/chat-interface-types";
+import type { ChatNotice, ChatSpaceItem, ChatStatsSummary } from "@fenix/ui-components/chat/shell/chat-interface-types";
 import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry } from "@fenix/ui-components/chat/types";
 import { flushContext } from "@fenix/web-runtime/chat/context-queue";
 import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
@@ -20,6 +20,7 @@ import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
 import imageCompression from "browser-image-compression";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useChatSpaces } from "../hooks/use-chat-spaces";
 import type { PeriTaskDetailLoader } from "./chat-panel-host-ports";
 import { FilePickerDialog } from "./FilePickerDialog";
 
@@ -47,6 +48,7 @@ import { FilePickerDialog } from "./FilePickerDialog";
  * | `compressImage` | `ChatComposer` 内 `imageCompression(file, IMAGE_COMPRESSION_OPTIONS)` | 同一个库 + 包内导出的同一份参数（参数漂移会让压缩后体积/尺寸与源实现不一致） |
  * | `renderFilePicker` | `ChatComposer` 内按 `envId` 渲染宿主 `FilePickerDialog` | 同一组件；无 `agentId` 时不渲染（源实现同样以 `fileWorkspaceId` 为守卫） |
  * | `subscribeExternal` | `ChatComposer` 的 `file-tree:reference` window 监听（按 `envId` 过滤） | 只桥接该事件：`chat:apply-suggested-prompt` / `chat:quote` 的生产方也在 chat 层内部，已由包内环路闭合（见 ui-components `shell/internal/use-composer-input-bridge.ts`），桥接会重复投递 |
+ * | `spaces` / `spacesLoaded` / `spacesError` / `onRefreshSpaces` / `onCreateSpace` / `onRenameSpace` / `onAssignSession` / `onUnassignSession` | 新增能力，无旧实现对照（数据层是本包的 `web/api/chat-spaces.ts` + `web/hooks/use-chat-spaces.ts`，后端 `/web/chat-spaces/**` 的 owner 同样在本包） | 八项同源，故本组**不是宿主注入**而是包内数据层直连：`instanceUid` 取持久实例 uid（`sessionId`，即 `ACPMain.detailSessionId`，不是 ACP session id 也不是 rcsSessionId）；实例未选中时八项全不注入，hook 同时不发请求，侧栏保持时间分组；列表未到达时 `spaces` 仍传 `undefined`（见 `useChatPanelPorts` 内的取舍说明），加载失败经 `spacesError` + `onRefreshSpaces` 透出可重试提示；四个写动作原样返回 hook 的 promise，失败由 ui-components 的 `useSpaceActionRunner` 经 `onNotice` 提示——本层吞掉 rejection 会让失败静默（hook 已带 `console.error` 上下文） |
  *
  * 状态面板的裸事件（`onOpenWorkspaceFile` 一行的「详见」）：源实现里三处派发点是**两套写法**——
  * `ToolCallRow` / `MessageBubble` 走 `dispatchArtifactsPreviewFile(envId, path)`，而源实现的状态面板
@@ -93,8 +95,42 @@ function writeSidebarOpen(open: boolean): void {
   }
 }
 
-/** 注入 `ACPMain` 的宿主端口集合（字段名与 `ACPMainProps` 对应字段一致）。 */
-export interface ChatPanelPorts {
+/**
+ * space 分组端口（`ChatPanelPorts` 的子集，字段名与 `ACPMainProps` 同名）。
+ *
+ * 八项要么全给、要么全不给：只给一半会让侧栏停在「有分组树但没有写入入口」这种无法解释的半接线状态。
+ * `spaces === undefined` 的语义由 ui-components 定义——未接入 space，侧栏按「今天 / 昨天 / 更早」分组。
+ */
+interface ChatPanelSpacePorts {
+  spaces: readonly ChatSpaceItem[] | undefined;
+  spacesLoaded: boolean | undefined;
+  spacesError: boolean | undefined;
+  onRefreshSpaces: (() => void) | undefined;
+  onCreateSpace: ((name: string) => Promise<void>) | undefined;
+  onRenameSpace: ((spaceId: string, name: string) => Promise<void>) | undefined;
+  onAssignSession: ((spaceId: string, sessionId: string) => Promise<void>) | undefined;
+  onUnassignSession: ((sessionId: string) => Promise<void>) | undefined;
+}
+
+/**
+ * 未选中实例时的 space 端口：八项皆缺省。
+ *
+ * 用模块级常量而不是每次渲染现造对象，是为了让「未接入」只有一个来源：`spaces` 传空数组会被侧栏读成
+ * 「已接入且没有分组」，于是把全部会话收进「默认」组——那是另一个界面，不是退化。
+ */
+const NO_SPACE_PORTS: ChatPanelSpacePorts = {
+  spaces: undefined,
+  spacesLoaded: undefined,
+  spacesError: undefined,
+  onRefreshSpaces: undefined,
+  onCreateSpace: undefined,
+  onRenameSpace: undefined,
+  onAssignSession: undefined,
+  onUnassignSession: undefined,
+};
+
+/** 注入 `ACPMain` 的端口集合（字段名与 `ACPMainProps` 对应字段一致）。 */
+export interface ChatPanelPorts extends ChatPanelSpacePorts {
   renderPeriTaskDetail: ((task: PeriTaskViewProjection, close: () => void) => ReactNode) | undefined;
   sidebarOpen: boolean;
   onSidebarOpenChange: (open: boolean) => void;
@@ -114,6 +150,10 @@ export interface ChatPanelPorts {
  *
  * `loadPeriTaskDetail` 由宿主注入（owner 是 `@fenix/model-management`，本包不得依赖资源包），
  * 未注入时详情抽屉不给槽位、任务行只读。
+ *
+ * `sessionId` 是**持久实例 uid**（不是 ACP session id）：详情抽屉的取数范围与 space 分组的 `instanceUid`
+ * 都用它。space 那一组端口是本文件的唯一例外——数据层同在本包（`web/hooks/use-chat-spaces`），
+ * 不经宿主注入，只在「实例是否就绪」处做取舍（见文件头端口表）。
  */
 export function useChatPanelPorts({
   agentId,
@@ -195,6 +235,38 @@ export function useChatPanelPorts({
     );
   }, [agentId, sessionId, loadPeriTaskDetail]);
 
+  // ── space 分组（会话空间树）──
+  // `instanceUid` 必须是**持久实例 uid**（本 hook 的 `sessionId`，也就是 `ACPMain` 收到的 `detailSessionId`）：
+  // 分组挂在实例上，后端按 (instanceUid, userId) 划定查询与归属范围；传 ACP session id 或 rcsSessionId
+  // 只会查到空范围。实例未选中时 hook 自己不发请求（空 `instanceUid` 即「还没有实例可谈」）。
+  // 请求生命周期交给 hook 内的 `useRequest`：`ChatArea` 会把访问过的每个实例槽位 keep-alive（隐藏而非卸载），
+  // 因此这里既可能长期驻留、也可能随实例切换重取——卸载即 `cancel()`，切换由请求序号丢弃迟到响应。
+  const { spaces, spacesLoaded, spacesError, refreshSpaces, createSpace, renameSpace, assignSession, unassignSession } =
+    useChatSpaces({
+      instanceUid: sessionId,
+    });
+
+  // 列表未到达时传 `undefined` 而不是 hook 给的空数组：空数组在侧栏的语义是「已接入 space 且暂无分组」，
+  // 会先把所有会话收进「默认」组、数据落地后再整棵重排（可见的假分组）；`spacesLoaded: false` 已足以让
+  // 侧栏在「尚无会话」时保持 loading（见 `SidebarSessionList` 的空态门槛），不需要借空数组表达。
+  // 加载失败不是「未加载」：`spacesLoaded: false` + `spacesError` 一起下发，侧栏据此给出可重试提示，
+  // 而不是把失败画成永久 loading 或静默退回时间分组。
+  //
+  // delete_session 只是 fire-and-forget：归属清理由侧栏等会话列表确认消失后发起，发送成功不能代表删除成功。
+  // 若确认前卸载则保留悬空 id；groupBySpace 会忽略它，比删除失败却丢失用户归属更安全。
+  const spacePorts: ChatPanelSpacePorts = sessionId
+    ? {
+        spaces: spacesLoaded ? spaces : undefined,
+        spacesLoaded,
+        spacesError,
+        onRefreshSpaces: refreshSpaces,
+        onCreateSpace: createSpace,
+        onRenameSpace: renameSpace,
+        onAssignSession: assignSession,
+        onUnassignSession: unassignSession,
+      }
+    : NO_SPACE_PORTS;
+
   return {
     renderPeriTaskDetail,
     sidebarOpen,
@@ -208,5 +280,6 @@ export function useChatPanelPorts({
     onNotice,
     onStatsChange,
     onOpenWorkspaceFile,
+    ...spacePorts,
   };
 }

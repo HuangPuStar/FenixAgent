@@ -150,10 +150,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Notify parent when active session changes
   // （源同时把会话 ID 写入 localStorage 键 `acp_last_session_<agentId>`；该持久化属宿主策略，已移出组件，
   //   宿主可在此回调中自行落盘。）
+  const notifiedSessionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeSessionId) {
+    // 回调引用变化不是会话创建；否则父组件重渲染会把待归属意图消费到旧会话。
+    if (activeSessionId && activeSessionId !== notifiedSessionRef.current) {
+      notifiedSessionRef.current = activeSessionId;
       onSessionCreated?.(activeSessionId);
     }
+    if (!activeSessionId) notifiedSessionRef.current = null;
   }, [activeSessionId, onSessionCreated]);
 
   // ── Core operations ──
@@ -168,10 +172,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     setPromptUsage(null);
   }, []);
 
-  const requestCreateSession = useCallback(async () => {
-    await onCreateSession();
-  }, [onCreateSession]);
-
+  /**
+   * 请求创建会话并归一化结果：`onCreateSession` 的返回值是本页本次创建的**回执**
+   * （宿主未升级时可能是 `void`，按「无回执」处理）。
+   *
+   * 失败与成功都返回 `null`/session id 而不是抛错：调用方（`newSession`）需要的是
+   * 「这次创建有没有确认结果」，异常在这里收敛成提示 + `console.error` 诊断上下文。
+   */
+  const requestCreateSession = useCallback(async (): Promise<string | null> => {
+    try {
+      const receipt = await onCreateSession();
+      return typeof receipt === "string" && receipt.length > 0 ? receipt : null;
+    } catch (error) {
+      console.error("[ChatInterface] 新建会话失败", error);
+      onNotice?.({ level: "error", message: t("chat.components.chatInterface.sessionCreateFailed") });
+      return null;
+    }
+  }, [onCreateSession, onNotice, t]);
   // ── 输入岛外部事件的包内环路 ──
   // 空状态建议提示词与消息「引用」由 ChatView 产生、ChatComposer 消费，源实现经 window
   // 自定义事件回环；这里把包内事件并入宿主注入的订阅通道（见 `./internal/use-composer-input-bridge`）。
@@ -253,23 +270,24 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // =============================================================================
 
   // Creates a new session by clearing current state and calling new_session
-  const handleNewSession = useCallback(() => {
+  const handleNewSession = useCallback(async (): Promise<string | null> => {
     // 正在等待 agent 响应时，阻止新建会话以避免状态混乱
     if (isLoading) {
       onNotice?.({ level: "warning", message: t("chat.components.acpMain.chatBusy") });
-      return;
+      return null;
     }
 
     resetThreadState();
     // Create new session — YJS will update chatState.activeSessionId
-    requestCreateSession();
+    return requestCreateSession();
   }, [isLoading, resetThreadState, requestCreateSession, t, onNotice]);
 
   // 当 contextKey 变化时自动开始新会话（仅在 contextKey 有值且发生变化时触发）
   const contextKeyRef = useRef(contextKey);
   useEffect(() => {
     if (contextKey !== undefined && contextKeyRef.current !== undefined && contextKeyRef.current !== contextKey) {
-      handleNewSession();
+      // 自动新建不消费回执（没有归属要绑定）；失败提示已在 handleNewSession 内收敛。
+      void handleNewSession();
     }
     contextKeyRef.current = contextKey;
   }, [contextKey, handleNewSession]);

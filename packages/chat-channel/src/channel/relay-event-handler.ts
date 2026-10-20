@@ -33,7 +33,7 @@ import { resetUserInputQueue, setUserInputQueueEnabled } from "../state/user-inp
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
-import { failPendingSessionMutations } from "./session-mutation";
+import { failPendingSessionMutations, settleSessionCreation } from "./session-mutation";
 import { failPendingUserInputRequests } from "./user-input-pending";
 import { ensureUserInputQueueSnapshot } from "./user-input-queue-action";
 import { readUserInputQueueCapability, settleUserInputQueueResponse } from "./user-input-queue-wire";
@@ -643,6 +643,9 @@ export class RelayEventHandler {
     }
     if (rpcId !== undefined && rpcId !== null) {
       shared.pendingSessionMutations?.get(rpcId)?.(!rpcCheck.error && "result" in rpcCheck);
+      // 被 Agent 拒绝的 create_session 以空回执结算：调用方据此走「无回执」分支（不写归属），
+      // 而不是把这次创建当成成功后再去猜哪个会话是新建的。
+      if (rpcCheck.error) settleSessionCreation(shared, rpcId, null);
     }
 
     // error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
@@ -725,6 +728,16 @@ export class RelayEventHandler {
       }
       const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
       if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
+      // create_session 回执在**新鲜度校验之前**结算：会话确实被 Agent 创建出来了，即便这份
+      // 响应已被后续切换取代（不提交投影），创建者仍应拿到自己那次创建的 session id——
+      // 否则发起方只能等到超时并放弃归属写入，用户的「在该分组新建」被静默丢掉。
+      if (syncRequested && rpcId !== undefined && rpcId !== null) {
+        settleSessionCreation(
+          shared,
+          rpcId,
+          typeof newSessionId === "string" && newSessionId.length > 0 ? newSessionId : null,
+        );
+      }
       // 会话同步响应的新鲜度校验（连续切换/响应乱序）：用户在响应到达前已切到别的
       // 会话时，旧响应不得提交——否则 registry 活跃会话回绑到旧 ACP session、投影
       // sessionId 被改写，当前会话的回放与流式增量随后被绑定校验全部丢弃（消息区空白）。
