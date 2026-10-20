@@ -35,6 +35,8 @@ export interface LiveInput {
   readonly contentType: string;
   readonly kind: "text-delta" | "semantic";
   readonly delta?: string;
+  /** 同 entryId + 内容槽只提交一次；用于用户消息在写者交接/多入口下的幂等。 */
+  readonly idempotent?: boolean;
   /** 语义载荷契约：`entityId` 必填，`toolCallId` / `metadata` 可选；载荷带 `finalDescriptor` 即实体交接（描述符写进内容块并在同批次移出运行态），`kind: "final"` 是它的规范形态。 */
   readonly semantic?: { readonly kind: BarrierKind; readonly payload: Record<string, unknown> };
 }
@@ -126,6 +128,7 @@ class LiveWriterImpl implements LiveWriter {
   private generation: string | null = null;
   private readonly cursors = new Map<DocKind, Cursor>();
   private readonly directory: DirectoryAppender;
+  private readonly idempotentTextKeys = new Set<string>();
   private closed = false;
   constructor(private readonly options: LiveWriterOptions) {
     const { store, clock, digest, random } = options;
@@ -162,6 +165,7 @@ class LiveWriterImpl implements LiveWriter {
     }
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
+    if (input.idempotent === true && !this.claimText(`${entryId}\u0000${contentSlot}`)) return;
     const key: MergeKey = { generation: this.requireGeneration(), turnId, entryId, contentSlot, contentType };
     this.lastFlush = null;
     this.merge.push(key, delta);
@@ -272,8 +276,35 @@ class LiveWriterImpl implements LiveWriter {
     } else {
       const entityId = requireString(semantic.payload, "entityId");
       if (semantic.payload.terminal === true) {
-        // 终态内容留在旧通道；新运行态只保留未结束实体，终态直接移出，避免累计占满 256。
+        // 终态记录仍写内容块；内容 Doc 达到软水位时先封口轮换，避免累计工具终态把入口撑停。
+        if (Y.encodeStateAsUpdate(this.cursor(CONTENT_KIND).doc).byteLength >= this.options.limits.softRotateBytes) {
+          await this.sealActive(CONTENT_KIND);
+        }
+        // 先提交终态描述符/引用，再在同批次移出实体；新投影只承接终态索引，
+        // 工具原始输入输出仍由旧通道承载（见 ingress 已知缺口③）。
+        const metadata =
+          semantic.payload.metadata === undefined ? {} : requireObject(semantic.payload.metadata, "metadata");
+        const terminalContent = bytes(JSON.stringify({ entityId, kind: semantic.kind, metadata }));
+        const content = this.cursor(CONTENT_KIND);
+        const identity: Identity = {
+          entryId: `${entityId}:final`,
+          contentSlot: "final",
+          contentType: "final-descriptor",
+        };
+        const record = this.buildRecord(identity, "final", terminalContent, this.partIndex(content, identity));
+        const descriptor: FinalEntityDescriptor = {
+          entityId,
+          kind: semantic.kind,
+          contentRef: record.recordId,
+          digest: this.options.digest(terminalContent),
+          byteLength: terminalContent.byteLength,
+          completedAt: this.options.clock.now(),
+        };
+        const descriptorPayload = bytes(JSON.stringify(descriptor));
+        const descriptorRecord = this.buildRecord(identity, "final", descriptorPayload, record.partIndex + 1);
+        this.capture(slices, content, () => records(content.doc, [record, descriptorRecord]));
         this.capture(slices, runtime, () => target.removeEntity(entityId));
+        recordBytes = Math.max(terminalContent.byteLength, descriptorPayload.byteLength);
       } else {
         const record = entityOf(semantic.kind, semantic.payload);
         this.capture(slices, runtime, () => target.upsertEntity(record));
@@ -321,6 +352,15 @@ class LiveWriterImpl implements LiveWriter {
     }
     this.rotation.reset();
     return { oldDocId: previous.docId, newDocId: successor.docId, requiredBaseSeq: 0 };
+  }
+  /** 用户消息幂等：先看已提交记录，再看本写者已接收但未落地的键。 */
+  private claimText(key: string): boolean {
+    if (this.idempotentTextKeys.has(key)) return false;
+    const stored = records<LiveRecordValue>(this.cursor(CONTENT_KIND).doc)?.toArray() ?? [];
+    const [entryId, contentSlot] = key.split("\u0000");
+    if (stored.some((record) => record.entryId === entryId && record.contentSlot === contentSlot)) return false;
+    this.idempotentTextKeys.add(key);
+    return true;
   }
   /** 捕获一个改动成切片：每个改动一个事务、各得一条独立 update，同一 Doc 的序号顺延；无变更的事务不占序号（纯删除也算变更，见 `captureChange`）。 */
   private capture(slices: Slice[], cursor: Cursor, mutate: () => void): void {
@@ -397,8 +437,10 @@ class LiveWriterImpl implements LiveWriter {
     }
   }
   private async rebuildFromCommitted(): Promise<void> {
-    // 恢复的语义是「本机未提交输入已经不存在」：丢弃缓冲，而不是把它补写进重建后的 Doc。
+    // 恢复的语义是「本机未提交输入已经不存在」：丢弃缓冲与未落地的幂等声明，
+    // 重新按已提交记录判定，避免失败后同一用户消息被永久拒绝。
     this.merge.dispose();
+    this.idempotentTextKeys.clear();
     this.merge = this.newMerge();
     const pointer = await this.options.store.readScopePointer(this.scopeKey);
     const generationId = pointer?.currentGeneration ?? null;

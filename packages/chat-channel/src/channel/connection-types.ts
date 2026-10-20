@@ -133,6 +133,11 @@ export interface ClientConnection {
   /** 关闭或权威换代后禁止在途 attach 把 runtime 写回。 */
   syncClosed?: boolean;
   /**
+   * attach 窗口内产生的用户消息：同步连接就绪后按序补水。
+   * 动作 socket 与同步 socket 分离，首 prompt 可能早于 syncConnection 挂载。
+   */
+  pendingSyncUserMessages?: Array<{ turnId: string; text: string }>;
+  /**
    * 客户端声明该连接只消费新同步协议（`chatSync=1`）。
    *
    * 此类连接不再接收旧全量快照、旧 Doc 广播与 legacy state-vector 差量，但保留文本 action

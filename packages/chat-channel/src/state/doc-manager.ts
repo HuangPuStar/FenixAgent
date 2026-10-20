@@ -12,7 +12,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import { getActiveGeneration, getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import { encodeYjsReplaceFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
@@ -164,6 +164,21 @@ export class DocManager {
    */
   openChat(rcsSessionId: string): Promise<ChatDoc> {
     return this.openService.openChat(rcsSessionId);
+  }
+
+  /**
+   * 跨进程复核本地投影代次是否仍是 Redis active generation。
+   * 内存模式没有跨进程换代；Redis 故障按可用性放行，恢复后由下一次复核收敛。
+   */
+  async isGenerationCurrent(rcsSessionId: string, generation: string): Promise<boolean> {
+    const redis = this.getRedis();
+    if (!redis) return true;
+    try {
+      return (await getActiveGeneration(redis, rcsSessionId)) === generation;
+    } catch (error) {
+      this.onError?.("[DocManager] active generation check failed", error);
+      return true;
+    }
   }
 
   /** 获取 Chat Doc（不创建） */

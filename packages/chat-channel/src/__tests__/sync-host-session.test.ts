@@ -682,11 +682,122 @@ describe("sync host session 生命周期", () => {
     expect(session.closed).toBe(false);
     await session.dispose();
   });
+  // 1000 次串行 start→complete（含 complete/done/error 词表）不得占满实体表，下一轮正文仍可接收（B06）。
+  test("串行完成 1000 个工具后下一轮正文仍可写入", async () => {
+    const { session } = await createHost({}, { randomSeed: "tool-terminal-1000" });
+    await sendStatelessHello(session);
+    const terminalStates = ["completed", "complete", "done", "failed", "error"];
+    for (let index = 1; index <= 1_000; index += 1) {
+      session.acceptNormalizedEvent({
+        type: "tool_call_started",
+        update: { toolCallId: `tool-${index}`, title: `tool ${index}`, status: "in_progress" },
+        turnId: "turn-tools",
+      });
+      session.acceptNormalizedEvent({
+        type: "tool_call_completed",
+        update: { toolCallId: `tool-${index}`, status: terminalStates[index % terminalStates.length] },
+        turnId: "turn-tools",
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
+    session.acceptNormalizedEvent({
+      type: "message_delta",
+      update: { content: { type: "text", text: "after tools" } },
+      turnId: "turn-next",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(session.ingressDiagnostics().stopped).toBe(false);
+    await session.dispose();
+  });
+
+  // 256 个真正未完成的工具仍受实体表上限约束；第 257 个必须明确停写而不是无限扩张（B06）。
+  test("256 个未完成工具仍触发容量上限", async () => {
+    const { session } = await createHost({}, { randomSeed: "tool-open-limit" });
+    await sendStatelessHello(session);
+    for (let index = 1; index <= 256; index += 1) {
+      session.acceptNormalizedEvent({
+        type: "tool_call_started",
+        update: { toolCallId: `open-${index}`, title: `open ${index}`, status: "in_progress" },
+        turnId: "turn-open",
+      });
+    }
+    session.acceptNormalizedEvent({
+      type: "tool_call_started",
+      update: { toolCallId: "open-257", title: "open 257", status: "in_progress" },
+      turnId: "turn-open",
+    });
+    await waitUntil(() => session.ingressDiagnostics().stopped, "open tool capacity stop");
+    expect(session.ingressDiagnostics()).toMatchObject({ lastCode: "CAPACITY_EXCEEDED", stopped: true });
+    await session.dispose();
+  });
+
+  // 长工具静默跨过租约：完成事件与后续正文都必须仍能写入（B03）。
+  test("长工具静默跨租约后终态与正文仍可写入", async () => {
+    let nowMs = now;
+    const mutableClock: Clock = { now: () => nowMs };
+    const { session } = await createHost({}, { clock: mutableClock, randomSeed: "long-tool-silence" });
+    await sendStatelessHello(session);
+    session.acceptNormalizedEvent({
+      type: "tool_call_started",
+      update: { toolCallId: "long-tool", title: "Long", status: "in_progress" },
+      turnId: "turn-long",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    nowMs += 35_000;
+    await session.tick();
+    session.acceptNormalizedEvent({
+      type: "tool_call_completed",
+      update: { toolCallId: "long-tool", status: "completed" },
+      turnId: "turn-long",
+    });
+    session.acceptNormalizedEvent({
+      type: "message_delta",
+      update: { content: { type: "text", text: "after long tool" } },
+      turnId: "turn-long",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
+    await session.dispose();
+  });
+
+  // 同一 turnId 重复进入（同连接重试、多标签双入口、写者交接）只能提交一条用户消息（B01）。
+  test("共享 store 下重复 turnId 只提交一条用户消息", async () => {
+    const registry = new SyncStoreRegistry();
+    const first = await createHost({}, { storeRegistry: registry, storeBinding: "g-dup", randomSeed: "dup-first" });
+    const second = await createHost({}, { storeRegistry: registry, storeBinding: "g-dup", randomSeed: "dup-second" });
+    await sendStatelessHello(first.session);
+    await sendStatelessHello(second.session);
+    const manifest = manifestOf(first.frames);
+    const contentDocIds = await discoverContentDocIds(first.session, first.frames, manifest);
+    const contentDocId = contentDocIds[0];
+    if (!contentDocId) throw new Error("expected content doc");
+
+    first.session.acceptUserMessage("turn-dup", "only once");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    first.session.acceptUserMessage("turn-dup", "only once");
+    second.session.acceptUserMessage("turn-dup", "only once");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await first.session.tick();
+
+    const subscribed = first.frames.length;
+    await first.session.onInboundBytes(
+      encodeSyncFrame({ type: "SUBSCRIBE", protocolVersion: 1, docIds: [contentDocId], priority: "live" }),
+    );
+    await tickUntil(first.session, () => baseFrame(first.frames, contentDocId) !== undefined, "content DOC_BASE");
+    const base = baseFrame(first.frames, contentDocId)!;
+    await first.session.onInboundBytes(encodeSyncFrame(ackOf(base)));
+    const texts = textsOfDoc(first.frames.slice(subscribed), contentDocId);
+    expect(texts.filter((text) => text === "only once")).toHaveLength(1);
+    await first.session.dispose();
+    await second.session.dispose();
+  });
+
   // 空闲超过写者租约后下一轮仍必须写入：tick 续租/重竞争，不得把 LEASE_EXPIRED 固化为永久停写（B03）。
   test("空闲 31 秒后写者重新取得租约，下一轮不被停写", async () => {
     let nowMs = now;
     const mutableClock: Clock = { now: () => nowMs };
-    const { session } = await createHost({}, { clock: mutableClock, randomSeed: "lease-renew" });
+    const { session, frames } = await createHost({}, { clock: mutableClock, randomSeed: "lease-renew" });
     await sendStatelessHello(session);
     session.acceptUserMessage("turn-1", "first round");
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -695,9 +806,39 @@ describe("sync host session 生命周期", () => {
     await session.tick();
     session.acceptUserMessage("turn-2", "second round");
     await new Promise((resolve) => setTimeout(resolve, 300));
+    await session.tick();
 
     expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
+    const manifest = manifestOf(frames);
+    const contentDocIds = await discoverContentDocIds(session, frames, manifest);
+    const contentDocId = contentDocIds[0];
+    if (!contentDocId) throw new Error("expected content doc");
+    await session.onInboundBytes(
+      encodeSyncFrame({ type: "SUBSCRIBE", protocolVersion: 1, docIds: [contentDocId], priority: "live" }),
+    );
+    await tickUntil(session, () => baseFrame(frames, contentDocId) !== undefined, "content DOC_BASE");
+    const base = baseFrame(frames, contentDocId)!;
+    await session.onInboundBytes(encodeSyncFrame(ackOf(base)));
+    expect(textsOfDoc(frames, contentDocId)).toContain("second round");
     await session.dispose();
+  });
+
+  // 29/30/31 秒边界都必须在下一轮恢复写权；不能只在某一侧碰巧成功（B03）。
+  test("租约边界 29/30/31 秒后的下一轮均可写入", async () => {
+    for (const elapsed of [29_000, 30_000, 30_001]) {
+      let nowMs = now;
+      const mutableClock: Clock = { now: () => nowMs };
+      const { session } = await createHost({}, { clock: mutableClock, randomSeed: `lease-${elapsed}` });
+      await sendStatelessHello(session);
+      session.acceptUserMessage(`turn-a-${elapsed}`, "before idle");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      nowMs += elapsed;
+      await session.tick();
+      session.acceptUserMessage(`turn-b-${elapsed}`, "after idle");
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(session.ingressDiagnostics()).toEqual({ total: 0, lastCode: null, stopped: false });
+      await session.dispose();
+    }
   });
 
   // 串行完成 300 个不同工具不得占满运行态实体表：终态同批移出，第 257 个之后仍可写入（B06）。

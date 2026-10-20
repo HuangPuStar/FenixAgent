@@ -21,6 +21,9 @@ import { RelayEventHandler } from "./relay-event-handler";
 import { SessionChannel } from "./session-channel";
 import type { GatewaySyncHostOverrides } from "./sync-connection";
 
+/** attach 窗口内暂存的用户消息上限：只覆盖首 prompt 竞态，不承接长期离线队列。 */
+const MAX_PENDING_USER_MESSAGES = 8;
+
 /** Chat 域宿主依赖（全部经构造器注入，包内禁止直接 import src/ 宿主模块） */
 export interface ChatChannelDependencies {
   /** 全局 DocManager 实例（宿主构造：Redis 惰性获取） */
@@ -85,6 +88,8 @@ export class ChatChannelController {
         dependencies.refreshInstanceEnvironment(connection.instanceId, connection.agentId, connection.userId),
       replaceProjection: (projection) => {
         this.registry.forEachByRcsSession(projection.rcsSessionId, (client) => {
+          // 动作 socket（legacy）上的 load_session 正是这次换代的调用方；关掉它会释放共享 relay，
+          // 让该命令以 "Relay is closed" 失败。legacy 连接改由下方强制 replace 帧换代。
           if (!client.syncConnection && !client.syncOnly) return;
           client.syncClosed = true;
           const connection = client.syncConnection;
@@ -100,8 +105,9 @@ export class ChatChannelController {
         const sessionName = `session:${projection.rcsSessionId}`;
         this.broadcaster.registerYjsDocListener(projection.chat.ydoc, chatName, projection.generation);
         this.broadcaster.registerYjsDocListener(projection.session.ydoc, sessionName, projection.generation);
-        this.broadcaster.broadcastReplacement(projection.chat.ydoc, chatName, projection.generation);
-        this.broadcaster.broadcastReplacement(projection.session.ydoc, sessionName, projection.generation);
+        // force：绕过背压门禁，legacy 连接不能因丢 replace 帧停在旧代次。
+        this.broadcaster.broadcastReplacement(projection.chat.ydoc, chatName, projection.generation, true);
+        this.broadcaster.broadcastReplacement(projection.session.ydoc, sessionName, projection.generation, true);
       },
       // 会话切换后同步 ACP session ID 到同一 RCS 会话的所有客户端，
       // 使同一会话的多标签页保持一致，且不污染其他 RCS 会话（YJS 不变量 8）。
@@ -113,7 +119,15 @@ export class ChatChannelController {
       },
       publishUserMessage: (rcsSessionId, turnId, text) => {
         this.registry.forEachByRcsSession(rcsSessionId, (client) => {
-          client.syncConnection?.acceptUserMessage(turnId, text);
+          if (client.syncConnection) {
+            client.syncConnection.acceptUserMessage(turnId, text);
+            return;
+          }
+          // attach 窗口内的首条消息不能丢：连接就绪后按序补水（有界，避免旧客户端积压）。
+          const pending = client.pendingSyncUserMessages ?? [];
+          pending.push({ turnId, text });
+          if (pending.length > MAX_PENDING_USER_MESSAGES) pending.shift();
+          client.pendingSyncUserMessages = pending;
         });
       },
       reportError: dependencies.reportError,

@@ -40,6 +40,8 @@ export interface SyncIngressEvent {
   readonly contentSlot: string;
   readonly contentType: string;
   readonly delta?: string;
+  /** 同 entryId + 槽位只允许提交一次（用户消息重试/多入口去重）。 */
+  readonly idempotent?: boolean;
   readonly semantic?: { readonly kind: BarrierKind; readonly payload: Record<string, unknown> };
 }
 
@@ -164,7 +166,15 @@ function snapshotIngressEvent(raw: SyncIngressEvent): SyncIngressEvent {
   if (kind === "text-delta") {
     const delta = record.delta;
     if (typeof delta !== "string") malformed("text-delta ingress event requires a string delta");
-    return Object.freeze({ kind, turnId, entryId, contentSlot, contentType, delta });
+    return Object.freeze({
+      kind,
+      turnId,
+      entryId,
+      contentSlot,
+      contentType,
+      delta,
+      ...(record.idempotent === true ? { idempotent: true } : {}),
+    });
   }
   const semantic = asRecord(record.semantic);
   if (semantic === null) malformed("semantic ingress event requires a semantic payload");
@@ -463,9 +473,11 @@ function toolEvents(update: Record<string, unknown>, turnId: string | null): rea
     const value = optionalString(update[field]);
     if (value !== null) metadata[field] = value;
   }
-  // 终态工具必须移出运行态实体；只把 completed 写进 metadata 会让实体永久占位（累计 257 个即停写）。
-  const status = optionalString(update.status);
-  const terminal = status === "completed" || status === "failed";
+  // 终态工具必须移出运行态实体；只把状态写进 metadata 会让实体永久占位（累计 257 个即停写）。
+  // 不同引擎/私有帧的终态词表不一致（ACP completed/failed、peri complete/done/error）。
+  const status = optionalString(update.status)?.toLowerCase() ?? null;
+  const terminal =
+    status === "completed" || status === "complete" || status === "done" || status === "failed" || status === "error";
   return [
     semanticEvent(turnId, assistantEntryId(turnId), "tool", {
       entityId: toolCallId,

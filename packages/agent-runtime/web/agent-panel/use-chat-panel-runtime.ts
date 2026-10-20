@@ -56,6 +56,7 @@ import {
 } from "../yjs/yjs-ws";
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
 import { createUserInputQueueSendPorts } from "./chat-panel-user-input-queue";
+import { shouldBlockPromptOnIncompleteLegacy } from "./sync-authority";
 
 /** 创建回执等待上限（毫秒）：服务端等 Agent 的上限是 10s，留出往返余量。 */
 const CREATE_RECEIPT_TIMEOUT_MS = 15_000;
@@ -117,6 +118,8 @@ export interface ChatPanelRuntime {
    * 非 null 时必须展示明确恢复状态，不能把空历史当作“该会话没有历史”。
    */
   historyRecovery: YjsHistoryIncomplete | null;
+  /** 同步已回退且旧通道历史不完整：阻止发送，恢复入口由 historyRecovery 横幅提供。 */
+  syncDegradedBlocked: boolean;
   /** 重建旧 Yjs 连接，重新尝试历史同步。 */
   retryHistoryRecovery: () => void;
   /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */
@@ -292,6 +295,11 @@ export function useChatPanelRuntime({
   const syncTerminalError =
     syncChat.connection.status === "error" ||
     (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
+  // 同步已失效且旧通道历史不完整：旧通道不是可信权威，继续发送会让新问答落在不可见投影里。
+  const syncDegradedBlocked = shouldBlockPromptOnIncompleteLegacy({
+    legacyFallback: syncChat.legacyFallback,
+    historyIncomplete: historyRecovery !== null,
+  });
   // 换代（load/create）后旧通道才是这一代历史的权威：同步连接在新世代的空 Doc 上握手，
   // 回放又不进入同步 ingress，基线里没有可等的内容。继续让 blocked 等它只会把切换拖成 loading。
   // 首次连接（version 0）仍等同步基线，避免首屏先空/半截再补齐。
@@ -612,7 +620,8 @@ export function useChatPanelRuntime({
   const callbacks = useMemo(
     (): ChatPanelCallbacks => ({
       onSendPrompt: (contentBlocks: unknown[]) => {
-        // 用户发送新消息即回到最新位置：回看历史时被窗口淘汰的块需要重新订阅，
+        // 旧通道历史不完整时发送会让回复进入不可达投影；先要求用户完成历史恢复。
+        if (syncDegradedBlocked) return; // 用户发送新消息即回到最新位置：回看历史时被窗口淘汰的块需要重新订阅，
         // 否则本次流式回复永远进不了投影（旧通道文本已退役）。
         syncChat.returnToLatestHistory?.().catch(() => false);
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
@@ -663,7 +672,13 @@ export function useChatPanelRuntime({
       // ── 待发送队列（peri steer 控制面）──
       ...createUserInputQueueSendPorts(sendAction),
     }),
-    [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory, createSessionWithReceipt],
+    [
+      sendAction,
+      sessionState.acpSessionId,
+      syncChat.returnToLatestHistory,
+      createSessionWithReceipt,
+      syncDegradedBlocked,
+    ],
   );
   return {
     authState,
@@ -671,6 +686,7 @@ export function useChatPanelRuntime({
     classifiedError,
     actionError,
     historyRecovery,
+    syncDegradedBlocked,
     retryHistoryRecovery,
     autoReconnecting,
     terminalUiCode,

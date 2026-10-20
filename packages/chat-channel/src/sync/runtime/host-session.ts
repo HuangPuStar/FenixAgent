@@ -212,8 +212,6 @@ export async function createSyncHostSession(input: {
   const owner = uniqueOwner(input.owner ?? `${scope.organizationId}:${scope.rcsSessionId}`, random);
   let cachedGeneration: string | null = null;
   let localBootstrap: Promise<string> | null = null;
-  /** 同一连接内用户消息按 turnId 幂等：重试或双入口不得重复追加正文。 */
-  const acceptedUserTurns = new Set<string>();
 
   const commitHistory = async (
     acpSessionId: string,
@@ -448,8 +446,6 @@ export async function createSyncHostSession(input: {
     },
     acceptUserMessage(turnId: string, text: string): void {
       if (closed || turnId.length === 0 || text.length === 0) return;
-      if (acceptedUserTurns.has(turnId)) return;
-      acceptedUserTurns.add(turnId);
       acceptEvents([
         {
           kind: "text-delta",
@@ -458,6 +454,7 @@ export async function createSyncHostSession(input: {
           contentSlot: USER_CONTENT_SLOT,
           contentType: TEXT_CONTENT_TYPE,
           delta: text,
+          idempotent: true,
         },
       ]);
     },

@@ -33,6 +33,8 @@ export interface LegacyChatDocumentSource {
     readonly hydration?: SnapshotHydration;
     readonly generation?: string;
   }>;
+  /** 跨进程换代复核：Redis active generation 与本地 Doc 代次是否仍一致。 */
+  isGenerationCurrent?(rcsSessionId: string, generation: string): Promise<boolean>;
 }
 
 /** 读取一个旧条目的可见正文；工具块和 reasoning 不计入。 */

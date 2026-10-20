@@ -19,6 +19,8 @@ import { logSyncClose, setSyncCloseContextForConnection } from "./sync-close-dia
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
 const SYNC_CLOSE_CODE = 1008;
 const MAX_CLOSE_REASON_CHARS = 120;
+/** 跨进程换代复核周期：不能对每个事件做 Redis I/O，也不能让节点 B 永久停在旧代次。 */
+const GENERATION_WATCH_INTERVAL_MS = 2_000;
 
 /** 新协议帧判据：binary 首字节 `{`（UTF-8 JSON）；旧 Yjs 帧首字节为 0x01/0x02/0x03 或 magic 0xa7 0x59。 */
 export function isSyncProtocolFrame(data: Uint8Array): boolean {
@@ -133,11 +135,18 @@ export async function attachGatewaySyncConnection(
       onError: reportError,
       onIngressStopped: (error) => {
         reportError("[YJS-FE] sync ingress stopped; closing connection for rebuild", error);
-        if (ws.readyState === 1) ws.close(1012, "sync ingress stopped");
+        // 终态错误码让客户端停止静默重连并进入可见错误态（可回退旧通道）。
+        if (ws.readyState === 1) ws.close(1011, "sync ingress stopped");
       },
     });
+    let watcher: ReturnType<typeof setInterval> | null = null;
+    const stopWatcher = (): void => {
+      if (watcher !== null) clearInterval(watcher);
+      watcher = null;
+    };
     const invalidate = (): void => {
       try {
+        stopWatcher();
         if (ws.readyState === 1) ws.close(1012, "projection replaced");
         void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
       } catch (error) {
@@ -166,6 +175,18 @@ export async function attachGatewaySyncConnection(
       invalidate();
       return;
     }
+    // 跨进程：节点 A 换代不会触碰节点 B 的内存 Doc，只能周期复核 Redis active generation。
+    if (history?.docs.isGenerationCurrent !== undefined && storeBinding !== undefined) {
+      watcher = setInterval(() => {
+        void history.docs
+          .isGenerationCurrent?.(rcsSessionId, storeBinding)
+          .then((current) => {
+            if (current === false) invalidate();
+          })
+          .catch((error: unknown) => reportError("[YJS-FE] sync generation watch failed", error));
+      }, GENERATION_WATCH_INTERVAL_MS);
+      watcher.unref?.();
+    }
     return {
       onInboundBytes: async (bytes) => {
         if (isCurrent()) await runtime.onInboundBytes(bytes);
@@ -176,6 +197,7 @@ export async function attachGatewaySyncConnection(
       ingressDiagnostics: () => runtime.ingressDiagnostics(),
       dispose: () => {
         try {
+          stopWatcher();
           void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
         } catch (error) {
           reportError("[YJS-FE] sync dispose failed", error);
@@ -233,6 +255,16 @@ export async function ensureGatewaySyncConnection(
 }
 
 /**
+ * attach 窗口内入队的用户消息在首个同步帧（HELLO）建立基线后补写。
+ * 不能在建 runtime 后立刻写：写者需要已提交基线，否则会停写。
+ */
+export function flushPendingSyncUserMessages(entry: ClientConnection, connection: SyncConnection): void {
+  const pending = entry.pendingSyncUserMessages;
+  entry.pendingSyncUserMessages = undefined;
+  for (const message of pending ?? []) connection.acceptUserMessage(message.turnId, message.text);
+}
+
+/**
  * 处理 binary 帧的新协议分流。
  *
  * 返回 `true` 表示该帧已由本函数处理（新协议或明确拒绝），调用方不得再进入旧 Yjs 分支。
@@ -282,6 +314,7 @@ export async function routeSyncProtocolFrame(
   if (!syncConnection) return true;
   try {
     await syncConnection.onInboundBytes(data);
+    flushPendingSyncUserMessages(entry, syncConnection);
   } catch (error) {
     reportError("[YJS-FE] sync protocol inbound failed", error);
     const code =

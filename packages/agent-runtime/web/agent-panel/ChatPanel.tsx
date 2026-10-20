@@ -138,6 +138,7 @@ function ChatPanelView({
     classifiedError,
     actionError,
     historyRecovery,
+    syncDegradedBlocked,
     retryHistoryRecovery,
     autoReconnecting,
     terminalUiCode,
@@ -308,6 +309,7 @@ function ChatPanelView({
         )}
         <ACPMain
           agentId={agentId}
+          readonly={syncDegradedBlocked}
           hideSidebar={hideSidebar}
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
           rcsSessionId={rcsSessionKey ?? undefined}

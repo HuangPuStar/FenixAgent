@@ -186,12 +186,15 @@ export class YjsBroadcaster {
       : REJECTED(update.length, "backpressure");
   }
 
-  /** replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。 */
-  broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string): void {
+  /**
+   * replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。
+   * `force` 用于服务端权威换代：绕过 64KB 背压门禁，保证 legacy 连接不因丢帧停在旧代次。
+   */
+  broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string, force = false): void {
     const frame = this.encodeLegacyFrame("replace", docName, generation, Y.encodeStateAsUpdate(ydoc));
     if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
-    this.broadcastMessage(docName, frame);
+    this.broadcastMessage(docName, frame, force);
   }
 
   /** 向同 rcsSessionId 的全部客户端广播当前世代快照。 */
@@ -285,14 +288,22 @@ export class YjsBroadcaster {
    * 广播已编码的二进制帧到同 rcsSessionId 的客户端。
    * 帧只构造/编码一次，所有客户端发送同一对象（SP-A4 序列化去重）。
    */
-  private broadcastMessage(docName: string, frame: Uint8Array): void {
+  private broadcastMessage(docName: string, frame: Uint8Array, force = false): void {
     const rcsSessionId = this.getRcsSessionId(docName);
 
     // sync-only 连接由新协议 DOC_BASE/DOC_UPDATE 驱动，旧 Doc 增量必须跳过；
     // 同一会话可能同时存在旧标签页，因此按连接而非按会话整体裁剪。
     const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
       if (entry.syncOnly) return;
-      this.sendFrameWithBackpressure(entry.ws, docName, frame);
+      if (!force) {
+        this.sendFrameWithBackpressure(entry.ws, docName, frame);
+        return;
+      }
+      try {
+        if (entry.ws.readyState === 1) entry.ws.send(frame);
+      } catch {
+        // 单连接失败不阻塞其他连接；连接自身事件会收敛关闭。
+      }
     };
 
     if (rcsSessionId) {

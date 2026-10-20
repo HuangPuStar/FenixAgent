@@ -9,12 +9,14 @@ import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 import { createWs, type MockWs } from "../channel/connection-test-helpers";
 import { ChatChannelController } from "../channel/controller";
+import { decodeYjsSyncFrame } from "../protocol/update-frame";
 import { appendEntryText, ensureEntry, setEntryStatus } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
 import { fidelityDeserialize } from "../sync/history/fidelity-json";
 import { readDirectoryPage, readDirectoryRoot } from "../sync/protocol/directory";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "../sync/protocol/frames";
+import { FakeRedis } from "./helpers/fake-redis";
 
 const LOCATOR = { instanceUid: "instance-authority", rcsSessionId: "rcs-authority" };
 const RCS = LOCATOR.rcsSessionId;
@@ -22,8 +24,11 @@ const NOW = 1_700_000_000_000;
 const CLOCK: Clock = { now: () => NOW };
 
 /** 真实控制器装配：假 relay 只记录转发，其余均为生产实现。 */
-function createHarness(): { controller: ChatChannelController; docManager: DocManager; relayed: string[] } {
-  const docManager = new DocManager({ onError: () => {}, onLog: () => {} });
+function createHarness(docManager = new DocManager({ onError: () => {}, onLog: () => {} })): {
+  controller: ChatChannelController;
+  docManager: DocManager;
+  relayed: string[];
+} {
   const relayed: string[] = [];
   const controller = new ChatChannelController({
     docManager,
@@ -167,6 +172,11 @@ async function waitForText(ws: MockWs, docId: string, expected: string, timeoutM
 /** 连接一个真实 WebSocket 并订阅目录与内容块，返回可见内容 doc id。 */
 async function connect(controller: ChatChannelController, wsId: string, ws: MockWs): Promise<string[]> {
   await controller.gateway.handleOpen(ws, wsId, "user-1", "agent-1", LOCATOR);
+  return await handshake(controller, wsId, ws);
+}
+
+/** 已登记连接的同步握手与订阅；用于在 attach 窗口后补发 HELLO。 */
+async function handshake(controller: ChatChannelController, wsId: string, ws: MockWs): Promise<string[]> {
   await controller.gateway.handleMessage(
     ws,
     wsId,
@@ -179,7 +189,7 @@ async function connect(controller: ChatChannelController, wsId: string, ws: Mock
     }),
   );
   const manifest = frameOfType(ws, "MANIFEST");
-  if (!manifest) throw new Error("expected MANIFEST");
+  if (!manifest) throw new Error(`expected MANIFEST; closed=${JSON.stringify(ws.closed)} frames=${ws.messages.length}`);
   await controller.gateway.handleMessage(
     ws,
     wsId,
@@ -289,8 +299,13 @@ describe("会话切换的服务端权威换代", () => {
       await switchSession(controller, ws3, "ws-b1", "load_session", "ses-A");
       expect(ws3.closed[0]).toEqual([1012, "projection replaced"]);
       controller.gateway.handleClose("ws-b1");
+      // A 代次恢复依赖 ACP load 回放：回放完成后新连接必须重新读到 A，而不是停留在 B。
+      await writeCommittedText(docManager, "text-A");
       const ws4 = createWs();
-      await connect(controller, "ws-a3", ws4);
+      const ids4 = await connect(controller, "ws-a3", ws4);
+      const contentA3 = ids4[0];
+      if (!contentA3) throw new Error("expected A history content");
+      await waitForText(ws4, contentA3, "text-A");
       expect(receivedTexts(ws4)).not.toContain("text-B");
       controller.gateway.handleClose("ws-a3");
     } finally {
@@ -362,6 +377,77 @@ describe("会话切换的服务端权威换代", () => {
       controller.gateway.handleClose("ws-action");
       controller.gateway.handleClose("ws-sync1");
       controller.gateway.handleClose("ws-sync2");
+    }
+  });
+
+  // attach 窗口内的首条 prompt 必须补水到握手后的同步投影，且多个标签各只出现一次（B01）。
+  test("attach 前发送的首条 prompt 在握手后补齐且只出现一次", async () => {
+    const { controller } = createHarness();
+    try {
+      const actionWs = createWs();
+      await controller.gateway.handleOpen(actionWs, "ws-action-race", "user-1", "agent-1", LOCATOR);
+      const syncWs1 = createWs();
+      const syncWs2 = createWs();
+      await controller.gateway.handleOpen(syncWs1, "ws-race1", "user-1", "agent-1", LOCATOR);
+      await controller.gateway.handleOpen(syncWs2, "ws-race2", "user-1", "agent-1", LOCATOR);
+
+      await controller.gateway.handleMessage(
+        actionWs,
+        "ws-action-race",
+        JSON.stringify({
+          action: "send_prompt",
+          commandId: "prompt-race",
+          content: [{ type: "text", text: "attach race question" }],
+        }),
+      );
+      await handshake(controller, "ws-race1", syncWs1);
+      await handshake(controller, "ws-race2", syncWs2);
+
+      expect(receivedTexts(syncWs1).filter((text) => text === "attach race question")).toHaveLength(1);
+      expect(receivedTexts(syncWs2).filter((text) => text === "attach race question")).toHaveLength(1);
+    } finally {
+      controller.gateway.handleClose("ws-action-race");
+      controller.gateway.handleClose("ws-race1");
+      controller.gateway.handleClose("ws-race2");
+    }
+  });
+
+  // legacy 连接没有 sync runtime：普通 replace 帧会被 64KB 背压跳过，服务端必须强制送达新代次（B04）。
+  test("legacy 连接在背压下仍收到权威 replace 帧", async () => {
+    const { controller } = createHarness();
+    try {
+      const ws = createWs(70 * 1024);
+      await controller.gateway.handleOpen(ws, "ws-legacy-backpressure", "user-1", "agent-1", LOCATOR);
+      await switchSession(controller, ws, "ws-legacy-backpressure", "load_session");
+      const replaced = ws.messages
+        .filter((message): message is Uint8Array => message instanceof Uint8Array)
+        .map((message) => decodeYjsSyncFrame(message))
+        .filter((frame) => frame?.type === "replace");
+      expect(replaced.length).toBeGreaterThanOrEqual(2);
+      expect(ws.closed).toEqual([]);
+    } finally {
+      controller.gateway.handleClose("ws-legacy-backpressure");
+    }
+  });
+
+  // 跨进程换代：节点 B 的内存 Doc 不变，但共享 Redis active generation 变化后必须失效已挂连接（B04）。
+  test("共享 Redis 的跨进程换代使已挂连接失效", async () => {
+    const redis = new FakeRedis();
+    const docManager = new DocManager({ getRedis: () => redis as never, onError: () => {}, onLog: () => {} });
+    docManager.setSnapshotPersistConfigSource(() => ({ intervalMs: 2_000, idleMs: 500, ttlSeconds: 604_800 }));
+    await docManager.openChat(RCS);
+    const { controller } = createHarness(docManager);
+    try {
+      const ws = createWs();
+      await connect(controller, "ws-cross-process", ws);
+      redis.seedActiveGeneration(RCS, "gen-remote-process");
+      const deadline = Date.now() + 4_000;
+      while (Date.now() < deadline && ws.closed.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(ws.closed[0]?.[0]).toBe(1012);
+    } finally {
+      controller.gateway.handleClose("ws-cross-process");
     }
   });
 
