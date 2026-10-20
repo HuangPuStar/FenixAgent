@@ -167,6 +167,7 @@
         "toggle": "Expand or collapse status"
       },
       "chatView": {
+        "loadingSession": "Loading session…",
         "stage": {
           "callingTool": "Calling tool",
           "generating": "Generating",

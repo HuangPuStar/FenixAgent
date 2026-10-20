@@ -3,9 +3,10 @@ import "./ChatView.css";
 import React, { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { Spinner } from "../../ui/spinner";
 import { buildChatRenderBlocks } from "../lib/chat-render-layout";
 import { Conversation, ConversationContent, ConversationScrollButtons } from "../primitives/conversation";
-import { AgentBadgeSkeleton, type AgentSkillInfo } from "../shell/AgentBadge";
+import type { AgentSkillInfo } from "../shell/AgentBadge";
 import { SubAgentToolCallGroupContext } from "../timeline/sub-agent-tool-call-context";
 import { ToolCallGroup } from "../timeline/ToolCallGroup";
 import type { ThreadEntry, ToolCallEntry } from "../types";
@@ -130,7 +131,8 @@ export const ChatView = React.memo(
           >
             {!hasMessages ? (
               isLoading && !agentName ? (
-                <AgentBadgeSkeleton />
+                // 会话加载中：用标准转圈加载态，不再渲染工牌卡骨架（卡片会被误读为会话内容）。
+                <Spinner variant="panel" className="min-h-40" label={t("chat.components.chatView.loadingSession")} />
               ) : (
                 <ChatEmptyState
                   title={finalEmptyTitle}

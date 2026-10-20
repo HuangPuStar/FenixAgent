@@ -61,6 +61,15 @@ describe("Chat 空状态", () => {
     expect(markup).not.toContain('data-slot="agent-badge"');
   });
 
+  // 会话加载中显示标准转圈加载态，而不是工牌卡骨架（卡片会被误读为会话内容）。
+  test("会话加载中显示转圈加载态", () => {
+    const markup = renderToStaticMarkup(<ChatView entries={[]} isLoading />);
+
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain("正在加载会话…");
+    expect(markup).not.toContain('data-slot="agent-badge"');
+  });
+
   // 拆分到 chat-empty-state.tsx 后，空状态的 DOM 层级、class、图标、文案与间距必须逐项保持原样。
   test("空状态 DOM 结构与拆分前一致", () => {
     const markup = renderToStaticMarkup(<ChatView entries={[]} emptyTitle="标题保持" emptyDescription="说明保持" />);

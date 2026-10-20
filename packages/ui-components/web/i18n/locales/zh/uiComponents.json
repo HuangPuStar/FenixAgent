@@ -167,6 +167,7 @@
         "toggle": "展开或收起状态"
       },
       "chatView": {
+        "loadingSession": "正在加载会话…",
         "stage": {
           "callingTool": "正在调用工具",
           "generating": "正在生成",
