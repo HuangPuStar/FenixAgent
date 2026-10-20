@@ -23,6 +23,7 @@ import {
   PERI_USER_INPUT_QUEUE_CAPABILITY,
   type PublicErrorInfo,
   type TerminalWsUiCode,
+  type YjsHistoryIncomplete,
 } from "@fenix/chat-channel";
 import type {
   UserInputQueueEnqueueRequest,
@@ -111,6 +112,13 @@ export interface ChatPanelRuntime {
   classifiedError: PublicErrorInfo | null;
   /** 最近一次 action_error（transient banner）；不进入 connectionState 状态机。 */
   actionError: ActionError | null;
+  /**
+   * 旧 Chat Doc 初始同步未完成：缺失文档、原因与尺寸上限。
+   * 非 null 时必须展示明确恢复状态，不能把空历史当作“该会话没有历史”。
+   */
+  historyRecovery: YjsHistoryIncomplete | null;
+  /** 重建旧 Yjs 连接，重新尝试历史同步。 */
+  retryHistoryRecovery: () => void;
   /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */
   autoReconnecting: boolean;
   /**
@@ -219,6 +227,10 @@ export function useChatPanelRuntime({
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
   const [actionError, setActionError] = useState<ActionError | null>(null);
+  // 旧 Chat Doc 初始同步未完成：保留服务端给出的缺失文档与超限尺寸，渲染层据此显示重试入口。
+  const [historyRecovery, setHistoryRecovery] = useState<YjsHistoryIncomplete | null>(null);
+  // 用户手动重试历史同步：+1 作为建连 effect 依赖强制重建旧 Yjs 连接。
+  const [historyRecoveryAttempt, setHistoryRecoveryAttempt] = useState(0);
   // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS。
   // 4500、4502 等同一 URL 无法恢复的关闭码仍需用户手动触发；Chat idle/activity
   // 与客户端 keepalive 超时不再由服务端主动断开。
@@ -233,6 +245,11 @@ export function useChatPanelRuntime({
   const noReplaySessionRef = useRef(false);
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
+  const retryHistoryRecovery = useCallback(() => {
+    setHistoryRecovery(null);
+    setClassifiedError(null);
+    setHistoryRecoveryAttempt((attempt) => attempt + 1);
+  }, []);
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
@@ -437,6 +454,7 @@ export function useChatPanelRuntime({
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接
+  // biome-ignore lint/correctness/useExhaustiveDependencies: historyRecoveryAttempt 是刻意的引用驱动依赖——用户重试历史同步时递增该值，强制重建旧 Yjs 连接。
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
@@ -479,6 +497,7 @@ export function useChatPanelRuntime({
       getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
       getYjsGenerations: () => getDocHubGenerations(rcsSessionKey),
       onError: (error) => setClassifiedError(error),
+      onHistoryIncomplete: (info) => setHistoryRecovery(info),
       onClose: (close) => {
         // 关闭码语义取自策略表（`resolveYjsWsCloseOutcome`，同一份知识，见 yjs-ws.ts）：
         // 终态码（4001 实例回收 / 4002 用户主动停止 / 4004 / 4500 / 4501 / 4502）客户端不会再自动重连，
@@ -495,6 +514,8 @@ export function useChatPanelRuntime({
       onConnectionState: (state: YjsWsState) => {
         if (state === "connecting") {
           setAutoReconnecting(false);
+          // 新一轮建连开始即清空上次的历史缺失状态：重试结果以本次服务端回执为准。
+          setHistoryRecovery(null);
           // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。
           setTerminalUiCode(null);
           setConnectionState("connecting");
@@ -545,6 +566,7 @@ export function useChatPanelRuntime({
     releaseCommandId,
     showActionError,
     settleCreateReceipt,
+    historyRecoveryAttempt,
   ]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
@@ -588,7 +610,7 @@ export function useChatPanelRuntime({
       onSendPrompt: (contentBlocks: unknown[]) => {
         // 用户发送新消息即回到最新位置：回看历史时被窗口淘汰的块需要重新订阅，
         // 否则本次流式回复永远进不了投影（旧通道文本已退役）。
-        syncChat.returnToLatestHistory?.();
+        syncChat.returnToLatestHistory?.().catch(() => false);
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
         // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
         // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
@@ -644,6 +666,8 @@ export function useChatPanelRuntime({
     connectionState,
     classifiedError,
     actionError,
+    historyRecovery,
+    retryHistoryRecovery,
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,

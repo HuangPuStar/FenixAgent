@@ -441,6 +441,95 @@ describe("sync chat 浏览器会话", () => {
     expect(harness.projections.at(-1)?.messages.map((message) => message.id)).toEqual(["cross:doc1", "cross:doc2"]);
   });
 
+  // 24 块历史反复向前/向后翻页：中间缺口可加载、所有块按目录顺序可达，回到最新只恢复最新窗口。
+  test("20+ 块双向翻页：缺口可加载、按序可达，回到最新有界恢复", async () => {
+    const entries = Array.from({ length: 24 }, (_, index) => {
+      const number = index + 1;
+      return {
+        docId: `sync/content/${GENERATION}/${number}/doc_${number}`,
+        entryId: `history:${String(number).padStart(2, "0")}`,
+      };
+    });
+    const harness = createHarness({ generation: undefined, contentDocIds: [] });
+    harness.socket.open();
+    harness.socket.receive(manifest());
+    receiveDirectory(
+      harness.socket,
+      "dlv_bidirectional_directory",
+      entries.map((entry) => entry.docId),
+    );
+
+    const contentSubscribes = (): string[][] =>
+      sentFrames(harness.socket)
+        .filter((frame): frame is Extract<SyncFrame, { type: "SUBSCRIBE" }> => frame.type === "SUBSCRIBE")
+        .filter((frame) => frame.priority === "currentHistory")
+        .map((frame) => [...frame.docIds]);
+    const feedLatestBatch = (label: string): void => {
+      for (const docId of contentSubscribes().at(-1) ?? []) {
+        const entry = entries.find((item) => item.docId === docId);
+        if (entry === undefined) continue;
+        harness.socket.receive(
+          docBaseWithPayload(docId, `dlv_${label}_${entry.entryId}`, contentUpdate(entry.entryId, entry.entryId)),
+        );
+      }
+    };
+
+    expect(contentSubscribes().at(-1)).toEqual(entries.slice(20).map((entry) => entry.docId));
+    feedLatestBatch("initial");
+    await flush();
+
+    const reached = new Set<string>();
+    const seen: string[] = [];
+    const collectVisible = (): void => {
+      for (const batch of contentSubscribes()) {
+        for (const docId of batch) {
+          const entry = entries.find((item) => item.docId === docId);
+          if (entry !== undefined) reached.add(entry.entryId);
+        }
+      }
+      const messages = harness.projections.at(-1)?.messages ?? [];
+      for (const message of messages) {
+        if (message.id.startsWith("history:") && !seen.includes(message.id)) seen.push(message.id);
+      }
+      expect([...messages].map((message) => message.id)).toEqual(
+        [...messages].map((message) => message.id).sort((left, right) => left.localeCompare(right)),
+      );
+    };
+    collectVisible();
+
+    for (let page = 0; page < 5; page += 1) {
+      expect(harness.session.loadEarlierHistory()).toBe(true);
+      feedLatestBatch(`earlier_${page}`);
+      await flush();
+      collectVisible();
+    }
+    expect(harness.states.at(-1)?.hasLaterHistory).toBe(true);
+    expect(harness.states.at(-1)?.hasEarlierHistory).toBe(false);
+
+    for (let page = 0; page < 3; page += 1) {
+      expect(harness.session.loadLaterHistory()).toBe(true);
+      feedLatestBatch(`later_${page}`);
+      await flush();
+      collectVisible();
+    }
+    expect(harness.states.at(-1)?.hasLaterHistory).toBe(false);
+    expect(seen).toHaveLength(24);
+    expect(reached.size).toBe(24);
+
+    const latestReady = harness.session.returnToLatestHistory();
+    // 最新窗口已全部驻留且已有基线：不能再发重复订阅，也不能让“回到最新”等待超时。
+    expect(harness.states.at(-1)?.hasLaterHistory).toBe(false);
+    expect(await latestReady).toBe(true);
+    await flush();
+    expect(harness.states.at(-1)?.historyLoading).toBe(false);
+    expect(harness.projections.at(-1)?.messages.map((message) => message.id)).toEqual([
+      "history:21",
+      "history:22",
+      "history:23",
+      "history:24",
+    ]);
+  });
+
   // 开启后第一条出站帧必须是二进制 HELLO，携带协议版本、scope 与 stateful:false。
   test("建连后发送二进制 HELLO", () => {
     const harness = createHarness();

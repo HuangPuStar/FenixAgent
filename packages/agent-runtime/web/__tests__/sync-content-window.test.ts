@@ -110,8 +110,8 @@ test("连续 loadEarlier 只释放除最新块外的已订阅块", () => {
   expect(window.laterDocIds(all)).toEqual(["d", "e", "f", "g"]);
 });
 
-// returnToLatest 只清空 later：下一次 plan 会把被历史淘汰的块作为 fresh 重新订阅。
-test("returnToLatest 后被历史淘汰的块重新进入 retain", () => {
+// 回到最新必须有界：只保留目录末尾窗口，中间缺口回到“可加载更早”，不会一次性恢复全部历史。
+test("focusLatest 有界定位最新区间并把中间缺口放回更早集合", () => {
   const window = createSyncContentWindow({ initialBlocks: 2, maxRetainedBlocks: 4 });
   const all = ["a", "b", "c", "d", "e", "f", "g", "h"];
   window.plan(all, new Set(), true);
@@ -122,18 +122,80 @@ test("returnToLatest 后被历史淘汰的块重新进入 retain", () => {
   const anchored = window.plan(all, new Set(["c", "d", "e", "f", "h"]), false);
   expect(anchored.retain).toEqual([]);
 
-  // 模拟订阅层执行 anchored.release（c 被移出驻留集合），然后回到最新位置。
-  window.returnToLatest();
+  const focused = window.focusLatest(all, new Set(["c", "d", "e", "f", "h"]));
+  expect(focused.retain).toEqual(["g"]);
+  expect(focused.release).toEqual(["c", "d", "e", "f"]);
   expect(window.laterDocIds(all)).toEqual([]);
-  const resumed = window.plan(all, new Set(["d", "e", "f", "h"]), false);
-  expect(resumed.retain).toEqual(["g"]);
+  expect(window.earlierDocIds(all)).toEqual(["a", "b", "c", "d", "e", "f"]);
+  expect(focused.hasEarlier).toBe(true);
 });
 
-// 订阅层必须把“回看期间新块仍订阅、返回最新后淘汰块重新订阅”落到实际 retain/SUBSCRIBE。
-test("订阅层回看期间仍订阅新块，returnToLatest 重新订阅淘汰块", () => {
+// 20+ 块反复向前/向后翻页：loadEarlier 制造缺口，loadLater 按目录顺序逐批补回，所有块最终可达。
+test("20 块以上双向翻页：中间缺口可重新加载且不重复驻留", () => {
+  const window = createSyncContentWindow({ initialBlocks: 4, maxRetainedBlocks: 12 });
+  const all = Array.from({ length: 24 }, (_, index) => `b${String(index + 1).padStart(2, "0")}`);
+  const retained = new Set<string>();
+  const apply = (plan: { retain: readonly string[]; release: readonly string[] }): void => {
+    for (const docId of plan.retain) retained.add(docId);
+    for (const docId of plan.release) retained.delete(docId);
+  };
+
+  apply(window.plan(all, retained, true));
+  expect([...retained]).toEqual(["b21", "b22", "b23", "b24"]);
+
+  for (let page = 0; page < 5; page += 1) apply(window.loadEarlier(all, retained));
+  expect(window.hasLater()).toBe(true);
+  expect(window.hasEarlier()).toBe(false);
+  // 缺口是 b12–b23；live tail b24 必须始终驻留。
+  expect(retained.has("b24")).toBe(true);
+  expect(retained).not.toContain("b20");
+  expect(window.laterDocIds(all)).toEqual([
+    "b12",
+    "b13",
+    "b14",
+    "b15",
+    "b16",
+    "b17",
+    "b18",
+    "b19",
+    "b20",
+    "b21",
+    "b22",
+    "b23",
+  ]);
+
+  const restored: string[] = [];
+  while (window.hasLater()) {
+    const plan = window.loadLater(all, retained);
+    expect(plan.retain.length).toBeGreaterThan(0);
+    restored.push(...plan.retain);
+    apply(plan);
+  }
+  expect(restored).toEqual(["b12", "b13", "b14", "b15", "b16", "b17", "b18", "b19", "b20", "b21", "b22", "b23"]);
+  expect(window.earlierDocIds(all)).toEqual([
+    "b01",
+    "b02",
+    "b03",
+    "b04",
+    "b05",
+    "b06",
+    "b07",
+    "b08",
+    "b09",
+    "b10",
+    "b11",
+    "b12",
+  ]);
+  expect(retained.size).toBe(12);
+  expect(retained.has("b24")).toBe(true);
+});
+
+// 订阅层必须把“回看期间新块仍订阅、返回最新有界恢复”落到实际 retain/SUBSCRIBE 并等待基线。
+test("订阅层回看期间仍订阅新块，returnToLatest 只恢复最新窗口并等待基线", async () => {
   const retainedDocs = new Set<string>();
   const released: string[] = [];
   const subscribed: string[][] = [];
+  const historyStates: { hasEarlier: boolean; hasLater: boolean; loading: boolean }[] = [];
   const subscription = createSyncContentSubscription({
     retainedDocs,
     initialBlocks: 2,
@@ -146,7 +208,7 @@ test("订阅层回看期间仍订阅新块，returnToLatest 重新订阅淘汰�
     retainDoc: () => {},
     releaseDoc: (docId) => released.push(docId),
     onSubscribed: () => {},
-    onHistoryState: () => {},
+    onHistoryState: (state) => historyStates.push(state),
     hiddenMessageCount: () => 0,
     growProjectionWindow: () => {},
     fail: (code, message) => {
@@ -156,6 +218,7 @@ test("订阅层回看期间仍订阅新块，returnToLatest 重新订阅淘汰�
 
   const base = ["a", "b", "c", "d", "e", "f", "g", "h"];
   subscription.applyDirectory(base, true);
+  for (const docId of ["g", "h"]) subscription.noteBase(docId);
   expect(retainedDocs.has("g")).toBe(true);
   expect(retainedDocs.has("h")).toBe(true);
 
@@ -165,14 +228,26 @@ test("订阅层回看期间仍订阅新块，returnToLatest 重新订阅淘汰�
   expect(released).toEqual(["g"]);
   expect(retainedDocs.has("g")).toBe(false);
   expect(retainedDocs.has("h")).toBe(true);
+  expect(historyStates.at(-1)?.hasLater).toBe(true);
 
   subscription.applyDirectory([...base, "i"], false);
   expect(subscribed.at(-1)).toEqual(["i"]);
   expect(retainedDocs.has("i")).toBe(true);
 
-  subscription.returnToLatest([...base, "i"]);
-  expect(subscribed.at(-1)).toEqual(["g"]);
-  expect(retainedDocs.has("g")).toBe(true);
+  const latestReady = subscription.returnToLatest([...base, "i"]);
+  expect(subscribed.at(-1)).toEqual(["i"]);
+  expect(historyStates.at(-1)?.hasLater).toBe(false);
+  expect(subscription.hasLater()).toBe(false);
+  // 基线未到前 promise 不得提前完成；到达后才允许渲染层滚动到最新。
+  let settled = false;
+  void latestReady.then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  subscription.noteBase("h");
+  subscription.noteBase("i");
+  expect(await latestReady).toBe(true);
   subscription.reset();
 });
 
@@ -190,11 +265,11 @@ test("protected 块不进入 release 且仍计入驻留预算", () => {
 });
 
 // 等待基线的历史块被目录刷新误释放后，后续 DOC_BASE 会被当作未订阅帧丢弃；returnToLatest 必须保护它。
-test("等待基线期间 returnToLatest 不释放 pending 块并能在基线到达后结束加载", () => {
+test("等待基线期间 returnToLatest 不释放 pending 块并能在基线到达后结束加载", async () => {
   const retainedDocs = new Set<string>();
   const released: string[] = [];
   const subscribed: string[][] = [];
-  const historyStates: { hasEarlier: boolean; loading: boolean }[] = [];
+  const historyStates: { hasEarlier: boolean; hasLater: boolean; loading: boolean }[] = [];
   const subscription = createSyncContentSubscription({
     retainedDocs,
     initialBlocks: 2,
@@ -224,15 +299,19 @@ test("等待基线期间 returnToLatest 不释放 pending 块并能在基线到�
   expect(retainedDocs.has("a")).toBe(true);
   expect(historyStates.at(-1)?.loading).toBe(true);
 
-  // pending 期间回到最新且目录追加导致超预算：只释放未受保护的 b/c，a 必须仍驻留。
-  subscription.returnToLatest([...base, "d", "e", "f"]);
+  // pending 期间回到最新：只释放未受保护的 b/c，a 必须仍驻留；最新窗口 e/f 需等待基线。
+  const latestReady = subscription.returnToLatest([...base, "d", "e", "f"]);
   expect(released).toEqual(["b", "c"]);
   expect(retainedDocs.has("a")).toBe(true);
-  expect(subscribed.at(-1)).toEqual(["d", "e", "f"]);
-  expect(retainedDocs.has("d") && retainedDocs.has("e") && retainedDocs.has("f")).toBe(true);
+  expect(subscribed.at(-1)).toEqual(["e", "f"]);
+  expect(retainedDocs.has("e") && retainedDocs.has("f")).toBe(true);
   expect(historyStates.at(-1)?.loading).toBe(true);
 
-  // 基线到达后清除等待：加载结束，不再依赖 5 秒超时。
+  // 最新基线到达后 promise 完成；a 仍在等待，loading 不能提前结束。
+  subscription.noteBase("e");
+  subscription.noteBase("f");
+  expect(await latestReady).toBe(true);
+  expect(historyStates.at(-1)?.loading).toBe(true);
   subscription.noteBase("a");
   expect(historyStates.at(-1)?.loading).toBe(false);
 });

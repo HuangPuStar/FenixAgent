@@ -337,7 +337,7 @@ export class Gateway {
     // sync-only 连接的新投影由 HELLO/DOC_BASE 自建，旧全量快照只会被客户端忽略并浪费带宽；
     // 旧连接仍走 500ms state-vector 握手 + 全量兜底。
     if (!entry.syncOnly) {
-      await synchronizeInitialDocs(
+      const initialSync = await synchronizeInitialDocs(
         this.pendingInitialSync,
         broadcaster,
         ws,
@@ -346,6 +346,14 @@ export class Gateway {
         chatDoc,
         sessionDoc,
       );
+      // 未送达的旧历史不能被当作“已同步”：客户端已收到 yjs:history-incomplete，
+      // 这里保留诊断以便区分“确实没有历史”和“超过单帧上限未恢复”。
+      if (!initialSync.ok) {
+        this.reportError(
+          `[YJS-FE] legacy initial history incomplete: wsId=${wsId} docs=${initialSync.failedDocNames.join(",")}`,
+          new Error("legacy history snapshot was not delivered"),
+        );
+      }
     }
     // connect 成功是 relayReady 的提交点；此前文本 action 始终留在有界 pending queue。
     try {

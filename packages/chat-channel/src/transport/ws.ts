@@ -5,6 +5,7 @@
 import type { ActionAck, ActionError } from "../channel/types";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
 import { isPublicError, type PublicError } from "../public-error";
+import type { YjsHistoryIncomplete } from "../types";
 import { WS_CLOSE_CODE_POLICY } from "./ws-close-codes";
 
 /**
@@ -63,6 +64,8 @@ export interface YjsWsOptions {
   onActionAck?: (ack: ActionAck) => void;
   /** 收到 action_error 帧时回调（commandId 幂等失败响应；前端据此释放重试 ID 缓存并展示错误） */
   onActionError?: (error: ActionError) => void;
+  /** 旧 Chat Doc 初始同步未完成（超限/背压）：客户端必须展示具体缺失并提供重试入口。 */
+  onHistoryIncomplete?: (info: YjsHistoryIncomplete) => void;
 }
 
 export interface YjsWsClient {
@@ -95,6 +98,20 @@ function toWebSocketBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy.buffer;
+}
+
+/**
+ * 解析服务端 `yjs:history-incomplete` 控制消息；字段不完整时返回 null（不可信帧不得驱动 UI 状态）。
+ */
+function readHistoryIncomplete(msg: Record<string, unknown>): YjsHistoryIncomplete | null {
+  const docs = msg.docs;
+  const reason = msg.reason;
+  if (!Array.isArray(docs) || docs.some((doc) => typeof doc !== "string")) return null;
+  if (reason !== "too_large" && reason !== "backpressure" && reason !== "encode_failed") return null;
+  const bytes = typeof msg.bytes === "number" && Number.isFinite(msg.bytes) ? msg.bytes : 0;
+  const limitBytes = typeof msg.limitBytes === "number" && Number.isFinite(msg.limitBytes) ? msg.limitBytes : 0;
+  const generation = typeof msg.generation === "string" ? msg.generation : undefined;
+  return { docs: docs as string[], reason, bytes, limitBytes, generation };
 }
 
 /**
@@ -131,6 +148,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     onClose,
     onActionAck,
     onActionError,
+    onHistoryIncomplete,
   } = options;
 
   const generations = new Map<string, string>();
@@ -242,6 +260,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         if (msg.type === "error") {
           const payload = msg.payload;
           if (isPublicError(payload)) onError?.(payload);
+          return;
+        }
+        if (msg.type === "yjs:history-incomplete") {
+          const info = readHistoryIncomplete(msg);
+          if (info !== null) onHistoryIncomplete?.(info);
           return;
         }
         if (msg.type === "action_ack") {

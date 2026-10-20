@@ -9,7 +9,7 @@ import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, WsConnection } from "./connection-types";
-import type { PendingInitialSync } from "./gateway-sync";
+import { noteInitialSyncDelivery, type PendingInitialSync } from "./gateway-sync";
 import { type GatewaySyncHostOverrides, routeSyncProtocolFrame } from "./sync-connection";
 
 export interface GatewayMessageHandlerDeps {
@@ -52,12 +52,8 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
           ? deps.docManager.getChat(entry.rcsSessionId)
           : deps.docManager.getSession(entry.rcsSessionId);
       if (!doc || doc.generation !== frame.generation) return;
-      deps.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
-      const pendingSync = deps.pendingInitialSync.get(wsId);
-      if (pendingSync?.expected.has(frame.docName)) {
-        pendingSync.received.add(frame.docName);
-        if (pendingSync.received.size === pendingSync.expected.size) pendingSync.resolve();
-      }
+      const delivery = deps.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
+      noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, delivery);
       return;
     }
     if (!entry?.relayReady) {

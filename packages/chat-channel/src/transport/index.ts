@@ -1,3 +1,4 @@
+export type { YjsHistoryIncomplete } from "../types";
 export {
   createYjsWsClient,
   type YjsWsClient,

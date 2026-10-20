@@ -26,7 +26,11 @@ export interface SyncContentSubscriptionDeps {
   /** 首屏订阅块数；缺省沿用窗口模块的 `SYNC_HISTORY_INITIAL_BLOCKS`。 */
   readonly initialBlocks?: number;
   readonly onSubscribed: (docIds: readonly string[]) => void;
-  readonly onHistoryState: (state: { readonly hasEarlier: boolean; readonly loading: boolean }) => void;
+  readonly onHistoryState: (state: {
+    readonly hasEarlier: boolean;
+    readonly hasLater: boolean;
+    readonly loading: boolean;
+  }) => void;
   readonly hiddenMessageCount: () => number;
   readonly growProjectionWindow: () => void;
   /** 页目录中是否还有更早的页尚未订阅；与内容窗口共同决定“显示更早”入口。 */
@@ -42,11 +46,13 @@ export interface SyncContentSubscription {
   applyDirectory(docIds: readonly string[], initial: boolean): void;
   /** 用户显式加载更早历史；返回是否产生了新工作。 */
   loadEarlier(docIds: readonly string[]): boolean;
+  /** 用户向下阅读、补齐中间缺口；返回是否产生了新工作。 */
+  loadLater(docIds: readonly string[]): boolean;
   /**
-   * 回到最新位置：清空 `later` 并按当前目录重新裁决，被历史加载淘汰的块会重新订阅。
-   * 发送新消息时调用，避免回看历史后实时回复不再显示。
+   * 回到最新位置：有界定位目录末尾窗口并等待基线完成。
+   * 返回 true 表示最新区间已就绪（或本来就已驻留），false 表示超时/无法定位。
    */
-  returnToLatest(docIds: readonly string[]): void;
+  returnToLatest(docIds: readonly string[]): Promise<boolean>;
   /**
    * 更早页的 DOC_BASE 到达：若上一批 `loadEarlier` 在等页目录，自动续订这批更早块。
    * 返回是否继续产生了订阅请求。
@@ -57,6 +63,7 @@ export interface SyncContentSubscription {
   /** 投影变化后刷新“是否还有更早”状态（不触发订阅）。 */
   refreshHistoryState(hiddenMessageCount?: number): void;
   hasEarlier(): boolean;
+  hasLater(): boolean;
 }
 
 export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps): SyncContentSubscription {
@@ -65,11 +72,19 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     maxRetainedBlocks: deps.maxRetainedBlocks,
   });
   const pendingHistoryDocs = new Set<string>();
+  /** 向下补缺口时在途的块；超时必须放回 `later`，否则窗口会永久少一段。 */
+  const pendingLaterDocs = new Set<string>();
+  /** 已收到 DOC_BASE 的块；“回到最新”据此只等待真正缺失的基线。 */
+  const basedDocs = new Set<string>();
+  const latestPendingDocs = new Set<string>();
+  let latestWaiter: ((ready: boolean) => void) | null = null;
   let loading = false;
   /** 已请求上一页目录、但页 DOC_BASE 尚未到达；此时不能再发页请求。 */
   let pageLoading = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pageTimer: ReturnType<typeof setTimeout> | null = null;
+  let laterTimer: ReturnType<typeof setTimeout> | null = null;
+  let latestTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearTimer(): void {
     if (timer !== null) clearTimeout(timer);
@@ -81,9 +96,39 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     pageTimer = null;
   }
 
+  function clearLatestTimer(): void {
+    if (latestTimer !== null) clearTimeout(latestTimer);
+    latestTimer = null;
+  }
+
+  function clearLaterTimer(): void {
+    if (laterTimer !== null) clearTimeout(laterTimer);
+    laterTimer = null;
+  }
+
+  /** 三类在途批次与页请求共用 `loading`：任何一批未落地都不能让入口误报空闲。 */
+  function updateLoading(): void {
+    loading = pageLoading || pendingHistoryDocs.size > 0 || pendingLaterDocs.size > 0 || latestPendingDocs.size > 0;
+  }
+
+  /** 等待基线的块不进入释放候选；否则后续 DOC_BASE 会被当作未订阅帧丢弃。 */
+  function protectedDocs(): ReadonlySet<string> {
+    const union = new Set(pendingHistoryDocs);
+    for (const docId of pendingLaterDocs) union.add(docId);
+    for (const docId of latestPendingDocs) union.add(docId);
+    return union;
+  }
+
+  function resolveLatest(ready: boolean): void {
+    const waiter = latestWaiter;
+    latestWaiter = null;
+    waiter?.(ready);
+  }
+
   function emitHistoryState(hiddenMessageCount = deps.hiddenMessageCount()): void {
     deps.onHistoryState({
       hasEarlier: window.hasEarlier() || hiddenMessageCount > 0 || pageLoading || (deps.hasEarlierPages?.() ?? false),
+      hasLater: window.hasLater() || pendingLaterDocs.size > 0,
       loading,
     });
   }
@@ -124,7 +169,19 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
       // 未到达的块放回更早集合：已 retain 的 Doc 保留（下一轮只重发 SUBSCRIBE，不重复 retain）。
       window.restoreEarlier([...pendingHistoryDocs]);
       pendingHistoryDocs.clear();
-      loading = false;
+      updateLoading();
+      emitHistoryState();
+    }, HISTORY_BASE_TIMEOUT_MS);
+  }
+
+  function scheduleLaterTimeout(): void {
+    clearLaterTimer();
+    laterTimer = setTimeout(() => {
+      laterTimer = null;
+      if (pendingLaterDocs.size === 0) return;
+      window.restoreLater([...pendingLaterDocs]);
+      pendingLaterDocs.clear();
+      updateLoading();
       emitHistoryState();
     }, HISTORY_BASE_TIMEOUT_MS);
   }
@@ -132,7 +189,7 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
   function endPageWait(): void {
     clearPageTimer();
     pageLoading = false;
-    loading = false;
+    updateLoading();
   }
 
   function schedulePageTimeout(): void {
@@ -149,6 +206,7 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
   function releaseContentDocs(docIds: readonly string[]): void {
     for (const docId of docIds) {
       if (!deps.retainedDocs.delete(docId)) continue;
+      basedDocs.delete(docId);
       deps.releaseDoc(docId);
     }
   }
@@ -170,12 +228,12 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
       }
       // 双向淘汰：向历史方向扩展时释放最新块，并等新批次基线到达后再结束 loading。
       releaseContentDocs(plan.release);
-      loading = true;
       for (const docId of plan.retain) pendingHistoryDocs.add(docId);
+      updateLoading();
       if (!retainAndSubscribe(plan.retain, "currentHistory", "pending")) {
         window.restoreEarlier(plan.retain);
         pendingHistoryDocs.clear();
-        loading = false;
+        updateLoading();
         emitHistoryState();
         return false;
       }
@@ -187,8 +245,8 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     }
     // 已知内容块已全部订阅：若页目录还有更早页，先订阅上一页，页基线到达后自动续订内容。
     if (deps.hasEarlierPages?.()) {
-      loading = true;
       pageLoading = true;
+      updateLoading();
       emitHistoryState();
       schedulePageTimeout();
       if (!(deps.requestEarlierPage?.() ?? false)) {
@@ -202,10 +260,82 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     return false;
   }
 
+  /** 向下补中间缺口；与 loadEarlier 对称，只取一批并等待基线。 */
+  function loadLaterInternal(docIds: readonly string[]): boolean {
+    if (loading) return false;
+    const plan = window.loadLater(docIds, deps.retainedDocs, SYNC_HISTORY_LOAD_BLOCKS, protectedDocs());
+    if (plan.retain.length === 0) {
+      emitHistoryState();
+      return false;
+    }
+    releaseContentDocs(plan.release);
+    for (const docId of plan.retain) pendingLaterDocs.add(docId);
+    updateLoading();
+    if (!retainAndSubscribe(plan.retain, "currentHistory", "pending")) {
+      window.restoreLater(plan.retain);
+      pendingLaterDocs.clear();
+      updateLoading();
+      emitHistoryState();
+      return false;
+    }
+    // 缺口块可能落在投影窗口之外；向下补一批的同时扩一档，保证加载结果立即可见。
+    deps.growProjectionWindow();
+    scheduleLaterTimeout();
+    emitHistoryState();
+    return true;
+  }
+
+  /**
+   * 回到最新：只定位目录末尾窗口，释放其余驻留块并等待缺口基线；不在本次恢复全部 later。
+   * 最新区间已全部有基线时立即就绪，避免无意义等待。
+   */
+  function returnToLatestInternal(docIds: readonly string[]): Promise<boolean> {
+    const latest = window.latestDocIds(docIds);
+    if (latest.length === 0) return Promise.resolve(false);
+    clearLatestTimer();
+    resolveLatest(false);
+    const plan = window.focusLatest(docIds, deps.retainedDocs, protectedDocs());
+    latestPendingDocs.clear();
+    releaseContentDocs(plan.release);
+    const missing = latest.filter((docId) => !basedDocs.has(docId));
+    if (missing.length === 0) {
+      updateLoading();
+      emitHistoryState();
+      return Promise.resolve(true);
+    }
+    const ready = new Promise<boolean>((resolve) => {
+      latestWaiter = resolve;
+    });
+    for (const docId of missing) latestPendingDocs.add(docId);
+    updateLoading();
+    if (!retainAndSubscribe(missing, "currentHistory", "pending")) {
+      latestPendingDocs.clear();
+      updateLoading();
+      resolveLatest(false);
+      emitHistoryState();
+      return Promise.resolve(false);
+    }
+    scheduleLatestTimeout();
+    emitHistoryState();
+    return ready;
+  }
+
+  function scheduleLatestTimeout(): void {
+    clearLatestTimer();
+    latestTimer = setTimeout(() => {
+      latestTimer = null;
+      if (latestPendingDocs.size === 0) return;
+      latestPendingDocs.clear();
+      updateLoading();
+      emitHistoryState();
+      resolveLatest(false);
+    }, HISTORY_BASE_TIMEOUT_MS);
+  }
+
   function applyDirectory(docIds: readonly string[], initial: boolean): void {
     // 等待 DOC_BASE 的历史批次仍在 retainedDocs 中，但此刻释放会让后续基线帧被忽略、
     // 加载只能超时；目录刷新必须把这些块排除在释放候选之外。
-    const plan = window.plan(docIds, deps.retainedDocs, initial, pendingHistoryDocs);
+    const plan = window.plan(docIds, deps.retainedDocs, initial, protectedDocs());
     // 先释放再订阅：释放只作用于已驻留块，订阅批次不会与释放批次重叠。
     releaseContentDocs(plan.release);
     if (plan.retain.length > 0 && !retainAndSubscribe(plan.retain, "currentHistory", initial ? "initial" : "pending")) {
@@ -218,9 +348,15 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     reset(): void {
       clearTimer();
       clearPageTimer();
+      clearLaterTimer();
+      clearLatestTimer();
       pageLoading = false;
       window.reset();
       pendingHistoryDocs.clear();
+      pendingLaterDocs.clear();
+      basedDocs.clear();
+      latestPendingDocs.clear();
+      resolveLatest(false);
       loading = false;
       emitHistoryState(0);
     },
@@ -231,9 +367,12 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
       return loadEarlierInternal(docIds);
     },
 
-    returnToLatest(docIds): void {
-      window.returnToLatest();
-      applyDirectory(docIds, false);
+    loadLater(docIds): boolean {
+      return loadLaterInternal(docIds);
+    },
+
+    returnToLatest(docIds): Promise<boolean> {
+      return returnToLatestInternal(docIds);
     },
 
     notePageLoaded(docIds): boolean {
@@ -248,13 +387,19 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
     },
 
     noteBase(docId): void {
-      const wasPending = pendingHistoryDocs.delete(docId);
+      const wasEarlier = pendingHistoryDocs.delete(docId);
+      const wasLater = pendingLaterDocs.delete(docId);
+      const wasLatest = latestPendingDocs.delete(docId);
+      basedDocs.add(docId);
       // 超时后迟到的基线也要从更早集合移除，否则按钮会在该块已到达后继续提示可加载。
       window.consumeEarlier([docId]);
-      if (wasPending && pendingHistoryDocs.size === 0) {
-        clearTimer();
-        loading = false;
+      if (wasEarlier && pendingHistoryDocs.size === 0) clearTimer();
+      if (wasLater && pendingLaterDocs.size === 0) clearLaterTimer();
+      if (wasLatest && latestPendingDocs.size === 0) {
+        clearLatestTimer();
+        resolveLatest(true);
       }
+      updateLoading();
       emitHistoryState();
     },
 
@@ -264,6 +409,10 @@ export function createSyncContentSubscription(deps: SyncContentSubscriptionDeps)
 
     hasEarlier(): boolean {
       return window.hasEarlier() || deps.hiddenMessageCount() > 0 || pageLoading || (deps.hasEarlierPages?.() ?? false);
+    },
+
+    hasLater(): boolean {
+      return window.hasLater() || pendingLaterDocs.size > 0;
     },
   };
 }

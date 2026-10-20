@@ -60,6 +60,12 @@ function createHarness() {
     loadEarlier(): boolean {
       return false;
     },
+    loadLater(): boolean {
+      return false;
+    },
+    returnToLatest(): Promise<boolean> {
+      return Promise.resolve(false);
+    },
     notePageLoaded(docIds): boolean {
       pageLoads.push([...docIds]);
       return false;
@@ -67,6 +73,9 @@ function createHarness() {
     noteBase(): void {},
     refreshHistoryState(): void {},
     hasEarlier(): boolean {
+      return false;
+    },
+    hasLater(): boolean {
       return false;
     },
   };

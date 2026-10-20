@@ -36,25 +36,34 @@ export interface SyncChatState {
   readonly legacyFallback: boolean;
   readonly history: SyncChatHistoryState;
   /**
-   * 发送新消息时回到最新位置：重新订阅被历史加载淘汰的块，实时内容不再中断。
+   * 发送新消息时回到最新位置：有界定位最新区间并等待基线完成，实时内容不再中断。
    * 快照状态可缺省，hook 返回时总会提供实现。
    */
-  readonly returnToLatestHistory?: () => void;
+  readonly returnToLatestHistory?: () => Promise<boolean>;
 }
 
 export interface SyncChatHistoryState {
   /** 仍有更早内容可加载（未订阅块或投影窗口外条目）。 */
   readonly hasEarlier: boolean;
-  /** 更早块基线尚在途。 */
+  /** 中间有被淘汰的较新区间尚未加载；UI 据此提供“补齐缺口”入口。 */
+  readonly hasLater: boolean;
+  /** 历史块基线尚在途。 */
   readonly loading: boolean;
   /** 显式加载一批更早内容；返回是否产生了新工作。 */
   readonly loadEarlier: () => boolean;
+  /** 显式补齐中间缺口；返回是否产生了新工作。 */
+  readonly loadLater: () => boolean;
+  /** 回到最新并等待基线完成；超时返回 false。 */
+  readonly returnToLatest: () => Promise<boolean>;
 }
 
 const NO_HISTORY: SyncChatHistoryState = Object.freeze({
   hasEarlier: false,
+  hasLater: false,
   loading: false,
   loadEarlier: () => false,
+  loadLater: () => false,
+  returnToLatest: () => Promise.resolve(false),
 });
 
 const EMPTY_STATE: SyncChatState = {
@@ -62,7 +71,7 @@ const EMPTY_STATE: SyncChatState = {
   projection: emptySyncChatProjection(),
   legacyFallback: false,
   history: NO_HISTORY,
-  returnToLatestHistory: () => {},
+  returnToLatestHistory: () => Promise.resolve(false),
 };
 
 /**
@@ -198,8 +207,9 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
   ]);
 
   const loadEarlier = useCallback((): boolean => sessionRef.current?.loadEarlierHistory() ?? false, []);
-  const returnToLatestHistory = useCallback((): void => {
-    sessionRef.current?.returnToLatestHistory();
+  const loadLater = useCallback((): boolean => sessionRef.current?.loadLaterHistory() ?? false, []);
+  const returnToLatestHistory = useCallback((): Promise<boolean> => {
+    return sessionRef.current?.returnToLatestHistory() ?? Promise.resolve(false);
   }, []);
 
   if (snapshot.scope !== scope) return EMPTY_STATE;
@@ -208,8 +218,11 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     returnToLatestHistory,
     history: {
       hasEarlier: snapshot.state.connection.hasEarlierHistory,
+      hasLater: snapshot.state.connection.hasLaterHistory,
       loading: snapshot.state.connection.historyLoading,
       loadEarlier,
+      loadLater,
+      returnToLatest: returnToLatestHistory,
     },
   };
 }

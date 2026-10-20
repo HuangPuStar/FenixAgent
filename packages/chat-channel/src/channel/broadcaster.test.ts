@@ -94,7 +94,8 @@ describe("YjsBroadcaster 二进制帧（SP-A4）", () => {
     const doc = new Y.Doc();
     doc.getMap("chat").set("title", "snapshot");
 
-    broadcaster.sendSnapshot(ws, doc, "chat:rcs-1");
+    const delivery = broadcaster.sendSnapshot(ws, doc, "chat:rcs-1");
+    expect(delivery.ok).toBe(true);
 
     const frames = decodeUpdateFrames(ws);
     expect(frames).toHaveLength(1);
@@ -120,6 +121,24 @@ describe("YjsBroadcaster 二进制帧（SP-A4）", () => {
     const restored = new Y.Doc();
     Y.applyUpdate(restored, frames[0]!.update);
     expect(restored.getMap("chat").get("title")).toBe("current generation");
+  });
+
+  // 超过单帧上限的快照/差量必须返回拒绝（含原因与尺寸），调用方不得把未送达当作同步完成。
+  test("reports oversized snapshot and diff instead of silently dropping them", () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const doc = new Y.Doc();
+    doc.getText("big").insert(0, "x".repeat(9 * 1024 * 1024));
+
+    const snapshot = broadcaster.sendSnapshot(ws, doc, "chat:rcs-1", "gen-big");
+    expect(snapshot.ok).toBe(false);
+    expect(snapshot.reason).toBe("too_large");
+    expect(snapshot.bytes).toBeGreaterThan(snapshot.limitBytes);
+
+    const diff = broadcaster.sendDiff(ws, doc, "chat:rcs-1", "gen-big", new Uint8Array());
+    expect(diff.ok).toBe(false);
+    expect(diff.reason).toBe("too_large");
+    expect(decodeUpdateFrames(ws)).toHaveLength(0);
   });
 
   // 合法 state-vector 应只返回客户端缺失的差量，并保持双方合并后状态一致。

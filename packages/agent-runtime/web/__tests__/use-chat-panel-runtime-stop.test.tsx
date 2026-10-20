@@ -135,4 +135,32 @@ describe("useChatPanelRuntime 主动停止实例", () => {
     // 卸载触发 disconnect()，清掉退避重连定时器，避免测试结束后再建连接。
     harness.unmount();
   });
+
+  // 历史快照未送达时暴露缺失文档；重试必须重建旧 Yjs 连接，而不是只改本地状态。
+  test("历史同步未完成：保留缺失文档并可通过重试重建连接", () => {
+    installFakeWebSocket();
+    const harness = renderRuntime();
+    const socket = FakeWebSocket.instances[0];
+    expect(socket).toBeDefined();
+
+    act(() => {
+      socket?.onmessage?.({
+        data: JSON.stringify({
+          type: "yjs:history-incomplete",
+          docs: ["chat:rcs-1"],
+          reason: "too_large",
+          bytes: 9_440_845,
+          limitBytes: 8 * 1024 * 1024,
+        }),
+      } as MessageEvent);
+    });
+    expect(harness.latest.current?.historyRecovery?.docs).toEqual(["chat:rcs-1"]);
+    expect(harness.latest.current?.historyRecovery?.bytes).toBe(9_440_845);
+
+    act(() => harness.latest.current?.retryHistoryRecovery());
+    expect(harness.latest.current?.historyRecovery).toBeNull();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    harness.unmount();
+  });
 });

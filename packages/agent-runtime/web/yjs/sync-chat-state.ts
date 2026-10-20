@@ -25,6 +25,8 @@ export interface SyncChatConnectionState {
   readonly subscribedDocIds: readonly string[];
   /** 是否有更早内容可加载（未订阅的历史块，或已订阅但仍被投影窗口挡住的条目）。 */
   readonly hasEarlierHistory: boolean;
+  /** 是否存在中间缺口：向历史翻页时被淘汰、尚未重新加载的较新区间。 */
+  readonly hasLaterHistory: boolean;
   /** “加载更早”的历史块基线尚在途；UI 据此禁用重复点击。 */
   readonly historyLoading: boolean;
   readonly reconnectAttempt: number;
@@ -39,6 +41,7 @@ export const INITIAL_SYNC_CHAT_STATE: SyncChatConnectionState = Object.freeze({
   manifest: null,
   subscribedDocIds: Object.freeze([]),
   hasEarlierHistory: false,
+  hasLaterHistory: false,
   historyLoading: false,
   reconnectAttempt: 0,
   hydrating: false,
@@ -73,6 +76,11 @@ export interface SyncChatSession {
   state(): SyncChatConnectionState;
   /** 显式加载一批更早历史；没有可加载内容时返回 false，不产生网络请求。 */
   loadEarlierHistory(): boolean;
-  /** 回到最新位置：重新订阅被历史加载淘汰的块。 */
-  returnToLatestHistory(): void;
+  /** 显式补齐中间缺口（向下阅读）；没有可加载内容时返回 false。 */
+  loadLaterHistory(): boolean;
+  /**
+   * 回到最新位置：有界定位最新区间并等待基线完成后再返回。
+   * 发送新消息与用户显式“回到最新”共用；超时返回 false。
+   */
+  returnToLatestHistory(): Promise<boolean>;
 }

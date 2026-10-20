@@ -20,7 +20,7 @@ import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback, useRef } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
@@ -131,11 +131,14 @@ function ChatPanelView({
   // 错误卡片的标题键 `chat.components.messageBubble.turnError` 归 ui-components 命名空间（卡片本体也在
   // 那个包里），故单独取一本字典；`tUi` 连同 error 一起喂给 `PublicErrorCard`。
   const { t: tUi } = useTranslation(UI_COMPONENTS_NS);
+  const historyNoticeRef = useRef<HTMLDivElement | null>(null);
   const {
     authState,
     connectionState,
     classifiedError,
     actionError,
+    historyRecovery,
+    retryHistoryRecovery,
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,
@@ -158,6 +161,26 @@ function ChatPanelView({
 
   // 面板端口（纯化后由 ui-components 的 chat 外壳注入；实现与来源见 chat-panel-ports.tsx）
   const ports = useChatPanelPorts({ agentId, sessionId, loadPeriTaskDetail: hostPorts.loadPeriTaskDetail });
+
+  /**
+   * 回到最新：数据层先有界定位最新区间并等基线完成，再滚动消息区。
+   *
+   * ChatView 自带的底部按钮只做 DOM 滚动（ui-components 不在本批改动面），因此由本层补齐
+   * “先恢复最新区间、后滚动”的顺序；消息区根节点带 `role="log"`，就近从面板祖先查找。
+   */
+  const handleReturnToLatest = useCallback(async () => {
+    const ready = await syncChat.history.returnToLatest();
+    if (!ready) return;
+    const panelRoot =
+      historyNoticeRef.current?.closest(".chat-main-column") ??
+      historyNoticeRef.current?.parentElement?.parentElement ??
+      null;
+    const scroller = panelRoot?.querySelector<HTMLElement>('[role="log"]') ?? null;
+    if (scroller === null) return;
+    requestAnimationFrame(() => {
+      scroller.scrollTop = scroller.scrollHeight;
+    });
+  }, [syncChat.history.returnToLatest]);
 
   // 未选中实例 → 欢迎空状态（图标 64px 淡描边：`opacity-30` 原在宿主的 `.agent-welcome-empty svg` 上）
   if (!agentId) {
@@ -237,6 +260,52 @@ function ChatPanelView({
           sessionState.agentPublicError.id !== actionError?.error.id && (
             <PublicErrorCard error={sessionState.agentPublicError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />
           )}
+        {historyRecovery && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-4">
+            <div
+              role="alert"
+              className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-sm"
+            >
+              <span>{t("historyRecoveryIncomplete", { count: historyRecovery.docs.length })}</span>
+              <button
+                type="button"
+                className="rounded border border-destructive/30 px-2 py-0.5 font-medium hover:bg-destructive/10"
+                onClick={retryHistoryRecovery}
+              >
+                {t("historyRecoveryRetry")}
+              </button>
+            </div>
+          </div>
+        )}
+        {syncChat.history.hasLater && (
+          <div className="pointer-events-none absolute inset-x-0 top-16 z-30 flex justify-center px-4">
+            <div
+              ref={historyNoticeRef}
+              role="status"
+              className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-text-secondary shadow-sm"
+            >
+              <span>{t("historyGap")}</span>
+              <button
+                type="button"
+                className="rounded border border-border-subtle px-2 py-0.5 font-medium text-text-primary hover:bg-surface-2 disabled:opacity-50"
+                disabled={syncChat.history.loading}
+                onClick={() => syncChat.history.loadLater()}
+              >
+                {t("historyGapLoad")}
+              </button>
+              <button
+                type="button"
+                className="rounded px-2 py-0.5 font-medium text-brand hover:bg-surface-2 disabled:opacity-50"
+                disabled={syncChat.history.loading}
+                onClick={() => {
+                  void handleReturnToLatest();
+                }}
+              >
+                {t("historyGapLatest")}
+              </button>
+            </div>
+          </div>
+        )}
         <ACPMain
           agentId={agentId}
           hideSidebar={hideSidebar}

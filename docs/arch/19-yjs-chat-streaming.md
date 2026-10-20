@@ -219,6 +219,8 @@ classDiagram
 
 Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
 
+旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。
+
 **新旧协议分流**：`/acp/yjs/:agentId` 的 query `chatSync=1` 声明该连接只消费新同步协议（`syncOnly`）。这类连接跳过上述 `yjs:sync-request`/全量快照握手，不接收旧 Chat/Session Doc 广播，也忽略 legacy `state-vector`；文本 JSON Action（会话切换、取消、权限响应等）与同步 runtime ingress 保持不变。无该标记或 `chatSync=0` 的连接逐字节保持旧全量链路，同一会话允许多个新旧标签页共存。前端旧 Yjs WS 与同步 WS 是两个独立连接：旧连接继续承载动作与非文本文档能力，展示层在同步投影已含文本时只退役未配对的纯文本旧消息，工具、计划、思考与错误仍由旧 Doc 补充。旧通道的删除条件见 `docs/design/2026-10-16-fenix-message-sync-implementation-notes.md` §3.8（需新投影覆盖非文本、持久化跨重启与真实历史契约）。
 
 **建立失败的终态关闭码**（`channel/gateway.ts`，客户端据此决定是否自动重连）：
