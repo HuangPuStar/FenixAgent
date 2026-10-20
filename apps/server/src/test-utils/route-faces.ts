@@ -45,6 +45,7 @@ import {
 } from "@fenix/resource-sandbox/server";
 import { createApiSkillsRoutes, createWebSkillsConfigRoutes } from "@fenix/resource-skill/server";
 import { createWebTasksV2Routes } from "@fenix/resource-task/server";
+import { createApiSystemTicketsRoutes } from "@fenix/resource-tickets/server";
 import {
   createApiWorkflowRoutes,
   createWebWorkflowCustomToolsRoutes,
@@ -162,5 +163,8 @@ export function createTestApiRoutes(): readonly AnyElysia[] {
     createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
     createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
     createApiWorkflowRoutes({ authGuardPlugin }),
+    // tickets 在 `ce-tickets.json` 的 `resources` 里排最后（`dependsOn: ["git"]`，git 也排在末尾），
+    // 收集顺序因此在 workflow 之后；默认 profile 不装配它，这条贡献不会出现在 ce.json 的产物里。
+    createApiSystemTicketsRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
   ];
 }

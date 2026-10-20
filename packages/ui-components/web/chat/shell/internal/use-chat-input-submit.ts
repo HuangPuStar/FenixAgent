@@ -12,6 +12,9 @@
  *   quoteContext / 场景提示词 / 上下文队列 unshift → 无活跃会话时缓存 prompt 并等待会话就绪（10s 超时保护）。
  * - 源在提交路径上还会写 `userCancelledRef.current = false`；该 ref 在源与包内均为只写状态（无读取点），
  *   故未随提交链路搬入 hook，留在 `ChatInterface` 内维护。
+ * - 待发送队列（peri steer）：`queueSubmitActive` 为真时，本次提交不改走 `onSendPrompt`，而是经
+ *   `onEnqueuePrompt` 入队（`enqueue_user_input`）——入队不打断当前执行。缓存等待会话就绪的那条
+ *   路径同样记住「这次是入队」，会话就绪后按原意图派发，不会把入队意图丢成直发。
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -19,10 +22,18 @@ import { prepareImageContent } from "../../composer/chat-image-content";
 import type { CompressImage } from "../../composer/composer-file-processing";
 import { buildPromptText } from "../../composer/composer-prompt";
 import type { ChatInputMessage, ContentBlock } from "../../types";
-import type { ChatNotice } from "../chat-interface-types";
+import type { ChatNotice, SessionCreateReceipt } from "../chat-interface-types";
 
 /** 待发送缓存超时（毫秒）：会话创建失败时清理缓存，避免 prompt 永久挂起。 */
 const PENDING_SEND_TIMEOUT_MS = 10_000;
+
+/** 待会话就绪的缓存提交：内容块 + 这次提交的意图（直发 / 入队）。 */
+interface PendingSend {
+  blocks: ContentBlock[];
+  /** 用户原始草稿正文（入队时随请求带上，供取回回填） */
+  draftText: string;
+  enqueue: boolean;
+}
 
 /** useChatInputSubmit 选项。 */
 export interface ChatInputSubmitOptions {
@@ -30,6 +41,20 @@ export interface ChatInputSubmitOptions {
   isLoading: boolean;
   /** YJS 投影的活跃会话 ID；为空时提交会先创建会话 */
   activeSessionId: string | null;
+  /**
+   * 本次提交是否走待发送队列（入队）。
+   *
+   * 由渲染层按队列可用性与会话状态给出：`队列可用 && (turn 运行中 || 队列非空)`。为假时保持
+   * 原行为——直发 `send_prompt`，且 turn 运行中不提交。
+   */
+  queueSubmitActive?: boolean;
+  /**
+   * 入队出口（`enqueue_user_input`）；返回是否真正写入 socket。
+   *
+   * 未提供时 `queueSubmitActive` 视为不可用（回退直发），避免出现「按了发送什么也没发生」；
+   * 未送达的提示与重试由队列区承载（见 `./use-user-input-queue-actions`），此处不重复提示。
+   */
+  onEnqueuePrompt?: (content: ContentBlock[], originalDraft: string) => boolean;
   /** 场景提示词（仅首条消息注入，隐藏不显示） */
   scenePrompt?: string;
   /** 上下文队列作用域（传给 `flushContext`） */
@@ -45,7 +70,8 @@ export interface ChatInputSubmitOptions {
    * 体积仍可能越过 2MiB 阈值，缺这一步就失去源实现「发出图片 ≤2MiB」的保证。未提供时不压缩。
    */
   compressImage?: CompressImage;
-  onCreateSession: () => Promise<void>;
+  /** 懒创建会话；返回值是创建回执（本提交链路不消费，见 `ChatInterfaceProps.onCreateSession`） */
+  onCreateSession: () => SessionCreateReceipt | Promise<SessionCreateReceipt>;
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
   /** 图片准备失败时的提示出口（替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
@@ -65,6 +91,8 @@ export interface ChatInputSubmitOptions {
 export function useChatInputSubmit({
   isLoading,
   activeSessionId,
+  queueSubmitActive,
+  onEnqueuePrompt,
   scenePrompt,
   contextScope,
   flushContext,
@@ -79,7 +107,7 @@ export function useChatInputSubmit({
   // 场景提示词是否已注入（仅首条消息）
   const scenePromptUsedRef = useRef(false);
   // 缓存用户首次发送的 prompt，等 activeSessionId 就绪后自动发送
-  const pendingSendRef = useRef<ContentBlock[] | null>(null);
+  const pendingSendRef = useRef<PendingSend | null>(null);
   const pendingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset scene prompt flag when session changes
@@ -104,16 +132,20 @@ export function useChatInputSubmit({
 
   // 当 activeSessionId 从无到有时（首次发送自动创建会话），发送缓存的 prompt
   useEffect(() => {
-    if (activeSessionId && pendingSendRef.current) {
-      const blocks = pendingSendRef.current;
-      clearPendingSend();
-      onSendPrompt(blocks).catch((err) => {
-        console.error("[ChatInterface] Pending send failed:", err);
-        // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
-        onNotice?.({ level: "error", message: sendPromptFailedMessage });
-      });
+    const pending = pendingSendRef.current;
+    if (!activeSessionId || !pending) return;
+    clearPendingSend();
+    // 按提交时的意图派发：入队提交在会话就绪后仍是入队（否则「运行中提交」会变成打断式直发）
+    if (pending.enqueue) {
+      onEnqueuePrompt?.(pending.blocks, pending.draftText);
+      return;
     }
-  }, [activeSessionId, onSendPrompt, onNotice, sendPromptFailedMessage, clearPendingSend]);
+    onSendPrompt(pending.blocks).catch((err) => {
+      console.error("[ChatInterface] Pending send failed:", err);
+      // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
+      onNotice?.({ level: "error", message: sendPromptFailedMessage });
+    });
+  }, [activeSessionId, onSendPrompt, onEnqueuePrompt, onNotice, sendPromptFailedMessage, clearPendingSend]);
 
   // 组件卸载或 contextKey 变化时清理 pending prompt（避免内存泄漏 / 错误发送）
   useEffect(() => {
@@ -131,7 +163,10 @@ export function useChatInputSubmit({
         .map((attachment) => `@./${attachment.path}`);
       const text = [draftText, ...attachmentReferences].filter(Boolean).join("\n");
 
-      if ((!text && images.length === 0) || isLoading) return;
+      // 队列可用时，turn 运行中也要收下这次提交（入队，不打断执行）；
+      // 队列不可用时保持原行为：运行中直接忽略提交。
+      const enqueueIntent = Boolean(queueSubmitActive && onEnqueuePrompt);
+      if ((!text && images.length === 0) || (isLoading && !enqueueIntent)) return;
 
       const contentBlocks: ContentBlock[] = [];
 
@@ -174,7 +209,7 @@ export function useChatInputSubmit({
       if (!activeSessionId) {
         // 已有待发送的 prompt 在等待中，忽略重复提交
         if (pendingSendRef.current) return;
-        pendingSendRef.current = contentBlocks;
+        pendingSendRef.current = { blocks: contentBlocks, draftText, enqueue: enqueueIntent };
         // 超时保护：若会话创建失败则清理缓存，避免 prompt 永久挂起
         pendingSendTimerRef.current = setTimeout(() => {
           if (pendingSendRef.current) {
@@ -192,6 +227,13 @@ export function useChatInputSubmit({
         return;
       }
 
+      // 入队：把这条提交挂到待发送队列，当前执行不被打断（派发由队列区的单发/全发决定）。
+      // 队列区自身承载失败提示与重试入口，此处不重复提示。
+      if (enqueueIntent) {
+        onEnqueuePrompt?.(contentBlocks, draftText);
+        return;
+      }
+
       try {
         await onSendPrompt(contentBlocks);
       } catch (error) {
@@ -202,6 +244,8 @@ export function useChatInputSubmit({
     [
       isLoading,
       onSendPrompt,
+      onEnqueuePrompt,
+      queueSubmitActive,
       scenePrompt,
       activeSessionId,
       onCreateSession,

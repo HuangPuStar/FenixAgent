@@ -35,6 +35,7 @@ import { classifyToolSemantic } from "../lib/tool-semantic";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
+import { UserInputQueuePanel } from "../panels/user-input-queue-panel";
 import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import { useChatMessageWindow } from "../view/chat-render-window";
@@ -42,6 +43,8 @@ import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-t
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
 import { useComposerInputBridge } from "./internal/use-composer-input-bridge";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
+import { usePeriTaskSelection } from "./internal/use-peri-task-selection";
+import { useUserInputQueueActions } from "./internal/use-user-input-queue-actions";
 
 /** 稳定空数组：会话未加载时窗口 hook 不应因新的空数组引用重复计算。 */
 const EMPTY_STRUCTURED_MESSAGES: StructuredMessage[] = [];
@@ -86,6 +89,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onLoadEarlierHistory,
     flushContext,
     onNotice,
+    supportsUserInputQueue,
+    userInputQueue,
+    onEnqueueUserInput,
+    onDispatchUserInputs,
+    onTakebackUserInput,
     onStatsChange,
     onOpenWorkspaceFile,
     uploadFiles,
@@ -143,10 +151,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Notify parent when active session changes
   // （源同时把会话 ID 写入 localStorage 键 `acp_last_session_<agentId>`；该持久化属宿主策略，已移出组件，
   //   宿主可在此回调中自行落盘。）
+  const notifiedSessionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeSessionId) {
+    // 回调引用变化不是会话创建；否则父组件重渲染会把待归属意图消费到旧会话。
+    if (activeSessionId && activeSessionId !== notifiedSessionRef.current) {
+      notifiedSessionRef.current = activeSessionId;
       onSessionCreated?.(activeSessionId);
     }
+    if (!activeSessionId) notifiedSessionRef.current = null;
   }, [activeSessionId, onSessionCreated]);
 
   // ── Core operations ──
@@ -161,10 +173,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     setPromptUsage(null);
   }, []);
 
-  const requestCreateSession = useCallback(async () => {
-    await onCreateSession();
-  }, [onCreateSession]);
-
+  /**
+   * 请求创建会话并归一化结果：`onCreateSession` 的返回值是本页本次创建的**回执**
+   * （宿主未升级时可能是 `void`，按「无回执」处理）。
+   *
+   * 失败与成功都返回 `null`/session id 而不是抛错：调用方（`newSession`）需要的是
+   * 「这次创建有没有确认结果」，异常在这里收敛成提示 + `console.error` 诊断上下文。
+   */
+  const requestCreateSession = useCallback(async (): Promise<string | null> => {
+    try {
+      const receipt = await onCreateSession();
+      return typeof receipt === "string" && receipt.length > 0 ? receipt : null;
+    } catch (error) {
+      console.error("[ChatInterface] 新建会话失败", error);
+      onNotice?.({ level: "error", message: t("chat.components.chatInterface.sessionCreateFailed") });
+      return null;
+    }
+  }, [onCreateSession, onNotice, t]);
   // ── 输入岛外部事件的包内环路 ──
   // 空状态建议提示词与消息「引用」由 ChatView 产生、ChatComposer 消费，源实现经 window
   // 自定义事件回环；这里把包内事件并入宿主注入的订阅通道（见 `./internal/use-composer-input-bridge`）。
@@ -182,10 +207,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [emitComposerInput],
   );
 
+  // ── 待发送队列（peri steer）──
+  // 队列只读 Session Doc 投影（不另建本地队列状态）：三个操作发出控制面 action，界面等 Y.Doc 回推收敛。
+  // 「取回」把草稿交回输入岛：输入岛非空时不覆盖（判定在 ChatComposer 侧，那里才读得到半受控草稿）。
+  const queue = useUserInputQueueActions({
+    supportsUserInputQueue,
+    queue: userInputQueue,
+    onEnqueueUserInput,
+    onDispatchUserInputs,
+    onTakebackUserInput,
+    restoreDraft: useCallback(
+      (text: string) => emitComposerInput({ type: "restore-draft", prompt: text }),
+      [emitComposerInput],
+    ),
+    actionFailedMessage: t("chat.components.userInputQueue.actionFailed"),
+  });
+
+  // 提交分流（peri steer 交互 1）：队列可用且（turn 运行中 或 队列非空）时，提交入队而不是直发——
+  // 运行中提交不打断当前执行；队列非空时也不越过队首直接插队。
+  const queueSubmitActive = queue.enabled && (isLoading || queue.hasItems);
+
   // 提交链路（归一化 ContentBlock[] + 无会话时缓存 prompt 并等待就绪）
   const handleChatInputSubmit = useChatInputSubmit({
     isLoading,
     activeSessionId,
+    queueSubmitActive,
+    onEnqueuePrompt: queue.enqueue,
     scenePrompt,
     contextScope: composerContextScope,
     flushContext,
@@ -224,23 +271,24 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // =============================================================================
 
   // Creates a new session by clearing current state and calling new_session
-  const handleNewSession = useCallback(() => {
+  const handleNewSession = useCallback(async (): Promise<string | null> => {
     // 正在等待 agent 响应时，阻止新建会话以避免状态混乱
     if (isLoading) {
       onNotice?.({ level: "warning", message: t("chat.components.acpMain.chatBusy") });
-      return;
+      return null;
     }
 
     resetThreadState();
     // Create new session — YJS will update chatState.activeSessionId
-    requestCreateSession();
+    return requestCreateSession();
   }, [isLoading, resetThreadState, requestCreateSession, t, onNotice]);
 
   // 当 contextKey 变化时自动开始新会话（仅在 contextKey 有值且发生变化时触发）
   const contextKeyRef = useRef(contextKey);
   useEffect(() => {
     if (contextKey !== undefined && contextKeyRef.current !== undefined && contextKeyRef.current !== contextKey) {
-      handleNewSession();
+      // 自动新建不消费回执（没有归属要绑定）；失败提示已在 handleNewSession 内收敛。
+      void handleNewSession();
     }
     contextKeyRef.current = contextKey;
   }, [contextKey, handleNewSession]);
@@ -323,8 +371,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     sessionState,
   }));
 
-  // 详情抽屉的选中态由本组件持有，抽屉内容由宿主经 `renderPeriTaskDetail` 渲染（见文件头与 README「收录范围」）。
-  const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
+  // 按会话与 taskId 读取最新投影，不持有会在流式更新后陈旧的任务对象。
+  const taskScope = `${rcsSessionId ?? ""}:${activeSessionId ?? ""}`;
+  const { task: selectedPeriTask, select, close } = usePeriTaskSelection(taskScope, periTasks);
 
   return (
     <div className="chat-interface-root flex h-full min-w-0 min-h-0 flex-1 overflow-hidden">
@@ -332,9 +381,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           就近取档到本行工具类与根节点 `.chat-interface-root`（两侧同名 `chat-layout.css` 同批清空删除）。 */}
       <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
-        {renderPeriTaskDetail && selectedPeriTask
-          ? renderPeriTaskDetail(selectedPeriTask, () => setSelectedPeriTask(null))
-          : null}
+        {renderPeriTaskDetail && selectedPeriTask ? renderPeriTaskDetail(selectedPeriTask, close) : null}
 
         {/* Chat messages — unified ChatView */}
         <ChatView
@@ -383,10 +430,29 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                   tasksLoaded={periTasksLoaded}
                   reconnecting={Boolean(connectionState && connectionState !== "connected")}
                   changedFiles={changedFiles}
-                  onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
+                  onOpenTask={renderPeriTaskDetail ? select : undefined}
                   onPreviewFile={
                     agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
                   }
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 待发送队列（peri steer）：贴在输入岛上方，与状态面板同宽同台阶。
+              有失败提示时即使队列为空也要渲染——否则「第一次入队就没送达」的提示无处可见。 */}
+          {queue.enabled && (queue.hasItems || queue.failure) && (
+            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                <UserInputQueuePanel
+                  items={queue.items}
+                  queuedIds={queue.queuedIds}
+                  canDispatch={queue.canDispatch}
+                  canTakeback={queue.canTakeback}
+                  onDispatch={queue.dispatch}
+                  onTakeback={queue.takeback}
+                  failure={queue.failure}
+                  onDismissFailure={queue.dismissFailure}
                 />
               </div>
             </div>
@@ -417,6 +483,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 isLoading={isLoading}
                 onInterrupt={handleCancel}
                 canCancel={canCancel}
+                queueSubmitEnabled={queue.enabled}
                 disabled={!sessionReady}
                 placeholder={
                   sessionReady

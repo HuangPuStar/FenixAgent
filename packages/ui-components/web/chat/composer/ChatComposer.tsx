@@ -84,6 +84,14 @@ export interface ChatComposerProps extends ComposerStateOptions {
   onInterrupt?: () => void;
   /** turn 是否可中断（accepting/running/awaiting_permission），仅驱动停止按钮；默认 false */
   canCancel?: boolean;
+  /**
+   * 运行中提交是否走「入队」（待发送队列可用时由 `ChatInterface` 传入）。
+   *
+   * 为真时 turn 运行期间同时给出「入队」发送按钮与停止按钮：Enter 与发送按钮照常提交，由提交链路
+   * 把它挂进待发送队列（不打断当前执行），停止按钮仍是唯一的中断入口。为假时保持原行为——
+   * 运行中发送按钮整体让位给停止按钮，Enter 不提交。
+   */
+  queueSubmitEnabled?: boolean;
   disabled?: boolean;
   placeholder?: string;
   /** 是否支持图片上传 */
@@ -128,6 +136,7 @@ export function ChatComposer({
   isLoading = false,
   onInterrupt,
   canCancel = false,
+  queueSubmitEnabled = false,
   disabled = false,
   placeholder,
   supportsImages = false,
@@ -218,6 +227,7 @@ export function ChatComposer({
     mcps,
     disabled,
     isLoading,
+    queueSubmitEnabled,
     supportsImages,
     uploadFiles,
     compressImage,
@@ -368,6 +378,8 @@ export function ChatComposer({
             canCancel={canCancel}
             isCancelling={isCancelling}
             canSend={Boolean(canSend)}
+            // 运行中仍可提交（入队）时，发送按钮与停止按钮并列，而不是被停止按钮顶掉
+            showQueueSubmit={queueSubmitEnabled && isLoading && !disabled}
             supportsAttachments={supportsImages || Boolean(uploadFiles)}
             fileInputRef={fileInputRef}
             onFileSelect={() => void handlers.handleFileSelect()}

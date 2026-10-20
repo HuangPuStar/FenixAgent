@@ -21,6 +21,7 @@ import { createPublicError, type PublicErrorType, serializePublicErrorLog } from
 import {
   type NormalizedEvent,
   type NormalizedEventType,
+  PERI_AGENT_EVENT_DONE_METHOD,
   type PublicError,
   SESSION_BOUND_NOTIFICATION_METHODS,
   TURN_TERMINAL_STATUSES,
@@ -28,10 +29,14 @@ import {
 } from "../schema";
 import type { DocManager } from "../state";
 import { CALLBACK_ENTRY_PREFIX } from "../state/chat-writer";
+import { resetUserInputQueue, setUserInputQueueEnabled } from "../state/user-input-queue";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
-import { failPendingSessionMutations } from "./session-mutation";
+import { failPendingSessionMutations, settleSessionCreation } from "./session-mutation";
+import { failPendingUserInputRequests } from "./user-input-pending";
+import { ensureUserInputQueueSnapshot } from "./user-input-queue-action";
+import { readUserInputQueueCapability, settleUserInputQueueResponse } from "./user-input-queue-wire";
 
 /** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
 function agentRuntimeError(
@@ -317,7 +322,11 @@ export class RelayEventHandler {
     // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
     let normalized = normalizeAcpMessage(raw, msgType);
     const periMethod = rpcCheck?.method;
-    if (periMethod === "peri/agent_event" || periMethod === "peri/unstable_event") {
+    if (
+      periMethod === "peri/agent_event" ||
+      periMethod === "peri/unstable_event" ||
+      periMethod === PERI_AGENT_EVENT_DONE_METHOD
+    ) {
       this.dependencies.log?.(
         `[YJS-FE] Peri notification normalized: method=${periMethod} result=${normalized?.type ?? "ignored"}`,
       );
@@ -360,6 +369,9 @@ export class RelayEventHandler {
   private async handleRelayClosed(shared: SharedRelay): Promise<void> {
     const { registry } = this.dependencies;
     failPendingSessionMutations(shared);
+    // 在途 steer 请求一并收敛为失败：Agent 会话已死，回执不可达，继续等待只会让前端
+    // 停在"发送中"（同 failPendingSessionMutations 语义，不重试）。
+    failPendingUserInputRequests(shared);
     // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
     // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
     // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
@@ -507,6 +519,18 @@ export class RelayEventHandler {
     // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
     // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
     if (payload?.connected === false) {
+      // Agent 断连（可能伴随重启）：清空补拉标记，使重连后的就绪 status 重新补拉一次
+      // 队列快照（新进程的 generation 与旧投影不同，不补拉会让用户带着旧代号重试并被
+      // -32602 拒绝一次）。能力位保留，等下一次就绪 status 覆盖。
+      shared.userInputSnapshotSessionId = null;
+      // 断连换代：peri 队列不跨进程持久，旧 items/generation 必须清空——否则在新快照
+      // 到达前前端仍渲染旧代号的「可点」待发送项，点击必被 -32602 拒绝。enabled 同步
+      // 置 false 回退旧路径，由下一次就绪 status 的能力协商重新打开。
+      const sessionDoc = this.dependencies.docManager.getSessionYdoc(shared.rcsSessionId);
+      if (sessionDoc) {
+        resetUserInputQueue(sessionDoc);
+        setUserInputQueueEnabled(sessionDoc, false);
+      }
       this.dispatch(shared, {
         type: "turn_interrupted",
         update: {},
@@ -528,6 +552,21 @@ export class RelayEventHandler {
     // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
     // 初始化完成后的就绪 status 再同步。
     if (hasCapabilities) {
+      // 待发送队列能力协商：peri 把 initialize 的 clientCapabilities._meta 原样回显到
+      // agentCapabilities._meta（acp-link 已声明 `peri.userInputQueue`）。协商成功才补拉
+      // 一次快照（读操作）并把投影 enabled 置真；未协商保持 false，读取侧回退旧路径
+      // （直发 prompt，即"运行中提交 = 打断"），补拉失败也只置 enabled=false，不影响会话可用性。
+      const queueCapable = readUserInputQueueCapability(capabilities);
+      shared.userInputQueueCapability = queueCapable;
+      if (queueCapable) {
+        // 不 await：status 处理不得被队列 RPC 往返阻塞（超时上限见 DEFAULT_USER_INPUT_REQUEST_TIMEOUT_MS）
+        void ensureUserInputQueueSnapshot({
+          shared,
+          sessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
+          docManager: this.dependencies.docManager,
+          reportError: this.dependencies.reportError,
+        });
+      }
       this.dispatch(shared, {
         type: "agent_status",
         update: {
@@ -584,8 +623,29 @@ export class RelayEventHandler {
   ): Promise<void> {
     const { registry } = this.dependencies;
     const rpcId = rpcCheck.id as number | string | null | undefined;
+    // steer（session/input/*）响应优先认领：响应帧只有 id，登记表按请求出口寻址，与
+    // prompt / 会话同步的 id 空间互斥。命中即完全接管——队列回执（snapshot 的 result
+    // 同样带 sessionId，receipt 亦含快照）不得落入会话同步分支，否则活跃会话被回绑、
+    // 投影 sessionId 被改写。投影写入（成功快照 / 过期代号的换代校正）在认领点完成。
+    if (
+      rpcId !== undefined &&
+      rpcId !== null &&
+      settleUserInputQueueResponse({
+        shared,
+        rpcId,
+        rpcCheck,
+        docManager: this.dependencies.docManager,
+        reportError: this.dependencies.reportError,
+        log: this.dependencies.log,
+      })
+    ) {
+      return;
+    }
     if (rpcId !== undefined && rpcId !== null) {
       shared.pendingSessionMutations?.get(rpcId)?.(!rpcCheck.error && "result" in rpcCheck);
+      // 被 Agent 拒绝的 create_session 以空回执结算：调用方据此走「无回执」分支（不写归属），
+      // 而不是把这次创建当成成功后再去猜哪个会话是新建的。
+      if (rpcCheck.error) settleSessionCreation(shared, rpcId, null);
     }
 
     // error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
@@ -668,6 +728,16 @@ export class RelayEventHandler {
       }
       const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
       if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
+      // create_session 回执在**新鲜度校验之前**结算：会话确实被 Agent 创建出来了，即便这份
+      // 响应已被后续切换取代（不提交投影），创建者仍应拿到自己那次创建的 session id——
+      // 否则发起方只能等到超时并放弃归属写入，用户的「在该分组新建」被静默丢掉。
+      if (syncRequested && rpcId !== undefined && rpcId !== null) {
+        settleSessionCreation(
+          shared,
+          rpcId,
+          typeof newSessionId === "string" && newSessionId.length > 0 ? newSessionId : null,
+        );
+      }
       // 会话同步响应的新鲜度校验（连续切换/响应乱序）：用户在响应到达前已切到别的
       // 会话时，旧响应不得提交——否则 registry 活跃会话回绑到旧 ACP session、投影
       // sessionId 被改写，当前会话的回放与流式增量随后被绑定校验全部丢弃（消息区空白）。
@@ -694,6 +764,15 @@ export class RelayEventHandler {
         this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
         registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
           entry.acpSessionId = newSessionId;
+        });
+        // ACP 会话绑定完成即补拉一次队列快照：status 可能早于 create/load 响应到达
+        // （那时无 acpSessionId，补拉条件不成立），能力已协商时在此补上。同一 ACP
+        // 会话只拉一次，换会话按新 sessionId 重新补拉（队列不跨会话）。
+        void ensureUserInputQueueSnapshot({
+          shared,
+          sessionId: newSessionId,
+          docManager: this.dependencies.docManager,
+          reportError: this.dependencies.reportError,
         });
         // 会话元信息（sessionId/status）经规范化事件写入 Session Doc session；
         // model/mode 来自 session/new、load 响应（acp-link 已从 configOptions 提取

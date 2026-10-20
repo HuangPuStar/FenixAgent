@@ -25,9 +25,16 @@ import { applyPermissionExpiration, applyPermissionResolution } from "../state/p
 import { expireQuestion, respondQuestion } from "../state/question";
 import type { ProjectionDocs } from "../types";
 import { CommandCoordinator } from "./command-coordinator";
-import type { SyncConnection } from "./connection-types";
+import type { SyncConnection, UserInputRequestHandle, UserInputRequestKind } from "./connection-types";
 import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
-import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
+import {
+  type ActionSinks,
+  type Command,
+  CommandExecutionError,
+  type CommandOutcome,
+  isUserInputQueueAction,
+} from "./types";
+import { executeUserInputQueueAction, validateUserInputQueueAction } from "./user-input-queue-action";
 
 /** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
 const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
@@ -35,6 +42,11 @@ const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
 /** 连接在会话频道上的绑定上下文（多标签页共享同一 rcsSessionId 的频道状态） */
 export interface SessionConnection {
   userId: string;
+  /**
+   * 环境属主（gateway 从已认证 environment 注入）。与 userId 不一致 = 只读观察者：
+   * steer 等会话写操作必须拒绝，缺省（旧装配）时不判定。
+   */
+  ownerUserId?: string;
   agentId: string;
   instanceId: string;
   rcsSessionId: string;
@@ -44,6 +56,8 @@ export interface SessionConnection {
   /** 是否已执行过至少一次 load_session（区分重连首次加载 vs 后续正常切换） */
   sessionLoaded: boolean;
   workspacePath: string | null;
+  /** 客户端最近一次 keep_alive 时间戳（宿主侧连接活动观测用，控制面不读取） */
+  lastClientKeepalive?: number;
   /** 发送 RPC 到 relay（测试中为记录型 fake） */
   sendToRelay: (message: Record<string, unknown>) => Promise<void> | void;
   /** JSON-RPC id 递增计数器，保证同一 instance 下生成唯一 id */
@@ -66,6 +80,21 @@ export interface SessionConnection {
   awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
   /** 新同步协议连接级运行时；仅用于后端单写用户消息。 */
   syncConnection?: SyncConnection;
+  /**
+   * 登记在途 steer（session/input/*）请求：JSON-RPC 响应帧只有 id 无 method，
+   * relay 的队列响应分支按登记收敛（prompt / 会话同步同理各按自己的登记寻址）。
+   * 可选注入，宿主由 gateway 提供；未注入时 steer action 以 AGENT_UNAVAILABLE 失败。
+   */
+  awaitUserInputRequest?: (
+    rpcId: number | string,
+    kind: UserInputRequestKind,
+    timeoutMs: number,
+  ) => UserInputRequestHandle | undefined;
+  /**
+   * 登记 create_session 的创建回执：resolve 为 Agent 实际创建出的 session id
+   * （超时 / relay 断开 / agent 拒绝时为 null）。可选注入，宿主由 gateway 提供。
+   */
+  awaitSessionCreation?: (rpcId: number | string) => { completed: Promise<string | null>; cancel: () => void };
 }
 
 export interface SessionChannelDependencies {
@@ -85,6 +114,8 @@ export interface SessionChannelDependencies {
   cancelTimeoutMs?: number;
   /** 权限请求超时（毫秒）：超过 expiresAt 未响应时迁移 pending → expired，默认 5min */
   permissionTimeoutMs?: number;
+  /** steer（session/input/*）等待 peri 回执的上限（毫秒），缺省 DEFAULT_USER_INPUT_REQUEST_TIMEOUT_MS */
+  userInputQueueTimeoutMs?: number;
 }
 
 export class SessionChannel {
@@ -179,10 +210,8 @@ export class SessionChannel {
   private validateAction(command: Command): void {
     // 会话存在性以 docManager 内存 Doc 为准（频道已建立 = 实例会话存活），
     // 仅注册过连接不构成会话（disposeRcsSession 后同 ID 重发必须拒绝）。
-    if (
-      !this.activeConnections.has(command.rcsSessionId) ||
-      !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)
-    ) {
+    const connection = this.activeConnections.get(command.rcsSessionId);
+    if (!connection || !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)) {
       throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
     }
     if (command.type === "load_session") {
@@ -191,6 +220,8 @@ export class SessionChannel {
         throw new CommandExecutionError("ACTION.INVALID_STATE");
       }
     }
+    // steer 三类 Action：属主身份 + payload 形状在认证/配额之前失败（不发 accepted）
+    if (isUserInputQueueAction(command.type)) validateUserInputQueueAction(connection, command);
   }
 
   private getProjectionVersion(rcsSessionId: string): number | null {
@@ -263,6 +294,20 @@ export class SessionChannel {
       if (!this.respondQuestionViaCas(connection, command.payload)) return {};
     }
 
+    // steer 三类 Action 走独立执行器（sessionId / generation / commandId 全部服务端权威，
+    // 自带 rpcId 与登记，故必须在通用 rpcId 分配之前返回；本路径不写 Chat Doc）
+    if (isUserInputQueueAction(command.type)) {
+      return executeUserInputQueueAction(
+        {
+          docManager,
+          reportError: this.dependencies.reportError,
+          timeoutMs: this.dependencies.userInputQueueTimeoutMs,
+        },
+        connection,
+        command,
+      );
+    }
+
     // cwd 由服务端根据已认证 environment 注入（translateSimpleAction 内完成），
     // 浏览器传入的 workspace/cwd 不可信（CLAUDE.md 不变量）。
     // rpcId 单独捕获：会话同步请求需用同一 id 登记，等待响应按 id 校验
@@ -275,6 +320,11 @@ export class SessionChannel {
     if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
       connection.registerSessionSyncRpcId?.(rpc.id as number | string);
     }
+    // 创建回执登记必须在 sendToRelay **之前**：Agent 可能在登记前就把 session/new 结果回传，
+    // 晚登记的调用方会白白等到超时。只有 create_session 需要回执（load/resume 的会话 id
+    // 由调用方自己给定，见 KNOWN_ACTION_TYPES 语义）。
+    const createReceipt =
+      command.type === "create_session" ? connection.awaitSessionCreation?.(rpc.id as number | string) : undefined;
     // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/
     // -32603），relay 按 id 匹配登记收敛 turn_failed，否则 turn 永久卡 accepting、
     // 前端 loading 永不消失（R1：发送后完全无输出、仅刷新恢复）。
@@ -290,6 +340,8 @@ export class SessionChannel {
     try {
       await connection.sendToRelay(rpc);
     } catch (err) {
+      // 回执登记随发送失败一起撤销：否则它会留到超时才退场，而这次创建根本没发出去。
+      createReceipt?.cancel();
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
       throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
@@ -305,6 +357,15 @@ export class SessionChannel {
         content: null,
       });
       this.armCancelTimeout(connection.rcsSessionId);
+    }
+
+    // create_session 等 Agent 的 session/new 结果：committed Ack 必须携带真实 session id，
+    // 否则调用方拿不到「本次创建出了哪个会话」的回执，只能靠共享投影变化去猜（多标签页下会猜错）。
+    // 拿不到回执（超时 / relay 断开 / agent 拒绝）时不带 sessionId 提交——命令已发出，
+    // 失败面由调用方按「无回执」处理，不把未确认的创建当成成功回执。
+    if (createReceipt) {
+      const createdSessionId = await createReceipt.completed;
+      return createdSessionId ? { turnId, sessionId: createdSessionId } : { turnId };
     }
 
     return { turnId };

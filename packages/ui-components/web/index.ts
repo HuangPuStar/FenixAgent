@@ -35,6 +35,7 @@ export * from "./chat/lib/extract-changed-files";
 export * from "./chat/lib/session-actions";
 export * from "./chat/lib/session-grouping";
 export * from "./chat/lib/simplify-model-display-name";
+export * from "./chat/lib/space-grouping";
 export * from "./chat/lib/strip-html-tags";
 export * from "./chat/lib/token-stats";
 export * from "./chat/lib/tool-call-utils";

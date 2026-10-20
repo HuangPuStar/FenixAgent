@@ -17,6 +17,7 @@
         "@fenix/chat-channel": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/core": "workspace:*",
+        "@fenix/git": "workspace:*",
         "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
@@ -39,6 +40,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-tickets": "workspace:*",
         "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
@@ -166,6 +168,7 @@
         "@fenix/ccb": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/core": "workspace:*",
+        "@fenix/git": "workspace:*",
         "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-management": "workspace:*",
@@ -185,6 +188,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-tickets": "workspace:*",
         "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
@@ -219,6 +223,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-tickets": "workspace:*",
         "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
         "@fenix/ui-components": "workspace:*",
@@ -312,6 +317,15 @@
         "acp-link": "workspace:*",
         "ioredis": "^5.10.1",
         "yjs": "^13.6.21",
+      },
+    },
+    "packages/common/git": {
+      "name": "@fenix/git",
+      "dependencies": {
+        "@fenix/logger": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "zod": "^4.4.3",
       },
     },
     "packages/core": {
@@ -830,6 +844,35 @@
         "react-i18next": "^17.0.8",
       },
     },
+    "packages/resources/tickets": {
+      "name": "@fenix/resource-tickets",
+      "dependencies": {
+        "@fenix/git": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
+        "@fenix/web-runtime": "workspace:*",
+        "ahooks": "^3.9.7",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "gray-matter": "^4.0.3",
+        "js-yaml": "^5.1.0",
+        "lucide-react": "^1.16.0",
+        "react-hook-form": "^7.76.0",
+        "sonner": "^2.0.7",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
+      "peerDependencies": {
+        "@tanstack/react-router": "^1.170.7",
+        "i18next": "^26.2.0",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+        "react-i18next": "^17.0.8",
+      },
+    },
     "packages/resources/trace": {
       "name": "@fenix/resource-trace",
       "dependencies": {
@@ -903,6 +946,8 @@
       "name": "@fenix/ui-components",
       "version": "0.1.0",
       "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/utilities": "^3.2.2",
         "@hookform/resolvers": "^5.4.0",
         "@open-file-viewer/core": "^0.1.17",
         "@open-file-viewer/react": "^0.1.17",
@@ -1336,6 +1381,8 @@
 
     "@fenix/core": ["@fenix/core@workspace:packages/core"],
 
+    "@fenix/git": ["@fenix/git@workspace:packages/common/git"],
+
     "@fenix/identity": ["@fenix/identity@workspace:packages/platform/identity"],
 
     "@fenix/logger": ["@fenix/logger@workspace:packages/logger"],
@@ -1381,6 +1428,8 @@
     "@fenix/resource-skill": ["@fenix/resource-skill@workspace:packages/resources/skill"],
 
     "@fenix/resource-task": ["@fenix/resource-task@workspace:packages/resources/task"],
+
+    "@fenix/resource-tickets": ["@fenix/resource-tickets@workspace:packages/resources/tickets"],
 
     "@fenix/resource-trace": ["@fenix/resource-trace@workspace:packages/resources/trace"],
 

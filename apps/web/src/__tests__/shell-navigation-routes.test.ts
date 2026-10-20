@@ -8,7 +8,7 @@
 //
 // 本文件把这条不变量钉在**两端真实产物**上，不另写「id → 路径」映射表：
 //
-// - 导航侧：`ASSEMBLED_NAV_GROUPS`（`apps/generated/web-contributions.ts` 经 Shell 装配的结果，
+// - 导航侧：`ASSEMBLED_NAVIGATION`（`apps/generated/web-contributions.ts` 经 Shell 装配的结果，
 //   与侧栏渲染同源）；
 // - 路由侧：`routeTree`（Vite 插件由 `routes/` 生成、应用实际使用的那张路由表）；
 // - 路径拼法：与 `DefaultAppShell` 共用 `panelRoutePath`，避免第三处再写一遍前缀。
@@ -18,7 +18,7 @@ import { describe, expect, test } from "bun:test";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 
 import { routeTree } from "../routeTree.gen";
-import { ASSEMBLED_NAV_GROUPS, PANEL_ROUTE_PREFIX, panelRoutePath } from "../shell/shell-navigation";
+import { ASSEMBLED_NAVIGATION, PANEL_ROUTE_PREFIX, panelRoutePath } from "../shell/shell-navigation";
 
 /**
  * 应用实际使用的路由表，只换掉两处与浏览器相关的东西：history 用内存实现（`createRouter` 要有 history
@@ -34,7 +34,11 @@ const router = createRouter({
 });
 
 /** 侧栏全部导航项的 id（分组归属与组内顺序由 `shell-navigation.test.ts` 守着，这里只关心可达性）。 */
-const NAV_IDS = ASSEMBLED_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.id));
+const NAV_IDS = [
+  ...ASSEMBLED_NAVIGATION.groups.flatMap((group) => group.items.map((item) => item.id)),
+  // 底栏入口同样是导航项（`id` 即路由目标），漏掉它这条守卫就管不到工单页。
+  ...ASSEMBLED_NAVIGATION.footer.map((entry) => entry.id),
+];
 
 describe("侧栏导航 id 与路由目标", () => {
   // 业务意图：侧栏每一项点下去都必须落到真实路由上。id 打错、或路由壳被改名/删除时在装配期就失败，

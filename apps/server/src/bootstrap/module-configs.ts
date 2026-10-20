@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
+
+import { type GitModuleConfig, parseGitModuleConfig } from "@fenix/git/server";
 import type { AppConfig } from "../config";
 import { getBaseUrl } from "../config";
 import { readDeclaredEnv, type ServerEnv } from "../env-loader";
@@ -70,6 +74,40 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       fileWsIdentityStrict: config.fileWsIdentityStrict,
       fileEventsMaxClients: config.fileEventsMaxClients,
     },
+    // 公共 Git 模块配置：连接拓扑放在**文件**里（路径由 env 给出），宿主只做「读文件 + 转发两枚凭据」，
+    // URL 与 token 引用的合法性、默认超时/并发都由 `parseGitModuleConfig` 判定——宿主不解释连接语义。
+    //
+    // 未配置（键不存在或空串）时投影空连接且**不读文件**：`buildModuleConfigs` 对所有装配都执行，默认装配
+    // （ce.json）不含 git，`AOS_GIT_*` 根本不在 env 里；「启用了 git 却没配置」由 `createGitModule()` 在
+    // 产生副作用前报错，本块不替它判定（它不感知 profile）。
+    //
+    // 配置了路径但读不出来（非绝对路径、文件缺失、JSON 非法）则**启动期直接失败**，不降级成「没有连接」：
+    // 静默降级会让部署带着空连接集启动，直到第一次调用才暴露。
+    git: ((): GitModuleConfig => {
+      const configFilePath = readDeclaredEnv<string | undefined>(env, "AOS_GIT_CONFIG_FILE");
+      if (!configFilePath) return { connections: [], secretValues: {} };
+      // 相对路径会随启动 cwd 漂移，profile/配置类输入一律要求绝对路径（与 RCS_ASSEMBLY_PROFILE_PATH 同口径）。
+      if (!isAbsolute(configFilePath)) {
+        throw new Error(`AOS_GIT_CONFIG_FILE 必须是绝对路径: ${configFilePath}`);
+      }
+
+      // 两枚凭据只在配置了连接时才读：git 未进入装配 profile 时这两个键不在 env 里，读到的会是 undefined。
+      // 配置里的 `{env:NAME}` 引用只能指向 manifest 已声明的键，因此这里只投影这两个。
+      const secretValues = {
+        AOS_GIT_PROVISION_TOKEN: readDeclaredEnv<string>(env, "AOS_GIT_PROVISION_TOKEN"),
+        AOS_GIT_SERVICE_TOKEN: readDeclaredEnv<string>(env, "AOS_GIT_SERVICE_TOKEN"),
+      };
+
+      let source: string;
+      try {
+        source = readFileSync(configFilePath, "utf8");
+      } catch (error) {
+        // 只带路径：文件内容可能含凭据引用，不进错误消息与日志。
+        throw new Error(`AOS_GIT_CONFIG_FILE 读取失败: ${configFilePath}`, { cause: error });
+      }
+
+      return parseGitModuleConfig(source, secretValues);
+    })(),
     // 知识模块配置：RAGFlow 三项与 Gotenberg 地址。四个键的 schema 都归 knowledge 模块声明
     // （1.7 C 块），宿主 `buildConfig` 只做透传，两个地址类键的空串归一已在声明侧完成。
     knowledge: {

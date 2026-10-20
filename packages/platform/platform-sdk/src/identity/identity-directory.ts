@@ -50,6 +50,18 @@ export interface OrganizationMemberSummary {
   readonly role: MemberRole;
 }
 
+/**
+ * 组织成员的收窄投影：只含 ID 与姓名。
+ *
+ * 与 {@link OrganizationMemberSummary} 的差别是刻意的：后者服务系统人员树（内部管理面），本投影服务
+ * 「可指派成员」这类业务下拉框，调用方只需要标识与展示名。邮箱、手机号、账号状态因此**不进入**本投影，
+ * 需要它们的系统管理视图必须继续走 `searchUsers` / `listOrganizationsWithMembers`。
+ */
+export interface OrganizationMemberRef {
+  readonly userId: string;
+  readonly name: string;
+}
+
 /** 组织及其成员投影。 */
 export interface OrganizationWithMembers {
   readonly id: string;
@@ -135,4 +147,20 @@ export interface IdentityDirectory {
   resolveSystemTenant(): Promise<SystemTenant>;
   /** 读取全部组织及其成员，用于系统管理视图。 */
   listOrganizationsWithMembers(): Promise<readonly OrganizationWithMembers[]>;
+  /**
+   * 分页读取组织成员（按姓名、用户 ID 升序）；`keyword` 非空白时对姓名做模糊匹配。
+   *
+   * 用途是需要「当前组织成员」候选集的业务表单（例如工单负责人的下拉框）：结果只含 ID 与姓名，
+   * 不接受按邮箱、手机号或账号状态的检索，也不返回这些字段。
+   *
+   * `page` 从 1 起，`pageSize` 取值 1..100——上限是契约的一部分，调用方必须按它校验外部输入，
+   * 不要用它做全量导出。`total` 是同一谓词下的总数（含未返回的页），跨组织查询返回空页而不是报错，
+   * 组织隔离由实现者拼进 SQL。
+   */
+  listOrganizationMembers(input: {
+    readonly organizationId: string;
+    readonly keyword?: string;
+    readonly page: number;
+    readonly pageSize: number;
+  }): Promise<{ readonly items: readonly OrganizationMemberRef[]; readonly total: number }>;
 }

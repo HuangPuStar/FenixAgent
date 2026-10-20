@@ -8,7 +8,7 @@ import zh from "../i18n/locales/zh/common.json";
 import type { AssemblyCapabilitiesState } from "../shell/AssemblyCapabilitiesProvider";
 import { AssemblyRouteState } from "../shell/AssemblyRouteGate";
 import { assemblyHiddenTabs, enabledWebIds, routeWebId } from "../shell/assembly-capabilities";
-import { ASSEMBLED_NAV_GROUPS, filterNavGroups } from "../shell/shell-navigation";
+import { ASSEMBLED_NAVIGATION, filterNavGroups } from "../shell/shell-navigation";
 
 const i18n = createInstance();
 await i18n.init({ lng: "zh", resources: { zh: { common: zh } }, defaultNS: "common", initAsync: false });
@@ -35,7 +35,7 @@ function renderPath(path: string, state: Partial<AssemblyCapabilitiesState> = {}
 // 同一份服务端 fixture 在浏览器收窄 workflow，而 hiddenTabs 仍按导航项 ID 叠加。
 test("装配关闭 workflow 与隐藏偏好叠加，其他入口和顺序不变", () => {
   const groups = filterNavGroups(
-    [...ASSEMBLED_NAV_GROUPS],
+    [...ASSEMBLED_NAVIGATION.groups],
     ["skills", ...assemblyHiddenTabs(enabledWebIds(fixture.web))],
   );
   const ids = groups.flatMap((group) => group.items.map((item) => item.id));
@@ -43,9 +43,9 @@ test("装配关闭 workflow 与隐藏偏好叠加，其他入口和顺序不变"
   expect(ids).not.toContain("skills");
   expect(ids).toContain("agents");
   expect(ids).toEqual(
-    ASSEMBLED_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.id)).filter(
-      (id) => !["workflow", "skills"].includes(id),
-    ),
+    ASSEMBLED_NAVIGATION.groups
+      .flatMap((group) => group.items.map((item) => item.id))
+      .filter((id) => !["workflow", "skills"].includes(id)),
   );
 });
 

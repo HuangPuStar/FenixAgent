@@ -1,0 +1,206 @@
+{
+  "admin": {
+    "nav": "All tickets",
+    "title": "Tickets across all organizations",
+    "subtitle": "Platform admin view: review and handle tickets across organizations",
+    "loadFailedTitle": "Ticket list failed to load",
+    "detailLoadFailedTitle": "Ticket detail failed to load",
+    "emptyTitle": "No tickets on this platform yet",
+    "emptyHint": "Tickets appear here once an organization enables a ticket project and creates one.",
+    "searchPlaceholder": "Search ticket titles",
+    "columnOrganization": "Organization",
+    "columnRepository": "Repository",
+    "columnSyncedAt": "Synced",
+    "platformAuthor": "Platform administrator",
+    "pageIndicator": "Page {{page}} / {{totalPages}} ({{total}} in total)",
+    "gateTitle": "System administrator key",
+    "gateDescription": "Enter the system API key (RCS_SYSTEM_API_KEYS) to review and handle tickets of every organization. It is kept in this tab session only.",
+    "gateInputPlaceholder": "System API key",
+    "gateSubmit": "Unlock",
+    "gateAuthFailed": "The key is invalid or expired; enter it again."
+  },
+  "nav": { "tickets": "Tickets" },
+  "title": "Tickets",
+  "subtitle": "Create and review tickets in your organization",
+  "filter": {
+    "searchPlaceholder": "Search ticket titles",
+    "searchLabel": "Search tickets",
+    "stateLabel": "Ticket state",
+    "all": "All",
+    "open": "Open",
+    "closed": "Closed"
+  },
+  "action": {
+    "create": "New ticket",
+    "back": "Back to list",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "refresh": "Refresh",
+    "edit": "Edit",
+    "close": "Close ticket",
+    "reopen": "Reopen ticket"
+  },
+  "list": {
+    "columnNumber": "Number",
+    "columnTitle": "Title",
+    "columnState": "State",
+    "columnAuthor": "Author",
+    "columnAssignee": "Assignee",
+    "columnUpdatedAt": "Updated",
+    "unassigned": "Unassigned",
+    "loadedCount": "{{count}} loaded"
+  },
+  "create": {
+    "title": "New ticket",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Describe the problem in one line",
+    "bodyLabel": "Description",
+    "bodyPlaceholder": "Add steps to reproduce and the expected result (Markdown supported)",
+    "attachmentHint": "Uploaded automatically after creation; up to {{size}} per file, {{max}} files per selection. You can also paste images into the description",
+    "uploadTitle": "Uploading attachments",
+    "uploadHint": "Ticket created. You'll be taken to it once {{total}} attachment(s) finish uploading.",
+    "goToTicket": "Go to ticket",
+    "attachmentsNotUploaded": "The submission is being confirmed: attachments were not uploaded. Please add them from the ticket once it is confirmed."
+  },
+  "detail": {
+    "authorLabel": "Author",
+    "assigneeLabel": "Assignee",
+    "updatedAtLabel": "Updated",
+    "syncedAtLabel": "Synced {{time}}",
+    "labelsLabel": "Labels",
+    "externalAuthor": "External source / unverified",
+    "externalAuthorHint": "This content has no trusted local attribution record; the author is pending verification."
+  },
+  "labels": {
+    "none": "No labels",
+    "edit": "Edit labels",
+    "save": "Save labels",
+    "empty": "This project has no labels yet",
+    "maxCount": "Select up to 20 labels",
+    "loadFailed": "Failed to load project labels",
+    "saved": "Labels updated",
+    "failed": "Failed to update labels",
+    "accepted": "Label changes are being confirmed; refresh later to see the result"
+  },
+  "assignee": {
+    "label": "Assignee",
+    "searchPlaceholder": "Search members",
+    "empty": "No matching members",
+    "clear": "Clear assignee",
+    "loadMore": "Load more members",
+    "loadFailed": "Failed to load members",
+    "updated": "Assignee updated",
+    "failed": "Failed to update the assignee",
+    "accepted": "The assignment is being confirmed; refresh later to see the result"
+  },
+  "state": {
+    "closeTitle": "Close this ticket?",
+    "closeDescription": "Comments are still allowed after closing, and you can reopen it at any time.",
+    "closed": "Ticket closed",
+    "reopened": "Ticket reopened",
+    "failed": "Failed to update the ticket state",
+    "accepted": "The state change is being confirmed; refresh later to see the result"
+  },
+  "edit": {
+    "title": "Edit ticket",
+    "saved": "Ticket updated",
+    "failed": "Failed to update the ticket",
+    "accepted": "The change is being confirmed; refresh later to see the result"
+  },
+  "comment": {
+    "sectionTitle": "Comments",
+    "empty": "No comments yet",
+    "placeholder": "Write a comment (Markdown supported)",
+    "submit": "Post comment",
+    "created": "Comment posted",
+    "createFailed": "Failed to post the comment",
+    "createAccepted": "The comment is being confirmed; refresh later to see the result",
+    "loadFailed": "Failed to load comments",
+    "loadMore": "Load earlier comments",
+    "edit": "Edit comment",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "updated": "Comment updated",
+    "updateFailed": "Failed to update the comment",
+    "updateAccepted": "The comment change is being confirmed; refresh later to see the result"
+  },
+  "attachment": {
+    "sectionTitle": "Attachments",
+    "hint": "Up to {{size}} per file, {{max}} files per selection; you can also paste images into the input",
+    "empty": "No attachments yet",
+    "loadFailed": "Failed to load attachments",
+    "add": "Add attachment",
+    "queued": "Queued",
+    "uploading": "Uploading",
+    "cancel": "Cancel upload",
+    "retry": "Retry",
+    "remove": "Remove",
+    "uploaded": "Attachment uploaded",
+    "uploadFailed": "Attachment upload failed",
+    "accepted": "The attachment upload is being confirmed; refresh later to see the result",
+    "rejectedTooLarge": "{{name}} exceeds {{size}} and was not queued",
+    "rejectedTooMany": "At most {{max}} files per selection; the rest were not queued",
+    "rejectedEmpty": "{{name}} is empty and was not queued",
+    "preview": "Preview image",
+    "open": "Open {{name}}",
+    "closePreview": "Close preview",
+    "previewFailed": "Attachment preview failed to load",
+    "download": "Download",
+    "downloadFailed": "Failed to download the attachment"
+  },
+  "write": {
+    "uncertainTitle": "Submission pending confirmation",
+    "uncertainHint": "This ticket has an unconfirmed change; editing stays blocked until it is confirmed.",
+    "check": "Check result",
+    "checking": "Checking",
+    "checkFailed": "Failed to check the operation result",
+    "statusPending": "The operation is still in progress; check again later.",
+    "statusSucceeded": "The operation succeeded.",
+    "statusFailed": "The operation failed; you can submit again.",
+    "statusUncertain": "The result is still undetermined; check again later.",
+    "statusNeedsReview": "This operation needs manual review; contact your operator.",
+    "conflict": "Someone else changed this content; load the latest version and submit again.",
+    "reload": "Load latest",
+    "idempotencyConflict": "The submission state is inconsistent; please retry.",
+    "paused": "Ticket writes are currently unavailable (organization paused or upstream failure); try again later."
+  },
+  "loadState": {
+    "failed": "Failed to load tickets: {{message}}",
+    "unauthorizedTitle": "No access to tickets",
+    "unauthorizedHint": "Your account is not authorized to view this organization's tickets. Ask an organization admin for access.",
+    "notFoundTitle": "Ticket not found",
+    "notFoundHint": "This ticket does not exist, or you do not have access to it.",
+    "retry": "Retry"
+  },
+  "empty": {
+    "title": "No tickets yet",
+    "hint": "Create a ticket to start collaborating.",
+    "searchTitle": "No matching tickets",
+    "searchHint": "Try another keyword or clear the filters."
+  },
+  "disabled": {
+    "title": "Tickets are not enabled for this organization",
+    "hint": "Ask an organization admin to set up the default ticket project."
+  },
+  "sync": {
+    "degraded": "Ticket sync is degraded; the data may be out of date."
+  },
+  "status": { "open": "Open", "closed": "Closed" },
+  "permission": { "denied": "You do not have permission to perform this action; ask an organization admin." },
+  "validation": {
+    "titleRequired": "Enter a title",
+    "titleMax": "The title must be at most 200 characters",
+    "bodyRequired": "Enter a description",
+    "bodyMax": "The description must be at most 64 KiB",
+    "commentRequired": "Enter a comment",
+    "commentMax": "The comment must be at most 64 KiB"
+  },
+  "toast": {
+    "projectsLoadFailed": "Failed to load ticket projects",
+    "loadFailed": "Failed to load the ticket list",
+    "detailLoadFailed": "Failed to load the ticket",
+    "created": "Ticket created",
+    "createFailed": "Failed to create the ticket",
+    "createAccepted": "Submission is being confirmed; refresh later to see the result"
+  }
+}

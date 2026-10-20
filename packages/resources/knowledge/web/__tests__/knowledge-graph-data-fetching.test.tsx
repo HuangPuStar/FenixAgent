@@ -9,8 +9,9 @@
 // `useRequest` 的 `error` / `onError` 整条链路都在断言范围内（改成 mock 域模块会把 §5.2
 // 「`request()` 对失败不 throw」这条最易错的链路藏起来）。
 //
-// 为什么不覆盖「取数成功后的 G6 渲染」：成功路径会 `await import("@antv/g6")` 并在真实容器里建图，
-// 与本次改造无关；本文件止于「数据到手前的三态与取消」（失败 / 404 两条都不进 G6）。
+// G6 渲染不在本文件覆盖范围：成功路径会触发 `await import("@antv/g6")` 建图，happy-dom 没有真实画布、
+// 建图期必崩，故经 `registerKnowledgeGraphCanvasStub` 换成空替身（理由见该文件）。断言止于「数据到手」
+// 这一层——失败 / 404 两条本来就不进 G6，「空 nodes 对象」不渲染画布容器（nodeCount 为 0）、也不建图。
 //
 // 环境：happy-dom + 真实 i18next 实例（挂本包 en 字典，断言取自同一份 `TEXT`），
 // `react-i18next` 替身经本包共用的 `registerReactI18nextStub` 注册（理由见该文件）。
@@ -22,6 +23,7 @@ import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import { KNOWLEDGE_NS, knowledgeResources } from "../i18n";
+import { registerKnowledgeGraphCanvasStub } from "./knowledge-graph-canvas-stub";
 import { registerReactI18nextStub } from "./react-i18next-stub";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,6 +70,7 @@ void i18n.init({
 });
 
 registerReactI18nextStub(i18n);
+registerKnowledgeGraphCanvasStub();
 
 afterEach(() => {
   mock.restore();
@@ -277,8 +280,8 @@ describe("KnowledgeGraphPanel 取数失败与取消", () => {
     expect(container.textContent).not.toContain(`${TEXT.graph.nodes}:`);
   });
 
-  // 成功响应仍要把数据落到面板上（不渲染 G6：本环境的断言止于「数据到手」这一步的可见结果——
-  // 顶部出现节点 / 关系计数栏）。
+  // 成功响应仍要把数据落到面板上：G6 已由替身挡掉（真实建图在 happy-dom 无画布下会崩），
+  // 断言止于「数据到手」这一步的可见结果——顶部出现节点 / 关系计数栏。
   test("取数成功渲染节点与关系计数", async () => {
     const container = render(panel("kb-1"));
     await flushMicrotasks();

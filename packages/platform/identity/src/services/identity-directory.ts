@@ -2,6 +2,7 @@ import type {
   ApiSystemUserRecord,
   IdentityDirectory,
   MembershipSummary,
+  OrganizationMemberRef,
   OrganizationMemberSummary,
   OrganizationSummary,
   OrganizationWithMembers,
@@ -13,6 +14,7 @@ import { findOrganizationBasicInfoById, organizationRepo } from "../repositories
 import {
   findMembershipId,
   findMembershipRolesByUserId,
+  listOrganizationMemberPage,
   listOrganizationMemberRows,
 } from "../repositories/organization-member";
 import {
@@ -110,6 +112,20 @@ export function createIdentityDirectory(): IdentityDirectory {
         });
       }
       return [...organizations.values()];
+    },
+
+    async listOrganizationMembers(input: {
+      organizationId: string;
+      keyword?: string;
+      page: number;
+      pageSize: number;
+    }): Promise<{ items: readonly OrganizationMemberRef[]; total: number }> {
+      const page = await listOrganizationMemberPage(input);
+      // 逐字段复制而不是直接透传仓储行：契约投影只允许 `userId` 与 `name`，仓储新增列时这里不会顺带泄漏。
+      return {
+        items: page.items.map((row): OrganizationMemberRef => ({ userId: row.userId, name: row.name })),
+        total: page.total,
+      };
     },
   };
 }

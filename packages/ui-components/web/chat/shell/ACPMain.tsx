@@ -19,9 +19,18 @@ import type {
 } from "../types";
 import { ChatHeader } from "./ChatHeader";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
-import type { BoundMcpOption, ChatNotice, ChatStatsSummary } from "./chat-interface-types";
+import type {
+  BoundMcpOption,
+  ChatNotice,
+  ChatSpaceItem,
+  ChatStatsSummary,
+  SessionCreateReceipt,
+  UserInputQueueEnqueueRequest,
+  UserInputQueueView,
+} from "./chat-interface-types";
 import { AcpMainMobileSidebar } from "./internal/acp-main-mobile-sidebar";
 import { useAcpSessionBootstrap } from "./internal/use-acp-session-bootstrap";
+import { useSpaceActionRunner } from "./internal/use-space-action-runner";
 import { SessionSelectFallbackProvider, SidebarSessionList } from "./sidebar-session-list";
 
 /**
@@ -47,7 +56,7 @@ interface ACPMainProps {
   // ── 出站操作回调（替代 client 方法）──
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void> | void;
   onCancel: () => void;
-  onCreateSession: () => Promise<void> | void;
+  onCreateSession: () => SessionCreateReceipt | Promise<SessionCreateReceipt>;
   onLoadSession: (sessionId: string) => void;
   onResumeSession: (sessionId: string) => void;
   onRenameSession: (sessionId: string, title: string) => void;
@@ -108,6 +117,18 @@ interface ACPMainProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 运行时提示出口（透传给 ChatInterface，替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+
+  // ── 待发送队列（peri steer，透传给 ChatInterface；语义见 chat-interface-types）──
+  /** 能力位 `capabilities['peri.userInputQueue']` */
+  supportsUserInputQueue?: boolean;
+  /** Session Doc `userInputQueue` 投影 */
+  userInputQueue?: UserInputQueueView | null;
+  /** 入队（控制面 `enqueue_user_input`），返回是否真正写入 socket */
+  onEnqueueUserInput?: (request: UserInputQueueEnqueueRequest) => boolean;
+  /** 单发/全发（控制面 `dispatch_user_inputs`） */
+  onDispatchUserInputs?: (inputIds: string[]) => boolean;
+  /** 取回（控制面 `takeback_user_input`） */
+  onTakebackUserInput?: (inputId: string) => boolean;
   /**
    * 打开工作区文件（透传给 ChatInterface）：用户消息正文中的 `@./path` 引用与状态面板的
    * 变更文件行都用它。源实现经宿主的预览事件总线派发；未注入时点击文件不产生跳转。
@@ -115,6 +136,27 @@ interface ACPMainProps {
   onOpenWorkspaceFile?: (envId: string, path: string) => void;
   /** 会话统计摘要出口（透传给 ChatInterface，替代 window `chat:stats` 事件） */
   onStatsChange?: (stats: ChatStatsSummary) => void;
+
+  // ── space 分组（会话空间树）──
+  /**
+   * 空间列表（顺序即侧栏分组顺序）。**未注入时侧栏保持「今天/昨天/更早」时间分组**；
+   * 注入后第一组固定为「默认」（未归属会话），`[]` 与 `undefined` 语义不同（未接入 vs 已加载为空）。
+   */
+  spaces?: readonly ChatSpaceItem[];
+  /** space 数据是否已加载完成；false 且无会话时侧栏保持 loading 态 */
+  spacesLoaded?: boolean;
+  /** 分组列表加载失败（侧栏给可重试提示，不退回时间分组掩掉失败） */
+  spacesError?: boolean;
+  /** 重取分组列表（失败提示里的重试入口） */
+  onRefreshSpaces?: () => void;
+  /** 新建空间（名称已 trim）；space 数据的刷新由宿主负责 */
+  onCreateSpace?: (name: string) => void | Promise<void>;
+  /** 重命名空间（名称已 trim 且与原值不同）；刷新由宿主负责 */
+  onRenameSpace?: (spaceId: string, name: string) => void | Promise<void>;
+  /** 会话归属写入：组内新建会话成功后用新会话 id 调用，侧栏拖放落点也走它 */
+  onAssignSession?: (spaceId: string, sessionId: string) => void | Promise<void>;
+  /** 清除会话归属：会话删除成功后调用，侧栏把会话拖回「默认」分组时也走它 */
+  onUnassignSession?: (sessionId: string) => void | Promise<void>;
 }
 
 /**
@@ -175,8 +217,21 @@ export function ACPMain({
   renderFilePicker,
   subscribeExternal,
   onNotice,
+  supportsUserInputQueue,
+  userInputQueue,
+  onEnqueueUserInput,
+  onDispatchUserInputs,
+  onTakebackUserInput,
   onStatsChange,
   onOpenWorkspaceFile,
+  spaces,
+  spacesLoaded,
+  spacesError,
+  onRefreshSpaces,
+  onCreateSpace,
+  onRenameSpace,
+  onAssignSession,
+  onUnassignSession,
 }: ACPMainProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   // 侧边栏展开状态：受控/非受控双模（源实现直接读写 localStorage `acp-sidebar-open`，默认打开；
@@ -193,6 +248,7 @@ export function ACPMain({
   );
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const chatRef = useRef<ChatInterfaceHandle>(null);
+  const runSpaceAction = useSpaceActionRunner(onNotice);
 
   // 侧边栏状态的持久化（源为 localStorage `acp-sidebar-open`）已移交宿主：见 `onSidebarOpenChange`。
 
@@ -209,10 +265,12 @@ export function ACPMain({
     onCancel();
   }, [onCancel]);
 
-  const handleCreateSession = useCallback(async () => {
-    const result = onCreateSession();
-    if (result instanceof Promise) await result;
-  }, [onCreateSession]);
+  /**
+   * 普通新建（ChatHeader / 侧栏头部的 +）：本层不消费回执，但**必须原样透传**——
+   * `ChatInterface.newSession` 的返回值就是创建回执，在这里 `await` 后丢掉会让
+   * 组内新建（同一句柄的另一条调用路径）拿不到 session id。失败提示在 ChatInterface 内收敛。
+   */
+  const handleCreateSession = useCallback(async () => await onCreateSession(), [onCreateSession]);
 
   const handleRespondPermission = useCallback(
     (requestId: string, optionId: string | null) => {
@@ -239,6 +297,40 @@ export function ACPMain({
       onUserSessionSelected: closeMobileSidebar,
     });
 
+  // ── 组内新建会话：等 ChatInterface 的创建回执，拿到 session id 后才写归属 ──
+  const handleCreateSessionInSpace = useCallback(
+    async (spaceId: string | null) => {
+      const chat = chatRef.current;
+      if (!chat) return;
+      // 回执是本页本次创建的结果（服务端按 commandId 定向回给本连接）：只要它非空，
+      // 这个会话就是本次点击创建出来的，与「共享 active session 为什么变了」无关。
+      // 忙碌被拒 / 发送失败 / Agent 拒绝 / 超时时回执为 null，此时不写归属——
+      // 用户的意图没有落点，但绝不会有别的标签页的会话被算进这个分组。
+      const createdSessionId = await chat.newSession();
+      if (!createdSessionId) return;
+      // 默认分组（null）不产生归属写：新会话本来就落在默认分组。
+      if (spaceId === null) return;
+      runSpaceAction(
+        "chat.components.acpMain.assignSpaceFailed",
+        onAssignSession ? () => onAssignSession(spaceId, createdSessionId) : undefined,
+      );
+    },
+    [onAssignSession, runSpaceAction],
+  );
+
+  // 不带分组的普通新建（ChatHeader / 侧栏头部的 +）：不再需要清理归属意图——
+  // 归属只由上面这次调用的回执决定，不存在跨调用的待消费状态。
+  const handleNewSession = useCallback(() => {
+    void chatRef.current?.newSession();
+  }, []);
+
+  const handleSessionCreated = useCallback(
+    (sessionId: string) => {
+      setInitialActiveSessionId(sessionId);
+    },
+    [setInitialActiveSessionId],
+  );
+
   return (
     // 会话切换失败回退信号在根节点注入一次：侧边栏列表由桌面侧栏、移动端抽屉与 ChatHeader
     // 三处渲染（后两处是包内包装组件，本组件无法逐层透传新 prop），Context 覆盖全部实例。
@@ -253,7 +345,7 @@ export function ACPMain({
           <ChatHeader
             activeSessionId={initialActiveSessionId}
             onSelectSession={handleSelectSession}
-            onNewSession={() => chatRef.current?.newSession()}
+            onNewSession={handleNewSession}
             onToggleSidebar={
               !hideSidebar
                 ? () => {
@@ -278,13 +370,22 @@ export function ACPMain({
           <AcpMainMobileSidebar
             open={mobileSidebarOpen}
             onOpenChange={setMobileSidebarOpen}
-            onNewSession={() => chatRef.current?.newSession()}
+            onNewSession={handleNewSession}
             sessions={sessions}
             initialActiveSessionId={initialActiveSessionId}
             onSelectSession={handleSelectSession}
             onRenameSession={onRenameSession}
             onDeleteSession={onDeleteSession}
             onNotice={onNotice}
+            spaces={spaces}
+            spacesLoaded={spacesLoaded}
+            spacesError={spacesError}
+            onRefreshSpaces={onRefreshSpaces}
+            onCreateSpace={onCreateSpace}
+            onRenameSpace={onRenameSpace}
+            onAssignSession={onAssignSession}
+            onUnassignSession={onUnassignSession}
+            onCreateSessionInSpace={handleCreateSessionInSpace}
           />
         )}
 
@@ -302,7 +403,7 @@ export function ACPMain({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => chatRef.current?.newSession()}
+                    onClick={handleNewSession}
                     className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
                     title={t("chat.components.acpMain.newSession")}
                   >
@@ -326,6 +427,15 @@ export function ACPMain({
                   onRenameSession={onRenameSession}
                   onDeleteSession={onDeleteSession}
                   onNotice={onNotice}
+                  spaces={spaces}
+                  spacesLoaded={spacesLoaded}
+                  spacesError={spacesError}
+                  onRefreshSpaces={onRefreshSpaces}
+                  onCreateSpace={onCreateSpace}
+                  onRenameSpace={onRenameSpace}
+                  onAssignSession={onAssignSession}
+                  onUnassignSession={onUnassignSession}
+                  onCreateSessionInSpace={handleCreateSessionInSpace}
                 />
               </ScrollArea>
             </div>
@@ -344,7 +454,7 @@ export function ACPMain({
               detailSessionId={detailSessionId}
               scenePrompt={scenePrompt}
               contextKey={contextKey}
-              onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
+              onSessionCreated={handleSessionCreated}
               onPromptComplete={onPromptComplete}
               sessionState={sessionState}
               chatState={chatState}
@@ -377,6 +487,11 @@ export function ACPMain({
               renderFilePicker={renderFilePicker}
               subscribeExternal={subscribeExternal}
               onNotice={onNotice}
+              supportsUserInputQueue={supportsUserInputQueue}
+              userInputQueue={userInputQueue}
+              onEnqueueUserInput={onEnqueueUserInput}
+              onDispatchUserInputs={onDispatchUserInputs}
+              onTakebackUserInput={onTakebackUserInput}
               onStatsChange={onStatsChange}
               onOpenWorkspaceFile={onOpenWorkspaceFile}
             />

@@ -17,6 +17,7 @@ import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
+import { Route as AdminTicketsRouteImport } from "./routes/admin/tickets"
 import { Route as AdminSandboxRouteImport } from "./routes/admin/sandbox"
 import { Route as AdminPluginMarketRouteImport } from "./routes/admin/plugin-market"
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
@@ -26,6 +27,7 @@ import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
 import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views"
 import { Route as AgentPanelVerticalModelsRouteImport } from "./routes/agent/_panel/vertical-models"
+import { Route as AgentPanelTicketsRouteImport } from "./routes/agent/_panel/tickets"
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
@@ -44,6 +46,7 @@ import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agent
 import { Route as AgentPanelModelGatewayUsageProviderIdRouteImport } from "./routes/agent/_panel/model-gateway-usage.$providerId"
 import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
 import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
+import { Route as AgentPanelTicketsProjectIdNumberRouteImport } from "./routes/agent/_panel/tickets_.$projectId.$number"
 import { Route as AgentPanelChatAgentIdSessionIdRouteImport } from "./routes/agent/_panel/chat.$agentId_.$sessionId"
 
 const NoAccessRoute = NoAccessRouteImport.update({
@@ -85,6 +88,11 @@ const AgentAgentIdRoute = AgentAgentIdRouteImport.update({
   id: "/agent/$agentId",
   path: "/agent/$agentId",
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminTicketsRoute = AdminTicketsRouteImport.update({
+  id: "/tickets",
+  path: "/tickets",
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminSandboxRoute = AdminSandboxRouteImport.update({
   id: "/sandbox",
@@ -132,6 +140,11 @@ const AgentPanelVerticalModelsRoute =
     path: "/vertical-models",
     getParentRoute: () => AgentPanelRoute,
   } as any)
+const AgentPanelTicketsRoute = AgentPanelTicketsRouteImport.update({
+  id: "/tickets",
+  path: "/tickets",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
 const AgentPanelTasksRoute = AgentPanelTasksRouteImport.update({
   id: "/tasks",
   path: "/tasks",
@@ -225,6 +238,12 @@ const AgentPanelWorkflowIdEditRoute =
     path: "/workflow/$id/edit",
     getParentRoute: () => AgentPanelRoute,
   } as any)
+const AgentPanelTicketsProjectIdNumberRoute =
+  AgentPanelTicketsProjectIdNumberRouteImport.update({
+    id: "/tickets_/$projectId/$number",
+    path: "/tickets/$projectId/$number",
+    getParentRoute: () => AgentPanelRoute,
+  } as any)
 const AgentPanelChatAgentIdSessionIdRoute =
   AgentPanelChatAgentIdSessionIdRouteImport.update({
     id: "/chat/$agentId_/$sessionId",
@@ -242,6 +261,7 @@ export interface FileRoutesByFullPath {
   "/admin/people": typeof AdminPeopleRoute
   "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
+  "/admin/tickets": typeof AdminTicketsRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -261,6 +281,7 @@ export interface FileRoutesByFullPath {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/tickets": typeof AgentPanelTicketsRoute
   "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
@@ -268,6 +289,7 @@ export interface FileRoutesByFullPath {
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
   "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/tickets/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
   "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
 }
 export interface FileRoutesByTo {
@@ -279,6 +301,7 @@ export interface FileRoutesByTo {
   "/admin/people": typeof AdminPeopleRoute
   "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
+  "/admin/tickets": typeof AdminTicketsRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/admin": typeof AdminIndexRoute
@@ -297,6 +320,7 @@ export interface FileRoutesByTo {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/tickets": typeof AgentPanelTicketsRoute
   "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
@@ -304,6 +328,7 @@ export interface FileRoutesByTo {
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
   "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/tickets/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
   "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
 }
 export interface FileRoutesById {
@@ -317,6 +342,7 @@ export interface FileRoutesById {
   "/admin/people": typeof AdminPeopleRoute
   "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
+  "/admin/tickets": typeof AdminTicketsRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -336,6 +362,7 @@ export interface FileRoutesById {
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
+  "/agent/_panel/tickets": typeof AgentPanelTicketsRoute
   "/agent/_panel/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/_panel/views": typeof AgentPanelViewsRoute
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
@@ -343,6 +370,7 @@ export interface FileRoutesById {
   "/agent/_panel/chat/$agentId": typeof AgentPanelChatAgentIdRoute
   "/agent/_panel/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/_panel/chat/$agentId_/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/_panel/tickets_/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
   "/agent/_panel/workflow_/$id/edit": typeof AgentPanelWorkflowIdEditRoute
 }
 export interface FileRouteTypes {
@@ -357,6 +385,7 @@ export interface FileRouteTypes {
     | "/admin/people"
     | "/admin/plugin-market"
     | "/admin/sandbox"
+    | "/admin/tickets"
     | "/agent/$agentId"
     | "/agent"
     | "/view/$prodViewId"
@@ -376,6 +405,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/tickets"
     | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
@@ -383,6 +413,7 @@ export interface FileRouteTypes {
     | "/agent/chat/$agentId"
     | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
+    | "/agent/tickets/$projectId/$number"
     | "/agent/workflow/$id/edit"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -394,6 +425,7 @@ export interface FileRouteTypes {
     | "/admin/people"
     | "/admin/plugin-market"
     | "/admin/sandbox"
+    | "/admin/tickets"
     | "/agent/$agentId"
     | "/view/$prodViewId"
     | "/admin"
@@ -412,6 +444,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/tickets"
     | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
@@ -419,6 +452,7 @@ export interface FileRouteTypes {
     | "/agent/chat/$agentId"
     | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
+    | "/agent/tickets/$projectId/$number"
     | "/agent/workflow/$id/edit"
   id:
     | "__root__"
@@ -431,6 +465,7 @@ export interface FileRouteTypes {
     | "/admin/people"
     | "/admin/plugin-market"
     | "/admin/sandbox"
+    | "/admin/tickets"
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/view/$prodViewId"
@@ -450,6 +485,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
+    | "/agent/_panel/tickets"
     | "/agent/_panel/vertical-models"
     | "/agent/_panel/views"
     | "/agent/_panel/workflow"
@@ -457,6 +493,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/chat/$agentId"
     | "/agent/_panel/model-gateway-usage/$providerId"
     | "/agent/_panel/chat/$agentId_/$sessionId"
+    | "/agent/_panel/tickets_/$projectId/$number"
     | "/agent/_panel/workflow_/$id/edit"
   fileRoutesById: FileRoutesById
 }
@@ -529,6 +566,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/tickets": {
+      id: "/admin/tickets"
+      path: "/tickets"
+      fullPath: "/admin/tickets"
+      preLoaderRoute: typeof AdminTicketsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     "/admin/sandbox": {
       id: "/admin/sandbox"
       path: "/sandbox"
@@ -590,6 +634,13 @@ declare module "@tanstack/react-router" {
       path: "/vertical-models"
       fullPath: "/agent/vertical-models"
       preLoaderRoute: typeof AgentPanelVerticalModelsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/tickets": {
+      id: "/agent/_panel/tickets"
+      path: "/tickets"
+      fullPath: "/agent/tickets"
+      preLoaderRoute: typeof AgentPanelTicketsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/tasks": {
@@ -718,6 +769,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelWorkflowIdEditRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/tickets_/$projectId/$number": {
+      id: "/agent/_panel/tickets_/$projectId/$number"
+      path: "/tickets/$projectId/$number"
+      fullPath: "/agent/tickets/$projectId/$number"
+      preLoaderRoute: typeof AgentPanelTicketsProjectIdNumberRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/chat/$agentId_/$sessionId": {
       id: "/agent/_panel/chat/$agentId_/$sessionId"
       path: "/chat/$agentId/$sessionId"
@@ -734,6 +792,7 @@ interface AdminRouteChildren {
   AdminPeopleRoute: typeof AdminPeopleRoute
   AdminPluginMarketRoute: typeof AdminPluginMarketRoute
   AdminSandboxRoute: typeof AdminSandboxRoute
+  AdminTicketsRoute: typeof AdminTicketsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -743,6 +802,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminPeopleRoute: AdminPeopleRoute,
   AdminPluginMarketRoute: AdminPluginMarketRoute,
   AdminSandboxRoute: AdminSandboxRoute,
+  AdminTicketsRoute: AdminTicketsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -763,6 +823,7 @@ interface AgentPanelRouteChildren {
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
+  AgentPanelTicketsRoute: typeof AgentPanelTicketsRoute
   AgentPanelVerticalModelsRoute: typeof AgentPanelVerticalModelsRoute
   AgentPanelViewsRoute: typeof AgentPanelViewsRoute
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
@@ -770,6 +831,7 @@ interface AgentPanelRouteChildren {
   AgentPanelChatAgentIdRoute: typeof AgentPanelChatAgentIdRoute
   AgentPanelModelGatewayUsageProviderIdRoute: typeof AgentPanelModelGatewayUsageProviderIdRoute
   AgentPanelChatAgentIdSessionIdRoute: typeof AgentPanelChatAgentIdSessionIdRoute
+  AgentPanelTicketsProjectIdNumberRoute: typeof AgentPanelTicketsProjectIdNumberRoute
   AgentPanelWorkflowIdEditRoute: typeof AgentPanelWorkflowIdEditRoute
 }
 
@@ -788,6 +850,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,
+  AgentPanelTicketsRoute: AgentPanelTicketsRoute,
   AgentPanelVerticalModelsRoute: AgentPanelVerticalModelsRoute,
   AgentPanelViewsRoute: AgentPanelViewsRoute,
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,
@@ -796,6 +859,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelModelGatewayUsageProviderIdRoute:
     AgentPanelModelGatewayUsageProviderIdRoute,
   AgentPanelChatAgentIdSessionIdRoute: AgentPanelChatAgentIdSessionIdRoute,
+  AgentPanelTicketsProjectIdNumberRoute: AgentPanelTicketsProjectIdNumberRoute,
   AgentPanelWorkflowIdEditRoute: AgentPanelWorkflowIdEditRoute,
 }
 

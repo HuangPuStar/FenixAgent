@@ -1,0 +1,28 @@
+{
+  // 包内类型检查入口：自包含，不 extends 任何包外 tsconfig（理由与取舍见
+  // `packages/resources/memory/tsconfig.json` 文件头）。本包 exports 指向 src/*.ts，消费方直接编译
+  // 本包源码，因此必须能独立通过类型检查；门禁 `scripts/typecheck-packages.ts` 要求每个有
+  // package.json 的包都有包级 tsconfig。
+  // - `types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局（`Bun.file` / `bun:test`）；
+  // - `db/**` 纳入检查：本包 owner 的四张 Git 表定义在 `db/schema.ts`；
+  // - 无 `paths`：跨包一律走各包 `exports`；
+  // - 不写 `baseUrl`：paths 在无 baseUrl 时相对本文件解析，且 TS 6.0 起 `baseUrl` 已弃用。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": ["fenix.module.ts", "src/**/*.ts", "db/**/*.ts"]
+}

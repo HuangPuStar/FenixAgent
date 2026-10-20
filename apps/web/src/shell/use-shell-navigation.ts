@@ -10,22 +10,39 @@
 
 import { sidebarConfigApi } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
+import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { useAssemblyCapabilities } from "./AssemblyCapabilitiesProvider";
 import { assemblyHiddenTabs } from "./assembly-capabilities";
-import { ASSEMBLED_NAV_GROUPS, filterNavGroups, type ShellNavGroup } from "./shell-navigation";
+import { ASSEMBLED_NAVIGATION, filterNavEntries, filterNavGroups, type ShellNavGroup } from "./shell-navigation";
+
+/** 底栏入口（已翻译）：只有图标与文案，几何由渲染处决定。 */
+export interface ShellNavFooterEntry {
+  readonly id: string;
+  readonly icon: LucideIcon;
+  readonly label: string;
+}
+
+/** 侧栏导航的两个版位（均已翻译并裁剪）。 */
+export interface ShellNavigationModel {
+  readonly footer: readonly ShellNavFooterEntry[];
+  readonly groups: ShellNavGroup[];
+}
 
 /**
- * 当前用户可见的侧栏导航分组（标签已翻译）。
+ * 当前用户可见的侧栏导航（分组与底栏入口，标签均已翻译）。
  *
  * 分组标签走宿主 `sidebar` 字典（`SHELL_NAV_GROUPS` 只写 labelKey），导航项文案走**各自包的字典**
  * ——`t(labelKey, { ns })`，字典由宿主 i18n 在启动时集中登记，因此这里不需要认识任何包。
  *
+ * 两个版位共用同一次取数与同一条隐藏列表：底栏入口同样按 `id` 被 `hiddenTabs` 与装配裁剪命中，各拉一次
+ * 请求只会让「同一个入口在两个版位上闪现不同步」。
+ *
  * 隐藏列表取不到时按「无隐藏项」处理：裁剪是可选偏好，一次失败的请求不该让整条侧栏消失。缓存键与
  * 陈旧时间沿用迁移前的取值，行为与旧实现逐字一致。
  */
-export function useShellNavigation(): ShellNavGroup[] {
+export function useShellNavigation(): ShellNavigationModel {
   const { enabled, loading } = useAssemblyCapabilities();
   const { t } = useTranslation(NS.SIDEBAR);
   const { data } = useRequest(
@@ -39,11 +56,21 @@ export function useShellNavigation(): ShellNavGroup[] {
     },
   );
 
-  const translatedGroups = ASSEMBLED_NAV_GROUPS.map((group) => ({
+  const translatedGroups = ASSEMBLED_NAVIGATION.groups.map((group) => ({
     id: group.id,
     label: t(group.labelKey),
     items: group.items,
   }));
+  const translatedFooter = ASSEMBLED_NAVIGATION.footer.map((entry) => ({
+    id: entry.id,
+    icon: entry.icon,
+    label: t(entry.labelKey, { ns: entry.ns }),
+  }));
 
-  return loading ? [] : filterNavGroups(translatedGroups, [...(data ?? []), ...assemblyHiddenTabs(enabled)]);
+  if (loading) return { footer: [], groups: [] };
+  const hiddenTabs = [...(data ?? []), ...assemblyHiddenTabs(enabled)];
+  return {
+    footer: filterNavEntries(translatedFooter, hiddenTabs),
+    groups: filterNavGroups(translatedGroups, hiddenTabs),
+  };
 }

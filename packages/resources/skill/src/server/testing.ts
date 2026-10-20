@@ -123,6 +123,7 @@ export function createStubIdentityDirectory(overrides: Partial<IdentityDirectory
     listMemberships: unstubbed("identity.listMemberships"),
     resolveSystemTenant: unstubbed("identity.resolveSystemTenant"),
     listOrganizationsWithMembers: unstubbed("identity.listOrganizationsWithMembers"),
+    listOrganizationMembers: unstubbed("identity.listOrganizationMembers"),
   };
   return {
     ...unstubbedMethods,

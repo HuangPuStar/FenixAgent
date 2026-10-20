@@ -503,7 +503,7 @@ interface ToolCallProjection {
 
 ### 5.3 Session Doc schema
 
-当前结构版本 `SESSION_DOC_SCHEMA_VERSION = 3`（v3 新增根级 `sessions` 投影位；`loadSessionDoc` 以 schemaVersion 判空触发幂等补结构，Redis 旧快照（v2）恢复后自动补齐）：
+当前结构版本 `SESSION_DOC_SCHEMA_VERSION = 5`（v3 新增根级 `sessions` 投影位；v4 新增根级 `periTasks` 投影位；v5 新增根级 `userInputQueue` 投影位。`loadSessionDoc` 以 schemaVersion 判空触发幂等补结构，Redis 旧快照恢复后自动补齐）：
 
 ```ts
 interface SessionDocRoot {
@@ -531,6 +531,19 @@ interface SessionDocRoot {
   };
   pendingPermissions: Record<string, PermissionProjection>;
   sessions: Record<string, SessionSummaryProjection>;
+  /** Peri 待发送队列（steer）投影；结构缺失/未协商时读取侧返回 enabled=false 回退旧路径 */
+  userInputQueue: {
+    /** 能力协商结果（会话绑定后按 status 的 capabilities 补拉快照时写入） */
+    enabled: boolean;
+    /** peri 队列代号；换代即整体清空 items（peri 队列不跨进程持久，不得留幽灵待发送项） */
+    generation: string | null;
+    /** 单调递增；乱序或回退的快照一律丢弃 */
+    revision: number;
+    /** 当前 steer run 身份，与 user_input_run_started 的 request_id 同源（见 §8.1） */
+    activeRequestId: string | null;
+    /** Y.Array<Y.Map>：inputId / content（有界可展示文本，图片只有占位标记）/ originalDraft / state */
+    items: unknown[];
+  };
 }
 
 interface PermissionProjection {
@@ -717,6 +730,40 @@ interface ActionError {
 
 **转发失败兜底**（`channel/action-forward.ts` `forwardYjsAction`）：Action 到达 SessionChannel 前抛错（含 relay 发送失败）时，回退为脱敏 `AGENT_UNAVAILABLE` 错误（`retryable: true`），诊断上下文只进服务端日志；`relayReady` 前缓冲的消息在连接就绪后重放（`list_sessions` 跳过——连接建立后由 status 触发）。
 
+#### 7.1.1 Peri 待发送队列（steer）Action
+
+仅在能力协商成功（`peri.userInputQueue`）且投影 `userInputQueue.enabled === true` 时可用；投影结构与读取侧兜底见 §5.3，终态归属见 §8.1。
+
+| Action type | payload（前端） | 出站方法 | 服务端补充的权威字段 |
+| ----------- | --------------- | -------- | -------------------- |
+| `enqueue_user_input` | `inputId`、`content`、`originalDraft?` | `session/input/enqueue` | `sessionId`、`generation`、`commandId` |
+| `dispatch_user_inputs` | `inputIds[]` | `session/input/dispatch` | 同上 |
+| `takeback_user_input` | `inputId` | `session/input/takeback` | 同上 |
+
+四条约束（`channel/user-input-queue-action.ts`）：
+
+1. **权威字段只来自服务端**：`sessionId` 取连接绑定的 `acpSessionId`（未绑定即 `INVALID_STATE`，不存在"缺 sessionId 的请求"），`generation` 取投影，`commandId` 取 Action 信封；翻译时显式重组出站对象，payload 里的同名浏览器字段一律被覆盖。
+2. **generation 不猜值**：投影缺失时先补拉一次 `session/input/snapshot`（读操作），拿不到即明确失败。猜错会让 peri 以 `-32602` 拒绝整条命令，用户白等一个往返。
+3. **`commandId` 原样转交 peri**：peri 侧按它做端到端入队去重（重试复用同一 ID 时队列只有一条）；RCS 的 `commandId` 去重表（§7.1）照常生效，两者互相独立。
+4. **本路径不写 Chat Doc**：`user_input_delivered` 是 canonical transcript 的唯一写入信号（§5.2）。此处写入会让聊天区出现两条同样的用户气泡。
+
+`content` 形状与 ACP prompt 不同：peri 侧是内部 `MessageContent`——纯文本折叠为裸字符串，图片为 `{type:'image',source:{type:'base64',media_type,data}}`，而 ACP prompt 是 `{type:'image',mimeType,data}`。双向转换集中在 `protocol/translator.ts`（`toPeriMessageContent` / `fromPeriMessageContent`），漏转换会静默丢图。`originalDraft` 固定发送（空草稿补空串），因为 peri 侧 `deny_unknown_fields` 下缺字段不可预期。
+
+错误收敛（`channel/user-input-queue-wire.ts`）：
+
+| peri 响应 | 公开错误 | 附加动作 |
+| --------- | -------- | -------- |
+| `data.rejected === true` 且快照代号 ≠ 本地投影代号 | `VERSION_CONFLICT` | 用响应携带的权威 `snapshot` 校正投影；否则前端继续用过期代号重试，表现为"点了没反应" |
+| `data.rejected === true` 且代号相同（容量满 / 身份冲突 / 会话关闭） | `RATE_LIMITED` | 同样写回快照；**不是换代**，不得引导用户用旧代号重试 |
+| 其余（含 `-32601`、只读 observer 的 `-32602`） | `INVALID_STATE` | 不重试 |
+| 超时 / relay 断连 | `AGENT_UNAVAILABLE` | `retryable`，允许重发（同一 `commandId`） |
+
+peri 四类队列侧失败共用同一个 `-32602` + `data.rejected` + `data.snapshot` 形状，因此"是否换代"必须由快照与投影的代号比对**证明**，不能见到标记就断言过期（本地无代号时按无法证伪处理，即按换代）。诊断只记录低基数字段（`kind`、`code`、`stale`），上游 `message` 与载荷不进日志。
+
+**取回的成功即成功判定**：peri 的 `takeback` 对已不在 `queued` 的项（已 dispatching/claimed/delivered）不报错——回执成功但 `takenBack` 缺省。缺省即判定本次取回未生效（`INVALID_STATE`），否则前端会把草稿交回输入框，而该项同时仍在投递中，同一条内容出现两份。
+
+**补拉与失效**：能力协商成功且 ACP 会话绑定后补拉一次快照（同一 ACP 会话只拉一次，`status` 重复 resend 不重复请求；换会话按新 `sessionId` 重拉——队列不跨会话）。补拉成功写 `enabled=true`，失败保持 `enabled=false` 且不影响会话可用性。relay 断连（`payload.connected === false`）时清补拉标记并同时 `resetUserInputQueue` + `enabled=false`：peri 队列不跨进程持久，断连后旧待发送项是幽灵数据，前端回退直发 `send_prompt`。
+
 ### 7.2 领域事件 envelope
 
 > **评审决策（Q5）：事件日志体系不实现**。`eventId` / `eventSeq` 不显式建模、无事件日志持久化；`leaseEpoch` 为类型占位（运行时恒为固定值）。理由：YJS 底层 CRDT 已保证文档并发写收敛与顺序；单实例部署下进程内天然单写；"防重复副作用"由 `commandId` 去重表承担。以下类型与事件族仅作为协议形态参考，不作为实现契约。
@@ -773,6 +820,15 @@ stateDiagram-v2
 ```
 
 终态不可逆。恢复执行必须创建显式的新 turn（事件日志体系未实现，不依赖 reconciliation 事件），不能把已终止 turn 改回 `running`。状态机权威实现位于 `state/aggregator.ts`（`applyNormalizedEvent` 守卫）与 `channel/session-channel.ts`（取消超时 → `interrupted` 兜底）；Session Doc 的 `session.activeTurnId` / `activeTurnStatus` / `activeTurnUpdatedAt` 平铺键为权威（见 §5.3），前端由 `turnStatus` 派生展示状态。
+
+**steer run 的终态来源（peri 特有，易踩）**：peri 的待发送队列（`session/input/*`，能力键 `peri.userInputQueue`）在投递后由 peri 内部驱动新一轮执行，**不经过 `session/prompt`**，因此没有 prompt 响应帧可作终态。该轮 turn 的终态只由 transport 通知 `peri/agent_event_done`（params 平铺 `{ sessionId, stopReason, requestId? }`，ACP v1 没有 `turn_done` 的 SessionUpdate tag）携带 `requestId` 到达，`requestId` 与 `user_input_run_started` 的 `request_id` 同源。
+
+由此产生两条硬约束：
+
+1. acp-link 的 `isPeriTaskNotificationMethod` 白名单必须放行 `peri/agent_event_done`；丢弃它会让新 turn 永久停在 `loading`（无任何其他信号可收敛）。
+2. 终态归属按 `requestId` 判定：`state/aggregator.ts` 的 `applyTurnTerminal` 只接受与投影 `userInputQueue.activeRequestId` 匹配的 `requestId`；steer run 进行期间，无 `requestId` 的终态（例如被打断的旧 prompt 响应在 relay 重连丢失 `pendingPromptTurns` 映射后的无 turnId 形态）一律拒绝，否则新 turn 会被提前终结、其后续增量全部被丢弃。
+
+**已知边界（无真实 peri 二进制可验证，暂不加固）**：`user_input_run_started` 与随后补拉快照都未落到投影时（`activeRequestId` 为空），携带 `requestId` 的 steer 终态会因无法证明归属而被拒，该 turn 停在 `loading`，需要用户取消（cancel 超时兜底 → `interrupted`）才收敛。快照补拉（含权威 `activeRequestId`）是正常恢复路径；在拿到真机证据前不引入更宽的匹配规则，以免重新打开"旧 turn 终态终结新 turn"的口子。
 
 ### 8.2 并发控制
 
@@ -951,5 +1007,6 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 9. **共享 relay 引用计数**：同一 `instanceId + userId` 的多标签页共享 relay handle 与入站监听，引用计数归零才释放——实例连接级资源有界，会话切换不重建 relay。
 10. **回放窗口承接历史回放流**：load/resume 转发的 10s 回放窗口（`REPLAY_WINDOW_MS`）让先于 JSON-RPC result 到达的无头 Agent 历史增量可投影为时间线，是刷新恢复的兜底来源；窗口外保持聚合层拒绝语义，不伪造会话连续。
 11. **实例生命周期归编排域**：Chat 域经 `ensureRunning` / `connectAgentRelay` 消费实例，创建与销毁由编排域契约负责（见 20 号文档），Chat 域不直接触碰 spawn/stop。
+12. **待发送队列（steer）的真相在 peri**：RCS 只做校验、翻译、转发与投影，不缓存队列状态；`generation` / `commandId` / `sessionId` 一律服务端权威注入，投递信号 `user_input_delivered` 是 canonical transcript 的唯一写入源（§7.1.1、§8.1）。
 
 以上约束共同定义当前实现形态：YJS 提供低延迟、多端一致的交互投影；`commandId` 去重与 Turn 状态机提供恰好一次与终态收敛；ACPChannel 隔离 Agent 协议；各层都能独立演进，而不破坏会话事实的一致性。

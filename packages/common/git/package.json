@@ -1,0 +1,17 @@
+{
+  "name": "@fenix/git",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./module": "./fenix.module.ts",
+    "./db": "./db/schema.ts"
+  },
+  "dependencies": {
+    "@fenix/logger": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3"
+  }
+}
