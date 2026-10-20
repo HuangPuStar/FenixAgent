@@ -285,6 +285,11 @@ export class HistoryIngest {
     const offset = attempt.allocatedBytes;
     attempt.lastOrdinal = sourceOrdinal;
     attempt.allocatedBytes = offset + payloadBytes;
+    // 身份必须在任何 await 之前登记：并发 accept 会在暂存期间再次进入去重检查，
+    // 若等到落盘后才记账，同一身份的两个请求都能通过检查并各占一个 ordinal。
+    if (identity !== null) {
+      attempt.identities.set(identity, sourceOrdinal);
+    }
     attempt.inFlight += 1;
     try {
       await attempt.task.append(bytes);
@@ -310,9 +315,6 @@ export class HistoryIngest {
     attempt.objectCount += 1;
     attempt.totalBytes += payloadBytes;
     attempt.ranges.set(sourceOrdinal, { offset, length: payloadBytes });
-    if (identity !== null) {
-      attempt.identities.set(identity, sourceOrdinal);
-    }
     return {
       loadId: attempt.loadId,
       generation: attempt.generation,

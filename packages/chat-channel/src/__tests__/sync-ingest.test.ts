@@ -216,6 +216,25 @@ describe("编号与窗口", () => {
     });
   });
 
+  // 并发接收同一身份时，身份预占必须发生在暂存 await 之前：否则两个请求都通过去重检查，时间线出现重复。
+  test("并发提交同一身份时恰好一个成功", async () => {
+    const { ingest } = await createHarness();
+    await begin(ingest);
+    const meta: HistoryRecordMeta = { kind: "text_part", entryId: "entry_concurrent", contentSlot: 0, partIndex: 0 };
+
+    const results = await Promise.allSettled([ingest.accept("并发一", meta), ingest.accept("并发二", meta)]);
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const reason = rejected[0]?.reason;
+    if (!(reason instanceof SyncProtocolError)) throw new Error("expected SyncProtocolError from the duplicate accept");
+    expect(reason.code).toBe("DUPLICATE_OBJECT");
+    // 被拒请求不得再消耗编号：目录仍从 1 起连续。
+    expect(ingest.status()).toMatchObject({ objectCount: 1, lastOrdinal: 1 });
+  });
+
   // 窗口敞着时第二次 begin 必须拒绝：两个 load 共用同一编号空间会让 ordinal 与字节流静默互相穿插。
   test("接收窗口未关闭时第二次 begin 被拒", async () => {
     const { ingest } = await createHarness();
