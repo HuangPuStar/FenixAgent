@@ -66,15 +66,11 @@ const EMPTY_STATE: SyncChatState = {
 };
 
 /**
- * 1008/1002 是协议级不可用（禁用、scope/代次拒绝、入口未就绪等），旧 Yjs 通道仍健康，
- * 直接回退以保证输入可用；1011 等内部错误保留错误卡，不伪装成兼容问题。
+ * 同步连接进入终态后一律交回旧通道：旧通道仍持有完整历史与动作能力，
+ * 继续保留失效的新投影会压制旧通道的新回复（B09）。诊断错误仍由 `connection.error` 暴露给界面。
  */
 export function shouldFallbackToLegacy(connection: SyncChatConnectionState): boolean {
-  const error = connection.error;
-  return (
-    connection.status === "error" &&
-    (error?.code === "PROTOCOL_VERSION_UNSUPPORTED" || error?.code === "WS_1002" || error?.code === "WS_1008")
-  );
+  return connection.status === "error";
 }
 
 /** 订阅隔离的消息投影；切换时同步隐藏旧快照，effect 清理负责释放 transport 与 Doc 引用。 */

@@ -211,20 +211,25 @@ function ChatPanelView({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
-        {!syncChat.legacyFallback && syncChat.connection.status === "error" && (
-          <PublicErrorCard
-            error={{
-              type: "SYNC_RELAY.SYNC_FAILED",
-              id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
-              // 保留服务端原始 close reason（+ wasClean/local 标记），线上不依赖 console 才能定位。
-              message: syncChat.connection.error?.message
-                ? `${tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED")} (${syncChat.connection.error.message.slice(0, 160)})`
-                : tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
-            }}
-            t={tUi}
-            className={INLINE_ERROR_CARD_CLASS}
-          />
-        )}
+        {syncChat.connection.status === "error" &&
+          !(
+            syncChat.connection.error?.code === "PROTOCOL_VERSION_UNSUPPORTED" ||
+            syncChat.connection.error?.code === "WS_1002" ||
+            syncChat.connection.error?.code === "WS_1008"
+          ) && (
+            <PublicErrorCard
+              error={{
+                type: "SYNC_RELAY.SYNC_FAILED",
+                id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
+                // 保留服务端原始 close reason（+ wasClean/local 标记），线上不依赖 console 才能定位。
+                message: syncChat.connection.error?.message
+                  ? `${tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED")} (${syncChat.connection.error.message.slice(0, 160)})`
+                  : tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
+              }}
+              t={tUi}
+              className={INLINE_ERROR_CARD_CLASS}
+            />
+          )}
         {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {sessionState.agentPublicError &&

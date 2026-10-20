@@ -120,14 +120,15 @@ describe("新同步开关与 hook 生命周期", () => {
     }
   });
 
-  // 1011 是服务端内部错误，保留错误态；1008 已在上一用例覆盖自动回退。
-  test("1011 保留错误态且不回退", () => {
+  // 1011 同样撤销失效投影并交回旧通道；错误仍保留给界面展示恢复信号（B09）。
+  test("1011 回退旧通道且保留错误态", () => {
     const harness = renderHook(options);
     const socket = FakeSocket.instances.at(-1)!;
     act(() => socket.open());
     act(() => socket.onclose?.(1011, "rejected"));
-    expect(harness.latest.current?.legacyFallback).toBe(false);
+    expect(harness.latest.current?.legacyFallback).toBe(true);
     expect(harness.latest.current?.connection.status).toBe("error");
+    expect(harness.latest.current?.projection.messages).toHaveLength(0);
     harness.unmount();
   });
 

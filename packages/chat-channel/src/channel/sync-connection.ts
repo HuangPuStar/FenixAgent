@@ -13,7 +13,7 @@ import type { SyncStoreRegistry } from "../sync/runtime/store-registry";
 import type { ProjectionStore } from "../sync/store/types";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
-import { createLegacyChatHistorySource, type LegacyChatDocumentSource } from "./legacy-chat-history";
+import { type LegacyChatDocumentSource, readLegacyCommittedHistory } from "./legacy-chat-history";
 import { logSyncClose, setSyncCloseContextForConnection } from "./sync-close-diagnostics";
 
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
@@ -66,7 +66,7 @@ function createSyncTransport(ws: WsConnection): SyncFrameTransport {
 /**
  * 为一个已认证连接创建独立同步运行时。
  *
- * scope 由调用方用服务端认证/归属结果构造；失败时以 1011 关闭连接并返回 `undefined`，
+ * scope 由调用方用服务端认证/归属结果构造；初始化失败以 1012 关闭，允许客户端退避重试。
  * 调用方负责释放旧链路连接（handleClose）。
  */
 export interface GatewaySyncHostOverrides {
@@ -86,18 +86,9 @@ interface SyncHistoryContext {
   readonly docs: LegacyChatDocumentSource;
 }
 
-/**
- * 读取连接应绑定的投影代次。
- *
- * 旧 Chat/Session Doc 每次 `replaceProjection` 都会生成新代次；新同步协议的 store 必须与它
- * 一一对应，否则客户端换代重连后会复用上一会话的已提交时间线。优先读已驻留 Doc，未打开时
- * 走 `openChat`（与 handleOpen 共享在途 Promise，不会重复水合）。
- */
-async function resolveStoreBinding(docs: LegacyChatDocumentSource, rcsSessionId: string): Promise<string | undefined> {
-  const current = docs.getChat(rcsSessionId);
-  if (current?.generation !== undefined) return current.generation;
-  const opened = await docs.openChat(rcsSessionId);
-  return opened.generation;
+/** 总是经 openChat 复核 Redis active generation，不能信任进程内旧 Doc。 */
+async function resolveStoreBinding(docs: LegacyChatDocumentSource, rcsSessionId: string) {
+  return await docs.openChat(rcsSessionId);
 }
 
 export async function attachGatewaySyncConnection(
@@ -111,16 +102,18 @@ export async function attachGatewaySyncConnection(
   history?: SyncHistoryContext,
 ): Promise<SyncConnection | undefined> {
   try {
+    const chatDoc = history === undefined ? undefined : await resolveStoreBinding(history.docs, rcsSessionId);
+    // 在同一同步段固定历史与代次，再 acquire；后续换代不能把新历史导入旧 store。
+    const records = chatDoc ? readLegacyCommittedHistory(chatDoc.ydoc) : undefined;
+    const storeBinding = chatDoc?.generation;
     const historySource =
-      history === undefined
+      records === undefined
         ? undefined
-        : createLegacyChatHistorySource({
-            docs: history.docs,
-            rcsSessionId,
-            acpSessionId: history.acpSessionId,
-          });
-    const storeBinding = history === undefined ? undefined : await resolveStoreBinding(history.docs, rcsSessionId);
-    return await createSyncHostSession({
+        : {
+            acpSessionId: history?.acpSessionId ?? "",
+            read: async () => records,
+          };
+    const runtime = await createSyncHostSession({
       scope: { organizationId, rcsSessionId },
       runtimeConfig: {
         sealGraceMs: config.sealGraceMs,
@@ -138,11 +131,61 @@ export async function attachGatewaySyncConnection(
       storeBinding,
       owner,
       onError: reportError,
+      onIngressStopped: (error) => {
+        reportError("[YJS-FE] sync ingress stopped; closing connection for rebuild", error);
+        if (ws.readyState === 1) ws.close(1012, "sync ingress stopped");
+      },
     });
+    const invalidate = (): void => {
+      try {
+        if (ws.readyState === 1) ws.close(1012, "projection replaced");
+        void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
+      } catch (error) {
+        reportError("[YJS-FE] sync connection invalidation failed", error);
+      }
+    };
+    // 换代只在本进程经 replaceProjection 发生；控制器先失效连接，这里再兜底拒绝旧 store 的写入。
+    // 无代次的轻量 Doc 来源（测试/未水合）不做 fencing，生产 openChat 始终返回代次。
+    const isCurrent = (): boolean =>
+      runtime.closed ||
+      !history ||
+      storeBinding === undefined ||
+      history.docs.getChat(rcsSessionId)?.generation === storeBinding;
+    const accept = (action: () => void): void => {
+      if (!isCurrent()) {
+        invalidate();
+        return;
+      }
+      try {
+        action();
+      } catch (error) {
+        reportError("[YJS-FE] sync event acceptance failed", error);
+      }
+    };
+    if (!isCurrent()) {
+      invalidate();
+      return;
+    }
+    return {
+      onInboundBytes: async (bytes) => {
+        if (isCurrent()) await runtime.onInboundBytes(bytes);
+      },
+      acceptNormalizedEvent: (event) => accept(() => runtime.acceptNormalizedEvent(event)),
+      acceptUserMessage: (turnId, text) => accept(() => runtime.acceptUserMessage(turnId, text)),
+      diagnostics: () => runtime.diagnostics(),
+      ingressDiagnostics: () => runtime.ingressDiagnostics(),
+      dispose: () => {
+        try {
+          void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
+        } catch (error) {
+          reportError("[YJS-FE] sync dispose failed", error);
+        }
+      },
+    };
   } catch (error) {
     reportError("[YJS-FE] Failed to initialize sync protocol runtime", error);
     try {
-      ws.close(1011, "sync init failed");
+      ws.close(1012, "sync init retry");
     } catch {
       /* 连接已关闭 */
     }
@@ -169,15 +212,21 @@ export async function ensureGatewaySyncConnection(
   entry: ClientConnection,
   attach: () => Promise<SyncConnection | undefined>,
 ): Promise<SyncConnection | undefined> {
+  if (entry.syncClosed || entry.ws.readyState !== 1) return;
   if (entry.syncConnection) return entry.syncConnection;
   const inflight = pendingSyncAttachments.get(entry);
   if (inflight) return (await inflight) ?? undefined;
-  const pending = attach().then((connection) => connection ?? null);
+  const pending = attach().then((connection) => {
+    if (entry.syncClosed || entry.ws.readyState !== 1) {
+      connection?.dispose();
+      return null;
+    }
+    if (connection) entry.syncConnection = connection;
+    return connection ?? null;
+  });
   pendingSyncAttachments.set(entry, pending);
   try {
-    const connection = await pending;
-    if (connection) entry.syncConnection = connection;
-    return connection ?? undefined;
+    return (await pending) ?? undefined;
   } finally {
     if (pendingSyncAttachments.get(entry) === pending) pendingSyncAttachments.delete(entry);
   }

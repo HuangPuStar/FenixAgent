@@ -447,6 +447,54 @@ describe("DocHub 文档替换纯逻辑", () => {
     nextA.cleanup();
   });
 
+  // 首次增量只是初始装载，必须绑定代次但不得递增替换版本（否则首连就触发整页重建）。
+  test("首次 update 绑定代次且不触发换代", () => {
+    const chat = createChatDocBinding("first-update-no-replacement");
+    applyDocHubUpdate(
+      "first-update-no-replacement",
+      "chat:first-update-no-replacement",
+      "g1",
+      updateWithMarker("初始"),
+    );
+    expect(chat.ydoc.getMap("root").get("marker")).toBe("初始");
+    expect(getDocHubReplacementVersion("first-update-no-replacement")).toBe(0);
+    expect(
+      getDocHubStateVectors("first-update-no-replacement").map((vector) => [vector.docName, vector.generation]),
+    ).toEqual([["chat:first-update-no-replacement", "g1"]]);
+    chat.cleanup();
+  });
+
+  // 半帧期间新旧代次都可能到达：任何 update 都不得写进旧 Doc，必须等成对快照整体交换。
+  test("半帧期间旧代次与新代次 update 都不落地", () => {
+    const chat = createChatDocBinding("half-frame-fencing");
+    applyDocHubUpdate("half-frame-fencing", "chat:half-frame-fencing", "g1", updateWithRootValue("marker", "g1"));
+    replaceDocHubUpdate("half-frame-fencing", "chat:half-frame-fencing", "g2", updateWithRootValue("marker", "g2"));
+    applyDocHubUpdate("half-frame-fencing", "chat:half-frame-fencing", "g2", updateWithRootValue("late", "g2-late"));
+    applyDocHubUpdate("half-frame-fencing", "chat:half-frame-fencing", "g1", updateWithRootValue("late", "g1-late"));
+    expect(chat.ydoc.getMap("root").get("marker")).toBe("g1");
+    expect(chat.ydoc.getMap("root").get("late")).toBeUndefined();
+    expect(getDocHubReplacementVersion("half-frame-fencing")).toBe(0);
+    chat.cleanup();
+  });
+
+  // 换代提交后旧代次的迟到增量必须被拒绝，不能把上一会话内容写进新 Doc。
+  test("换代后拒绝旧代次增量", () => {
+    const chat = createChatDocBinding("stale-generation-update");
+    replaceDocHubUpdate("stale-generation-update", "chat:stale-generation-update", "g2", updateWithMarker("new"));
+    replaceDocHubUpdate("stale-generation-update", "session:stale-generation-update", "g2", updateWithMarker("new"));
+    const replaced = createChatDocBinding("stale-generation-update");
+    applyDocHubUpdate(
+      "stale-generation-update",
+      "chat:stale-generation-update",
+      "g1",
+      updateWithRootValue("stale", "old"),
+    );
+    expect(replaced.ydoc.getMap("root").get("marker")).toBe("new");
+    expect(replaced.ydoc.getMap("root").get("stale")).toBeUndefined();
+    chat.cleanup();
+    replaced.cleanup();
+  });
+
   // 替换后的 chat 文档继续接收不冲突字段的增量更新。
   test("替换后的 chat 文档继续接收增量", () => {
     const chat = createChatDocBinding("replacement-then-update");
@@ -462,6 +510,7 @@ describe("DocHub 文档替换纯逻辑", () => {
     applyDocHubUpdate(
       "replacement-then-update",
       "chat:replacement-then-update",
+      "g1",
       updateWithRootValue("incremental", "value"),
     );
     expect(nextChat.ydoc.getMap("root").get("marker")).toBe("snapshot");

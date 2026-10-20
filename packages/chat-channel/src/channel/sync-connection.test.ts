@@ -2,9 +2,13 @@
 // 连接级同步 runtime 的创建语义：并发首帧只 attach 一次，失败后允许下一帧重试。
 
 import { describe, expect, test } from "bun:test";
-import { createClient } from "./connection-test-helpers";
+import { createChatDoc } from "../state/factory";
+import type { SyncScope } from "../sync/protocol/identity";
+import { SyncStoreRegistry } from "../sync/runtime/store-registry";
+import type { ProjectionStore } from "../sync/store/types";
+import { createClient, createWs } from "./connection-test-helpers";
 import type { SyncConnection } from "./connection-types";
-import { ensureGatewaySyncConnection } from "./sync-connection";
+import { attachGatewaySyncConnection, ensureGatewaySyncConnection } from "./sync-connection";
 
 function fakeSyncConnection(): SyncConnection {
   return {
@@ -88,5 +92,92 @@ describe("ensureGatewaySyncConnection", () => {
 
     expect(result).toBe(connection);
     expect(attachCalls).toBe(0);
+  });
+
+  // attach 期间连接已关闭：落定的 runtime 必须立即 dispose，且不得写回 entry 造成 store 泄漏。
+  test("closes and disposes when the entry closes during attach", async () => {
+    const entry = createClient();
+    let disposed = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const connection = fakeSyncConnection();
+    connection.dispose = () => {
+      disposed += 1;
+    };
+    const pending = ensureGatewaySyncConnection(entry, async () => {
+      await gate;
+      return connection;
+    });
+    entry.syncClosed = true;
+    release();
+
+    expect(await pending).toBeUndefined();
+    expect(disposed).toBe(1);
+    expect(entry.syncConnection).toBeUndefined();
+  });
+
+  // 绑定必须走 openChat 的权威代次复核：内存里的旧 Doc 不得让新连接落到旧 store。
+  test("binds the active generation from openChat instead of the cached doc", async () => {
+    const stale = createChatDoc("rcs-bind", null, "g-stale");
+    const fresh = createChatDoc("rcs-bind", null, "g-active");
+    let current = stale;
+    const docs = {
+      getChat: () => current,
+      openChat: async () => {
+        current = fresh;
+        return fresh;
+      },
+    };
+    class RecordingRegistry extends SyncStoreRegistry {
+      readonly bindings: Array<string | undefined> = [];
+      override acquire(scope: SyncScope, createStore: () => ProjectionStore, binding?: string) {
+        this.bindings.push(binding);
+        return super.acquire(scope, createStore, binding);
+      }
+    }
+    const registry = new RecordingRegistry();
+    const ws = createWs();
+    const errors: unknown[] = [];
+    const connection = await attachGatewaySyncConnection(
+      ws,
+      { enabled: true, sealGraceMs: 2_000, retireGraceMs: 30_000 },
+      "org-1",
+      "rcs-bind",
+      "owner",
+      (_message, error) => errors.push(error),
+      { storeRegistry: registry },
+      { acpSessionId: "ses-active", docs },
+    );
+    expect(errors).toEqual([]);
+    expect(connection).toBeDefined();
+    expect(registry.bindings).toEqual(["g-active"]);
+    connection?.dispose();
+    stale.ydoc.destroy();
+    fresh.ydoc.destroy();
+  });
+
+  // 绑定复核失败必须走可重试关闭码，不能进入不可恢复的 1011 终态。
+  test("closes with retryable code when binding resolution fails", async () => {
+    const ws = createWs();
+    const docs = {
+      getChat: () => undefined,
+      openChat: async () => {
+        throw new Error("redis unavailable");
+      },
+    };
+    const connection = await attachGatewaySyncConnection(
+      ws,
+      { enabled: true, sealGraceMs: 2_000, retireGraceMs: 30_000 },
+      "org-1",
+      "rcs-bind-fail",
+      "owner",
+      () => {},
+      {},
+      { acpSessionId: "ses-active", docs },
+    );
+    expect(connection).toBeUndefined();
+    expect(ws.closed).toEqual([[1012, "sync init retry"]]);
   });
 });

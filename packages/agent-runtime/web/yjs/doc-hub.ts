@@ -150,6 +150,17 @@ export function replaceDocHubUpdate(
   for (const listener of replacementListeners.get(rcsSessionId) ?? []) listener();
 }
 
+/** 当前 hub Doc 的代次清单；WS 连接据此区分首次装载与真实换代。 */
+export function getDocHubGenerations(rcsSessionId: string): Array<{ docName: string; generation: string }> {
+  const entry = hubEntries.get(rcsSessionId);
+  if (!entry) return [];
+  const generations: Array<{ docName: string; generation: string }> = [];
+  if (entry.chatGeneration) generations.push({ docName: `chat:${rcsSessionId}`, generation: entry.chatGeneration });
+  if (entry.sessionGeneration)
+    generations.push({ docName: `session:${rcsSessionId}`, generation: entry.sessionGeneration });
+  return generations;
+}
+
 /** 返回当前 hub Doc 的 state vector，供 WS 重连执行差量同步。 */
 export function getDocHubStateVectors(
   rcsSessionId: string,
@@ -186,13 +197,18 @@ export function setDocHubGeneration(rcsSessionId: string, docName: string, gener
  *   合并宏任务重算路径——apply 一次、全部监听方可见，替代原先对两个 hook 的双写；
  * - 会话无活跃绑定时静默丢弃：副本纯投影，WS 重连后服务端会重发快照全量恢复。
  */
-export function applyDocHubUpdate(rcsSessionId: string, docName: string, update: Uint8Array): void {
+export function applyDocHubUpdate(rcsSessionId: string, docName: string, generation: string, update: Uint8Array): void {
   const entry = hubEntries.get(rcsSessionId);
   if (!entry) return;
-  if (docName.startsWith("chat:")) {
-    applyRemoteDocUpdate(entry.chatDoc, update);
-  } else if (docName.startsWith("session:")) {
-    applyRemoteDocUpdate(entry.sessionDoc, update);
+  // 半帧期间新旧两代都可能到达：新代 update 不得写入旧 Doc，旧代 update 也不补进暂存区。
+  if (stagedReplacements.has(rcsSessionId)) return;
+  const isChat = docName.startsWith("chat:");
+  if (!isChat && !docName.startsWith("session:")) return;
+  const current = isChat ? entry.chatGeneration : entry.sessionGeneration;
+  if (current !== null && current !== generation) return;
+  if (current === null) {
+    if (isChat) entry.chatGeneration = generation;
+    else entry.sessionGeneration = generation;
   }
-  // 其他前缀：与既有 hook 路由行为一致（未知 doc 名不落地），忽略
+  applyRemoteDocUpdate(isChat ? entry.chatDoc : entry.sessionDoc, update);
 }

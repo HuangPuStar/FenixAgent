@@ -77,8 +77,11 @@ function splitText(text: string, maxChars: number): string[] {
  */
 export function readLegacyCommittedHistory(ydoc: Y.Doc, maxPartChars = LEGACY_HISTORY_PART_CHARS): SyncHistoryRecord[] {
   const entries = getEntriesMap(ydoc);
+  const order = getEntryOrder(ydoc);
+  // 轻量替身或尚未初始化结构的 Doc 等同“无稳定历史”，不能按空对象访问崩掉握手。
+  if (!(entries instanceof Y.Map) || !(order instanceof Y.Array)) return [];
   const records: SyncHistoryRecord[] = [];
-  for (const entryId of getEntryOrder(ydoc).toArray()) {
+  for (const entryId of order.toArray()) {
     if (typeof entryId !== "string" || entryId.length === 0) continue;
     const entry = entries.get(entryId);
     if (!(entry instanceof Y.Map)) continue;

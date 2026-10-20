@@ -44,7 +44,7 @@ import { useUserInputQueue } from "../hooks/use-user-input-queue";
 import { useYjsDebugDump } from "../hooks/use-yjs-debug-dump";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
-import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
+import { applyDocHubUpdate, getDocHubGenerations, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
 import {
   buildYjsUrl,
   createYjsWs,
@@ -466,9 +466,9 @@ export function useChatPanelRuntime({
 
     const yjsWs = createYjsWs({
       url: relayUrl,
-      onYjsUpdate: (docName, data) => {
+      onYjsUpdate: (docName, data, generation) => {
         try {
-          applyDocHubUpdate(rcsSessionKey, docName, data);
+          applyDocHubUpdate(rcsSessionKey, docName, generation ?? "", data);
         } catch (err) {
           console.warn("[Yjs] Failed to apply update:", err);
         }
@@ -477,6 +477,7 @@ export function useChatPanelRuntime({
         replaceDocHubUpdate(rcsSessionKey, docName, generation, data);
       },
       getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
+      getYjsGenerations: () => getDocHubGenerations(rcsSessionKey),
       onError: (error) => setClassifiedError(error),
       onClose: (close) => {
         // 关闭码语义取自策略表（`resolveYjsWsCloseOutcome`，同一份知识，见 yjs-ws.ts）：

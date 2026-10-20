@@ -46,11 +46,13 @@ export interface YjsWsOptions {
   /** WS 连接地址（由调用方构造，适配不同端口/环境） */
   url: string;
   /** 收到 yjs:update 消息时回调，docName 如 "chat:rcs_xxx" / "session:rcs_xxx" */
-  onYjsUpdate: (docName: string, data: Uint8Array) => void;
+  onYjsUpdate: (docName: string, data: Uint8Array, generation?: string) => void;
   /** replacement 帧：调用方必须销毁旧 Doc 并以该快照创建新副本。 */
   onYjsReplace?: (docName: string, generation: string, data: Uint8Array) => void;
   /** 当前本地 Doc 的 state vector；连接建立后用于请求差量同步。 */
   getYjsStateVectors?: () => Array<{ docName: string; generation: string; stateVector: Uint8Array }>;
+  /** 本地 Doc 的代次；用于区分首次装载与真实换代（首帧差量不得触发重建）。 */
+  getYjsGenerations?: () => Array<{ docName: string; generation: string }>;
   /** 连接状态变化回调 */
   onConnectionState?: (state: YjsWsState) => void;
   /** 收到服务端安全错误帧时回调 */
@@ -123,6 +125,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     onYjsUpdate,
     onYjsReplace,
     getYjsStateVectors,
+    getYjsGenerations,
     onConnectionState,
     onError,
     onClose,
@@ -132,6 +135,9 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
   const generations = new Map<string, string>();
   const requestedGenerations = new Map<string, string>();
+  /** 本连接尚未收到首帧时，以本地 Doc 的代次判定换代；空 hub 视为首次装载。 */
+  const localGenerations = (): Map<string, string> =>
+    new Map((getYjsGenerations?.() ?? []).map((entry) => [entry.docName, entry.generation]));
 
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
@@ -194,16 +200,20 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
             return;
           }
-          const current = generations.get(frame.docName);
-          if (requestedGenerations.get(frame.docName) === frame.generation && current !== frame.generation) {
+          const current = generations.get(frame.docName) ?? localGenerations().get(frame.docName);
+          if (
+            requestedGenerations.get(frame.docName) === frame.generation &&
+            current !== undefined &&
+            current !== frame.generation
+          ) {
             requestedGenerations.delete(frame.docName);
             generations.set(frame.docName, frame.generation);
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
             return;
           }
-          if (current && current !== frame.generation) return;
+          if (current !== undefined && current !== frame.generation) return;
           generations.set(frame.docName, frame.generation);
-          onYjsUpdate(frame.docName, frame.update);
+          onYjsUpdate(frame.docName, frame.update, frame.generation);
         }
         return;
       }

@@ -321,6 +321,10 @@ sequenceDiagram
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
 - **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
 - **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：新 projection 无时间线内容，load/resume 转发时开启；窗口内 Agent 历史回放由 `relay-event-handler` 合成到新 generation。重连恢复已有时间线时跳过重复合成。
+- **用户消息会话级写入**：`registerUserMessage` 成功后经 `SessionChannel` 的会话级入口扇出到该 `rcsSessionId` 的全部同步连接，按 `turnId + entryId` 幂等；动作 socket 通常没有同步 runtime，不得只写发起连接，也不重新启用 Agent 回显。
+- **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。
+- **写者租约按 scope 续租**：空闲期由 runtime tick 续租；过期后重新竞争新 epoch 并从已提交状态重建。入口停写必须由宿主关闭同步连接（可重试码）让客户端重建，不能只写服务端日志。
+- **工具/权限终态回收**：`completed` / `failed` / `resolved` 同批移出运行态实体，活动表只保留未结束项，累计完成次数不受 256 上限约束。
 - 能恢复既有 `acpSessionId` 时优先恢复（从 Session Doc `session.sessionId` 反查 binding）；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
 - Agent capability 未确认前，相关 Action 必须拒绝或排队在有界队列中。
 
@@ -599,7 +603,11 @@ yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
 
 `protocol/update-frame.ts` 定义三类 generation-aware 二进制帧：`update`、`state-vector`、`replace`。新协议使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。
 
-前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。
+前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。首次连接没有本地代次时只做初始装载，不递增 replacement version；半帧暂存期间任何 update 都不落地。
+
+**服务端权威换代**：`replaceProjection` 必须在服务端同时失效该 `rcsSessionId` 下所有已挂载的同步 runtime 与 legacy 连接（当前实现以 `1012` 非终态关闭，客户端自动重连后按新 active generation 重新绑定 store），不能依赖客户端收到 replace 帧。`load_session`、`resume_session` 与 `create_session` 走同一换代路径；新连接的 store binding 必须经 `openChat` 复核 Redis active generation，不能信任进程内旧 Doc。事件入口只接受与当前 store binding 一致的 generation，旧代次事件不得写入新会话。
+
+同步连接进入 `error` 终态时，前端撤销该投影的覆盖资格并切回旧通道（输入与旧历史继续可用），同时保留错误卡作为恢复信号；不得继续用失效投影压制旧通道的新问答。
 
 ## 6. ACP 到 YJS 状态聚合
 
