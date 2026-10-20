@@ -66,6 +66,19 @@ export interface YjsWsOptions {
   onActionError?: (error: ActionError) => void;
   /** 旧 Chat Doc 初始同步未完成（超限/背压）：客户端必须展示具体缺失并提供重试入口。 */
   onHistoryIncomplete?: (info: YjsHistoryIncomplete) => void;
+  /**
+   * 服务端确认本次初始同步已交付的文档。
+   *
+   * 普通 `yjs:update` 也包含实时广播，不能作为“缺失历史已恢复”的证据；该信号只在服务端
+   * 完成本轮 sync 握手且无失败文档时发送。
+   */
+  onSyncComplete?: (info: YjsSyncComplete) => void;
+}
+
+/** 初始同步完成信号：`docs` 是本次握手中确认已交付的文档名。 */
+export interface YjsSyncComplete {
+  readonly docs: readonly string[];
+  readonly generation?: string;
 }
 
 export interface YjsWsClient {
@@ -115,6 +128,16 @@ function readHistoryIncomplete(msg: Record<string, unknown>): YjsHistoryIncomple
 }
 
 /**
+ * 解析服务端 `yjs:sync-complete` 控制消息；字段不完整时返回 null（不可信帧不得驱动 UI 状态）。
+ */
+function readSyncComplete(msg: Record<string, unknown>): YjsSyncComplete | null {
+  const docs = msg.docs;
+  if (!Array.isArray(docs) || docs.some((doc) => typeof doc !== "string")) return null;
+  const generation = typeof msg.generation === "string" ? msg.generation : undefined;
+  return { docs: docs as string[], generation };
+}
+
+/**
  * 创建 Yjs WebSocket 客户端。
  *
  * 自动处理连接、断线重连（指数退避）、解析消息帧：
@@ -149,6 +172,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     onActionAck,
     onActionError,
     onHistoryIncomplete,
+    onSyncComplete,
   } = options;
 
   const generations = new Map<string, string>();
@@ -265,6 +289,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         if (msg.type === "yjs:history-incomplete") {
           const info = readHistoryIncomplete(msg);
           if (info !== null) onHistoryIncomplete?.(info);
+          return;
+        }
+        if (msg.type === "yjs:sync-complete") {
+          const info = readSyncComplete(msg);
+          if (info !== null) onSyncComplete?.(info);
           return;
         }
         if (msg.type === "action_ack") {

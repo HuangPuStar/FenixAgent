@@ -98,7 +98,15 @@ export async function synchronizeInitialDocs(
     rememberFailure(pending, docNames[1], sessionDelivery);
   }
   const failed = pending?.failed ?? new Map<string, LegacyFrameDelivery>();
-  if (failed.size === 0) return { ok: true, failedDocNames: [] };
+  if (failed.size === 0) {
+    // 显式成功标记：普通 update 夹杂实时广播，客户端不能据此判断缺失历史已恢复。
+    broadcaster.sendToYjsWs(ws, {
+      type: "yjs:sync-complete",
+      docs: docNames,
+      generation: chatDoc.generation,
+    });
+    return { ok: true, failedDocNames: [] };
+  }
   // 数据未交付不是“已同步”：把缺失文档与超限尺寸显式交给客户端，由其展示恢复入口。
   broadcaster.sendToYjsWs(ws, {
     type: "yjs:history-incomplete",

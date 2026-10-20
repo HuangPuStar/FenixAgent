@@ -83,6 +83,12 @@ describe("旧 Chat Doc 初始同步", () => {
     const result = await resultPromise;
     expect(result).toEqual({ ok: true, failedDocNames: [] });
     expect(incompleteFrames(ws)).toEqual([]);
+    // 显式成功标记让客户端能区分「本轮快照已交付」与「握手期间穿插的实时广播」。
+    expect(
+      textFrames(ws)
+        .map((frame) => JSON.parse(frame) as Record<string, unknown>)
+        .filter((frame) => frame.type === "yjs:sync-complete"),
+    ).toEqual([{ type: "yjs:sync-complete", docs: [CHAT_DOC_NAME, SESSION_DOC_NAME], generation: GENERATION }]);
   });
 
   // 客户端未在 500ms 内回 state-vector 时的全量兜底：超限快照同样必须返回失败。
