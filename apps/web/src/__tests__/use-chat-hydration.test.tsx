@@ -32,8 +32,8 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("useChatHydration", () => {
-  // 切换会话后回放未结束不渲染；回放结束后一次提交，实时增量随后可达。
-  test("回放结束前门控，结束后一次提交", async () => {
+  // 切换会话后回放期间不展示任何半成品；回放结束后一次收口，实时增量随后可达。
+  test("回放期间不展示，结束后收口", async () => {
     const latest: { current: ChatHydrationState | null } = { current: null };
     let options: UseChatHydrationOptions = {
       scope: "a",
@@ -66,8 +66,9 @@ describe("useChatHydration", () => {
     await act(async () => {
       await wait(400);
     });
+    // 回放仍在进行：消息保持清空，不逐批填充。
     expect(latest.current?.hydrating).toBe(true);
-    expect(latest.current?.messages).toEqual([]);
+    expect(latest.current?.messages).toHaveLength(0);
 
     options = { ...options, replayActive: false };
     act(() => root.render(createElement(Probe)));
@@ -83,6 +84,45 @@ describe("useChatHydration", () => {
       await wait(40);
     });
     expect(latest.current?.messages).toHaveLength(101);
+    act(() => root.unmount());
+  }, 30_000);
+
+  // 骨架 loading 延迟 500ms：窗口内不出现，窗口结束后仍处于 hydrate 才出现。
+  test("骨架 loading 延迟出现", async () => {
+    const latest: { current: ChatHydrationState | null } = { current: null };
+    let options: UseChatHydrationOptions = {
+      scope: "delay",
+      legacy: [assistant("a1", "旧会话")],
+      sync: [],
+      sourceReady: true,
+      replayActive: true,
+    };
+    function Probe() {
+      latest.current = useChatHydration(options);
+      return null;
+    }
+    const container = win.document.createElement("div");
+    const root = createRoot(container as unknown as HTMLElement);
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(300);
+    });
+    expect(latest.current?.hydrating).toBe(true);
+    expect(latest.current?.loadingVisible).toBe(false);
+
+    await act(async () => {
+      await wait(300);
+    });
+    expect(latest.current?.hydrating).toBe(true);
+    expect(latest.current?.loadingVisible).toBe(true);
+
+    options = { ...options, replayActive: false };
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(300);
+    });
+    expect(latest.current?.hydrating).toBe(false);
+    expect(latest.current?.loadingVisible).toBe(false);
     act(() => root.unmount());
   }, 30_000);
 
@@ -179,6 +219,52 @@ describe("useChatHydration", () => {
       const state = applyChatHydration(legacy, hydration, options);
       expect(state.structuredMessages.map((message) => message.id)).toEqual(["old"]);
     }
+  });
+
+  // 即使 hydrate 标志尚未解除，已有可见消息时也不能再挂伪 loading（避免时间线与转圈并存）。
+  test("已有可见消息时不再挂 hydration loading", () => {
+    const legacy = {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready" as const,
+      status: "idle" as const,
+      loading: null,
+      canCancel: false,
+      replayState: "replaying" as const,
+      timelineEmpty: false,
+      structuredMessages: [assistant("a1", "第一段")],
+      pendingQuestions: new Map(),
+      agentPublicError: null,
+    };
+    const state = applyChatHydration(
+      legacy,
+      { messages: [...legacy.structuredMessages, assistant("a2", "第二段")], hydrating: true },
+      { syncEnabled: true, legacyFallback: false },
+    );
+    expect(state.loading).toBeNull();
+    expect(state.structuredMessages.map((message) => message.id)).toEqual(["a1", "a2"]);
+  });
+
+  // 延迟窗口结束后仍无内容才挂伪 loading，调用方据此显示加载态而不是空状态。
+  test("延迟窗口结束后保留 hydration loading", () => {
+    const legacy = {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready" as const,
+      status: "idle" as const,
+      loading: null,
+      canCancel: false,
+      replayState: "replaying" as const,
+      timelineEmpty: false,
+      structuredMessages: [],
+      pendingQuestions: new Map(),
+      agentPublicError: null,
+    };
+    const state = applyChatHydration(
+      legacy,
+      { messages: [], hydrating: true, loadingVisible: true },
+      { syncEnabled: true, legacyFallback: false },
+    );
+    expect(state.loading).toEqual({ kind: "session/bootstrap", since: 0 });
+    expect(state.structuredMessages).toEqual([]);
   });
 
   // 同步终态错误必须清掉旧路径遗留的 loading，否则错误卡消失后输入区仍被禁用。

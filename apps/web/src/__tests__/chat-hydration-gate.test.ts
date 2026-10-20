@@ -271,6 +271,34 @@ describe("聊天 hydrate 门控", () => {
     expect(gated.structuredMessages).toEqual([]);
   });
 
+  // 延迟窗口内 loadingVisible=false 不得挂骨架；窗口结束后仍无内容才出现，快速切换不闪屏。
+  test("骨架 loading 延迟到窗口结束后出现", () => {
+    const legacy = {
+      acpSessionId: "ses_1",
+      sessionStatus: "ready",
+      status: "idle",
+      loading: null,
+      canCancel: false,
+      structuredMessages: [],
+      pendingQuestions: new Map(),
+      agentPublicError: null,
+    } satisfies SessionStateSnapshot;
+
+    const delayed = applyChatHydration(
+      legacy,
+      { messages: [], hydrating: true, loadingVisible: false },
+      { syncEnabled: true, legacyFallback: false },
+    );
+    expect(delayed.loading).toBeNull();
+
+    const visible = applyChatHydration(
+      legacy,
+      { messages: [], hydrating: true, loadingVisible: true },
+      { syncEnabled: true, legacyFallback: false },
+    );
+    expect(visible.loading).toEqual({ kind: "session/bootstrap", since: 0 });
+  });
+
   // chatSync=0 回退路径：hydrate 期间同样收起半成品；完成后原样返回旧状态对象（不引入新协议字段）。
   test("旧路径只在 hydrate 期间门控，完成后不改写状态", () => {
     const legacy = {
@@ -286,7 +314,7 @@ describe("聊天 hydrate 门控", () => {
 
     const gated = applyChatHydration(
       legacy,
-      { messages: [], hydrating: true },
+      { messages: [], hydrating: true, loadingVisible: true },
       { syncEnabled: false, legacyFallback: false },
     );
     expect(gated.structuredMessages).toEqual([]);

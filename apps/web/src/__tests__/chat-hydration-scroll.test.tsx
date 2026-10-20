@@ -1,6 +1,7 @@
 // apps/web/src/__tests__/chat-hydration-scroll.test.tsx
-// 滚动量化：hydrate 期间内容高度变化不触发自动滚动；门控完成后一次提交只滚到底一次。
-// 用 ResizeObserver mock 主动触发库的布局回调，并统计 scrollTop > 0 的写入次数。
+// 滚动量化：hydrate 期间不提交内容，内容高度变化不触发滚动风暴；
+// 门控完成后一次提交只滚到底一次。用 ResizeObserver mock 主动触发库的布局回调，并统计
+// scrollTop > 0 的写入次数。
 
 import { describe, expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
@@ -89,9 +90,11 @@ function emitResize(): void {
 }
 
 async function settleAnimation(): Promise<void> {
-  for (let index = 0; index < 4; index += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await act(async () => {
+    for (let index = 0; index < 4; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  });
 }
 
 function assistant(id: string, text: string): StructuredMessage {
@@ -103,8 +106,8 @@ function messages(count: number): StructuredMessage[] {
 }
 
 describe("hydrate 滚动次数", () => {
-  // 切换会话：回放期间反复增长内容高度不滚动；回放完成后一次提交只滚到底（≤2 次写入）。
-  test("hydrate 期间 0 次滚动，完成后 1 次", async () => {
+  // 切换会话：回放期间不提交内容，内容高度变化不产生滚动风暴；完成后只滚到底（≤2 次写入）。
+  test("hydrate 期间不显示内容且不产生滚动，完成后 1 次", async () => {
     const i18n = createInstance();
     await i18n.init({ lng: "zh", resources: {}, initAsync: false });
     const latest: { current: ChatHydrationState | null } = { current: null };
@@ -136,7 +139,7 @@ describe("hydrate 滚动次数", () => {
     });
     await settleAnimation();
 
-    // 切到大会话：回放期间展示层为空，内容高度保持 0；逐批到达也不得产生滚动。
+    // 切到大会话：回放期间不展示内容；内容高度为 0（模拟尚未布局）时不得滚动。
     const large = messages(1000);
     contentHeight = 0;
     options = { ...options, scope: "large", legacy: large, liveActive: false, replayActive: true };
@@ -148,6 +151,7 @@ describe("hydrate 滚动次数", () => {
       await settleAnimation();
     }
     expect(latest.current?.hydrating).toBe(true);
+    expect(latest.current?.messages).toHaveLength(0);
     expect(scrollWrites).toBe(0);
 
     // 回放完成：一次提交，库只应滚到底一次（允许一次收尾调整）。
@@ -176,8 +180,10 @@ describe("hydrate 滚动次数", () => {
       sourceReady: true,
       replayActive: true,
     };
+    const latest: { current: ChatHydrationState | null } = { current: null };
     function Probe() {
       const hydration = useChatHydration(options);
+      latest.current = hydration;
       return createElement(
         I18nextProvider,
         { i18n },
@@ -198,13 +204,14 @@ describe("hydrate 滚动次数", () => {
     await settleAnimation();
     scrollWrites = 0;
 
-    // 中途切到另一个大会话，尚未完成：展示层为空，内容高度保持 0。
+    // 中途切到另一个大会话：hydrate 期间不展示内容，完成前不产生滚动。
     contentHeight = 0;
     options = { ...options, scope: "b", legacy: messages(800) };
     act(() => root.render(createElement(Probe)));
     contentHeight = 0;
     emitResize();
     await settleAnimation();
+    expect(latest.current?.messages).toHaveLength(0);
     expect(scrollWrites).toBe(0);
 
     // 新会话完成：一次提交后滚到底。
