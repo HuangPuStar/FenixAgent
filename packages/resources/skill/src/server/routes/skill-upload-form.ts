@@ -64,7 +64,8 @@ export async function readSkillUploadForm(request: Request): Promise<SkillUpload
     manifest.map(async (entry, index) => ({
       skillName: entry.skillName,
       relativePath: entry.relativePath,
-      content: await files[index].text(),
+      // 必须按原始字节读取：`.text()` 会把二进制附件中的非法 UTF-8 序列替换为 U+FFFD，导入后不可恢复。
+      content: new Uint8Array(await files[index].arrayBuffer()),
     })),
   );
   return { files: uploadFiles, formData };

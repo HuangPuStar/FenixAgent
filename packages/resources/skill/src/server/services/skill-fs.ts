@@ -38,7 +38,8 @@ export interface SkillDocumentContent {
 export interface UploadSkillFile {
   skillName: string;
   relativePath: string;
-  content: string;
+  /** 原始字节：目录导入可能包含 PNG 等二进制附件，任何按文本解码都会在落盘前损坏内容。 */
+  content: Uint8Array;
 }
 
 export type ImportConflictStrategy = "ignore" | "overwrite";
@@ -397,7 +398,7 @@ export async function writeImportFiles(targetDir: string, entries: [string, Uplo
     for (const file of skillFiles) {
       const targetPath = join(skillDir, normalizeUploadPath(file.relativePath));
       await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, file.content, "utf-8");
+      await writeFile(targetPath, file.content);
     }
     writtenNames.push(name);
   }

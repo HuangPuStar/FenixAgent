@@ -30,6 +30,11 @@ import {
   writeSkillMd,
 } from "../server/services/skill-fs";
 
+/** 上传文件内容按原始字节表达；文本用 UTF-8 编码构造。 */
+function bytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
 function archiveEntryNames(zip: Buffer): string[] {
   const endOffset = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   const count = zip.readUInt16LE(endOffset + 10);
@@ -140,14 +145,14 @@ describe("round47 skill fs", () => {
   // 分组会保留内容并使用规范化后的相对路径。
   test("groupUploadFiles groups normalized files by skill", () => {
     const grouped = groupUploadFiles([
-      { skillName: "demo", relativePath: "SKILL.md", content: "one" },
-      { skillName: "demo", relativePath: "docs\\guide.md", content: "two" },
-      { skillName: "other", relativePath: "SKILL.md", content: "three" },
+      { skillName: "demo", relativePath: "SKILL.md", content: bytes("one") },
+      { skillName: "demo", relativePath: "docs\\guide.md", content: bytes("two") },
+      { skillName: "other", relativePath: "SKILL.md", content: bytes("three") },
     ]);
 
     expect(grouped.get("demo")).toEqual([
-      { skillName: "demo", relativePath: "SKILL.md", content: "one" },
-      { skillName: "demo", relativePath: "docs/guide.md", content: "two" },
+      { skillName: "demo", relativePath: "SKILL.md", content: bytes("one") },
+      { skillName: "demo", relativePath: "docs/guide.md", content: bytes("two") },
     ]);
     expect(grouped.get("other")).toHaveLength(1);
   });
@@ -156,8 +161,8 @@ describe("round47 skill fs", () => {
   test("groupUploadFiles rejects duplicate normalized paths", () => {
     expect(() =>
       groupUploadFiles([
-        { skillName: "demo", relativePath: "docs/guide.md", content: "one" },
-        { skillName: "demo", relativePath: "docs\\guide.md", content: "two" },
+        { skillName: "demo", relativePath: "docs/guide.md", content: bytes("one") },
+        { skillName: "demo", relativePath: "docs\\guide.md", content: bytes("two") },
       ]),
     ).toThrow('Skill "demo" 包含重复文件');
   });
@@ -295,8 +300,8 @@ describe("round47 skill fs", () => {
       [
         "demo",
         [
-          { skillName: "demo", relativePath: "SKILL.md", content: "---\ndescription: 导入\n---\n正文" },
-          { skillName: "demo", relativePath: "references/guide.md", content: "指南" },
+          { skillName: "demo", relativePath: "SKILL.md", content: bytes("---\ndescription: 导入\n---\n正文") },
+          { skillName: "demo", relativePath: "references/guide.md", content: bytes("指南") },
         ],
       ],
     ]);
@@ -308,7 +313,10 @@ describe("round47 skill fs", () => {
   // 已写入目录可构建为带指定 enabled 状态的 SkillInfo。
   test("buildImportedSkillInfos reads descriptions with supplied enabled flag", async () => {
     await writeImportFiles(root, [
-      ["demo", [{ skillName: "demo", relativePath: "SKILL.md", content: "---\ndescription: 已导入\n---\n正文" }]],
+      [
+        "demo",
+        [{ skillName: "demo", relativePath: "SKILL.md", content: bytes("---\ndescription: 已导入\n---\n正文") }],
+      ],
     ]);
 
     await expect(buildImportedSkillInfos(root, ["demo"], false)).resolves.toEqual([
