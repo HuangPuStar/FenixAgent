@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import type { NormalizedEvent } from "../schema";
 import { getEntry } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { YjsBroadcaster } from "./broadcaster";
@@ -703,6 +704,100 @@ describe("RelayEventHandler replay window", () => {
 
     expect(shared.replayWindowUntil).not.toBeNull();
     expect(shared.replayWindowUntil!).toBeGreaterThan(Date.now());
+  });
+
+  // 回放窗口一开就写入 replaying（不等首个回放事件）：慢启动回放不会落回 idle 被客户端提前放行。
+  test("replay window starts a replaying placeholder before events", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+
+    handler.openReplayWindow(shared);
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("presenting")).toBe("replaying");
+    expect(shared.replayTurnId).toMatch(/^turn_replay_/);
+
+    handler.convergeReplayWindow(shared);
+    expect(session.get("presenting")).not.toBe("replaying");
+  });
+
+  // 回放事件（含工具）不得 fanout 到新协议 live ingress；回放后的实时事件必须正常进入。
+  test("回放 1 万条事件不进新协议，回放后的实时事件进入", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const logs: string[] = [];
+    const docManager = new DocManager({ onLog: (message) => logs.push(message), onError: () => {} });
+    await docManager.openChat("rcs-1");
+    await docManager.openSession("user-1", "agent-1", "rcs-1");
+    const forwarded: Array<{ type: string; turnId?: string | null }> = [];
+    const handler = createRelayEvents(registry, broadcaster, [], {
+      docManager,
+      onNormalizedEvent: (_rcsSessionId, event) => forwarded.push({ type: event.type, turnId: event.turnId }),
+    });
+    const shared = relayOn("rcs-1");
+    handler.openReplayWindow(shared);
+    const handle = handler.createMessageHandler(shared);
+
+    for (let index = 0; index < 10_000; index += 1) {
+      await handle({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "ses-1",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "历史" } },
+        },
+      } as unknown as RelayMessage);
+    }
+    await handle({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "tool_call", toolCallId: "tool-1", title: "Read", status: "running" },
+      },
+    } as unknown as RelayMessage);
+
+    expect(forwarded).toHaveLength(0);
+    expect(logs.some((message) => message.includes("tool_call without writable turn"))).toBe(false);
+
+    handler.convergeReplayWindow(shared);
+    docManager.registerUserMessage(shared.rcsSessionId, "实时消息");
+    await handle({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "实时回答" } },
+      },
+    } as unknown as RelayMessage);
+
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]?.turnId?.startsWith("turn_replay_")).toBe(false);
+  }, 30_000);
+
+  // 宿主在 load/resume 响应后显式通知回放结束（含零历史）：立即收敛，不等 10s 窗口。
+  test("session/replay_complete converges the window immediately", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+
+    handler.openReplayWindow(shared);
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("presenting")).toBe("replaying");
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/replay_complete",
+      params: { sessionId: "ses-1" },
+    } as unknown as RelayMessage);
+
+    expect(shared.replayWindowUntil).toBeNull();
+    expect(session.get("presenting")).not.toBe("replaying");
+    expect(session.get("replayState")).toBe("complete");
   });
 
   // 判定「是否跳过回放合成」只在窗口开启时捕获一次：回放流本身会写 Chat Doc，
@@ -1582,5 +1677,79 @@ describe("RelayEventHandler callback routing", () => {
     expect(ids).toHaveLength(4);
     expect(entryText(chatDoc, ids[1]!)).toBe("第一次回答");
     expect(entryText(chatDoc, ids[3]!)).toBe("第二次回答");
+  });
+});
+
+// 新同步 runtime 的 turn 归属：无 turnId 的 Peri 子 Agent / callback 事件必须保持
+// 自身归属键，不得借用主 Agent 的活动 turn，否则输出会串进主回复。
+describe("RelayEventHandler sync turn binding", () => {
+  /** session/update 帧构造：agent_message_chunk → message_delta */
+  const agentChunkFrame = (text: string, params: Record<string, unknown> = {}) =>
+    ({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        ...params,
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+      },
+    }) as unknown as RelayMessage;
+
+  /** 真实 DocManager + 捕获 onNormalizedEvent 的装配（活动 turn 由测试自行建立） */
+  async function setup() {
+    const { docManager } = await createBoundDocs("rcs-1");
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const forwarded: NormalizedEvent[] = [];
+    const handler = createRelayEvents(registry, broadcaster, [], {
+      docManager,
+      onNormalizedEvent: (_rcsSessionId, event) => forwarded.push(event),
+    });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
+    return { docManager, forwarded, onMessage: handler.createMessageHandler(relayOn("rcs-1")) };
+  }
+
+  // 子 Agent 增量没有 turnId 时保持无归属，不得绑定主 Agent 的活动 turn。
+  test("subagent delta without turnId is not bound to the active turn", async () => {
+    const { docManager, forwarded, onMessage } = await setup();
+    const activeTurnId = docManager.registerUserMessage("rcs-1", "主消息");
+
+    await onMessage(agentChunkFrame("子 Agent 输出", { _meta: { peri: { sourceAgentId: "child_1" } } }));
+
+    const delta = forwarded.find((event) => event.type === "message_delta");
+    expect(activeTurnId).toBeTruthy();
+    expect(delta?.sourceAgentId).toBe("child_1");
+    expect(delta?.turnId ?? null).toBeNull();
+  });
+
+  // callback 增量已由 callbackEntryId 归属，不得再借用主 Agent 的活动 turn。
+  test("callback delta without turnId is not bound to the active turn", async () => {
+    const { docManager, forwarded, onMessage } = await setup();
+    docManager.registerUserMessage("rcs-1", "主消息");
+
+    await onMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "user_message_chunk", content: { type: "text", text: "后台回调消息" } },
+      },
+    } as unknown as RelayMessage);
+    await onMessage(agentChunkFrame("回调回答"));
+
+    const delta = forwarded.find((event) => event.type === "message_delta");
+    expect(delta?.callbackEntryId).toBeTruthy();
+    expect(delta?.turnId ?? null).toBeNull();
+  });
+
+  // 防回归：主 Agent 普通无 turnId 增量仍按活动 turn 绑定。
+  test("main-agent delta without turnId still binds the active turn", async () => {
+    const { docManager, forwarded, onMessage } = await setup();
+    const activeTurnId = docManager.registerUserMessage("rcs-1", "主消息");
+
+    await onMessage(agentChunkFrame("主 Agent 回答"));
+
+    const delta = forwarded.find((event) => event.type === "message_delta");
+    expect(delta?.turnId).toBe(activeTurnId);
   });
 });

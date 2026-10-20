@@ -68,6 +68,10 @@ interface SessionMetaSnapshot {
   loading: LoadingState | null;
   /** 展示态（后端投影字段 session.canCancel 直接读取） */
   canCancel: boolean;
+  /** 回放状态：服务端在窗口开启/完成时写入；complete 表示可立即结束 hydrate 门控。 */
+  replayState: "active" | "complete" | null;
+  /** 当前投影是否已有时间线（连接建立时由服务端写入）；false 表示已有内容。 */
+  timelineEmpty: boolean | null;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
   permissionOptions: Map<string, PermissionOption[]>;
   /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，120s 过期自动剔除） */
@@ -128,6 +132,8 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
     presenting: (session?.get("presenting") as SessionStatus | undefined) ?? "idle",
     loading: (session?.get("loading") as LoadingState | null | undefined) ?? null,
     canCancel: (session?.get("canCancel") as boolean | undefined) ?? false,
+    replayState: (session?.get("replayState") as "active" | "complete" | undefined) ?? null,
+    timelineEmpty: (session?.get("timelineEmpty") as boolean | undefined) ?? null,
     permissionOptions,
     pendingQuestions,
     agentPublicError: normalizePublicError(agent?.get("publicError")),
@@ -168,6 +174,8 @@ export function computeSessionSnapshot(
     // 展示态直接透传后端投影字段（presenting/loading/canCancel），前端不再做任何派生
     status: meta.presenting,
     canCancel: meta.canCancel,
+    replayState: meta.replayState,
+    timelineEmpty: meta.timelineEmpty,
     loading: meta.loading,
     structuredMessages,
     pendingQuestions: meta.pendingQuestions,
@@ -194,6 +202,8 @@ export function useSessionState(rcsSessionId: string) {
         presenting: "idle",
         loading: null,
         canCancel: false,
+        replayState: null,
+        timelineEmpty: null,
         permissionOptions: new Map(),
         pendingQuestions: new Map(),
         agentPublicError: null,

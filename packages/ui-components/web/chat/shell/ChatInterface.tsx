@@ -35,12 +35,16 @@ import { classifyToolSemantic } from "../lib/tool-semantic";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
-import type { PeriTaskViewProjection, ThreadEntry, TokenUsage } from "../types";
+import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
+import { useChatMessageWindow } from "../view/chat-render-window";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
 import { useComposerInputBridge } from "./internal/use-composer-input-bridge";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
+
+/** 稳定空数组：会话未加载时窗口 hook 不应因新的空数组引用重复计算。 */
+const EMPTY_STRUCTURED_MESSAGES: StructuredMessage[] = [];
 
 export type { ChatInterfaceHandle } from "./chat-interface-types";
 
@@ -76,6 +80,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     connectionState,
     boundMcps = [],
     projectEntries,
+    hasEarlierHistory = false,
+    historyLoading = false,
+    historyScopeKey,
+    onLoadEarlierHistory,
     flushContext,
     onNotice,
     onStatsChange,
@@ -111,14 +119,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const sessionReady = sessionState?.sessionStatus !== "initializing";
 
   // 从 Yjs structuredMessages 计算渲染用的 ThreadEntry[]
-  // 依赖收窄到 structuredMessages 引用本身：快照中其他字段（loading/canCancel 等）
-  // 变化不再触发整条时间线 O(N) 重建，这是流式期间渲染链的主要成本来源。
-  // 投影函数（源为宿主 `structuredToThreadEntries`，依赖 YJS doc 助手与 i18n 单例）由宿主注入。
+  // 数据层窗口先截到最近 100 条，投影函数与 ChatView 只处理窗口内条目；更早内容由“显示更早”分批揭示。
   const structuredMessages = sessionState?.structuredMessages;
+  const timelineWindow = useChatMessageWindow(
+    structuredMessages ?? EMPTY_STRUCTURED_MESSAGES,
+    historyScopeKey ?? rcsSessionId ?? detailSessionId ?? activeSessionId ?? null,
+    { hasEarlierHistory, historyLoading, onLoadEarlierHistory },
+  );
   const renderEntries: ThreadEntry[] = useMemo(() => {
-    if (!structuredMessages?.length || !projectEntries) return [];
-    return projectEntries(structuredMessages);
-  }, [structuredMessages, projectEntries]);
+    if (!timelineWindow.visible.length || !projectEntries) return [];
+    return projectEntries(timelineWindow.visible);
+  }, [timelineWindow.visible, projectEntries]);
 
   // ── Refs & retained local state (YJS does not yet carry these fields) ──
 
@@ -203,10 +214,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onStatsChange?.({
       agentName: agentId,
       modelName,
-      entryCount: renderEntries.length,
+      entryCount: structuredMessages?.length ?? renderEntries.length,
       changedFiles,
     });
-  }, [agentId, modelName, renderEntries, changedFiles, onStatsChange]);
+  }, [agentId, modelName, renderEntries, changedFiles, onStatsChange, structuredMessages?.length]);
 
   // =============================================================================
   // User Actions
@@ -336,6 +347,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onOpenWorkspaceFile={onOpenWorkspaceFile}
           onApplySuggestedPrompt={handleApplySuggestedPrompt}
           onQuote={handleQuote}
+          hasEarlierHistory={timelineWindow.hasEarlier}
+          earlierMessageCount={timelineWindow.hiddenCount}
+          historyLoading={timelineWindow.loading}
+          onLoadEarlierHistory={timelineWindow.loadEarlier}
+          preWindowed
         />
 
         <div className="relative z-20 shrink-0 bg-white">

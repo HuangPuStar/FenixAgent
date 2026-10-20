@@ -236,6 +236,8 @@ export type NormalizedEventType =
   | "turn_cancel_requested"
   | "turn_cancelled"
   | "turn_interrupted"
+  | "replay_started"
+  | "replay_complete"
   | "plan"
   | "session_updated"
   | "agent_status"

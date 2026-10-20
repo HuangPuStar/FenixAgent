@@ -43,10 +43,29 @@ export interface PermissionRequest {
 
 // ── Doc 包装类型 ──
 
+/**
+ * 初始快照水合结果：
+ * - `loaded`：已应用持久化快照；
+ * - `empty`：确认没有快照（或内存 Doc，本就没有持久层）；
+ * - `failed` / `stale`：快照未成功应用，此时的空视图**不能**被当作“确实没有历史”。
+ *
+ * 加载路径在 `failed` / `stale` 时明确拒绝打开（见 `state/factory.ts`），避免把半初始化
+ * 的 Doc 留在 DocManager 里被历史源反复读成空。
+ */
+export type SnapshotHydrationStatus = "loaded" | "empty" | "failed" | "stale";
+
+export interface SnapshotHydration {
+  readonly status: SnapshotHydrationStatus;
+  /** 仅用于诊断，不进入面向用户的响应。 */
+  readonly error?: unknown;
+}
+
 export interface ChatDoc {
   ydoc: Y.Doc;
   generation: string;
   provider: RedisProvider;
+  /** 打开完成时已落定的快照水合结果；内存 Doc 恒为 `empty`。 */
+  readonly hydration: SnapshotHydration;
   destroy(): Promise<void>;
 }
 
@@ -54,6 +73,8 @@ export interface SessionDoc {
   ydoc: Y.Doc;
   generation: string;
   provider: RedisProvider;
+  /** 打开完成时已落定的快照水合结果；内存 Doc 恒为 `empty`。 */
+  readonly hydration: SnapshotHydration;
   destroy(): Promise<void>;
 }
 
@@ -70,6 +91,11 @@ export interface ProjectionDocs {
 
 export interface RedisProvider {
   destroy(): Promise<void>;
+  /**
+   * 初次快照水合落定的信号；**永不 reject**，失败以 `status: "failed"` 表达。
+   * 打开 Doc 的调用方必须等待它，再初始化结构或读取历史，否则空视图会被误判为无历史。
+   */
+  readonly hydration: Promise<SnapshotHydration>;
 }
 
 // ── Agent Capabilities / Model / Mode 类型（acp-server 本地定义，不依赖 @fenix/acp-link）──
@@ -152,6 +178,13 @@ export interface SessionStateSnapshot {
    * 期间为 true（输出中停止按钮保持可用），回放 turn 与 idle/终态为 false。
    */
   canCancel: boolean;
+  /**
+   * 回放状态（Session Doc session.replayState）：active = 窗口开启；complete = 宿主显式通知
+   * 回放结束（含零历史）。旧客户端忽略该字段；缺失时按原有 presenting/兜底逻辑处理。
+   */
+  replayState?: "active" | "complete" | null;
+  /** 当前投影是否为空（连接建立时服务端写入）；仅用于首次加载空会话的确定性判定。 */
+  timelineEmpty?: boolean | null;
   // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段）：
   // 前端唯一消费方是 structuredMessages（ChatInterface 时间线渲染），上述四个
   // 字段全仓零消费且每次流式批次都触发全量派生计算（根因 B2）。

@@ -88,6 +88,14 @@ interface ACPMainProps {
   boundMcps?: readonly BoundMcpOption[];
   /** `StructuredMessage[]` → `ThreadEntry[]` 投影（透传给 ChatInterface，由宿主注入） */
   projectEntries?: (structuredMessages: readonly StructuredMessage[]) => ThreadEntry[];
+  /** 协议层仍有更早历史可加载（透传给 ChatInterface）。 */
+  hasEarlierHistory?: boolean;
+  /** 协议层更早历史加载中（透传给 ChatInterface）。 */
+  historyLoading?: boolean;
+  /** 会话/投影换代键；变化时重置首屏窗口（透传给 ChatInterface）。 */
+  historyScopeKey?: string;
+  /** 显式加载协议层更早历史（透传给 ChatInterface）；返回是否产生了新工作。 */
+  onLoadEarlierHistory?: () => boolean | undefined;
   /** 上下文队列取出并清空（透传给 ChatInterface，源为宿主 `@/src/lib/context-queue.flushContext`） */
   flushContext?: (scope?: string) => string | null;
   /** ChatComposer 宿主端口（原样透传给 ChatInterface，见 `../composer/ChatComposer`） */
@@ -157,6 +165,10 @@ export function ACPMain({
   onSidebarOpenChange,
   boundMcps,
   projectEntries,
+  hasEarlierHistory,
+  historyLoading,
+  historyScopeKey,
+  onLoadEarlierHistory,
   flushContext,
   uploadFiles,
   compressImage,
@@ -355,6 +367,10 @@ export function ACPMain({
               renderPeriTaskDetail={renderPeriTaskDetail}
               boundMcps={boundMcps}
               projectEntries={projectEntries}
+              hasEarlierHistory={hasEarlierHistory}
+              historyLoading={historyLoading}
+              historyScopeKey={historyScopeKey}
+              onLoadEarlierHistory={onLoadEarlierHistory}
               flushContext={flushContext}
               uploadFiles={uploadFiles}
               compressImage={compressImage}

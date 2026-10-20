@@ -10,9 +10,11 @@ export {
 } from "./command-coordinator";
 export { ConnectionRegistry } from "./connection-registry";
 export type {
+  ChatSyncProtocolConfig,
   ClientConnection,
   RelayMessage,
   SharedRelay,
+  SyncConnection,
   WsConnection,
 } from "./connection-types";
 export { ChatChannelController, type ChatChannelDependencies } from "./controller";

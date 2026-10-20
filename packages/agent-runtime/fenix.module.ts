@@ -166,6 +166,37 @@ export const moduleManifest = {
       description:
         "chat-channel YJS WebSocket 的最大并发连接数；默认 200。宿主 schema 原本未声明此键（原唯一读取点是 chat-channel-bootstrap 的直读，1.7 C1 起改为经模块配置注入），本批补齐：非法值由「静默回落默认」变为启动期校验失败、负值不再被接受。",
     },
+    // ── 运行态旋钮：新聊天同步协议（默认启用）──
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_CHAT_SYNC_PROTOCOL_ENABLED",
+      schema: z.union([z.boolean(), z.enum(["true", "false"]).transform((value) => value === "true")]).default(true),
+      defaultValue: true,
+      secret: false,
+      restartRequired: true,
+      description:
+        "是否启用新聊天同步协议（同一 /acp/yjs WebSocket 上的二进制 JSON 帧）；默认 true。启用时仅对 `{` 开头的二进制帧走新协议，其余帧仍走旧 Yjs 路径；显式设为 false 时旧路径行为不变。由装配期投影经 ChatChannelDependencies.chatSyncProtocol 注入 chat-channel。",
+    },
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_CHAT_SYNC_SEAL_GRACE_MS",
+      schema: z.coerce.number().int().min(100).max(300000).default(2000),
+      defaultValue: 2000,
+      secret: false,
+      restartRequired: true,
+      description:
+        "新同步协议封口完成到尾部可回收的保护时长（毫秒）；默认 2000。旧链路文本批处理 16ms、快照节流 2000ms/静默 500ms，2s 足以覆盖在途文本封口。",
+    },
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_CHAT_SYNC_RETIRE_GRACE_MS",
+      schema: z.coerce.number().int().min(1000).max(3600000).default(30000),
+      defaultValue: 30000,
+      secret: false,
+      restartRequired: true,
+      description:
+        "新同步协议代次退役到字节可回收的保护时长（毫秒）；默认 30000。为客户端留出 generation 切换与旧投影只读窗口。",
+    },
     // ── 运行态旋钮：chat-channel 快照持久化（F1：原宿主声明 + 包内直读）──
     {
       moduleId: "agent-runtime",

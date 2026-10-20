@@ -28,13 +28,25 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ChatAuthState } from "../hooks/chat-auth-state";
+import { resolveNoReplaySession } from "../hooks/chat-replay-signal";
 import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
+import { applyChatHydration, useChatHydration } from "../hooks/use-chat-hydration";
 import { useChatState } from "../hooks/use-chat-state";
+import { useDocHubReplacementVersion } from "../hooks/use-doc-hub-replacement";
 import { useSessionState } from "../hooks/use-session-state";
+import { useSyncChatState } from "../hooks/use-sync-chat-state";
+import { useYjsDebugDump } from "../hooks/use-yjs-debug-dump";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
-import { buildYjsUrl, createYjsWs, resolveYjsWsCloseOutcome, type YjsWsState } from "../yjs/yjs-ws";
+import {
+  buildYjsUrl,
+  createYjsWs,
+  readSyncChatOrganizationId,
+  readSyncChatSwitch,
+  resolveYjsWsCloseOutcome,
+  type YjsWsState,
+} from "../yjs/yjs-ws";
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
 
 /** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
@@ -50,7 +62,6 @@ export interface ChatPanelCallbacks {
   onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   onSetMode: (modeId: string) => void;
 }
-
 /** `ACPMain` 需要的派生展示态（从 Chat Doc 的能力/模型/模式子树投影）。 */
 export interface ChatPanelDerivedState {
   supportsImages: boolean;
@@ -62,7 +73,6 @@ export interface ChatPanelDerivedState {
   supportsModeSelection: boolean;
   tokenUsage: ReturnType<typeof useChatState>["state"]["tokenUsage"];
 }
-
 /**
  * ChatPanel 的运行时状态与出站出口。
  *
@@ -88,12 +98,70 @@ export interface ChatPanelRuntime {
   terminalUiCode: TerminalWsUiCode | null;
   /** RCS session id（Y.Doc 命名用），未就绪时为 undefined。 */
   rcsSessionKey: string | undefined;
+  /** 会话/投影换代键：包含 DocHub replacementVersion，用于重置首屏历史窗口。 */
+  historyScopeKey: string;
   chatState: ReturnType<typeof useChatState>["state"];
   sessionState: ReturnType<typeof useSessionState>["state"];
+  /** 默认启用的新消息投影；明确拒绝时保留旧路径。 */
+  syncChat: ReturnType<typeof useSyncChatState>;
   periTasks: PeriTaskViewsResult["state"]["tasks"];
   periTasksLoaded: boolean;
   derivedState: ChatPanelDerivedState;
   callbacks: ChatPanelCallbacks;
+}
+
+/** 稳定同步 key 的派生状态：按命名空间隔离，记录已见 ACP 会话与需要触发投影重建的 key。 */
+export interface StableSyncSessionKeyState {
+  readonly namespace: string;
+  readonly seenAcpSessionId: string | null;
+  readonly key: string | null;
+}
+
+/**
+ * 从 ACP session id 序列派生 `useSyncChatState.sessionKey`。
+ *
+ * 空值→首个 ACP id 是会话建立后的补全，不是切换；若直接把它当 key，会 dispose 并重连同步投影，
+ * 而 hydration gate 的 mergeScope（docHubKey + replacementVersion）不会同步重建，重连期间
+ * blocked 提前变 false，旧通道消息可能被提前提交。规则：
+ * - 命名空间变化时重置，新命名空间的首个值只作基线；
+ * - 空值忽略，不清除已见值；
+ * - 首个非空值只记录，不改变 key；此后不同的非空值才更新 key 触发投影重建。
+ */
+export function deriveStableSyncSessionKey(
+  previous: StableSyncSessionKeyState | null,
+  namespace: string,
+  acpSessionId: string | null | undefined,
+): StableSyncSessionKeyState {
+  const next = acpSessionId === null || acpSessionId === undefined || acpSessionId.length === 0 ? null : acpSessionId;
+  if (previous === null || previous.namespace !== namespace) {
+    return { namespace, seenAcpSessionId: next, key: null };
+  }
+  // 会话切换或关闭期间可能短暂读不到 ACP id：忽略空值，保留已见值以避免把恢复误判成新一轮补全。
+  if (next === null) return previous;
+  if (previous.seenAcpSessionId === null) {
+    return { namespace, seenAcpSessionId: next, key: previous.key };
+  }
+  if (previous.seenAcpSessionId === next) return previous;
+  return { namespace, seenAcpSessionId: next, key: next };
+}
+
+/** 把派生状态接到 React；key 只随真实 ACP 会话切换变化（见 `deriveStableSyncSessionKey`）。 */
+export function useStableSyncSessionKey(namespace: string, acpSessionId: string | null | undefined): string | null {
+  const stateRef = useRef<StableSyncSessionKeyState | null>(null);
+  const [scope, setScope] = useState<{ namespace: string; key: string | null }>({ namespace, key: null });
+
+  useEffect(() => {
+    const next = deriveStableSyncSessionKey(stateRef.current, namespace, acpSessionId);
+    stateRef.current = next;
+    setScope((current) =>
+      current.namespace === next.namespace && current.key === next.key
+        ? current
+        : { namespace: next.namespace, key: next.key },
+    );
+  }, [namespace, acpSessionId]);
+
+  // 命名空间切换后的首帧不沿用旧 key（此时 useSyncChatState 的 scope 已在按新会话重建）。
+  return scope.namespace === namespace ? scope.key : null;
 }
 
 /**
@@ -134,54 +202,81 @@ export function useChatPanelRuntime({
   const [terminalUiCode, setTerminalUiCode] = useState<TerminalWsUiCode | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
-
+  /** 本地新建会话没有历史回放：门控不得用骨架替换空状态。 */
+  const noReplaySessionRef = useRef(false);
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
-
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
-
   // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
   // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
   const rcsSessionKey =
     agentId && userId ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined) : undefined;
-
   // DocHub 绑定 key（SP-B1）：两个 hook 必须绑定同一会话的同一份共享 doc。
   // 登录态未就绪时使用占位 key（此时建连守卫不会放行 WS，占位 doc 恒为空）
   const docHubKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
-
-  // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
+  // 默认新协议读取文本；旧连接保留历史、非文本和动作，直到新协议拥有完整历史恢复能力。
   const { state: chatState } = useChatState(docHubKey);
-
-  // Session Doc — 按 RCS session ID 命名（与 chatHook 同一 hub entry，共享 doc 副本）
-  const { state: sessionState } = useSessionState(docHubKey);
+  const { state: legacySessionState } = useSessionState(docHubKey);
+  // ACP id 从空到首个值的补全不重建同步投影；只有真实会话切换才改变 sessionKey。
+  const syncSessionKey = useStableSyncSessionKey(docHubKey, legacySessionState.acpSessionId);
+  const syncChatSearch = typeof window === "undefined" ? "" : window.location.search;
+  const syncEnabled = readSyncChatSwitch(syncChatSearch);
+  const syncChat = useSyncChatState({
+    enabled: syncEnabled && authState === "ready",
+    agentId,
+    instanceUid: sessionId ?? null,
+    rcsSessionId: rcsSessionKey ?? null,
+    organizationId: readSyncChatOrganizationId(),
+    sessionKey: syncSessionKey,
+  });
+  const replacementVersion = useDocHubReplacementVersion(docHubKey);
+  // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
+  const mergeScope = `${docHubKey}:${replacementVersion}`;
+  // 服务端 replay_complete（含零历史）与本地新建会话都无需等待回放；active 回放优先。
+  const noReplaySession = resolveNoReplaySession({
+    localCreate: noReplaySessionRef.current,
+    replayState: legacySessionState.replayState,
+    // timelineEmpty 只用于首次页面加载；会话切换必须等 replay_started/complete 的真实信号。
+    timelineEmpty: replacementVersion === 0 && legacySessionState.timelineEmpty === true,
+    hasMessages: legacySessionState.structuredMessages.length > 0,
+  });
+  const syncTerminalError =
+    syncChat.connection.status === "error" ||
+    (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
+  const hydration = useChatHydration({
+    scope: mergeScope,
+    legacy: legacySessionState.structuredMessages,
+    sync: syncChat.projection.messages,
+    sourceReady: connectionState === "connected",
+    replayActive: legacySessionState.status === "replaying",
+    liveActive: legacySessionState.status === "responding",
+    blocked: syncChat.connection.hydrating,
+    syncTerminalError,
+    noReplaySession,
+  });
+  const sessionState = useMemo(
+    () =>
+      applyChatHydration(legacySessionState, hydration, {
+        syncEnabled,
+        legacyFallback: syncChat.legacyFallback,
+        noReplaySession,
+        syncTerminalError,
+      }),
+    [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession, syncTerminalError],
+  );
 
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
   const acpSessionIdRef = useRef(sessionState.acpSessionId);
   acpSessionIdRef.current = sessionState.acpSessionId;
-
   // Peri Task 视图 — 只订阅 Session Doc 的 tasks/taskOrder 子树（DocHub 共享实例，
   // 与上面两个 hook 同一份 doc；Chat Doc token 流不触发本 selector 重算）。
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
-
-  // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
-  const yjsChatRef = useRef(chatState);
-  const yjsSessionRef = useRef(sessionState);
-  yjsChatRef.current = chatState;
-  yjsSessionRef.current = sessionState;
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__yjs_dump__ = () => {
-      console.log("── YJS Chat State ──", yjsChatRef.current);
-      console.log("── YJS Session State ──", yjsSessionRef.current);
-    };
-    return () => {
-      delete (window as unknown as Record<string, unknown>).__yjs_dump__;
-    };
-  }, []);
+  useYjsDebugDump(chatState, sessionState);
 
   // ── Action commandId（C3：幂等键，同会话唯一）──
   // 同一 action 意图（action + 业务参数）重试复用同一 commandId；
@@ -394,6 +489,9 @@ export function useChatPanelRuntime({
   const callbacks = useMemo(
     (): ChatPanelCallbacks => ({
       onSendPrompt: (contentBlocks: unknown[]) => {
+        // 用户发送新消息即回到最新位置：回看历史时被窗口淘汰的块需要重新订阅，
+        // 否则本次流式回复永远进不了投影（旧通道文本已退役）。
+        syncChat.returnToLatestHistory?.();
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
         // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
         // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
@@ -411,12 +509,15 @@ export function useChatPanelRuntime({
         sendAction({ action: "cancel", sessionId: sessionState.acpSessionId || undefined });
       },
       onCreateSession: () => {
+        noReplaySessionRef.current = true;
         sendAction({ action: "create_session" });
       },
       onLoadSession: (sid: string) => {
+        noReplaySessionRef.current = false;
         sendAction({ action: "load_session", sessionId: sid });
       },
       onResumeSession: (sid: string) => {
+        noReplaySessionRef.current = false;
         sendAction({ action: "resume_session", sessionId: sid });
       },
       onRenameSession: (sid: string, title: string) => {
@@ -437,9 +538,8 @@ export function useChatPanelRuntime({
         sendAction({ action: "set_session_mode", modeId });
       },
     }),
-    [sendAction, sessionState.acpSessionId],
+    [sendAction, sessionState.acpSessionId, syncChat.returnToLatestHistory],
   );
-
   return {
     authState,
     connectionState,
@@ -448,8 +548,10 @@ export function useChatPanelRuntime({
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,
+    historyScopeKey: mergeScope,
     chatState,
     sessionState,
+    syncChat,
     periTasks: periTaskState.tasks,
     periTasksLoaded: periTaskState.loaded,
     derivedState,

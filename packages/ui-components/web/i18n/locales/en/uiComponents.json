@@ -125,7 +125,9 @@
           "working": "Working"
         },
         "startConversation": "Start Conversation",
-        "startConversationDesc": "Send a message to start chatting"
+        "startConversationDesc": "Send a message to start chatting",
+        "loadEarlier": "Show earlier messages ({{count}} hidden)",
+        "loadEarlierUnknown": "Show earlier messages"
       },
       "commandMenu": {
         "connected": "Connected",

@@ -13,7 +13,7 @@
 //   仅含前缀与尺寸计量，不含任何会话内容。
 
 import * as Y from "yjs";
-import { encodeYjsReplaceFrame, encodeYjsUpdateFrame } from "../protocol/update-frame";
+import { encodeYjsReplaceFrame, encodeYjsUpdateFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON } from "../transport/ws-close-codes";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { WsConnection } from "./connection-types";
@@ -71,12 +71,48 @@ export class YjsBroadcaster {
     if (ws.readyState !== 1) return;
     this.reconcileLagging();
     if (this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) return;
-    ws.send(JSON.stringify(data));
+    try {
+      ws.send(JSON.stringify(data));
+    } catch {
+      // 单个连接的发送失败不得冒泡到 keepalive / message 事件循环；连接关闭由 socket 自身事件收敛。
+    }
+  }
+
+  /**
+   * legacy 帧编码的唯一安全入口：超限或编码失败只丢该帧并留诊断，不把异常抛回
+   * `handleMessage` / `queueMicrotask`。旧通道与新的同步协议共用同一条 socket，
+   * 因此不能为了一个过大的 legacy 帧关闭整条连接。
+   */
+  private encodeLegacyFrame(
+    kind: "update" | "replace",
+    docName: string,
+    generation: string,
+    payload: Uint8Array,
+  ): Uint8Array | null {
+    if (payload.length > MAX_YJS_SYNC_PAYLOAD_BYTES) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] dropped oversized legacy ${kind}: prefix=${docPrefix(docName)} ` +
+          `bytes=${payload.length} limit=${MAX_YJS_SYNC_PAYLOAD_BYTES}`,
+      );
+      return null;
+    }
+    try {
+      return kind === "replace"
+        ? encodeYjsReplaceFrame(docName, generation, payload)
+        : encodeYjsUpdateFrame(docName, generation, payload);
+    } catch (error) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] dropped unencodable legacy ${kind}: prefix=${docPrefix(docName)} ` +
+          `bytes=${payload.length} error=${error instanceof Error ? error.name : "unknown"}`,
+      );
+      return null;
+    }
   }
 
   /** 向单个连接发送当前世代快照；客户端仅在 generation 相同时合并。 */
   sendSnapshot(ws: WsConnection, ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
-    const frame = encodeYjsUpdateFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
+    const frame = this.encodeLegacyFrame("update", docName, generation, Y.encodeStateAsUpdate(ydoc));
+    if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
     this.sendFrameWithBackpressure(ws, docName, frame);
   }
@@ -89,21 +125,24 @@ export class YjsBroadcaster {
    */
   sendDiff(ws: WsConnection, ydoc: Y.Doc, docName: string, generation: string, stateVector: Uint8Array): void {
     const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
-    const frame = encodeYjsUpdateFrame(docName, generation, update);
+    const frame = this.encodeLegacyFrame("update", docName, generation, update);
+    if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
     this.sendFrameWithBackpressure(ws, docName, frame);
   }
 
   /** replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。 */
   broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string): void {
-    const frame = encodeYjsReplaceFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
+    const frame = this.encodeLegacyFrame("replace", docName, generation, Y.encodeStateAsUpdate(ydoc));
+    if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
     this.broadcastMessage(docName, frame);
   }
 
   /** 向同 rcsSessionId 的全部客户端广播当前世代快照。 */
   broadcastSnapshot(ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
-    const frame = encodeYjsUpdateFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
+    const frame = this.encodeLegacyFrame("update", docName, generation, Y.encodeStateAsUpdate(ydoc));
+    if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
     this.broadcastMessage(docName, frame);
   }
@@ -166,8 +205,18 @@ export class YjsBroadcaster {
       if (!registered) continue;
       const buffers = updateBuffers.get(docName);
       if (!buffers || buffers.length === 0) continue;
-      const update = buffers.length === 1 ? buffers[0] : Y.mergeUpdates(buffers);
-      const frame = encodeYjsUpdateFrame(docName, registered.generation, update);
+      let update: Uint8Array;
+      try {
+        update = buffers.length === 1 ? buffers[0] : Y.mergeUpdates(buffers);
+      } catch (error) {
+        this.reportLog?.(
+          `[YJS-BROADCAST] dropped unmergeable update: prefix=${docPrefix(docName)} ` +
+            `error=${error instanceof Error ? error.name : "unknown"}`,
+        );
+        continue;
+      }
+      const frame = this.encodeLegacyFrame("update", docName, registered.generation, update);
+      if (frame === null) continue;
       this.recordFrameMetric(docName, frame.length);
       this.broadcastMessage(docName, frame);
     }
@@ -184,13 +233,18 @@ export class YjsBroadcaster {
   private broadcastMessage(docName: string, frame: Uint8Array): void {
     const rcsSessionId = this.getRcsSessionId(docName);
 
-    const send = (ws: WsConnection) => this.sendFrameWithBackpressure(ws, docName, frame);
+    // sync-only 连接由新协议 DOC_BASE/DOC_UPDATE 驱动，旧 Doc 增量必须跳过；
+    // 同一会话可能同时存在旧标签页，因此按连接而非按会话整体裁剪。
+    const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
+      if (entry.syncOnly) return;
+      this.sendFrameWithBackpressure(entry.ws, docName, frame);
+    };
 
     if (rcsSessionId) {
-      this.registry.forEachByRcsSession(rcsSessionId, (entry) => send(entry.ws));
+      this.registry.forEachByRcsSession(rcsSessionId, send);
       return;
     }
-    this.registry.forEachClient((entry) => send(entry.ws));
+    this.registry.forEachClient(send);
   }
 
   /**
@@ -261,7 +315,18 @@ export class YjsBroadcaster {
         if (docName === undefined) break;
         const registered = this.registeredDocs.get(docName);
         if (!registered) continue; // Doc 已注销，无内容可追赶
-        const frame = encodeYjsUpdateFrame(docName, Y.encodeStateAsUpdate(registered.ydoc));
+        let update: Uint8Array;
+        try {
+          update = Y.encodeStateAsUpdate(registered.ydoc);
+        } catch (error) {
+          this.reportLog?.(
+            `[YJS-BROADCAST] dropped unencodable resync: prefix=${docPrefix(docName)} ` +
+              `error=${error instanceof Error ? error.name : "unknown"}`,
+          );
+          continue;
+        }
+        const frame = this.encodeLegacyFrame("update", docName, registered.generation, update);
+        if (frame === null) continue;
         this.recordFrameMetric(docName, frame.length);
         try {
           ws.send(frame);

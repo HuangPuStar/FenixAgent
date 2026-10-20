@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInstance } from "i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import { initReactI18next } from "react-i18next/initReactI18next";
@@ -6,6 +8,8 @@ import type { ThreadEntry } from "../chat/types";
 import { ChatView } from "../chat/view/ChatView";
 import zh from "../i18n/locales/zh/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
+
+const CHAT_VIEW_DIR = join(import.meta.dir, "../chat/view");
 
 /**
  * Chat 空状态与时间线间距的服务端渲染测试。
@@ -57,6 +61,27 @@ describe("Chat 空状态", () => {
     expect(markup).not.toContain('data-slot="agent-badge"');
   });
 
+  // 拆分到 chat-empty-state.tsx 后，空状态的 DOM 层级、class、图标、文案与间距必须逐项保持原样。
+  test("空状态 DOM 结构与拆分前一致", () => {
+    const markup = renderToStaticMarkup(<ChatView entries={[]} emptyTitle="标题保持" emptyDescription="说明保持" />);
+    expect(markup).toContain('data-slot="chat-empty-state"');
+    expect(markup).toContain('aria-labelledby="chat-empty-title"');
+    expect(markup).toContain('id="chat-empty-title"');
+    expect(markup).toContain("chat-empty-heading my-1.75 text-3xl");
+    expect(markup).toContain("max-w-115 text-sm leading-relaxed text-slate-500");
+    expect(markup).toContain("h-11.5 w-11.5 rotate-[-5deg]");
+    expect(markup).toContain("h-6.75 w-6.75 rotate-[5deg]");
+    expect(markup).toContain("mt-4.5 text-blue-600");
+    expect(markup).toContain("从一次充分讨论开始");
+    expect(markup).toContain('data-slot="chat-empty-suggestions"');
+    expect(markup.match(/chat-empty-prompt-button/g)).toHaveLength(3);
+    expect(markup).toContain("讨论代码变更的思路与风险");
+    expect(markup).toContain("讨论技术方案的选择与取舍");
+    expect(markup).toContain("讨论构建失败的可能原因");
+    expect(markup).toContain("标题保持");
+    expect(markup).toContain("说明保持");
+  });
+
   // 推荐提示词应引导用户先讨论思路、风险和取舍，而不是要求 Agent 直接行动。
   // 包内字典的键带 `chat.components.` 前缀，故断言路径由 `chatEmpty.*` 改为 `chat.components.chatEmpty.*`。
   test("推荐讨论型起始话题", () => {
@@ -81,5 +106,16 @@ describe("Chat 空状态", () => {
     // `chat-activity-chain` 类名保留（工具簇样式表仍以它作作用域钩子），锚点为 `data-slot`。
     expect(markup).toContain('data-slot="chat-activity-chain"');
     expect(markup).toContain('data-after-message="true"');
+  });
+
+  // 空状态自定义选择器留在 ChatView.css，宿主 Tailwind 扫描面覆盖 packages/**/web；
+  // 拆分到新文件后类名仍会进入构建产物（构建后 CSS 已人工核对）。
+  test("空状态选择器与 Tailwind 扫描面存在", () => {
+    const css = readFileSync(join(CHAT_VIEW_DIR, "ChatView.css"), "utf8");
+    expect(css).toContain(".chat-empty-heading");
+    expect(css).toContain(".chat-empty-prompt-list");
+    expect(css).toContain(".chat-empty-prompt-button:hover");
+    const hostCss = readFileSync(join(import.meta.dir, "../../../../apps/web/src/index.css"), "utf8");
+    expect(hostCss).toContain('@source "../../../packages/**/web/**/*.{ts,tsx}"');
   });
 });

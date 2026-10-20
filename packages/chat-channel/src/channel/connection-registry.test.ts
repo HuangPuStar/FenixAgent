@@ -21,6 +21,59 @@ describe("ConnectionRegistry", () => {
     expect(registry.consumePending("ws-2")).toEqual(["second"]);
   });
 
+  // 路由层在 handleOpen 之前就分配了 wsId；认证窗口内到达的 HELLO 必须可暂存，且按上限封顶。
+  test("buffers sync frames before pending registration and caps the queue", () => {
+    const registry = new ConnectionRegistry();
+    const frame = new Uint8Array([0x7b, 0x7d]);
+
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    expect(registry.pendingBinaryCount("ws-early")).toBe(1);
+    for (let index = 0; index < 7; index += 1) {
+      expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    }
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(false);
+    expect(registry.consumePendingBinary("ws-early")).toHaveLength(8);
+    expect(registry.consumePendingBinary("ws-early")).toBeUndefined();
+  });
+
+  // 连接在认证/装配阶段失败时，早到帧必须随 close 清理，不能残留。
+  test("discards early sync frames when the connection closes", () => {
+    const registry = new ConnectionRegistry();
+    registry.bufferPendingBinary("ws-early", new Uint8Array([0x7b, 0x7d]));
+
+    registry.discardPending("ws-early");
+
+    expect(registry.pendingBinaryCount("ws-early")).toBe(0);
+  });
+
+  // 单帧上限 10MiB，只限帧数仍可让握手窗口占用约 80MiB；超出字节预算的帧必须整帧拒绝且不改动已有状态。
+  test("rejects a sync frame over the pending byte budget without mutating the queue", () => {
+    const registry = new ConnectionRegistry();
+    const frame = new Uint8Array(16 * 1024);
+
+    for (let index = 0; index < 4; index += 1) {
+      expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    }
+    expect(registry.bufferPendingBinary("ws-early", new Uint8Array(1))).toBe(false);
+    expect(registry.pendingBinaryCount("ws-early")).toBe(4);
+
+    expect(registry.consumePendingBinary("ws-early")).toHaveLength(4);
+    // 消费后字节计数同时归零：否则同一连接在下一轮握手会被旧计数永久拒绝。
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+  });
+
+  // discard 是连接失败路径，字节计数同样要清除；残留计数会让复用的 wsId 无法再缓冲。
+  test("discarding early frames clears the pending byte accounting", () => {
+    const registry = new ConnectionRegistry();
+    const frame = new Uint8Array(60 * 1024);
+
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+    registry.discardPending("ws-early");
+
+    expect(registry.pendingBinaryCount("ws-early")).toBe(0);
+    expect(registry.bufferPendingBinary("ws-early", frame)).toBe(true);
+  });
+
   // 通过 RCS session 定向遍历时不得包含其他 session 的连接。
   test("iterates only clients in the requested RCS session", () => {
     const registry = new ConnectionRegistry();

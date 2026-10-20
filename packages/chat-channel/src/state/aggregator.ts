@@ -9,6 +9,7 @@
 //
 // 本模块为纯投影（无 I/O、无日志）；拒绝原因通过返回值交给调用方记录诊断。
 
+import type * as Y from "yjs";
 import { isPublicError } from "../public-error";
 import {
   DEFAULT_PERMISSION_TIMEOUT_MS,
@@ -475,6 +476,41 @@ function applyTurnCancelRequested(pair: DocPair): ApplyResult {
 }
 
 /** 处理 turn 终态（completed/failed/cancelled/interrupted）：Entry 终态 + activeTurn 终态，之后增量丢弃 */
+/**
+ * 回放窗口开启即建立回放 turn（不写 entry）：前端 `presenting` 从加载响应起就是 replaying，
+ * 不必等首个回放事件才进入回放态；窗口收敛时由 convergeReplayWindow 的 turn_completed 收口。
+ */
+function applyReplayStarted(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  const turnId = event.turnId;
+  if (typeof turnId !== "string" || turnId.length === 0) {
+    return { applied: false, reason: "replay_started missing turnId" };
+  }
+  const active = readActiveTurn(pair.session);
+  // 只有「非终态的活动 turn」才阻止回放开始。turn 终态后 activeTurnId 不会自动清空，
+  // 若仍只按 turnId 非空拒绝，终态之后的 replay_started 会被误拒，presenting 停在 done，
+  // 而 convergeReplayWindow 仍会发出 turn_completed。turnStatus 缺失按非终态处理，
+  // 避免把未知状态当成已结束而覆盖。
+  const terminal = active.turnStatus !== null && TURN_TERMINAL_STATUSES.has(active.turnStatus);
+  if (active.turnId !== null && !terminal) {
+    return { applied: false, reason: "turn active" };
+  }
+  setActiveTurn(pair.session, turnId, "running");
+  const session = getSessionRoot(pair.session).get("session") as Y.Map<unknown> | undefined;
+  session?.set("replayState", "active");
+  return { applied: true };
+}
+
+/**
+ * 回放完成（含零历史）：服务端明确通知后写入 `replayState=complete`。
+ * 客户端据此立即结束 hydrate 门控，不再依赖 1.5s 无活动计时。
+ */
+function applyReplayComplete(pair: DocPair): ApplyResult {
+  const session = getSessionRoot(pair.session).get("session") as Y.Map<unknown> | undefined;
+  if (!session) return { applied: false, reason: "session projection missing" };
+  session.set("replayState", "complete");
+  return { applied: true };
+}
+
 function applyTurnTerminal(
   pair: DocPair,
   event: NormalizedEvent,
@@ -818,6 +854,12 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         case "turn_interrupted":
           result = applyTurnTerminal(pair, event, "interrupted");
+          break;
+        case "replay_started":
+          result = applyReplayStarted(pair, event);
+          break;
+        case "replay_complete":
+          result = applyReplayComplete(pair);
           break;
         case "plan":
           result = applyPlan(pair, event);

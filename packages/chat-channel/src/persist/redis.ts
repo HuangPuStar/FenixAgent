@@ -14,6 +14,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import type { RedisProvider, SnapshotHydration } from "../types";
 import { mergeYjsSnapshotWithCas, type RedisSnapshotConnection } from "./snapshot-cas";
 import { defaultSnapshotMetricsLog, reportSnapshotCasMetric, type SnapshotPersistConfig } from "./snapshot-config";
 import { framePublishUpdate, isSamePublisherId, PUBLISHER_ID, parseFramedPublish } from "./snapshot-framing";
@@ -36,6 +37,14 @@ export async function getOrCreateActiveGeneration(redis: Redis | Cluster, rcsSes
   const r = redis as Redis;
   await r.set(key, proposed, "NX");
   return (await r.get(key)) ?? proposed;
+}
+
+/**
+ * 只读当前 active generation，不创建、不覆盖。
+ * 用于安装前的权威复核：返回 null 说明 key 已消失，调用方应按“不一致”处理。
+ */
+export async function getActiveGeneration(redis: Redis | Cluster, rcsSessionId: string): Promise<string | null> {
+  return (redis as Redis).get(`${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`);
 }
 
 /** 仅当前 active generation 可发布后继，防止并发 replacement 后到者覆盖胜者。 */
@@ -80,7 +89,7 @@ export function createRedisProvider(
   docName: string,
   ydoc: Y.Doc,
   options: RedisProviderOptions,
-): { destroy(): Promise<void> } {
+): RedisProvider {
   const snapshotIntervalMs = options.snapshot.intervalMs;
   const snapshotIdleMs = options.snapshot.idleMs;
   const snapshotTtlSeconds = options.snapshot.ttlSeconds;
@@ -113,6 +122,20 @@ export function createRedisProvider(
   let intervalTimer: ReturnType<typeof setTimeout> | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightCas: Promise<boolean> | null = null;
+
+  // 初始快照水合信号：打开 Doc 的调用方（factory / 历史源）必须等待它落定；
+  // 所有提前退出路径都要 settle，否则调用方会永久挂起。
+  let hydrationSettled = false;
+  let resolveHydration!: (outcome: SnapshotHydration) => void;
+  const hydration = new Promise<SnapshotHydration>((resolve) => {
+    resolveHydration = resolve;
+  });
+  const settleHydration = (outcome: SnapshotHydration): void => {
+    if (hydrationSettled) return;
+    hydrationSettled = true;
+    resolveHydration(outcome);
+  };
+  const hydrationFailure = (message: string): SnapshotHydration => ({ status: "failed", error: new Error(message) });
 
   const reportSubscriberFailure = (stage: "duplicate" | "listen" | "subscribe" | "load" | "error" | "persist") => {
     console.warn(`[redis-provider] Redis ${stage} failed; local sync remains enabled`);
@@ -308,10 +331,25 @@ export function createRedisProvider(
   };
 
   const loadInitialSnapshot = async () => {
+    let outcome: SnapshotHydration = { status: "empty" };
     try {
-      if (generation && (await r.get(activeGenerationKey)) !== generation) return;
+      if (destroyed) {
+        outcome = hydrationFailure("redis provider destroyed before snapshot hydration");
+        return;
+      }
+      if (generation && (await r.get(activeGenerationKey)) !== generation) {
+        // 并发换代后本 provider 的 Doc 已被取代；把旧快照当成“无历史”会误导恢复。
+        outcome = {
+          status: "stale",
+          error: new Error("projection generation was replaced before snapshot hydration"),
+        };
+        return;
+      }
       const buf = await r.getBuffer(redisKey);
-      if (destroyed) return;
+      if (destroyed) {
+        outcome = hydrationFailure("redis provider destroyed before snapshot hydration");
+        return;
+      }
 
       if (buf) {
         try {
@@ -321,10 +359,23 @@ export function createRedisProvider(
           Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(buf.toString(), "base64")), remoteUpdateOrigin);
         }
       }
-    } catch {
+      // 无论 GETBUFFER 是否返回快照都要校验：空结果同样属于某一世代，跨进程换代后
+      // 不能把旧世代的“无历史”当作当前投影的权威空历史。apply 期间换代也必须在此收敛。
+      if (generation && (await r.get(activeGenerationKey)) !== generation) {
+        outcome = {
+          status: "stale",
+          error: new Error("projection generation was replaced during snapshot hydration"),
+        };
+        return;
+      }
+      if (buf) outcome = { status: "loaded" };
+    } catch (error) {
       if (!destroyed) reportSubscriberFailure("load");
+      outcome = { status: "failed", error };
     } finally {
+      // 先放开本地更新再把水合结果交给等待方，避免调用方初始化结构时更新仍被当成 pending。
       enableLocalUpdates();
+      settleHydration(outcome);
     }
   };
 
@@ -373,7 +424,9 @@ export function createRedisProvider(
   } catch {
     reportSubscriberFailure("duplicate");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis persistence connection duplicate failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -387,7 +440,9 @@ export function createRedisProvider(
     cleanupPersistence();
     reportSubscriberFailure("duplicate");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis subscriber connection duplicate failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -402,7 +457,9 @@ export function createRedisProvider(
     cleanupSubscriber();
     reportSubscriberFailure("listen");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis subscriber listener registration failed"));
     return {
+      hydration,
       async destroy() {
         destroyed = true;
         ydoc.off("update", onUpdate);
@@ -423,17 +480,22 @@ export function createRedisProvider(
         cleanupSubscriber();
         reportSubscriberFailure("subscribe");
         enableLocalUpdates();
+        settleHydration(hydrationFailure("redis snapshot channel subscribe failed"));
       },
     );
   } catch {
     cleanupSubscriber();
     reportSubscriberFailure("subscribe");
     enableLocalUpdates();
+    settleHydration(hydrationFailure("redis snapshot channel subscribe failed"));
   }
 
   return {
+    hydration,
     async destroy() {
       destroyed = true;
+      // 水合尚未落定时销毁 provider：等待方必须得到确定的失败结果，不能永久挂起。
+      settleHydration(hydrationFailure("redis provider destroyed before snapshot hydration"));
       ydoc.off("update", onUpdate);
       cleanupSubscriber();
       clearSnapshotTimers();

@@ -139,8 +139,10 @@ function ChatPanelView({
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,
+    historyScopeKey,
     chatState,
     sessionState,
+    syncChat,
     periTasks,
     periTasksLoaded,
     derivedState,
@@ -208,6 +210,20 @@ function ChatPanelView({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
+        {!syncChat.legacyFallback && syncChat.connection.status === "error" && (
+          <PublicErrorCard
+            error={{
+              type: "SYNC_RELAY.SYNC_FAILED",
+              id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
+              // 保留服务端原始 close reason（+ wasClean/local 标记），线上不依赖 console 才能定位。
+              message: syncChat.connection.error?.message
+                ? `${tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED")} (${syncChat.connection.error.message.slice(0, 160)})`
+                : tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
+            }}
+            t={tUi}
+            className={INLINE_ERROR_CARD_CLASS}
+          />
+        )}
         {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {sessionState.agentPublicError &&
@@ -239,6 +255,10 @@ function ChatPanelView({
           currentModeId={derivedState.currentModeId}
           supportsModeSelection={derivedState.supportsModeSelection}
           boundMcps={hostPorts.boundMcps}
+          historyScopeKey={historyScopeKey}
+          hasEarlierHistory={syncChat.history.hasEarlier}
+          historyLoading={syncChat.history.loading}
+          onLoadEarlierHistory={syncChat.history.loadEarlier}
           {...callbacks}
           {...ports}
         />

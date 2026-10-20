@@ -122,6 +122,20 @@ const CALLBACK_TERMINAL_EVENTS: ReadonlySet<NormalizedEventType> = new Set([
   "turn_failed",
 ]);
 
+/**
+ * 新同步协议旁路需要 turn 归属的事件。
+ *
+ * ACP 实时载荷不带 turnId；这里只使用旧投影已提交的 activeTurnId（由 registerUserMessage /
+ * pendingPromptTurns 建立的同一份服务端绑定），不读取客户端字段，也不在无绑定时猜造。
+ */
+const SYNC_TURN_BOUND_EVENTS: ReadonlySet<NormalizedEventType> = new Set([
+  ...REPLAY_NEEDS_TURN,
+  "permission_resolved",
+  "turn_failed",
+  "turn_cancelled",
+  "turn_interrupted",
+]);
+
 /** 提取 user_message 文本（与聚合层 extractText 同口径：content 优先，回落 update 顶层） */
 function extractUserMessageText(event: NormalizedEvent): string {
   const contentText = event.content?.text;
@@ -165,6 +179,13 @@ export interface RelayEventHandlerDependencies {
   terminateLocalDeadInstance: (instanceId: string) => void;
   /** 安全诊断日志：只记录低基数 method/type，不得记录 payload 或会话标识。 */
   log?: (message: string) => void;
+  /**
+   * 旧投影路径处理后的旁路通知（新同步协议接线用）。
+   *
+   * 必须先完成 `processNormalizedEvent` 再调用；旧客户端行为不依赖本回调。实现方负责按连接过滤
+   * trusted turnId 并自行捕获异步错误。
+   */
+  onNormalizedEvent?: (rcsSessionId: string, event: NormalizedEvent) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
@@ -281,6 +302,14 @@ export class RelayEventHandler {
 
     if (msgType === "status") {
       return this.handleStatus(shared, raw);
+    }
+
+    // ACP 宿主在 load/resume 响应之后显式通知回放结束（含零历史）：立即收敛窗口，
+    // 不再等 10s 窗口或依赖客户端计时。旧宿主不发该通知时保持原窗口语义。
+    if (rpcCheck?.method === "session/replay_complete") {
+      this.convergeReplayWindow(shared);
+      this.dispatch(shared, { type: "replay_complete", update: {}, content: null });
+      return;
     }
 
     // 第三级：规范化事件帧（acp-link 私有帧 / session/update 通知），在此边界
@@ -724,6 +753,13 @@ export class RelayEventHandler {
     if (shared.replaySkipSynthesis === undefined) {
       shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
     }
+    // 窗口一开就建立回放 turn（不写 entry）：前端无需等首个回放事件才知道 replaying，
+    // 慢启动 Agent（2s/4s 后才吐历史）也不会被客户端的“无活动”兜底提前放行。
+    if (shared.replaySkipSynthesis === false && shared.replayTurnId == null) {
+      const turnId = createReplayTurnId();
+      shared.replayTurnId = turnId;
+      this.dispatch(shared, { type: "replay_started", update: {}, content: null, turnId });
+    }
     if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
     shared.replayWindowTimer = setTimeout(() => {
       this.convergeReplayWindow(shared);
@@ -865,6 +901,25 @@ export class RelayEventHandler {
       this.dependencies.docManager.processNormalizedEvent(shared.rcsSessionId, event);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
+    }
+    // 旧投影路径已完成；新协议旁路只消费实时事件。回放 turn（turn_replay_*）的历史由旧
+    // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（入口只有 pending 预算，且回放工具
+    // 事件无可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
+    try {
+      // 子 Agent / callback 事件自身不带 turnId 时不得借用主 Agent 的活动 turn：
+      // 两者已有独立归属键（sourceAgentId / callbackEntryId），借用会把输出混入主回复。
+      const canBindActiveTurn =
+        !event.sourceAgentId && !event.callbackEntryId && SYNC_TURN_BOUND_EVENTS.has(event.type);
+      const boundTurnId =
+        event.turnId ??
+        (canBindActiveTurn ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId : null);
+      if (boundTurnId?.startsWith("turn_replay_")) return;
+      this.dependencies.onNormalizedEvent?.(
+        shared.rcsSessionId,
+        boundTurnId ? { ...event, turnId: boundTurnId } : event,
+      );
+    } catch (err) {
+      this.dependencies.reportError("[YJS-FE] sync protocol event fanout failed:", err);
     }
   }
 

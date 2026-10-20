@@ -3,7 +3,7 @@
 //
 // 职责：
 // - 内存中 Y.Doc 实例的 Map 管理（chatDocs / sessionDocs）
-// - Doc 的创建/加载/销毁（可选 Redis 持久化）
+// - Doc 的创建/加载/销毁（委托 DocOpenService，可选 Redis 持久化）
 // - 规范化事件（NormalizedEvent）的微批次合并与投影（processNormalizedEvent）
 // - Y.Doc update 广播回调绑定
 //
@@ -14,7 +14,7 @@ import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
-import { encodeYjsReplaceFrame } from "../protocol/update-frame";
+import { encodeYjsReplaceFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
@@ -27,7 +27,9 @@ import {
   preserveAgentProjection,
   readEntryText,
 } from "./doc-manager-projection";
-import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
+import { DocOpenService } from "./doc-open-service";
+import { createChatDoc, createSessionDoc } from "./factory";
+import { ProjectionFences, type ReplacementAttempt } from "./projection-fence";
 import { SessionTitleState, type SessionTitleStore } from "./session-title-store";
 
 export interface DocManagerOptions {
@@ -60,7 +62,13 @@ export type QuestionRequestedHandler = (
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
+  /**
+   * 每个 rcsSessionId 的投影生命周期栅栏：close 与 replace 使用独立 epoch，
+   * 并登记在途换代供 open 安装前等待（语义见 projection-fence.ts）。
+   */
+  private readonly fences = new ProjectionFences();
   private closingSessionDocs = new Map<string, Promise<void>>();
+  private readonly openService: DocOpenService;
   private readonly sessionTitles: SessionTitleState;
   private getRedis: () => Redis | Cluster | null;
   // 只能经 setSnapshotPersistConfigSource 注入：值依赖启动后才可读的宿主模块配置，
@@ -83,6 +91,21 @@ export class DocManager {
     this.onPermissionRequested = null;
     this.onQuestionRequested = null;
     this.batchWindowMs = options?.acpBatchWindowMs ?? DEFAULT_BATCH_WINDOW_MS;
+    this.openService = new DocOpenService({
+      chatDocs: this.chatDocs,
+      sessionDocs: this.sessionDocs,
+      fences: this.fences,
+      getRedis: () => this.getRedis(),
+      resolveSnapshotPersistConfig: () => this.resolveSnapshotPersistConfig(),
+      registerDocBroadcast: (ydoc, docName) => this.registerDocBroadcast(ydoc, docName),
+      onError: (context, err) => this.onError?.(context, err),
+      sessionTitles: this.sessionTitles,
+      closingSessionDocs: this.closingSessionDocs,
+      cancelACPBatch: (rcsSessionId) => this.cancelACPBatch(rcsSessionId),
+      cancelAllACPBatches: () => {
+        for (const rcsSessionId of [...this.acpBatchBuffers.keys()]) this.cancelACPBatch(rcsSessionId);
+      },
+    });
   }
 
   // ── Broadcast ──
@@ -135,21 +158,12 @@ export class DocManager {
 
   // ── Chat Doc ──
 
-  /** 打开或获取已有的 Chat Doc（内存/Redis 模式） */
-  async openChat(rcsSessionId: string): Promise<ChatDoc> {
-    const existing = this.chatDocs.get(rcsSessionId);
-    if (existing) return existing;
-
-    const redis = this.getRedis();
-    const generation = redis
-      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
-      : (this.sessionDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
-    const doc = redis
-      ? loadChatDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
-      : createChatDoc(rcsSessionId, null, generation);
-    this.registerDocBroadcast(doc.ydoc, `chat:${rcsSessionId}`);
-    this.chatDocs.set(rcsSessionId, doc);
-    return doc;
+  /**
+   * 打开或获取已有的 Chat Doc（内存/Redis 模式）。
+   * Redis 模式等待快照水合；并发调用共享同一 Promise。
+   */
+  openChat(rcsSessionId: string): Promise<ChatDoc> {
+    return this.openService.openChat(rcsSessionId);
   }
 
   /** 获取 Chat Doc（不创建） */
@@ -163,37 +177,17 @@ export class DocManager {
   }
 
   /** 关闭并销毁 Chat Doc */
-  async closeChat(rcsSessionId: string): Promise<void> {
-    const doc = this.chatDocs.get(rcsSessionId);
-    if (doc) {
-      this.chatDocs.delete(rcsSessionId);
-      await doc.destroy();
-    }
+  closeChat(rcsSessionId: string): Promise<void> {
+    return this.openService.closeChat(rcsSessionId);
   }
 
   // ── Session Doc ──
-  /** 打开或获取已有的 Session Doc（_userId/_agentId 为兼容旧调用方保留） */
-  async openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
-    await this.closingSessionDocs.get(rcsSessionId);
-    const existing = this.sessionDocs.get(rcsSessionId);
-    if (existing) return existing;
-
-    const redis = this.getRedis();
-    const generation = redis
-      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
-      : (this.chatDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
-    const doc = redis
-      ? loadSessionDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
-      : createSessionDoc(rcsSessionId, null, generation);
-    try {
-      if (!(await this.sessionTitles.refresh(rcsSessionId))) throw new Error("session metadata load superseded");
-    } catch (error) {
-      await doc.destroy();
-      throw error;
-    }
-    this.registerDocBroadcast(doc.ydoc, `session:${rcsSessionId}`);
-    this.sessionDocs.set(rcsSessionId, doc);
-    return doc;
+  /**
+   * 打开或获取已有的 Session Doc（_userId/_agentId 为兼容旧调用方保留）。
+   * 与 `openChat` 相同：Redis 模式等待快照水合，并发调用共享同一 Promise。
+   */
+  openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
+    return this.openService.openSession(_userId, _agentId, rcsSessionId);
   }
 
   /** 将当前 RCS 会话内的 ACP 会话标题写入 Redis 权威元数据，再更新 Session Doc 投影。 */
@@ -227,22 +221,8 @@ export class DocManager {
   }
 
   /** 关闭并销毁 Session Doc，同时取消待处理的 ACP 批次 */
-  async closeSession(rcsSessionId: string): Promise<void> {
-    const existingClose = this.closingSessionDocs.get(rcsSessionId);
-    if (existingClose) return existingClose;
-    this.cancelACPBatch(rcsSessionId);
-    const doc = this.sessionDocs.get(rcsSessionId);
-    this.sessionDocs.delete(rcsSessionId);
-    const closing = (async () => {
-      await this.sessionTitles.close(rcsSessionId);
-      if (doc) await doc.destroy();
-    })();
-    this.closingSessionDocs.set(rcsSessionId, closing);
-    try {
-      await closing;
-    } finally {
-      if (this.closingSessionDocs.get(rcsSessionId) === closing) this.closingSessionDocs.delete(rcsSessionId);
-    }
+  closeSession(rcsSessionId: string): Promise<void> {
+    return this.openService.closeSession(rcsSessionId);
   }
 
   // ── 投影换代 ──
@@ -259,6 +239,16 @@ export class DocManager {
    * processNormalizedEvent 总是从 map 取当前 Doc，不会写回旧 generation。
    */
   async replaceProjection(rcsSessionId: string, targetAcpSessionId: string | null): Promise<ProjectionDocs> {
+    return this.fences.runReplacement(rcsSessionId, (attempt) =>
+      this.replaceProjectionInternal(rcsSessionId, targetAcpSessionId, attempt),
+    );
+  }
+
+  private async replaceProjectionInternal(
+    rcsSessionId: string,
+    targetAcpSessionId: string | null,
+    attempt: ReplacementAttempt,
+  ): Promise<ProjectionDocs> {
     this.cancelACPBatch(rcsSessionId);
     const generation = `gen_${crypto.randomUUID()}`;
     const redis = this.getRedis();
@@ -267,6 +257,7 @@ export class DocManager {
       : (this.getProjectionGeneration(rcsSessionId) ?? generation);
     let chat: ChatDoc | null = null;
     let session: SessionDoc | null = null;
+    let publishedGeneration = false;
     try {
       // 换代同样走装配投影的快照参数：新 generation 的 provider 需要同一组节流 / TTL 值。
       const snapshot = this.resolveSnapshotPersistConfig();
@@ -276,17 +267,31 @@ export class DocManager {
       const oldSession = this.sessionDocs.get(rcsSessionId);
       preserveAgentProjection(oldSession?.ydoc, session.ydoc);
 
-      // 在 generation 提交前完成编码验证；失败时新 provider 只存在于未激活私有 channel。
-      encodeYjsReplaceFrame(`chat:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(chat.ydoc));
-      encodeYjsReplaceFrame(`session:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(session.ydoc));
+      // 超限 replacement 交给 broadcaster 丢帧并留诊断；换代本身不得在提交前失败。
+      for (const [docName, update] of [
+        [`chat:${rcsSessionId}`, Y.encodeStateAsUpdate(chat.ydoc)],
+        [`session:${rcsSessionId}`, Y.encodeStateAsUpdate(session.ydoc)],
+      ] as const) {
+        if (update.byteLength > MAX_YJS_SYNC_PAYLOAD_BYTES) continue;
+        encodeYjsReplaceFrame(docName, generation, update);
+      }
+
+      // publish 之前先校验一次：已关闭时不必再推进 active generation。
+      this.fences.assertReplacementOpen(attempt);
       if (redis && !(await publishActiveGeneration(redis, rcsSessionId, expectedGeneration, generation))) {
         throw new Error("projection generation changed concurrently");
       }
+      publishedGeneration = redis !== null;
+      // publish await 窗口内可能发生 close：关闭优先，销毁新 Doc 并放弃提交，
+      // 绝不把已关闭的会话重新写回 map（复活）。
+      this.fences.assertReplacementOpen(attempt);
 
       this.registerDocBroadcast(chat.ydoc, `chat:${rcsSessionId}`);
       this.registerDocBroadcast(session.ydoc, `session:${rcsSessionId}`);
       this.chatDocs.set(rcsSessionId, chat);
       this.sessionDocs.set(rcsSessionId, session);
+      // 提交后再次递增：覆盖在换代等待窗口内才完成加载、且尚未安装的 open。
+      this.fences.commitReplacement(attempt);
 
       try {
         await Promise.all([oldChat?.destroy(), oldSession?.destroy()]);
@@ -295,6 +300,13 @@ export class DocManager {
       }
       return { rcsSessionId, generation, targetAcpSessionId, chat, session };
     } catch (err) {
+      // CAS 已推进 active generation 后仍可能被 close 中止；不回滚 Redis（可能已被别的换代推进），
+      // 但必须留下明确诊断：后续 open 的安装前复核会选中该新世代。
+      if (publishedGeneration) {
+        this.onLog?.(
+          `[DocManager] replacement for ${rcsSessionId} advanced active generation to ${generation} before being aborted`,
+        );
+      }
       await Promise.allSettled([chat?.destroy(), session?.destroy()]);
       throw err;
     }
@@ -478,17 +490,7 @@ export class DocManager {
   }
 
   /** 关闭所有 Doc 并清理内部状态 */
-  async closeAll(): Promise<void> {
-    const batchKeys = [...this.acpBatchBuffers.keys()];
-    for (const rcsSessionId of batchKeys) {
-      this.cancelACPBatch(rcsSessionId);
-    }
-
-    for (const rcsSessionId of [...this.sessionDocs.keys()]) await this.closeSession(rcsSessionId);
-
-    for (const doc of this.chatDocs.values()) {
-      await doc.destroy();
-    }
-    this.chatDocs.clear();
+  closeAll(): Promise<void> {
+    return this.openService.closeAll();
   }
 }

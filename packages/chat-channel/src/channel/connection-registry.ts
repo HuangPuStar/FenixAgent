@@ -12,8 +12,21 @@ import type { ClientConnection, SharedRelay } from "./connection-types";
 export class ConnectionRegistry {
   private readonly clients = new Map<string, ClientConnection>();
   private readonly pendingBuffers = new Map<string, string[]>();
+  /** 新协议二进制帧在 entry 创建前到达时的暂存（HELLO 可能在 open 异步初始化期间到达）。 */
+  private readonly pendingBinaryBuffers = new Map<string, Uint8Array[]>();
+  /** 与 `pendingBinaryBuffers` 同步维护的暂存字节数；消费/丢弃时必须一并清除，避免计数泄漏。 */
+  private readonly pendingBinaryBytes = new Map<string, number>();
   private readonly sharedRelays = new Map<string, SharedRelay>();
   private readonly relayAcquisitions = new Map<string, Promise<SharedRelay>>();
+  /** 未就绪连接最多暂存的新协议帧数，防止握手窗口被用作无界队列。 */
+  private static readonly MAX_PENDING_BINARY_FRAMES = 8;
+  /**
+   * 未就绪连接暂存二进制帧的总字节上限。
+   *
+   * 只限帧数挡不住单帧体积：WS 单帧上限 10MiB，8 帧即约 80MiB/连接，握手窗口可被用来
+   * 占满进程内存。64KiB 足以容纳握手期的 HELLO 等小帧，同时让暂存占用与连接数线性有界。
+   */
+  private static readonly MAX_PENDING_BINARY_BYTES = 64 * 1024;
 
   get clientCount(): number {
     return this.clients.size;
@@ -56,8 +69,47 @@ export class ConnectionRegistry {
     return pending;
   }
 
+  /** 诊断用：未就绪文本帧数量（不消费）。 */
+  pendingTextCount(wsId: string): number {
+    return this.clients.get(wsId)?.pendingMessages.length ?? this.pendingBuffers.get(wsId)?.length ?? 0;
+  }
+
+  /** 诊断用：entry 创建前暂存的二进制帧数量（不消费）。 */
+  pendingBinaryCount(wsId: string): number {
+    return this.pendingBinaryBuffers.get(wsId)?.length ?? 0;
+  }
+
+  /**
+   * 暂存 entry 创建前到达的新协议二进制帧；超过上限或连接已关闭时返回 false。
+   *
+   * 帧可能在 `handleOpen` 之前到达：路由层在 `open` 回调里先分配 wsId，再异步完成认证与
+   * environment 解析，最后才调用 `handleOpen`（此时才登记 pending）。浏览器 `open` 后立即
+   * 发送 HELLO，正好落在这段窗口里；若要求 pending 已存在，会把正常握手误判为 1008
+   * `sync protocol unavailable`。缓冲仍按 wsId 限 8 帧与 64KiB，连接关闭时由 `discardPending` 清空。
+   */
+  bufferPendingBinary(wsId: string, frame: Uint8Array): boolean {
+    const pending = this.pendingBinaryBuffers.get(wsId) ?? [];
+    const bufferedBytes = this.pendingBinaryBytes.get(wsId) ?? 0;
+    // 先按「本次帧完整入队后」的总字节判定：超限时不得改动任何状态，否则拒绝后仍会留下半个计数。
+    if (bufferedBytes + frame.byteLength > ConnectionRegistry.MAX_PENDING_BINARY_BYTES) return false;
+    if (pending.length >= ConnectionRegistry.MAX_PENDING_BINARY_FRAMES) return false;
+    pending.push(frame);
+    this.pendingBinaryBuffers.set(wsId, pending);
+    this.pendingBinaryBytes.set(wsId, bufferedBytes + frame.byteLength);
+    return true;
+  }
+
+  consumePendingBinary(wsId: string): Uint8Array[] | undefined {
+    const pending = this.pendingBinaryBuffers.get(wsId);
+    this.pendingBinaryBuffers.delete(wsId);
+    this.pendingBinaryBytes.delete(wsId);
+    return pending;
+  }
+
   discardPending(wsId: string): void {
     this.pendingBuffers.delete(wsId);
+    this.pendingBinaryBuffers.delete(wsId);
+    this.pendingBinaryBytes.delete(wsId);
   }
 
   addClient(wsId: string, client: ClientConnection): void {

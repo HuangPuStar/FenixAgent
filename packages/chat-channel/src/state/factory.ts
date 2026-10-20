@@ -8,15 +8,18 @@ import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { createRedisProvider } from "../persist/redis";
 import type { SnapshotPersistConfig } from "../persist/snapshot-config";
-import { CHAT_DOC_SCHEMA_VERSION, SESSION_DOC_SCHEMA_VERSION } from "../schema";
-import type { ChatDoc, RedisProvider, SessionDoc } from "../types";
-import { getChatRoot, getSessionRoot, initChatDocStructure, initSessionDocStructure } from "./chat-writer";
+import type { ChatDoc, RedisProvider, SessionDoc, SnapshotHydration } from "../types";
+import { initChatDocStructure, initSessionDocStructure } from "./chat-writer";
 
 /** Redis 连接类型（单实例或集群） */
 type RedisConn = Redis | Cluster;
 
+/** 内存 / 新建世代的确定水合结果：没有需要等待的持久化快照。 */
+const EMPTY_HYDRATION: SnapshotHydration = { status: "empty" };
+
 /** 内存模式的 no-op provider（Redis 不可用时使用） */
 const NOOP_PROVIDER: RedisProvider = {
+  hydration: Promise.resolve(EMPTY_HYDRATION),
   async destroy() {
     /* no-op */
   },
@@ -49,6 +52,51 @@ function createGeneration(): string {
   return `gen_${crypto.randomUUID()}`;
 }
 
+/** 加载路径的测试注入通道；生产调用不传。 */
+export interface LoadDocOptions {
+  /**
+   * 固定目标 Y.Doc 的 clientID。Yjs 对同一根 map 键的并发 set 按 clientID 裁决，
+   * 只有固定两端才能稳定复现「本地空结构覆盖快照根类型」的回归。
+   */
+  readonly clientID?: number;
+}
+
+/** 快照未成功水合：调用方必须显式处理，不得把它当作“确实没有历史”。 */
+export class SnapshotHydrationError extends Error {
+  constructor(readonly outcome: SnapshotHydration) {
+    super(`Y.Doc 快照水合失败：${outcome.status}`, { cause: outcome.error });
+    this.name = "SnapshotHydrationError";
+  }
+}
+
+function createLoadTarget(guid: string, options?: LoadDocOptions): Y.Doc {
+  const ydoc = new Y.Doc({ guid });
+  if (options?.clientID !== undefined) ydoc.clientID = options.clientID;
+  return ydoc;
+}
+
+/**
+ * 等待快照水合并拒绝失败结果。
+ *
+ * `failed` / `stale` 一律抛出：`stale` 表示水合窗口内世代已被 `replaceProjection` 取代，
+ * 此时既不能当作“确定无历史”，也不能把旧快照当成功返回。错误由 DocManager 的 fence 与
+ * 上层生命周期统一收口；在这里返回“可用 Doc”会让调用方缓存错误世代。
+ *
+ * 失败时销毁 provider / ydoc 再抛出：否则半初始化的空 Doc 会留在 DocManager 里，
+ * 后续每次历史源读取都得到“空历史”，引导会一直缓存错误事实。
+ */
+async function awaitHydration(provider: RedisProvider, ydoc: Y.Doc): Promise<SnapshotHydration> {
+  try {
+    const outcome = await provider.hydration;
+    if (outcome.status === "failed" || outcome.status === "stale") throw new SnapshotHydrationError(outcome);
+    return outcome;
+  } catch (error) {
+    await provider.destroy().catch(() => {});
+    ydoc.destroy();
+    throw error;
+  }
+}
+
 // ── Chat Doc（消息时间线）──
 // `snapshot` 仅在 Redis 模式（`redis !== null`）下参与 provider 构造；内存模式传 null 时忽略。
 
@@ -68,31 +116,40 @@ export function createChatDoc(
     ydoc,
     generation,
     provider,
+    // 新建世代（或内存 Doc）没有需要恢复的历史快照；provider 仍会照常订阅实时更新。
+    hydration: EMPTY_HYDRATION,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }
 
-export function loadChatDoc(
+/**
+ * 恢复已有 Chat Doc：**先应用 Redis 快照，再补齐结构**。
+ *
+ * 顺序不可交换：`initChatDocStructure` 会创建 `entries` / `entryOrder` / `toolCalls` 根类型，
+ * 若在快照前执行，Yjs 按 clientID 裁决同键冲突，目标 clientID 较大时空 map/array 会覆盖
+ * 快照中的非空类型，整份历史不可达。
+ */
+export async function loadChatDoc(
   rcsSessionId: string,
   redis: RedisConn | null,
   generation = createGeneration(),
   snapshot?: SnapshotPersistConfig,
-): ChatDoc {
+  options?: LoadDocOptions,
+): Promise<ChatDoc> {
   const docName = `chat:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
+  const ydoc = createLoadTarget(`${docName}:${generation}`, options);
+  const provider = safeProvider(redis, docName, generation, ydoc, snapshot);
+  const hydration = await awaitHydration(provider, ydoc);
 
-  // 兼容缺失结构：旧 schema 或空 Doc 加载时补齐新结构骨架；
-  // 已存在的新结构 Doc 不做破坏性重建（无兼容窗口，但加载路径需幂等）。
-  if (getChatRoot(ydoc).get("schemaVersion") !== CHAT_DOC_SCHEMA_VERSION) {
-    initChatDocStructure(ydoc);
-  }
+  // 幂等补齐缺失结构：快照已应用，已有根类型原样保留，只为旧 schema / 空 Doc 建骨架。
+  initChatDocStructure(ydoc);
   ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, generation, ydoc, snapshot);
   return {
     ydoc,
     generation,
     provider,
+    hydration,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }
@@ -115,29 +172,36 @@ export function createSessionDoc(
     ydoc,
     generation,
     provider,
+    // 新建世代（或内存 Doc）没有需要恢复的历史快照。
+    hydration: EMPTY_HYDRATION,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }
 
-export function loadSessionDoc(
+/**
+ * 恢复已有 Session Doc：**先应用 Redis 快照，再补齐结构**（原因同 `loadChatDoc`）。
+ * Session Doc 的 `session` / `agent` / `sessions` / `tasks` 根类型同样可能被本地空结构覆盖。
+ */
+export async function loadSessionDoc(
   rcsSessionId: string,
   redis: RedisConn | null,
   generation = createGeneration(),
   snapshot?: SnapshotPersistConfig,
-): SessionDoc {
+  options?: LoadDocOptions,
+): Promise<SessionDoc> {
   const docName = `session:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
+  const ydoc = createLoadTarget(`${docName}:${generation}`, options);
+  const provider = safeProvider(redis, docName, generation, ydoc, snapshot);
+  const hydration = await awaitHydration(provider, ydoc);
 
-  if (getSessionRoot(ydoc).get("schemaVersion") !== SESSION_DOC_SCHEMA_VERSION) {
-    initSessionDocStructure(ydoc);
-  }
+  initSessionDocStructure(ydoc);
   ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, generation, ydoc, snapshot);
   return {
     ydoc,
     generation,
     provider,
+    hydration,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }

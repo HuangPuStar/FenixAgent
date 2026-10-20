@@ -13,3 +13,6 @@ export * from "./persist";
 export * from "./server/services/chat-channel-error-classify";
 export * from "./server/services/doc-manager-instance";
 export * from "./state";
+// 同步协议（设计 2026-10-16-fenix-message-sync-design）的 A/B/C 阶段模块面；
+// 只经本入口暴露，不得进入根入口 ./index（浏览器安全面）。
+export * from "./sync";

@@ -24,4 +24,16 @@ describe("ChatPanel transport 生命周期", () => {
     expect(connectionEffect).toContain("acpSessionId: acpSessionIdRef.current || undefined");
     expect(connectionEffect).not.toContain("sessionState.acpSessionId");
   });
+
+  // 新协议 1008 回退后，用户动作仍走独立的旧 Yjs WS；发送链路不得依赖 syncChat。
+  test("新协议回退不改变旧 WS 发送通道", () => {
+    const source = readFileSync(RUNTIME_PATH, "utf8");
+    const sendStart = source.indexOf("const sendViaWs");
+    const sendEnd = source.indexOf("const sendAction", sendStart);
+    const sendBlock = source.slice(sendStart, sendEnd);
+    expect(sendStart).toBeGreaterThanOrEqual(0);
+    expect(sendEnd).toBeGreaterThan(sendStart);
+    expect(sendBlock).toContain("yjsWsRef.current");
+    expect(sendBlock).not.toContain("syncChat");
+  });
 });

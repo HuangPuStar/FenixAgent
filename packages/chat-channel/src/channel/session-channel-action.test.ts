@@ -268,7 +268,25 @@ describe("SessionChannel action flow", () => {
   // send_prompt 全链路：accepted → committed（含 turnId 与投影版本），用户消息进入 Chat Doc 时间线。
   test("send_prompt commits a user entry and forwards session/prompt to relay", async () => {
     const harness = createHarness();
-    const { connection, relayMessages } = createConnection();
+    const syncMessages: Array<{ turnId: string; text: string }> = [];
+    const otherSyncMessages: Array<{ turnId: string; text: string }> = [];
+    const { connection, relayMessages } = createConnection({
+      syncConnection: {
+        onInboundBytes: async () => {},
+        acceptNormalizedEvent: () => {},
+        acceptUserMessage: (turnId, text) => syncMessages.push({ turnId, text }),
+        dispose: () => {},
+      },
+    });
+    const otherConnection = createConnection({
+      rcsSessionId: "rcs-other",
+      syncConnection: {
+        onInboundBytes: async () => {},
+        acceptNormalizedEvent: () => {},
+        acceptUserMessage: (turnId, text) => otherSyncMessages.push({ turnId, text }),
+        dispose: () => {},
+      },
+    }).connection;
     await harness.docManager.openChat("rcs-1");
     await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
     const sinks = createSinks(harness);
@@ -285,6 +303,9 @@ describe("SessionChannel action flow", () => {
     expect(committed?.committedProjectionVersion).toBeGreaterThan(1);
     expect(relayMessages).toHaveLength(1);
     expect(relayMessages[0]?.method).toBe("session/prompt");
+    expect(syncMessages).toEqual([{ turnId: committed?.turnId ?? "", text: "hello" }]);
+    expect(otherConnection.syncConnection).toBeDefined();
+    expect(otherSyncMessages).toEqual([]);
     // Chat Doc 投影：user_message 创建 user + assistant 两个 entry（时间线在 Chat Doc）
     const chatDoc = harness.docManager.getChatYdoc("rcs-1");
     expect(readEntryIds(chatDoc as Y.Doc)).toEqual([`${committed?.turnId}:assistant`, `${committed?.turnId}:user`]);

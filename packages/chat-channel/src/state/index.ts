@@ -42,8 +42,10 @@ export {
 export {
   createChatDoc,
   createSessionDoc,
+  type LoadDocOptions,
   loadChatDoc,
   loadSessionDoc,
+  SnapshotHydrationError,
 } from "./factory";
 export { expireQuestion, respondQuestion } from "./question";
 export { createRedisSessionTitleStore, type SessionTitleStore } from "./session-title-store";
