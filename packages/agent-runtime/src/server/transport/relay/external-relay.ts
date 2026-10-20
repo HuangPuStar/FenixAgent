@@ -19,6 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { log, error as logError, requestAls } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { isOwnedEnvironment } from "../../../facades/environment-access-facade";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
@@ -27,11 +28,13 @@ import {
 import type { AuthContext } from "../../../types/auth";
 import type { WsConnection } from "../../../types/ws-types";
 import { type EnvironmentRecord, environmentRepo } from "../../repositories";
+import { type AgentInstanceRecord, agentInstanceRepo } from "../../repositories/agent-instance";
 import {
   getRunningInstancesByEnvironment,
   type SpawnedInstance,
 } from "../../services/agent-instance-runtime-projection";
 import { connectAgentRelay, type FullRelayHandle } from "../agent-relay";
+import { InboundMessageQueue } from "../inbound-message-queue";
 
 /** handler 实际依赖的 environment 字段；收窄后测试只需构造最小对象 */
 export type ExternalRelayEnvironment = Pick<EnvironmentRecord, "id" | "organizationId" | "userId">;
@@ -39,6 +42,7 @@ export type ExternalRelayEnvironment = Pick<EnvironmentRecord, "id" | "organizat
 export interface ExternalRelayDeps {
   getEnvironmentById: (id: string) => Promise<ExternalRelayEnvironment | null | undefined>;
   getRunningInstancesByEnvironment: (envId: string) => SpawnedInstance[];
+  getOwnedInstance: (instanceId: string, userId: string) => Promise<AgentInstanceRecord | undefined>;
   connectAgentRelay: (instanceId: string, sessionId: string, requestId?: string) => Promise<EngineRelayHandle>;
   markRelayAttached: (instanceId: string) => void;
   markRelayDetached: (instanceId: string) => void;
@@ -48,6 +52,7 @@ export interface ExternalRelayDeps {
 const defaultDeps: ExternalRelayDeps = {
   getEnvironmentById: (id) => environmentRepo.getById(id),
   getRunningInstancesByEnvironment,
+  getOwnedInstance: (id, userId) => agentInstanceRepo.findOwnedById(id, userId),
   connectAgentRelay,
   markRelayAttached: markInstanceRelayAttached,
   markRelayDetached: markInstanceRelayDetached,
@@ -66,10 +71,11 @@ export function setExternalRelayDeps(overrides: Partial<ExternalRelayDeps> | nul
  * 必须在任何 await 之前注册该 buffer，否则 open 期间（env 查询 / relay 连接）
  * 到达的客户端消息会被直接丢弃——旧 relay-handler 验证过此握手竞态的必要结构。
  */
-const pendingRelayMessages = new Map<string, Array<Record<string, unknown>>>();
+const pendingRelayMessages = new Map<string, InboundMessageQueue>();
 
 interface ExternalRelayEntry {
   ws: WsConnection;
+  inboundQueue: InboundMessageQueue;
   relayHandle: FullRelayHandle;
   /** onMessage 注销函数；close 时调用，防止 listener 泄漏 */
   unsub: (() => void) | null;
@@ -140,7 +146,15 @@ export async function handleExternalRelayOpen(
   const requestId = requestAls.getStore()?.requestId ?? randomUUID();
 
   // 在任何 await 之前注册 pending buffer，避免握手竞态丢消息
-  pendingRelayMessages.set(relayWsId, []);
+  const pending = new InboundMessageQueue(
+    `${authCtx.organizationId}:${authCtx.userId}`,
+    () => {
+      log("[External-Relay] inbound message budget exceeded", { relayWsId, requestId });
+      ws.close(1008, "inbound queue limit");
+    },
+    (error) => logError("[External-Relay] pending message failed", error, { requestId }),
+  );
+  pendingRelayMessages.set(relayWsId, pending);
 
   try {
     const env = await deps.getEnvironmentById(agentId);
@@ -149,9 +163,7 @@ export async function handleExternalRelayOpen(
       ws.close(4004, "environment not found");
       return;
     }
-    // 归属校验：组织匹配或环境归属用户匹配任一放行（对齐 /acp/yjs 端点既有模式）。
-    // 拒绝时同样只给通用 reason。
-    if (env.organizationId !== authCtx.organizationId && env.userId !== authCtx.userId) {
+    if (!isOwnedEnvironment(env, authCtx.organizationId, authCtx.userId)) {
       ws.close(4003, "unauthorized");
       return;
     }
@@ -176,6 +188,18 @@ export async function handleExternalRelayOpen(
       instanceId = first.id;
     }
 
+    const instance = await deps.getOwnedInstance(instanceId, authCtx.userId);
+    if (!instance || instance.ownerUserId !== authCtx.userId || instance.environmentId !== env.id) {
+      ws.close(4003, "unauthorized");
+      return;
+    }
+    if (
+      ws.readyState !== 1 ||
+      !pendingRelayMessages.has(relayWsId) ||
+      !pending.bindOwner(`${authCtx.organizationId}:${authCtx.userId}`)
+    )
+      return;
+
     // 连接 core relay；失败时不向客户端回传错误原文（可能含 envId/machineId），
     // 完整诊断（含 instanceId）只进服务端日志
     let handle: EngineRelayHandle;
@@ -188,11 +212,15 @@ export async function handleExternalRelayOpen(
     }
 
     // await 期间客户端已断开 → 释放 relay 连接并放弃，不 attach（避免 relayCount 悬空）
-    if (ws.readyState !== 1) {
+    if (
+      ws.readyState !== 1 ||
+      !pendingRelayMessages.has(relayWsId) ||
+      !pending.bindOwner(`${authCtx.organizationId}:${authCtx.userId}`)
+    ) {
       try {
         await handle.close();
-      } catch {
-        /* ignore */
+      } catch (error) {
+        logError("[External-Relay] release after disconnect failed", error, { requestId });
       }
       return;
     }
@@ -205,6 +233,7 @@ export async function handleExternalRelayOpen(
     const full = handle as FullRelayHandle;
     const entry: ExternalRelayEntry = {
       ws,
+      inboundQueue: pending,
       relayHandle: full,
       unsub: null,
       instanceId,
@@ -243,16 +272,10 @@ export async function handleExternalRelayOpen(
 
     // 回放 open 期间缓存的消息；丢弃 connect——core connectInstanceRelay 建立时已自动发送，
     // 重复 connect 会让 agent 回传多余 status，触发 acp-link 客户端 resendPending() 重放 pending 请求
-    const pending = pendingRelayMessages.get(relayWsId) ?? [];
     pendingRelayMessages.delete(relayWsId);
-    for (const msg of pending) {
-      if (msg.type === "connect") continue;
-      try {
-        entry.relayHandle.send(msg as { type: string; payload?: unknown });
-      } catch (err) {
-        logError("[External-Relay] pending flush failed", err);
-      }
-    }
+    pending.start(async (payload) => {
+      if (typeof payload === "string" && ws.readyState === 1) handleExternalRelayMessage(ws, relayWsId, payload);
+    });
 
     // 补发 connect 兜底：core connectInstanceRelay 建立时已自动发送 connect，
     // 但存在 connect 早于 agent dispatcher 创建的竞态导致 capabilities 永不回传；
@@ -283,6 +306,9 @@ export async function handleExternalRelayOpen(
     } catch {
       /* ignore */
     }
+  } finally {
+    pendingRelayMessages.delete(relayWsId);
+    if (!entries.has(relayWsId)) pending.close();
   }
 }
 
@@ -321,7 +347,7 @@ export function handleExternalRelayMessage(
 
   // open 异步未完成 → 缓存；完成后由 flush 统一回放
   if (pendingRelayMessages.has(relayWsId)) {
-    pendingRelayMessages.get(relayWsId)!.push(parsed);
+    pendingRelayMessages.get(relayWsId)?.enqueue(JSON.stringify(parsed));
     return;
   }
 
@@ -342,11 +368,16 @@ export function handleExternalRelayMessage(
  * 重复调用幂等（条目不存在直接返回）。
  */
 export function handleExternalRelayClose(_ws: WsConnection, relayWsId: string): void {
+  pendingRelayMessages.get(relayWsId)?.close();
   pendingRelayMessages.delete(relayWsId);
   const entry = entries.get(relayWsId);
   if (!entry) return;
   entries.delete(relayWsId);
+  entry.inboundQueue.close();
   entry.unsub?.();
+  void Promise.resolve(entry.relayHandle.close()).catch((error) =>
+    logError("[External-Relay] release failed", error, { requestId: entry.requestId }),
+  );
   deps.markRelayDetached(entry.instanceId);
   log(`[External-Relay] closed: relayWsId=${relayWsId} instanceId=${entry.instanceId}`, {
     requestId: entry.requestId,
