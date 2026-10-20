@@ -200,9 +200,15 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       const next = [...new Set([...state.subscribedDocIds, ...docIds])];
       if (next.length !== state.subscribedDocIds.length) setState({ subscribedDocIds: Object.freeze(next) });
     },
-    onHistoryState: ({ hasEarlier, loading }) => {
-      if (state.hasEarlierHistory === hasEarlier && state.historyLoading === loading) return;
-      setState({ hasEarlierHistory: hasEarlier, historyLoading: loading });
+    onHistoryState: ({ hasEarlier, hasLater, loading }) => {
+      if (
+        state.hasEarlierHistory === hasEarlier &&
+        state.hasLaterHistory === hasLater &&
+        state.historyLoading === loading
+      ) {
+        return;
+      }
+      setState({ hasEarlierHistory: hasEarlier, hasLaterHistory: hasLater, historyLoading: loading });
     },
     hiddenMessageCount: () => projectionHub.snapshot().hiddenMessageCount,
     growProjectionWindow: () => projectionHub.growWindow(SYNC_PROJECTION_MESSAGE_STEP),
@@ -343,6 +349,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       manifest,
       subscribedDocIds: Object.freeze(entryDocIds),
       hasEarlierHistory: false,
+      hasLaterHistory: false,
       historyLoading: false,
       reconnectAttempt: 0,
     });
@@ -504,12 +511,16 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     if (disposed || contentSubscription === null) return false;
     return contentSubscription.loadEarlier(windowContentDocIds());
   }
-  function returnToLatestHistory(): void {
-    if (disposed || contentSubscription === null) return;
+  function loadLaterHistory(): boolean {
+    if (disposed || contentSubscription === null) return false;
+    return contentSubscription.loadLater(windowContentDocIds());
+  }
+  function returnToLatestHistory(): Promise<boolean> {
+    if (disposed || contentSubscription === null) return Promise.resolve(false);
     const docIds = windowContentDocIds();
     // 目录尚未到达时没有可恢复的块，避免空目录提前推进窗口状态机。
-    if (docIds.length === 0) return;
-    contentSubscription.returnToLatest(docIds);
+    if (docIds.length === 0) return Promise.resolve(false);
+    return contentSubscription.returnToLatest(docIds);
   }
   function dispose(): void {
     if (disposed) return;
@@ -534,5 +545,5 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     frameRouter.dispose();
   }
 
-  return { connect, dispose, state: () => state, loadEarlierHistory, returnToLatestHistory };
+  return { connect, dispose, state: () => state, loadEarlierHistory, loadLaterHistory, returnToLatestHistory };
 }

@@ -9,8 +9,26 @@ import { type ToolCallEntry, ToolCallGroup } from "@fenix/ui-components";
 import { createMockChatEntries } from "@fenix/ui-components/chat/mocks/mock-fixtures";
 import { useMemo, useState } from "react";
 
-/** mock 会话未覆盖的三条工具形态：Skill、MCP（unknown kind）、Hindsight 记忆工具。 */
+/** mock 会话未覆盖的工具形态：Skill、MCP（unknown kind）、Hindsight 记忆工具、带 diff 的编辑。 */
 const EXTRA_TOOL_ENTRIES: ToolCallEntry[] = [
+  {
+    type: "tool_call",
+    toolCall: {
+      id: "demo-tool-diff",
+      title: "Edit",
+      kind: "edit",
+      status: "complete",
+      rawInput: { file_path: "src/chat/ChatView.tsx" },
+      content: [
+        {
+          type: "diff",
+          path: "src/chat/ChatView.tsx",
+          oldText: "const [open, setOpen] = useState(true);\nrender(items);",
+          newText: "const [open, setOpen] = useState(false);\nrender(visibleItems);",
+        },
+      ],
+    },
+  },
   {
     type: "tool_call",
     toolCall: {
@@ -66,7 +84,7 @@ export function ChatTimelineExamples() {
       <ToolCallGroup entries={toolEntries} onPreviewFile={setPreviewedPath} />
       <p className="mt-3 text-text-muted text-[12px]">
         {previewedPath === null
-          ? "点击文件类卡片上的文件名可触发 onPreviewFile；点右侧详情图标查看入参/出参原始 JSON。"
+          ? "点击文件类卡片上的文件名可触发 onPreviewFile；点右侧箭头展开 diff/输出，点详情图标查看入参/出参原始 JSON。"
           : `onPreviewFile → ${previewedPath}`}
       </p>
     </div>

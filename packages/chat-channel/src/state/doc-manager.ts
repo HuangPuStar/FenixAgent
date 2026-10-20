@@ -12,20 +12,20 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import { getActiveGeneration, getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import { encodeYjsReplaceFrame, MAX_YJS_SYNC_PAYLOAD_BYTES } from "../protocol/update-frame";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
-import { getEntriesMap, getEntryOrder, getSessionRoot, hasChatDocContent, isCallbackEntryId } from "./chat-writer";
+import { getSessionRoot, hasChatDocContent } from "./chat-writer";
 import {
   BATCHABLE_EVENT_TYPES,
   DEFAULT_BATCH_WINDOW_MS,
-  normalizeUserText,
+  hasUserMessageTextInDoc,
   notifyPermissionRequested,
   preserveAgentProjection,
-  readEntryText,
+  scheduleUserMessageWrite,
 } from "./doc-manager-projection";
 import { DocOpenService } from "./doc-open-service";
 import { createChatDoc, createSessionDoc } from "./factory";
@@ -164,6 +164,21 @@ export class DocManager {
    */
   openChat(rcsSessionId: string): Promise<ChatDoc> {
     return this.openService.openChat(rcsSessionId);
+  }
+
+  /**
+   * 跨进程复核本地投影代次是否仍是 Redis active generation。
+   * 内存模式没有跨进程换代；Redis 故障按可用性放行，恢复后由下一次复核收敛。
+   */
+  async isGenerationCurrent(rcsSessionId: string, generation: string): Promise<boolean> {
+    const redis = this.getRedis();
+    if (!redis) return true;
+    try {
+      return (await getActiveGeneration(redis, rcsSessionId)) === generation;
+    } catch (error) {
+      this.onError?.("[DocManager] active generation check failed", error);
+      return true;
+    }
   }
 
   /** 获取 Chat Doc（不创建） */
@@ -323,35 +338,10 @@ export class DocManager {
     return hasChatDocContent(doc.ydoc);
   }
 
-  /**
-   * 文档中是否已存在同文本的 user entry（实时回显 / 重复回放的去重判定）。
-   *
-   * 用途：窗口外无 turnId 的 user_message（relay 的 callback 分类）需要区分
-   * 「实时 prompt 回显 / 迟到历史回放」与「真异步回调」。回显的文本必然已由
-   * `registerUserMessage` 写入 Chat Doc，命中即回显/重复回放；未命中视为回调。
-   *
-   * 匹配集合排除 callback_* 条目：它们同样是 role=user，但不是 `registerUserMessage`
-   * 写的（是回调自己的提问气泡）。纳入匹配会让周期性重复同一提示词的真回调命中上
-   * 一次回调的条目，提问与回答整条被静默丢弃——数据丢失比错位更糟，故回调条目
-   * 一律不参与回显去重。
-   *
-   * 归一化口径：trim + 折叠空白——引擎回显可能改写空白，逐字比较会漏判；
-   * 空文本一律返回 false（不得把空回显当"已有内容"，否则真回调会被吞）。
-   * 复杂度 O(entry 数)，每条回显帧一次调用，无需缓存（条目量级放大时再加窗口）。
-   */
+  /** 文档中是否已存在同文本的 user entry（实时回显 / 重复回放的去重判定，规则见投影工具）。 */
   hasUserMessageText(rcsSessionId: string, text: string): boolean {
     const doc = this.chatDocs.get(rcsSessionId);
-    if (!doc) return false;
-    const target = normalizeUserText(text);
-    if (!target) return false;
-    const entries = getEntriesMap(doc.ydoc);
-    for (const entryId of getEntryOrder(doc.ydoc).toArray()) {
-      if (isCallbackEntryId(entryId)) continue;
-      const entry = entries.get(entryId);
-      if (entry?.get("role") !== "user") continue;
-      if (normalizeUserText(readEntryText(entry)) === target) return true;
-    }
-    return false;
+    return doc !== undefined && hasUserMessageTextInDoc(doc.ydoc, text);
   }
 
   // ── 用户消息注册 ──
@@ -363,11 +353,19 @@ export class DocManager {
    */
   registerUserMessage(rcsSessionId: string, content: string): string {
     const turnId = `turn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    this.processNormalizedEvent(rcsSessionId, {
+    const event: NormalizedEvent = {
       type: "user_message",
       update: { content: { type: "text", text: content } },
       content: { type: "text", text: content },
       turnId,
+    };
+    scheduleUserMessageWrite({
+      redisPresent: this.getRedis() !== null,
+      doc: this.chatDocs.get(rcsSessionId),
+      currentDoc: () => this.chatDocs.get(rcsSessionId),
+      isGenerationCurrent: (generation) => this.isGenerationCurrent(rcsSessionId, generation),
+      write: () => this.processNormalizedEvent(rcsSessionId, event),
+      onDropped: () => this.onLog?.(`[DocManager] user message dropped: projection is stale for ${rcsSessionId}`),
     });
     return turnId;
   }
@@ -404,8 +402,11 @@ export class DocManager {
     }
   }
 
-  /** 取消待处理的 ACP 事件批次 */
-  private cancelACPBatch(rcsSessionId: string): void {
+  /**
+   * 取消待处理的 ACP 事件批次。
+   * 跨进程换代重载前也必须调用：批次在 flush 时取 map 当前 Doc，会把旧会话增量写进新投影。
+   */
+  cancelACPBatch(rcsSessionId: string): void {
     const batch = this.acpBatchBuffers.get(rcsSessionId);
     if (batch) {
       clearTimeout(batch.timer);

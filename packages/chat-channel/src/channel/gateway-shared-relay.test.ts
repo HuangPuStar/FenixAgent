@@ -448,6 +448,12 @@ describe("Gateway shared relay", () => {
       docManager,
       replaceProjection: () => {},
       syncSessionId: () => {},
+      // 生产控制面按 rcsSessionId 扇出到该会话所有同步连接；这里复刻同一接线。
+      publishUserMessage: (rcsSessionId, turnId, text) => {
+        registry.forEachByRcsSession(rcsSessionId, (client) => {
+          client.syncConnection?.acceptUserMessage(turnId, text);
+        });
+      },
       reportError: () => {},
     });
     const lifecycle = createGateway(registry, broadcaster, relayEvents, { docManager, sessionChannel });

@@ -573,13 +573,11 @@ describe("第二面：顶替与重试交错", () => {
     // 若顶替不自结算归还字节，窗口仍被三帧占满（3 × frameBytes 已接近窗口），这一趟会一帧都产不出。
     wire.transport.setBufferedAmount(0);
     const second = dataFramesOf(await drive(wire));
-    // 窗口里只剩搁置位那一帧，恰好还装得下两帧：q4/q5 的 base 在这一趟才产得出来，
-    // 若被顶替的两帧不归还字节（在途仍是 3 × frameBytes），这一趟会一帧都产不出。
-    expect(second.map((frame) => docIdOf(frame.frame))).toEqual([docIds[3], docIds[4]]);
+    // 被放弃的前两块优先恢复，不能永远停在等待不存在的 ACK。
+    expect(second.map((frame) => docIdOf(frame.frame))).toEqual([docIds[0], docIds[1]]);
     expect(second.filter((frame) => wire.abandoned.includes(frame.deliveryId))).toHaveLength(0);
     expect(wire.abandoned).toHaveLength(2);
-    // 自结算不动 attempt 游标：被顶替那两帧的 attempt 仍停在「base 已发出、等回执」，后续每趟都不再产帧，
-    // 恢复只能由客户端驱动（重新订阅 / RESYNC）。
+    // 窗口已占满时不重复规划，在途帧必须由真实 ACK 结算。
     expect(dataFramesOf(await drive(wire))).toHaveLength(0);
     expect(wire.abandoned).toHaveLength(2);
 
@@ -604,32 +602,20 @@ describe("第二面：顶替与重试交错", () => {
     expect(wire.abandoned).toEqual([bases[0]!.deliveryId]);
     expect(wire.ledger.outstandingCount()).toBe(1);
 
-    // docA 的 base 回执（迟到回执只结清账目、仍推进原 attempt 的 base 状态）触发 BASE_READY——一帧控制帧。
+    // 未上线且已放弃的投递不可能有有效 ACK；伪迟到回执不得制造 BASE_READY。
     wire.timeouts.settle(bases[0]!.deliveryId);
-    const ready = await wire.session.onAck(bases[0]!.deliveryId, "processed");
-    expect(ready).toHaveLength(1);
-    await sendAll(wire, ready);
-
-    // 控制帧胜出：被顶替的是数据帧，只能走自结算，不得关连接（顶替方向决定出路）。
-    expect(wire.transport.closeReasons).toHaveLength(0);
-    expect(wire.abandoned).toEqual([bases[0]!.deliveryId, bases[1]!.deliveryId]);
-    expect(wire.ledger.outstandingCount()).toBe(0);
-    expectSingleAccount(wire, "控制帧顶替数据帧之后");
-
-    // 排空后搁置位里的控制帧上线；docB 的 attempt 仍在等一个客户端没见过的回执，本趟产不出内容帧。
+    expect(await wire.session.onAck(bases[0]!.deliveryId, "processed")).toHaveLength(0);
     wire.transport.setBufferedAmount(0);
-    expect(dataFramesOf(await drive(wire))).toHaveLength(0);
-    expect(sentOfType(wire, "BASE_READY")).toHaveLength(1);
-    expect(docIdOf(sentOfType(wire, "BASE_READY")[0]!)).toBe(docA);
-    expect(sentForDoc(wire, docB).filter((frame) => frameClassOf(frame) === "data")).toHaveLength(0);
-
-    // 恢复入口是客户端驱动的 resync：内容不丢，但只有它才会换出新 attempt 与新 deliveryId。
-    const noticed = await wire.session.resync(docB);
-    expect(noticed.map((frame) => frame.frame.type)).toEqual(["RESYNC"]);
-    const recovered = dataFramesOf(await wire.session.tick());
+    const recovered = dataFramesOf(await drive(wire));
     expect(recovered).toHaveLength(1);
-    expect(deliveryIdOf(recovered[0]!.frame)).not.toBe(bases[1]!.deliveryId);
-    expect(docIdOf(recovered[0]!.frame)).toBe(docB);
+    expect(docIdOf(recovered[0]!.frame)).toBe(docA);
+    expect(recovered[0]!.deliveryId).not.toBe(bases[0]!.deliveryId);
+    expect(sentForDoc(wire, docB).filter((frame) => frameClassOf(frame) === "data")).toHaveLength(1);
+    await ackProduced(wire, bases[1]!);
+    await ackProduced(wire, recovered[0]!);
+    expect(wire.ledger.outstandingCount()).toBe(0);
+    expect(wire.transport.closeReasons).toHaveLength(0);
+    expectSingleAccount(wire, "放弃基线恢复并结算");
   });
 
   test("顶替后搁置位里的那一份仍按传输原因重试，并被 ACK 正常结算", async () => {
@@ -644,13 +630,12 @@ describe("第二面：顶替与重试交错", () => {
     expect(wire.abandoned).toEqual([bases[0]!.deliveryId]);
 
     wire.transport.setBufferedAmount(0);
-    await drive(wire);
+    const recovered = dataFramesOf(await drive(wire));
     const delivered = wire.transport.sentFrames.filter((frame) => frameClassOf(frame) === "data");
-    expect(delivered).toHaveLength(1);
+    expect(delivered).toHaveLength(2);
     expect(deliveryIdOf(delivered[0]!)).toBe(bases[1]!.deliveryId);
-    expect(wire.ledger.outstandingCount()).toBe(1);
-    expect(wire.quota.snapshot().outstandingBytes).toBe(encodeSyncFrame(bases[1]!.frame).length);
-
+    expect(wire.ledger.outstandingCount()).toBe(2);
+    await ackProduced(wire, recovered[0]!);
     await ackProduced(wire, bases[1]!);
     expect(wire.ledger.outstandingCount()).toBe(0);
     expect(wire.quota.snapshot().outstandingBytes).toBe(0);
@@ -810,17 +795,11 @@ describe("第四面：会话侧自结算语义", () => {
     expect(wire.abandoned).toEqual([bases[0]!.deliveryId]);
     await seeded.appendTail(docA, 3);
 
-    // 自结算不动 attempt 游标：docA 停在「base 已发出等回执」，本趟与后续趟都不产帧。
-    expect(dataFramesOf(await wire.session.tick())).toHaveLength(0);
+    // 自结算恢复可调度性，无须客户端知道自己缺了哪一块。
     wire.transport.setBufferedAmount(0);
-    await drive(wire);
-    expect(sentForDoc(wire, docA).filter((frame) => frameClassOf(frame) === "data")).toHaveLength(0);
+    const rebuilt = dataFramesOf(await drive(wire))[0]!;
+    expect(sentForDoc(wire, docA).filter((frame) => frameClassOf(frame) === "data")).toHaveLength(1);
     expect(wire.abandoned).toHaveLength(1);
-
-    // 客户端驱动 resync：RESYNC 通告 → 新 attempt 重新规划 base（吞掉已提交的 1..3）→ 回执 → BASE_READY。
-    const notices = await wire.session.resync(docA);
-    expect(notices.map((frame) => frame.frame.type)).toEqual(["RESYNC"]);
-    const rebuilt = dataFramesOf(await wire.session.tick())[0]!;
     expect(deliveryIdOf(rebuilt.frame)).not.toBe(bases[0]!.deliveryId);
     await ackProduced(wire, rebuilt);
     // 新 base 已吞掉此前全部已提交增量（1..3），其后的增量必须从 4 起接上。

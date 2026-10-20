@@ -43,6 +43,8 @@ import { createLiveIngress, LIVE_INGRESS_DIAGNOSTIC_LIMIT, type SyncIngressEvent
 
 /** 释放时的关闭理由。 */
 const DISPOSED_REASON = "scope runtime disposed";
+/** 写者租约续租间隔：必须显著小于 30s TTL，空闲帧间隔不影响续租。 */
+const LEASE_RENEW_INTERVAL_MS = 10_000;
 
 /**
  * 历史导入装配：唯一允许接触 `node:fs` 的入口（经 `history/spool.ts`）。
@@ -197,6 +199,9 @@ export async function createSyncScopeRuntime(input: {
   let disposed = false;
   let writerAcquired = false;
   let acquireInFlight: Promise<void> | null = null;
+  let leaseRenewedAtMs = 0;
+  /** 续租失败过：重新竞争遇到 SCOPE_BUSY 时说明写权已被其他写者接管。 */
+  let writeLeaseLost = false;
   let coexistenceReservedAtMs: number | null = null;
 
   function assertLive(): void {
@@ -238,22 +243,54 @@ export async function createSyncScopeRuntime(input: {
    * 因此不在装配期抢占）。失败不缓存：租约被占（`SCOPE_BUSY`）可能在下次写入前消失，缓存失败会把瞬态变永久。
    */
   async function ensureWriter(): Promise<void> {
-    if (!writerAcquired) {
-      acquireInFlight ??= writer.acquire().then(
-        () => {
-          writerAcquired = true;
-        },
-        (error: unknown) => {
-          acquireInFlight = null;
-          throw error;
-        },
-      );
-      await acquireInFlight;
+    if (writerAcquired) {
+      const renewed = await renewWriterLease(false);
+      if (renewed) {
+        reserveCoexistence();
+        return;
+      }
     }
-    // 写入层登记首块之前先占住共存额度：额度不足时本次写入直接失败，不进入「先转再报错」的路径。
-    // 刻意放在取写权之外：预留被交接期限释放过（见 `releaseExpiredCoexistence`）后，要靠下一次写入重新占住，
-    // 挂在 acquire 回调里会在写权已持有后永远跳过这一步。同尺寸重放是幂等的，写权路径上重复调用无副作用。
+    acquireInFlight ??= writer.acquire().then(
+      () => {
+        writerAcquired = true;
+        writeLeaseLost = false;
+        leaseRenewedAtMs = clock.now();
+      },
+      (error: unknown) => {
+        acquireInFlight = null;
+        // 曾持权后被另一写者顶替：本连接已失去该 scope 的写权，保持旧语义的明确拒绝。
+        if (writeLeaseLost && error instanceof SyncProtocolError && error.code === "SCOPE_BUSY") {
+          throw new SyncProtocolError("LEASE_EXPIRED", { message: "writer lease was lost to another writer" });
+        }
+        throw error;
+      },
+    );
+    try {
+      await acquireInFlight;
+    } finally {
+      acquireInFlight = null;
+    }
     reserveCoexistence();
+  }
+
+  /**
+   * 写者租约按会话 scope 续租：空闲超过 TTL 后下一次写入必须仍能拿到有效 epoch。
+   *
+   * 续租失败只清本地写权标记，不在 tick 里自动抢回：否则空闲连接会持续霸占租约，
+   * 真正接管者永远拿到 SCOPE_BUSY。下一次写入重新竞争，取得新 epoch 并从已提交状态重建。
+   */
+  async function renewWriterLease(force: boolean): Promise<boolean> {
+    if (!writerAcquired) return false;
+    if (!force && clock.now() - leaseRenewedAtMs < LEASE_RENEW_INTERVAL_MS) return true;
+    try {
+      await writer.renew();
+      leaseRenewedAtMs = clock.now();
+      return true;
+    } catch {
+      writerAcquired = false;
+      writeLeaseLost = true;
+      return false;
+    }
   }
 
   /**
@@ -334,6 +371,8 @@ export async function createSyncScopeRuntime(input: {
           bound.scanTimeouts();
         }
       }
+      // 空闲期也要续租，但必须遵守续租间隔；tick 的 100ms 节拍不得变成持续存储写。
+      await renewWriterLease(false);
       releaseExpiredCoexistence();
     },
 

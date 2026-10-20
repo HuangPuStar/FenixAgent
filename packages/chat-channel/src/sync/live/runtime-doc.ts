@@ -12,6 +12,7 @@
 
 import * as Y from "yjs";
 import { SyncProtocolError } from "../protocol/errors";
+import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { assertIdentifier, type DocKind } from "../protocol/identity";
 
 /** 运行态实体类型：终态是实体状态而非类型，因此 `final` 不在取值内。 */
@@ -46,7 +47,7 @@ export interface RuntimeDocLimits {
   readonly maxEntities: number; // 256
   readonly maxEntityMetadataBytes: number; // 1KiB
   readonly softRotateBytes: number; // 128KiB
-  readonly hardLimitBytes: number; // 256KiB
+  readonly hardLimitBytes: number; // 由 MAX_DOC_SNAPSHOT_BYTES 派生
 }
 
 /**
@@ -60,7 +61,7 @@ export const RUNTIME_DOC_LIMITS: RuntimeDocLimits = Object.freeze({
   maxEntities: 256,
   maxEntityMetadataBytes: 1024,
   softRotateBytes: 131072,
-  hardLimitBytes: 262144,
+  hardLimitBytes: MAX_DOC_SNAPSHOT_BYTES,
 });
 
 /**

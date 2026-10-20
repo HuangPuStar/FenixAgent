@@ -5,6 +5,7 @@
 import type { ActionAck, ActionError } from "../channel/types";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
 import { isPublicError, type PublicError } from "../public-error";
+import type { YjsHistoryIncomplete } from "../types";
 import { WS_CLOSE_CODE_POLICY } from "./ws-close-codes";
 
 /**
@@ -46,11 +47,13 @@ export interface YjsWsOptions {
   /** WS 连接地址（由调用方构造，适配不同端口/环境） */
   url: string;
   /** 收到 yjs:update 消息时回调，docName 如 "chat:rcs_xxx" / "session:rcs_xxx" */
-  onYjsUpdate: (docName: string, data: Uint8Array) => void;
+  onYjsUpdate: (docName: string, data: Uint8Array, generation?: string) => void;
   /** replacement 帧：调用方必须销毁旧 Doc 并以该快照创建新副本。 */
   onYjsReplace?: (docName: string, generation: string, data: Uint8Array) => void;
   /** 当前本地 Doc 的 state vector；连接建立后用于请求差量同步。 */
   getYjsStateVectors?: () => Array<{ docName: string; generation: string; stateVector: Uint8Array }>;
+  /** 本地 Doc 的代次；用于区分首次装载与真实换代（首帧差量不得触发重建）。 */
+  getYjsGenerations?: () => Array<{ docName: string; generation: string }>;
   /** 连接状态变化回调 */
   onConnectionState?: (state: YjsWsState) => void;
   /** 收到服务端安全错误帧时回调 */
@@ -61,6 +64,8 @@ export interface YjsWsOptions {
   onActionAck?: (ack: ActionAck) => void;
   /** 收到 action_error 帧时回调（commandId 幂等失败响应；前端据此释放重试 ID 缓存并展示错误） */
   onActionError?: (error: ActionError) => void;
+  /** 旧 Chat Doc 初始同步未完成（超限/背压）：客户端必须展示具体缺失并提供重试入口。 */
+  onHistoryIncomplete?: (info: YjsHistoryIncomplete) => void;
 }
 
 export interface YjsWsClient {
@@ -96,6 +101,20 @@ function toWebSocketBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
+ * 解析服务端 `yjs:history-incomplete` 控制消息；字段不完整时返回 null（不可信帧不得驱动 UI 状态）。
+ */
+function readHistoryIncomplete(msg: Record<string, unknown>): YjsHistoryIncomplete | null {
+  const docs = msg.docs;
+  const reason = msg.reason;
+  if (!Array.isArray(docs) || docs.some((doc) => typeof doc !== "string")) return null;
+  if (reason !== "too_large" && reason !== "backpressure" && reason !== "encode_failed") return null;
+  const bytes = typeof msg.bytes === "number" && Number.isFinite(msg.bytes) ? msg.bytes : 0;
+  const limitBytes = typeof msg.limitBytes === "number" && Number.isFinite(msg.limitBytes) ? msg.limitBytes : 0;
+  const generation = typeof msg.generation === "string" ? msg.generation : undefined;
+  return { docs: docs as string[], reason, bytes, limitBytes, generation };
+}
+
+/**
  * 创建 Yjs WebSocket 客户端。
  *
  * 自动处理连接、断线重连（指数退避）、解析消息帧：
@@ -123,15 +142,20 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     onYjsUpdate,
     onYjsReplace,
     getYjsStateVectors,
+    getYjsGenerations,
     onConnectionState,
     onError,
     onClose,
     onActionAck,
     onActionError,
+    onHistoryIncomplete,
   } = options;
 
   const generations = new Map<string, string>();
   const requestedGenerations = new Map<string, string>();
+  /** 本连接尚未收到首帧时，以本地 Doc 的代次判定换代；空 hub 视为首次装载。 */
+  const localGenerations = (): Map<string, string> =>
+    new Map((getYjsGenerations?.() ?? []).map((entry) => [entry.docName, entry.generation]));
 
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
@@ -194,16 +218,20 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
             return;
           }
-          const current = generations.get(frame.docName);
-          if (requestedGenerations.get(frame.docName) === frame.generation && current !== frame.generation) {
+          const current = generations.get(frame.docName) ?? localGenerations().get(frame.docName);
+          if (
+            requestedGenerations.get(frame.docName) === frame.generation &&
+            current !== undefined &&
+            current !== frame.generation
+          ) {
             requestedGenerations.delete(frame.docName);
             generations.set(frame.docName, frame.generation);
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
             return;
           }
-          if (current && current !== frame.generation) return;
+          if (current !== undefined && current !== frame.generation) return;
           generations.set(frame.docName, frame.generation);
-          onYjsUpdate(frame.docName, frame.update);
+          onYjsUpdate(frame.docName, frame.update, frame.generation);
         }
         return;
       }
@@ -232,6 +260,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         if (msg.type === "error") {
           const payload = msg.payload;
           if (isPublicError(payload)) onError?.(payload);
+          return;
+        }
+        if (msg.type === "yjs:history-incomplete") {
+          const info = readHistoryIncomplete(msg);
+          if (info !== null) onHistoryIncomplete?.(info);
           return;
         }
         if (msg.type === "action_ack") {

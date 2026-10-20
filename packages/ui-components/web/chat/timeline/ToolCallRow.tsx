@@ -27,8 +27,8 @@
 
 import "./ToolCallRow.css";
 
-import { CircleX, CodeXml, Loader2 } from "lucide-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { ChevronRight, CircleX, CodeXml, Loader2 } from "lucide-react";
+import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
@@ -40,6 +40,8 @@ import { Shimmer } from "../primitives/shimmer";
 import type { ToolCallData, ToolCardKind } from "../types";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
+import { ToolCallDetail } from "./ToolCallDetail";
+import { buildToolDetail } from "./tool-detail-model";
 import { ToolJsonBlock } from "./tool-json-block";
 
 /**
@@ -87,6 +89,8 @@ interface ToolCallRowProps {
 export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: ToolCallRowProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // 行内详情默认收起：工具行的主职是过程摘要，展开是用户主动行为。
+  const [detailExpanded, setDetailExpanded] = useState(false);
 
   // 工具调用耗时计算：mount 时记录 startedAt，进入终态时冻结 elapsedMs。
   // 用 ref 而非 state，避免无谓重渲染；mount 即记录，覆盖实时聊天场景。
@@ -124,6 +128,14 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
       (!isRunning && !isPending && (tool.rawOutput || tool.content)),
   );
   const hasDetails = hasParams && !isPending;
+  // 行内详情只呈现可读结果；原始 JSON 仍由参数弹窗承载。
+  const inlineDetail = useMemo(() => buildToolDetail(tool), [tool]);
+  const showInlineDetail = inlineDetail !== null && !isPending;
+  // 工具 id 可能含空格等不适合作为 `aria-controls` 目标的字符，交给 React 生成稳定 id。
+  const detailBodyId = useId();
+  const detailToggleLabel = t(
+    detailExpanded ? "chat.components.toolCallRow.collapseDetails" : "chat.components.toolCallRow.expandDetails",
+  );
 
   // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput。
   const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
@@ -262,20 +274,56 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
             )}
           </span>
 
-          {hasDetails && (
-            <button
-              type="button"
-              className="grid h-5.5 w-5.5 place-items-center rounded-sm text-gray-400 hover:bg-slate-100 hover:text-gray-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
-              data-slot="chat-tool-call-details-button"
-              onClick={openDialog}
-              title={t("chat.components.toolCallRow.viewParams")}
-              aria-label={t("chat.components.toolCallRow.viewParams")}
-            >
-              <CodeXml className="h-3.25 w-3.25 text-gray-400" aria-hidden />
-            </button>
-          )}
+          <span className="flex items-center gap-0.5">
+            {showInlineDetail && (
+              <button
+                type="button"
+                className="grid h-5.5 w-5.5 place-items-center rounded-sm text-gray-400 hover:bg-slate-100 hover:text-gray-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+                data-slot="chat-tool-call-expand"
+                aria-expanded={detailExpanded}
+                aria-controls={detailExpanded ? detailBodyId : undefined}
+                onClick={() => setDetailExpanded((expanded) => !expanded)}
+                title={detailToggleLabel}
+                aria-label={detailToggleLabel}
+              >
+                <ChevronRight
+                  className={cn(
+                    "h-3.25 w-3.25 text-gray-400 transition-transform motion-reduce:transition-none",
+                    detailExpanded && "rotate-90",
+                  )}
+                  aria-hidden
+                />
+              </button>
+            )}
+            {hasDetails && (
+              <button
+                type="button"
+                className="grid h-5.5 w-5.5 place-items-center rounded-sm text-gray-400 hover:bg-slate-100 hover:text-gray-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+                data-slot="chat-tool-call-details-button"
+                onClick={openDialog}
+                title={t("chat.components.toolCallRow.viewParams")}
+                aria-label={t("chat.components.toolCallRow.viewParams")}
+              >
+                <CodeXml className="h-3.25 w-3.25 text-gray-400" aria-hidden />
+              </button>
+            )}
+          </span>
         </div>
       </div>
+
+      {/* 行内详情：diff / 命令输出 / 读取片段；收起时不挂载，避免长输出常驻 DOM。 */}
+      {inlineDetail && detailExpanded && (
+        <div
+          id={detailBodyId}
+          className={cn(
+            "mt-1 mb-1 min-w-0 overflow-hidden rounded-md border border-border/40 bg-surface-0/50",
+            inActivityChain && "-ml-8",
+          )}
+          data-slot="chat-tool-call-body"
+        >
+          <ToolCallDetail detail={inlineDetail} />
+        </div>
+      )}
 
       {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的状态面板（ChatStatusPanel）承载。 */}
       {tool.todoChanges && <TodoChanges changes={tool.todoChanges} />}

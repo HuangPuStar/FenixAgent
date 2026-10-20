@@ -130,6 +130,13 @@ export interface ClientConnection {
   agentStatusReceived: boolean;
   /** 新同步协议连接级运行时；开关关闭或创建失败时缺省。 */
   syncConnection?: SyncConnection;
+  /** 关闭或权威换代后禁止在途 attach 把 runtime 写回。 */
+  syncClosed?: boolean;
+  /**
+   * attach 窗口内产生的用户消息：同步连接就绪后按序补水。
+   * 动作 socket 与同步 socket 分离，首 prompt 可能早于 syncConnection 挂载。
+   */
+  pendingSyncUserMessages?: Array<{ turnId: string; text: string }>;
   /**
    * 客户端声明该连接只消费新同步协议（`chatSync=1`）。
    *

@@ -69,7 +69,7 @@ describe("默认容量 profile", () => {
       jsonMaxNodes: 65536,
       largeFrameThresholdBytes: 1048576,
       historyBlockTargetPayloadBytes: 131072,
-      historyBlockHardBytes: 262144,
+      historyBlockHardBytes: 218100,
       recordHeaderMaxBytes: 4096,
       payloadChunkMaxBytes: 16384,
       maxRecordsPerDoc: 2048,
@@ -77,18 +77,18 @@ describe("默认容量 profile", () => {
       liveMergeMaxMs: 33,
       liveMergeMaxBytes: 16384,
       activeSoftPayloadBytes: 131072,
-      activeHardEncodedBytes: 262144,
+      activeHardEncodedBytes: 218100,
       runtimeLivePayloadBytes: 65536,
       runtimeMaxEntities: 256,
       runtimeEntityMaxBytes: 1024,
       runtimeSoftSnapshotBytes: 131072,
-      runtimeHardSnapshotBytes: 262144,
+      runtimeHardSnapshotBytes: 218100,
       runtimeRotationsPerScope: 1,
       controlEntryBytes: 8192,
       controlSoftBytes: 32768,
       controlHardBytes: 65536,
       directorySoftBytes: 131072,
-      directoryHardBytes: 262144,
+      directoryHardBytes: 218100,
       directoryMaxRefs: 2048,
       locatePageMaxItems: 64,
       locatePageMaxBytes: 32768,
@@ -235,7 +235,7 @@ describe("容量校验拒绝", () => {
 
   // 单个构建任务最坏占用（硬限 ×2 + 目标载荷）放不进 historyBuild 时，构建阶段必然越预算。
   test("构建任务最坏占用装不进历史构建池时拒绝", () => {
-    const historyBuild = 655359;
+    const historyBuild = INPUT_LIMITS.historyBlockHardBytes * 2 + INPUT_LIMITS.historyBlockTargetPayloadBytes - 1;
     const serverPools = {
       ...SERVER_POOL_BYTES,
       historyBuild,

@@ -12,6 +12,12 @@
   "reconnecting": "Reconnecting...",
   "reconnectingDesc": "Connection lost, reconnecting automatically. Click retry if it does not recover.",
   "wsSendFailed": "Connection lost — the operation was not sent. Wait for reconnect or click reconnect.",
+  "historyGap": "Some history in the middle is not loaded",
+  "historyGapLoad": "Load missing history",
+  "historyGapLatest": "Back to latest",
+  "historyRecoveryIncomplete": "History sync incomplete: {{count}} document(s) could not be restored; tool and thinking content may be missing.",
+  "historyRecoveryRetry": "Retry history sync",
+  "historyRecoveryRetrying": "Retrying history sync...",
   "filePicker": {
     "title": "Select File"
   }

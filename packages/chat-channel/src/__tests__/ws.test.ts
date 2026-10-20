@@ -268,6 +268,58 @@ describe("createYjsWsClient", () => {
     expect(errors).toEqual([publicError]);
   });
 
+  // 旧历史未完整恢复是独立控制消息：必须透传缺失文档与尺寸，且不能混入连接级 error。
+  test("forwards history-incomplete frames with missing docs and size", () => {
+    const incomplete: Array<{ docs: readonly string[]; reason: string; bytes: number; limitBytes: number }> = [];
+    const errors: unknown[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onError: (error) => errors.push(error),
+      onHistoryIncomplete: (info) => incomplete.push(info),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "yjs:history-incomplete",
+      docs: ["chat:rcs-1"],
+      reason: "too_large",
+      bytes: 9_440_845,
+      limitBytes: 8 * 1024 * 1024,
+      generation: "gen-1",
+    });
+
+    expect(incomplete).toEqual([
+      {
+        docs: ["chat:rcs-1"],
+        reason: "too_large",
+        bytes: 9_440_845,
+        limitBytes: 8 * 1024 * 1024,
+        generation: "gen-1",
+      },
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  // 字段不完整的历史缺失帧不得驱动 UI 恢复状态（不可信输入按未知消息忽略）。
+  test("ignores malformed history-incomplete frames", () => {
+    const incomplete: unknown[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onHistoryIncomplete: (info) => incomplete.push(info),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "yjs:history-incomplete",
+      docs: [1, 2],
+      reason: "too_large",
+    });
+
+    expect(incomplete).toEqual([]);
+  });
+
   // action_error 帧必须透传完整 ActionError 对象给 onActionError，
   // 且不触发 onYjsUpdate / onError（错误分流，避免误判为连接级错误）。
   test("forwards action_error frames to onActionError without touching other callbacks", () => {

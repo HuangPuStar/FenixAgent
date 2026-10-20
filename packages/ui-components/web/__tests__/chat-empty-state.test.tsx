@@ -61,6 +61,15 @@ describe("Chat 空状态", () => {
     expect(markup).not.toContain('data-slot="agent-badge"');
   });
 
+  // 会话加载中显示标准转圈加载态，而不是工牌卡骨架（卡片会被误读为会话内容）。
+  test("会话加载中显示转圈加载态", () => {
+    const markup = renderToStaticMarkup(<ChatView entries={[]} isLoading />);
+
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain("正在加载会话…");
+    expect(markup).not.toContain('data-slot="agent-badge"');
+  });
+
   // 拆分到 chat-empty-state.tsx 后，空状态的 DOM 层级、class、图标、文案与间距必须逐项保持原样。
   test("空状态 DOM 结构与拆分前一致", () => {
     const markup = renderToStaticMarkup(<ChatView entries={[]} emptyTitle="标题保持" emptyDescription="说明保持" />);
@@ -91,8 +100,8 @@ describe("Chat 空状态", () => {
     expect(zh.chat.components.chatEmpty.suggestionBuild).toBe("讨论构建失败的可能原因");
   });
 
-  // 可见正文后紧接工具调用时应标记专用紧凑边界，避免出现过大的垂直空白。
-  test("正文后的工具调用使用紧凑间距", () => {
+  // 活动链紧邻正文时保留来源标记；折叠标题是独立过程块，间距改由统一的 `my-2` 承担。
+  test("正文后的活动链保留来源标记", () => {
     const entries: ThreadEntry[] = [
       { type: "assistant_message", id: "assistant-1", chunks: [{ type: "message", text: "开始读取文件" }] },
       {
@@ -102,8 +111,8 @@ describe("Chat 空状态", () => {
     ];
     const markup = renderToStaticMarkup(<ChatView entries={entries} />);
 
-    // 类名 `chat-activity-chain--after-message` 已迁为条件工具类，紧凑边界改按数据状态断言；
-    // `chat-activity-chain` 类名保留（工具簇样式表仍以它作作用域钩子），锚点为 `data-slot`。
+    // 类名 `chat-activity-chain--after-message` 已迁为数据状态钩子，锚点为 `data-slot`；
+    // 该标记只表达「链前是正文」，不再参与间距计算（见 `ActivityChain` 的 `afterMessage` 注释）。
     expect(markup).toContain('data-slot="chat-activity-chain"');
     expect(markup).toContain('data-after-message="true"');
   });

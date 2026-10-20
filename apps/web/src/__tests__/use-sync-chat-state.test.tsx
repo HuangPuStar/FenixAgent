@@ -120,14 +120,15 @@ describe("新同步开关与 hook 生命周期", () => {
     }
   });
 
-  // 1011 是服务端内部错误，保留错误态；1008 已在上一用例覆盖自动回退。
-  test("1011 保留错误态且不回退", () => {
+  // 1011 同样撤销失效投影并交回旧通道；错误仍保留给界面展示恢复信号（B09）。
+  test("1011 回退旧通道且保留错误态", () => {
     const harness = renderHook(options);
     const socket = FakeSocket.instances.at(-1)!;
     act(() => socket.open());
     act(() => socket.onclose?.(1011, "rejected"));
-    expect(harness.latest.current?.legacyFallback).toBe(false);
+    expect(harness.latest.current?.legacyFallback).toBe(true);
     expect(harness.latest.current?.connection.status).toBe("error");
+    expect(harness.latest.current?.projection.messages).toHaveLength(0);
     harness.unmount();
   });
 
@@ -144,6 +145,19 @@ describe("新同步开关与 hook 生命周期", () => {
     act(() => staleClose?.(1008, "sync protocol disabled"));
     expect(harness.latest.current?.legacyFallback).toBe(false);
     expect(harness.latest.current?.projection.messages).toHaveLength(0);
+    harness.unmount();
+    expect(FakeSocket.instances[1]?.closed.at(-1)?.code).toBe(1000);
+  });
+
+  // 投影换代（load/create）同样重建连接：新会话不能沿用上一代次的 store 与历史。
+  test("投影换代版本变化时重建同步连接", () => {
+    const harness = renderHook({ ...options, projectionVersion: 0 });
+    const first = FakeSocket.instances[0]!;
+    act(() => first.open());
+    harness.rerender({ ...options, projectionVersion: 1 });
+    expect(first.closed.at(-1)?.code).toBe(1000);
+    expect(first.onmessage).toBeNull();
+    expect(FakeSocket.instances).toHaveLength(2);
     harness.unmount();
     expect(FakeSocket.instances[1]?.closed.at(-1)?.code).toBe(1000);
   });

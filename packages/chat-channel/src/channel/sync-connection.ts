@@ -13,12 +13,14 @@ import type { SyncStoreRegistry } from "../sync/runtime/store-registry";
 import type { ProjectionStore } from "../sync/store/types";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SyncConnection, WsConnection } from "./connection-types";
-import { createLegacyChatHistorySource, type LegacyChatDocumentSource } from "./legacy-chat-history";
+import { type LegacyChatDocumentSource, readLegacyCommittedHistory } from "./legacy-chat-history";
 import { logSyncClose, setSyncCloseContextForConnection } from "./sync-close-diagnostics";
 
 const SYNC_FRAME_FIRST_BYTE = 0x7b;
 const SYNC_CLOSE_CODE = 1008;
 const MAX_CLOSE_REASON_CHARS = 120;
+/** 跨进程换代复核周期：不能对每个事件做 Redis I/O，也不能让节点 B 永久停在旧代次。 */
+const GENERATION_WATCH_INTERVAL_MS = 2_000;
 
 /** 新协议帧判据：binary 首字节 `{`（UTF-8 JSON）；旧 Yjs 帧首字节为 0x01/0x02/0x03 或 magic 0xa7 0x59。 */
 export function isSyncProtocolFrame(data: Uint8Array): boolean {
@@ -66,7 +68,7 @@ function createSyncTransport(ws: WsConnection): SyncFrameTransport {
 /**
  * 为一个已认证连接创建独立同步运行时。
  *
- * scope 由调用方用服务端认证/归属结果构造；失败时以 1011 关闭连接并返回 `undefined`，
+ * scope 由调用方用服务端认证/归属结果构造；初始化失败以 1012 关闭，允许客户端退避重试。
  * 调用方负责释放旧链路连接（handleClose）。
  */
 export interface GatewaySyncHostOverrides {
@@ -86,6 +88,11 @@ interface SyncHistoryContext {
   readonly docs: LegacyChatDocumentSource;
 }
 
+/** 总是经 openChat 复核 Redis active generation，不能信任进程内旧 Doc。 */
+async function resolveStoreBinding(docs: LegacyChatDocumentSource, rcsSessionId: string) {
+  return await docs.openChat(rcsSessionId);
+}
+
 export async function attachGatewaySyncConnection(
   ws: WsConnection,
   config: ChatSyncProtocolConfig,
@@ -97,15 +104,18 @@ export async function attachGatewaySyncConnection(
   history?: SyncHistoryContext,
 ): Promise<SyncConnection | undefined> {
   try {
+    const chatDoc = history === undefined ? undefined : await resolveStoreBinding(history.docs, rcsSessionId);
+    // 在同一同步段固定历史与代次，再 acquire；后续换代不能把新历史导入旧 store。
+    const records = chatDoc ? readLegacyCommittedHistory(chatDoc.ydoc) : undefined;
+    const storeBinding = chatDoc?.generation;
     const historySource =
-      history === undefined
+      records === undefined
         ? undefined
-        : createLegacyChatHistorySource({
-            docs: history.docs,
-            rcsSessionId,
-            acpSessionId: history.acpSessionId,
-          });
-    return await createSyncHostSession({
+        : {
+            acpSessionId: history?.acpSessionId ?? "",
+            read: async () => records,
+          };
+    const runtime = await createSyncHostSession({
       scope: { organizationId, rcsSessionId },
       runtimeConfig: {
         sealGraceMs: config.sealGraceMs,
@@ -120,13 +130,113 @@ export async function attachGatewaySyncConnection(
       store: overrides.store,
       storeRegistry: overrides.storeRegistry,
       historySource,
+      storeBinding,
       owner,
       onError: reportError,
+      onIngressStopped: (error) => {
+        reportError("[YJS-FE] sync ingress stopped; closing connection for rebuild", error);
+        // 终态错误码让客户端停止静默重连并进入可见错误态（可回退旧通道）。
+        if (ws.readyState === 1) ws.close(1011, "sync ingress stopped");
+      },
     });
+    let watcher: ReturnType<typeof setInterval> | null = null;
+    const stopWatcher = (): void => {
+      if (watcher !== null) clearInterval(watcher);
+      watcher = null;
+    };
+    const invalidate = (): void => {
+      try {
+        stopWatcher();
+        if (ws.readyState === 1) ws.close(1012, "projection replaced");
+        void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
+      } catch (error) {
+        reportError("[YJS-FE] sync connection invalidation failed", error);
+      }
+    };
+    // 换代只在本进程经 replaceProjection 发生；控制器先失效连接，这里再兜底拒绝旧 store 的写入。
+    // 无代次的轻量 Doc 来源（测试/未水合）不做 fencing，生产 openChat 始终返回代次。
+    const isCurrent = (): boolean =>
+      runtime.closed ||
+      !history ||
+      storeBinding === undefined ||
+      history.docs.getChat(rcsSessionId)?.generation === storeBinding;
+    const accept = (action: () => void): void => {
+      if (!isCurrent()) {
+        invalidate();
+        return;
+      }
+      try {
+        action();
+      } catch (error) {
+        reportError("[YJS-FE] sync event acceptance failed", error);
+      }
+    };
+    /**
+     * 用户消息写入前复核 Redis active generation。
+     *
+     * 同步 runtime 的 store 在跨进程换代后仍是旧代次，2 秒 watcher 窗口内的用户消息会被静默丢弃。
+     * 只对用户消息做这次复核（低频、用户可感知）；ACP 增量与广播保持每帧零 Redis I/O。
+     * Redis 故障按可用性放行，恢复后由周期 watcher 收敛（与 DocManager 口径一致）。
+     */
+    const verifyActiveGeneration = async (): Promise<boolean> => {
+      if (runtime.closed || !isCurrent()) return false;
+      if (history === undefined || storeBinding === undefined || history.docs.isGenerationCurrent === undefined) {
+        return true;
+      }
+      try {
+        return (await history.docs.isGenerationCurrent(rcsSessionId, storeBinding)) !== false;
+      } catch (error) {
+        reportError("[YJS-FE] sync generation recheck failed", error);
+        return true;
+      }
+    };
+    if (!isCurrent()) {
+      invalidate();
+      return;
+    }
+    // 跨进程：节点 A 换代不会触碰节点 B 的内存 Doc，只能周期复核 Redis active generation。
+    if (history?.docs.isGenerationCurrent !== undefined && storeBinding !== undefined) {
+      watcher = setInterval(() => {
+        void history.docs
+          .isGenerationCurrent?.(rcsSessionId, storeBinding)
+          .then((current) => {
+            if (current === false) invalidate();
+          })
+          .catch((error: unknown) => reportError("[YJS-FE] sync generation watch failed", error));
+      }, GENERATION_WATCH_INTERVAL_MS);
+      watcher.unref?.();
+    }
+    return {
+      onInboundBytes: async (bytes) => {
+        if (isCurrent()) await runtime.onInboundBytes(bytes);
+      },
+      acceptNormalizedEvent: (event) => accept(() => runtime.acceptNormalizedEvent(event)),
+      acceptUserMessage: (turnId, text) => {
+        void verifyActiveGeneration()
+          .then((current) => {
+            if (!current) {
+              invalidate();
+              return;
+            }
+            accept(() => runtime.acceptUserMessage(turnId, text));
+          })
+          .catch((error: unknown) => reportError("[YJS-FE] sync user message acceptance failed", error));
+      },
+      diagnostics: () => runtime.diagnostics(),
+      ingressDiagnostics: () => runtime.ingressDiagnostics(),
+      dispose: () => {
+        try {
+          stopWatcher();
+          void runtime.dispose().catch((error: unknown) => reportError("[YJS-FE] sync dispose failed", error));
+        } catch (error) {
+          reportError("[YJS-FE] sync dispose failed", error);
+        }
+      },
+    };
   } catch (error) {
     reportError("[YJS-FE] Failed to initialize sync protocol runtime", error);
     try {
-      ws.close(1011, "sync init failed");
+      ws.close(1012, "sync init retry");
     } catch {
       /* 连接已关闭 */
     }
@@ -153,18 +263,34 @@ export async function ensureGatewaySyncConnection(
   entry: ClientConnection,
   attach: () => Promise<SyncConnection | undefined>,
 ): Promise<SyncConnection | undefined> {
+  if (entry.syncClosed || entry.ws.readyState !== 1) return;
   if (entry.syncConnection) return entry.syncConnection;
   const inflight = pendingSyncAttachments.get(entry);
   if (inflight) return (await inflight) ?? undefined;
-  const pending = attach().then((connection) => connection ?? null);
+  const pending = attach().then((connection) => {
+    if (entry.syncClosed || entry.ws.readyState !== 1) {
+      connection?.dispose();
+      return null;
+    }
+    if (connection) entry.syncConnection = connection;
+    return connection ?? null;
+  });
   pendingSyncAttachments.set(entry, pending);
   try {
-    const connection = await pending;
-    if (connection) entry.syncConnection = connection;
-    return connection ?? undefined;
+    return (await pending) ?? undefined;
   } finally {
     if (pendingSyncAttachments.get(entry) === pending) pendingSyncAttachments.delete(entry);
   }
+}
+
+/**
+ * attach 窗口内入队的用户消息在首个同步帧（HELLO）建立基线后补写。
+ * 不能在建 runtime 后立刻写：写者需要已提交基线，否则会停写。
+ */
+export function flushPendingSyncUserMessages(entry: ClientConnection, connection: SyncConnection): void {
+  const pending = entry.pendingSyncUserMessages;
+  entry.pendingSyncUserMessages = undefined;
+  for (const message of pending ?? []) connection.acceptUserMessage(message.turnId, message.text);
 }
 
 /**
@@ -217,6 +343,7 @@ export async function routeSyncProtocolFrame(
   if (!syncConnection) return true;
   try {
     await syncConnection.onInboundBytes(data);
+    flushPendingSyncUserMessages(entry, syncConnection);
   } catch (error) {
     reportError("[YJS-FE] sync protocol inbound failed", error);
     const code =

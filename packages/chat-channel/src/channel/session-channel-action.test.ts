@@ -265,16 +265,21 @@ describe("SessionChannel action flow", () => {
     expect(harness.errors).toHaveLength(1);
   });
 
-  // send_prompt 全链路：accepted → committed（含 turnId 与投影版本），用户消息进入 Chat Doc 时间线。
+  // send_prompt 全链路：accepted → committed（含 turnId 与投影版本），用户消息经会话级入口进入同步投影。
   test("send_prompt commits a user entry and forwards session/prompt to relay", async () => {
-    const harness = createHarness();
     const syncMessages: Array<{ turnId: string; text: string }> = [];
     const otherSyncMessages: Array<{ turnId: string; text: string }> = [];
+    const harness = createHarness({
+      publishUserMessage: (rcsSessionId, turnId, text) => {
+        if (rcsSessionId === "rcs-1") syncMessages.push({ turnId, text });
+        else otherSyncMessages.push({ turnId, text });
+      },
+    });
     const { connection, relayMessages } = createConnection({
       syncConnection: {
         onInboundBytes: async () => {},
         acceptNormalizedEvent: () => {},
-        acceptUserMessage: (turnId, text) => syncMessages.push({ turnId, text }),
+        acceptUserMessage: () => {},
         dispose: () => {},
       },
     });
@@ -283,7 +288,7 @@ describe("SessionChannel action flow", () => {
       syncConnection: {
         onInboundBytes: async () => {},
         acceptNormalizedEvent: () => {},
-        acceptUserMessage: (turnId, text) => otherSyncMessages.push({ turnId, text }),
+        acceptUserMessage: () => {},
         dispose: () => {},
       },
     }).connection;

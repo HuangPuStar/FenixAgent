@@ -10,10 +10,12 @@
 //   ② 终态语义经 `terminalUiCode` 交给渲染层，且不被后续非终态断开残留污染。
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { encodeYjsUpdateFrame } from "@fenix/chat-channel";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import * as Y from "yjs";
 import type { ChatPanelRuntime } from "../agent-panel/use-chat-panel-runtime";
 import { useChatPanelRuntime } from "../agent-panel/use-chat-panel-runtime";
 
@@ -89,6 +91,39 @@ function installFakeWebSocket(): void {
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: FakeWebSocket });
 }
 
+function isSyncSocket(socket: FakeWebSocket): boolean {
+  return socket.url.includes("chatSync=1");
+}
+
+function legacySockets(): FakeWebSocket[] {
+  return FakeWebSocket.instances.filter((socket) => !isSyncSocket(socket));
+}
+
+function syncSockets(): FakeWebSocket[] {
+  return FakeWebSocket.instances.filter(isSyncSocket);
+}
+
+/** 新协议 ERROR 帧（UTF-8 JSON 二进制）用于触发同步终态回退。 */
+function syncErrorFrame(): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      type: "ERROR",
+      protocolVersion: 1,
+      code: "PROTOCOL_VERSION_UNSUPPORTED",
+      retryable: false,
+      message: "unsupported version",
+    }),
+  );
+}
+
+/** 旧通道的 yjs update 二进制帧：模拟缺失文档在重试连接上重新交付。 */
+function legacyUpdateFrame(docName: string): Uint8Array {
+  const doc = new Y.Doc();
+  const update = Y.encodeStateAsUpdate(doc);
+  doc.destroy();
+  return encodeYjsUpdateFrame(docName, update);
+}
+
 afterEach(() => {
   if (originalWebSocket) {
     Object.defineProperty(globalThis, "WebSocket", originalWebSocket);
@@ -134,5 +169,111 @@ describe("useChatPanelRuntime 主动停止实例", () => {
 
     // 卸载触发 disconnect()，清掉退避重连定时器，避免测试结束后再建连接。
     harness.unmount();
+  });
+
+  // 历史快照未送达时暴露缺失文档；重试期间保持门禁，直到缺失文档重新交付才解除。
+  test("历史同步未完成：重试保持缺失状态并在快照到达后解除", () => {
+    installFakeWebSocket();
+    const harness = renderRuntime();
+    const socket = FakeWebSocket.instances[0];
+    expect(socket).toBeDefined();
+
+    act(() => {
+      socket?.onmessage?.({
+        data: JSON.stringify({
+          type: "yjs:history-incomplete",
+          docs: ["chat:rcs-1"],
+          reason: "too_large",
+          bytes: 9_440_845,
+          limitBytes: 8 * 1024 * 1024,
+        }),
+      } as MessageEvent);
+    });
+    expect(harness.latest.current?.historyRecovery?.docs).toEqual(["chat:rcs-1"]);
+    expect(harness.latest.current?.historyRecovery?.bytes).toBe(9_440_845);
+
+    act(() => harness.latest.current?.retryHistoryRecovery());
+    // 重试只重建连接，不能提前清空历史缺失状态或解除上方发送门禁。
+    expect(harness.latest.current?.historyRecovery?.docs).toEqual(["chat:rcs-1"]);
+    expect(harness.latest.current?.historyRecoveryRetrying).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    const retrySocket = FakeWebSocket.instances[1];
+    act(() => retrySocket?.open());
+    expect(harness.latest.current?.historyRecovery).not.toBeNull();
+
+    // 本次重试未拿到快照就断开：重试入口必须恢复可用，历史缺失状态不能解除。
+    act(() => retrySocket?.closeFromServer(1006, "connection_lost"));
+    expect(harness.latest.current?.historyRecovery).not.toBeNull();
+    expect(harness.latest.current?.historyRecoveryRetrying).toBe(false);
+
+    act(() => harness.latest.current?.retryHistoryRecovery());
+    expect(harness.latest.current?.historyRecoveryRetrying).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    const secondRetrySocket = FakeWebSocket.instances[2];
+    act(() => secondRetrySocket?.open());
+
+    act(() => {
+      secondRetrySocket?.onmessage?.({ data: legacyUpdateFrame("chat:rcs-1") } as MessageEvent);
+    });
+    expect(harness.latest.current?.historyRecovery).toBeNull();
+    expect(harness.latest.current?.historyRecoveryRetrying).toBe(false);
+
+    harness.unmount();
+  });
+
+  // 同步回退 + 旧历史缺失时发送被阻止；重试未完成前门禁保持，缺失文档重新交付后才放开。
+  test("历史恢复重试期间保持发送门禁，完整快照到达后解除", () => {
+    installFakeWebSocket();
+    const storage = win.localStorage;
+    const hadLocalStorage = Object.hasOwn(globalThis, "localStorage");
+    runtimeGlobal.localStorage = storage;
+    storage.setItem("active_org_id", "org-1");
+    const harness = renderRuntime();
+    try {
+      const legacy = legacySockets()[0];
+      const sync = syncSockets()[0];
+      expect(legacy).toBeDefined();
+      expect(sync).toBeDefined();
+
+      act(() => {
+        legacy?.onmessage?.({
+          data: JSON.stringify({
+            type: "yjs:history-incomplete",
+            docs: ["chat:rcs-1"],
+            reason: "backpressure",
+            bytes: 0,
+            limitBytes: 8 * 1024 * 1024,
+          }),
+        } as MessageEvent);
+      });
+      act(() => sync?.open());
+      act(() => {
+        sync?.onmessage?.({ data: syncErrorFrame() } as MessageEvent);
+      });
+      expect(harness.latest.current?.syncChat.legacyFallback).toBe(true);
+      expect(harness.latest.current?.syncDegradedBlocked).toBe(true);
+
+      act(() => harness.latest.current?.retryHistoryRecovery());
+      expect(harness.latest.current?.historyRecovery).not.toBeNull();
+      expect(harness.latest.current?.historyRecoveryRetrying).toBe(true);
+      expect(harness.latest.current?.syncDegradedBlocked).toBe(true);
+      expect(legacySockets()).toHaveLength(2);
+
+      const retrySocket = legacySockets()[1];
+      act(() => retrySocket?.open());
+      expect(harness.latest.current?.syncDegradedBlocked).toBe(true);
+
+      act(() => {
+        retrySocket?.onmessage?.({ data: legacyUpdateFrame("chat:rcs-1") } as MessageEvent);
+      });
+      expect(harness.latest.current?.historyRecovery).toBeNull();
+      expect(harness.latest.current?.historyRecoveryRetrying).toBe(false);
+      expect(harness.latest.current?.syncDegradedBlocked).toBe(false);
+    } finally {
+      storage.removeItem("active_org_id");
+      if (!hadLocalStorage) Reflect.deleteProperty(runtimeGlobal, "localStorage");
+      harness.unmount();
+    }
   });
 });

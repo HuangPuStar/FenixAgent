@@ -21,6 +21,28 @@
   "chat": {
     "agentPanel": {},
     "components": {
+      "activityChain": {
+        "category": {
+          "command": "命令",
+          "edit": "修改",
+          "question": "询问",
+          "read": "读取",
+          "search": "搜索",
+          "skill": "技能",
+          "subagent": "子 Agent",
+          "todo": "待办",
+          "tool": "工具",
+          "web": "联网"
+        },
+        "collapse": "收起过程",
+        "expand": "展开过程",
+        "failed": "{{count}} 个失败",
+        "moreCategories": "另有 {{count}} 类",
+        "process": "详细过程",
+        "running": "进行中",
+        "steps": "{{count}} 个步骤",
+        "thinking": "思考"
+      },
       "acpMain": {
         "assignSpaceFailed": "更新会话归属失败：{{message}}",
         "cancel": "取消",
@@ -145,6 +167,7 @@
         "toggle": "展开或收起状态"
       },
       "chatView": {
+        "loadingSession": "正在加载会话…",
         "stage": {
           "callingTool": "正在调用工具",
           "generating": "正在生成",
@@ -309,9 +332,16 @@
         "output": "输出"
       },
       "toolCallRow": {
+        "collapseDetails": "收起详情",
+        "diffUnchanged": "{{count}} 行未变化",
+        "expandDetails": "展开详情",
+        "noChanges": "无变化",
+        "noOutput": "无输出",
+        "output": "输出",
         "previewFile": "预览 {{path}}",
         "running": "工具正在执行中…",
         "toolName": "工具",
+        "truncated": "内容过长，仅展示部分",
         "viewParams": "查看参数"
       }
     },

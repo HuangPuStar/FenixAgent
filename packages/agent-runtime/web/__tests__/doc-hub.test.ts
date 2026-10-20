@@ -60,11 +60,11 @@ describe("applyDocHubUpdate 单写入口", () => {
 
     const chatSrc = new Y.Doc();
     chatSrc.getMap("root").set("marker", "chat-payload");
-    applyDocHubUpdate("rcs-w", "chat:rcs-w", Y.encodeStateAsUpdate(chatSrc));
+    applyDocHubUpdate("rcs-w", "chat:rcs-w", "g1", Y.encodeStateAsUpdate(chatSrc));
 
     const sessionSrc = new Y.Doc();
     sessionSrc.getMap("root").set("marker", "session-payload");
-    applyDocHubUpdate("rcs-w", "session:rcs-w", Y.encodeStateAsUpdate(sessionSrc));
+    applyDocHubUpdate("rcs-w", "session:rcs-w", "g1", Y.encodeStateAsUpdate(sessionSrc));
 
     expect(chatBinding.ydoc.getMap("root").get("marker")).toBe("chat-payload");
     expect(sessionBinding.ydoc.getMap("root").get("marker")).toBe("session-payload");
@@ -77,7 +77,7 @@ describe("applyDocHubUpdate 单写入口", () => {
   test("未 acquire 的会话 no-op 不抛错", () => {
     const src = new Y.Doc();
     src.getMap("root").set("marker", 1);
-    expect(() => applyDocHubUpdate("rcs-missing", "chat:rcs-missing", Y.encodeStateAsUpdate(src))).not.toThrow();
+    expect(() => applyDocHubUpdate("rcs-missing", "chat:rcs-missing", "g1", Y.encodeStateAsUpdate(src))).not.toThrow();
   });
 
   // 未知前缀 docName：与既有 hook 路由行为一致，忽略
@@ -85,7 +85,7 @@ describe("applyDocHubUpdate 单写入口", () => {
     const b = createChatDocBinding("rcs-u");
     const src = new Y.Doc();
     src.getMap("root").set("marker", 1);
-    expect(() => applyDocHubUpdate("rcs-u", "other:rcs-u", Y.encodeStateAsUpdate(src))).not.toThrow();
+    expect(() => applyDocHubUpdate("rcs-u", "other:rcs-u", "g1", Y.encodeStateAsUpdate(src))).not.toThrow();
     expect(b.ydoc.getMap("root").get("marker")).toBeUndefined();
     b.cleanup();
   });
@@ -105,7 +105,7 @@ describe("共享 doc 与 YjsStore 协作", () => {
     // op 顺序决定（避免跨 client 同 key 冲突解析的不确定性）
     const src = new Y.Doc();
     src.getMap("root").set("marker", "v1");
-    applyDocHubUpdate("rcs-store", "chat:rcs-store", Y.encodeStateAsUpdate(src));
+    applyDocHubUpdate("rcs-store", "chat:rcs-store", "g1", Y.encodeStateAsUpdate(src));
 
     // applyUpdate 路径走宏任务合并重算：等待调度落地后两个 store 快照一致
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -115,7 +115,7 @@ describe("共享 doc 与 YjsStore 协作", () => {
     // 单个 store destroy（StrictMode 场景之一）不摧毁共享 doc，另一方继续可见后续更新
     storeA.destroy();
     src.getMap("root").set("marker", "v2");
-    applyDocHubUpdate("rcs-store", "chat:rcs-store", Y.encodeStateAsUpdate(src));
+    applyDocHubUpdate("rcs-store", "chat:rcs-store", "g1", Y.encodeStateAsUpdate(src));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(storeB.getSnapshot()).toBe("v2");
 

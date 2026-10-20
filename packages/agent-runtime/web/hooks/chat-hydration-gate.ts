@@ -1,5 +1,6 @@
 // packages/agent-runtime/web/hooks/chat-hydration-gate.ts
-// 初次加载/会话切换的展示门控：基线与回放增量到达期间不提交 React 状态，完成后一次性呈现。
+// 初次加载/会话切换的展示门控：回放未完成前不提交任何内容，也不切换为 live；
+// 确定性完成后只做一次最终合并提交。
 //
 // 完成信号优先使用确定性事实：
 // - 旧路径：Session Doc 的 `presenting` 从 `replaying` 离开（服务端回放窗口收敛后写入）；
@@ -9,7 +10,7 @@
 // 没有任何回放/基线活动时，用 noActivityMs 作为「不会再有回放」的兜底；maxWaitMs 是硬上限，
 // 防止服务端异常时界面永久停在骨架屏。两者都不是正常路径的完成依据。
 //
-// 该模块是纯状态机（定时器可注入），便于断言「hydrate 期间提交次数为 0、完成后恰好 1 次」。
+// 该模块是纯状态机（定时器可注入），便于断言「hydrate 期间零提交、完成后恰好 1 次」。
 
 export type HydrationPhase = "hydrating" | "live";
 export type HydrationCommitReason = "settled" | "max-wait" | "live";

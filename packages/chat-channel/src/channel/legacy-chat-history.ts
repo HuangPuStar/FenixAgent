@@ -25,8 +25,16 @@ export const LEGACY_HISTORY_PART_CHARS = 64 * 1024;
 
 /** 旧 Chat Doc 的最小读取面（DocManager 的形状子集，避免 channel 依赖具体实现）。 */
 export interface LegacyChatDocumentSource {
-  getChat(rcsSessionId: string): { readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration } | undefined;
-  openChat(rcsSessionId: string): Promise<{ readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration }>;
+  getChat(
+    rcsSessionId: string,
+  ): { readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration; readonly generation?: string } | undefined;
+  openChat(rcsSessionId: string): Promise<{
+    readonly ydoc: Y.Doc;
+    readonly hydration?: SnapshotHydration;
+    readonly generation?: string;
+  }>;
+  /** 跨进程换代复核：Redis active generation 与本地 Doc 代次是否仍一致。 */
+  isGenerationCurrent?(rcsSessionId: string, generation: string): Promise<boolean>;
 }
 
 /** 读取一个旧条目的可见正文；工具块和 reasoning 不计入。 */
@@ -71,8 +79,11 @@ function splitText(text: string, maxChars: number): string[] {
  */
 export function readLegacyCommittedHistory(ydoc: Y.Doc, maxPartChars = LEGACY_HISTORY_PART_CHARS): SyncHistoryRecord[] {
   const entries = getEntriesMap(ydoc);
+  const order = getEntryOrder(ydoc);
+  // 轻量替身或尚未初始化结构的 Doc 等同“无稳定历史”，不能按空对象访问崩掉握手。
+  if (!(entries instanceof Y.Map) || !(order instanceof Y.Array)) return [];
   const records: SyncHistoryRecord[] = [];
-  for (const entryId of getEntryOrder(ydoc).toArray()) {
+  for (const entryId of order.toArray()) {
     if (typeof entryId !== "string" || entryId.length === 0) continue;
     const entry = entries.get(entryId);
     if (!(entry instanceof Y.Map)) continue;

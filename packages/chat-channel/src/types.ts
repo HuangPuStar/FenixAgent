@@ -235,6 +235,20 @@ export type { PermissionOption };
 /** 展示层公开错误与 Chat Doc 使用同一 DTO；ViewModel 只透明复制字段。 */
 export type PublicErrorInfo = import("./public-error").PublicError;
 
+/**
+ * 旧 Chat Doc 初始同步未完成时服务端发往客户端的控制消息载荷。
+ *
+ * 超限帧仍不会写 socket（保护进程与共用连接），但必须让客户端知道哪些文档没有恢复，
+ * 而不是把空历史当作“没有历史”。`docs` 是未送达的 docName。
+ */
+export interface YjsHistoryIncomplete {
+  readonly docs: readonly string[];
+  readonly reason: "too_large" | "backpressure" | "encode_failed";
+  readonly bytes: number;
+  readonly limitBytes: number;
+  readonly generation?: string;
+}
+
 export interface ToolCallMessage {
   type: "tool_call";
   id: string;

@@ -31,6 +31,31 @@ export interface YjsBroadcasterOptions {
   reportLog?: (message: string) => void;
 }
 
+/** legacy 帧未送达的原因；none 表示已写入 socket。 */
+export type LegacyFrameRejection = "too_large" | "backpressure" | "encode_failed";
+
+/** legacy 单帧投递结果：调用方不得把 ok=false 当作已同步完成。 */
+export interface LegacyFrameDelivery {
+  readonly ok: boolean;
+  readonly bytes: number;
+  readonly limitBytes: number;
+  readonly reason: LegacyFrameRejection | null;
+}
+
+const DELIVERED: (bytes: number) => LegacyFrameDelivery = (bytes) => ({
+  ok: true,
+  bytes,
+  limitBytes: MAX_YJS_SYNC_PAYLOAD_BYTES,
+  reason: null,
+});
+
+const REJECTED: (bytes: number, reason: LegacyFrameRejection) => LegacyFrameDelivery = (bytes, reason) => ({
+  ok: false,
+  bytes,
+  limitBytes: MAX_YJS_SYNC_PAYLOAD_BYTES,
+  reason,
+});
+
 /** 单个 lagging 连接的追赶状态：起始时间 + 被丢帧涉及的 doc 集合 */
 interface LaggingState {
   since: number;
@@ -109,12 +134,27 @@ export class YjsBroadcaster {
     }
   }
 
-  /** 向单个连接发送当前世代快照；客户端仅在 generation 相同时合并。 */
-  sendSnapshot(ws: WsConnection, ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
-    const frame = this.encodeLegacyFrame("update", docName, generation, Y.encodeStateAsUpdate(ydoc));
-    if (frame === null) return;
+  /** 向单个连接发送当前世代快照；返回值必须为 true 才算该文档完成同步。 */
+  sendSnapshot(
+    ws: WsConnection,
+    ydoc: Y.Doc,
+    docName: string,
+    generation = this.generationOf(ydoc),
+  ): LegacyFrameDelivery {
+    const payload = Y.encodeStateAsUpdate(ydoc);
+    if (payload.length > MAX_YJS_SYNC_PAYLOAD_BYTES) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] dropped oversized legacy update: prefix=${docPrefix(docName)} ` +
+          `bytes=${payload.length} limit=${MAX_YJS_SYNC_PAYLOAD_BYTES}`,
+      );
+      return REJECTED(payload.length, "too_large");
+    }
+    const frame = this.encodeLegacyFrame("update", docName, generation, payload);
+    if (frame === null) return REJECTED(payload.length, "encode_failed");
     this.recordFrameMetric(docName, frame.length);
-    this.sendFrameWithBackpressure(ws, docName, frame);
+    return this.sendFrameWithBackpressure(ws, docName, frame)
+      ? DELIVERED(payload.length)
+      : REJECTED(payload.length, "backpressure");
   }
 
   /**
@@ -123,20 +163,38 @@ export class YjsBroadcaster {
    * 客户端 generation 不匹配时以空 payload 表示“没有当前世代状态”。空字节数组
    * 不是合法的 Yjs state vector，必须退化为当前世代全量编码，不能直接交给 lib0 解码。
    */
-  sendDiff(ws: WsConnection, ydoc: Y.Doc, docName: string, generation: string, stateVector: Uint8Array): void {
+  sendDiff(
+    ws: WsConnection,
+    ydoc: Y.Doc,
+    docName: string,
+    generation: string,
+    stateVector: Uint8Array,
+  ): LegacyFrameDelivery {
     const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
+    if (update.length > MAX_YJS_SYNC_PAYLOAD_BYTES) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] dropped oversized legacy update: prefix=${docPrefix(docName)} ` +
+          `bytes=${update.length} limit=${MAX_YJS_SYNC_PAYLOAD_BYTES}`,
+      );
+      return REJECTED(update.length, "too_large");
+    }
     const frame = this.encodeLegacyFrame("update", docName, generation, update);
-    if (frame === null) return;
+    if (frame === null) return REJECTED(update.length, "encode_failed");
     this.recordFrameMetric(docName, frame.length);
-    this.sendFrameWithBackpressure(ws, docName, frame);
+    return this.sendFrameWithBackpressure(ws, docName, frame)
+      ? DELIVERED(update.length)
+      : REJECTED(update.length, "backpressure");
   }
 
-  /** replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。 */
-  broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string): void {
+  /**
+   * replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。
+   * `force` 用于服务端权威换代：绕过 64KB 背压门禁，保证 legacy 连接不因丢帧停在旧代次。
+   */
+  broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string, force = false): void {
     const frame = this.encodeLegacyFrame("replace", docName, generation, Y.encodeStateAsUpdate(ydoc));
     if (frame === null) return;
     this.recordFrameMetric(docName, frame.length);
-    this.broadcastMessage(docName, frame);
+    this.broadcastMessage(docName, frame, force);
   }
 
   /** 向同 rcsSessionId 的全部客户端广播当前世代快照。 */
@@ -230,14 +288,22 @@ export class YjsBroadcaster {
    * 广播已编码的二进制帧到同 rcsSessionId 的客户端。
    * 帧只构造/编码一次，所有客户端发送同一对象（SP-A4 序列化去重）。
    */
-  private broadcastMessage(docName: string, frame: Uint8Array): void {
+  private broadcastMessage(docName: string, frame: Uint8Array, force = false): void {
     const rcsSessionId = this.getRcsSessionId(docName);
 
     // sync-only 连接由新协议 DOC_BASE/DOC_UPDATE 驱动，旧 Doc 增量必须跳过；
     // 同一会话可能同时存在旧标签页，因此按连接而非按会话整体裁剪。
     const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
       if (entry.syncOnly) return;
-      this.sendFrameWithBackpressure(entry.ws, docName, frame);
+      if (!force) {
+        this.sendFrameWithBackpressure(entry.ws, docName, frame);
+        return;
+      }
+      try {
+        if (entry.ws.readyState === 1) entry.ws.send(frame);
+      } catch {
+        // 单连接失败不阻塞其他连接；连接自身事件会收敛关闭。
+      }
     };
 
     if (rcsSessionId) {
@@ -252,19 +318,21 @@ export class YjsBroadcaster {
    * 缓冲超过 64 KB 跳帧并登记 lagging（含 docName 供追赶），发送异常不阻塞其他连接
    * （单连接故障隔离，CLAUDE.md YJS 不变量 9）。
    */
-  private sendFrameWithBackpressure(ws: WsConnection, docName: string, frame: Uint8Array): void {
+  private sendFrameWithBackpressure(ws: WsConnection, docName: string, frame: Uint8Array): boolean {
     if (ws.readyState !== 1) {
       this.laggingConnections.delete(ws);
-      return;
+      return false;
     }
     if (this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) {
       this.markLagging(ws, docName);
-      return;
+      return false;
     }
     try {
       ws.send(frame);
+      return true;
     } catch {
       // 单连接失败不阻塞
+      return false;
     }
   }
 

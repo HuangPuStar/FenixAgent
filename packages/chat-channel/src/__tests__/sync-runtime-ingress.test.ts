@@ -545,6 +545,43 @@ describe("normalizeAcpSessionUpdate 映射", () => {
     expect(semantic?.payload.metadata).not.toHaveProperty("rawOutput");
   });
 
+  // 私有结果/错误帧可能不带 status：终态必须由帧类型推断，否则实体永远 running（B06）。
+  test("无 status 的私有工具结果/错误帧按帧类型收口为终态", () => {
+    const completed = normalizeAcpSessionUpdate({
+      sessionUpdate: "tool_call_result",
+      toolCallId: "tool_1",
+      turnId: TURN,
+    });
+    const failed = normalizeAcpSessionUpdate({
+      sessionUpdate: "tool_call_error",
+      toolCallId: "tool_1",
+      turnId: TURN,
+    });
+
+    expect(completed[0]?.semantic?.payload).toMatchObject({ terminal: true, metadata: { status: "completed" } });
+    expect(failed[0]?.semantic?.payload).toMatchObject({ terminal: true, metadata: { status: "failed" } });
+  });
+
+  // 显式 status 优先于帧类型：结果帧声明 running 时不得被错误收口，声明 failed 时仍按失败处理。
+  test("显式 status 优先于帧类型推断", () => {
+    const running = normalizeAcpSessionUpdate({
+      sessionUpdate: "tool_call_result",
+      toolCallId: "tool_1",
+      status: "running",
+      turnId: TURN,
+    });
+    const failed = normalizeAcpSessionUpdate({
+      sessionUpdate: "tool_call_result",
+      toolCallId: "tool_1",
+      status: "failed",
+      turnId: TURN,
+    });
+
+    expect(running[0]?.semantic?.payload).not.toHaveProperty("terminal");
+    expect(running[0]?.semantic?.payload.metadata).toEqual({ status: "running" });
+    expect(failed[0]?.semantic?.payload).toMatchObject({ terminal: true, metadata: { status: "failed" } });
+  });
+
   // 权限请求：JSON-RPC 请求形态（method=requestPermission，params 即请求载荷）映射为 pending 实体。
   test("requestPermission 映射为 pending 权限实体", () => {
     const events = normalizeAcpSessionUpdate({

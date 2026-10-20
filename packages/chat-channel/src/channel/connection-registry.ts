@@ -125,6 +125,7 @@ export class ConnectionRegistry {
   removeClient(wsId: string): ClientConnection | undefined {
     const client = this.clients.get(wsId);
     this.clients.delete(wsId);
+    if (client) client.syncClosed = true;
     return client;
   }
 

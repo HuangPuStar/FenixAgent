@@ -8,6 +8,7 @@ import {
   frameHeaderOf,
   MAX_CONTROL_FRAME_BYTES,
   MAX_DATA_FRAME_BYTES,
+  MAX_DOC_SNAPSHOT_BYTES,
   MAX_ERROR_MESSAGE_CHARS,
   MAX_FRAME_HEADER_BYTES,
   MAX_SEALED_DEPENDS_ON,
@@ -249,6 +250,24 @@ describe("帧编解码与字节预算", () => {
     const headerBytes = TEXT_ENCODER.encode(JSON.stringify(frameHeaderOf(frame))).length;
     expect(headerBytes).toBeGreaterThan(MAX_FRAME_HEADER_BYTES);
     expectSyncErrorCode(() => encodeSyncFrame(frame), "FRAME_HEADER_TOO_LARGE");
+  });
+
+  // 可传输不变量：最大快照叠加最长合法标识后，仍必须能被单帧完整编码并解码。
+  test("MAX_DOC_SNAPSHOT_BYTES 与 256 字节标识组合仍在数据帧上限内", () => {
+    const identifier = "i".repeat(256);
+    const frame: SyncFrame = {
+      ...buildLargeDocBaseFrame(MAX_DOC_SNAPSHOT_BYTES),
+      docId: identifier,
+      generation: identifier,
+      transportEpoch: identifier,
+      subscriptionEpoch: identifier,
+      syncAttemptId: identifier,
+      deliveryId: identifier,
+      payloadDigest: identifier,
+    };
+    const bytes = encodeSyncFrame(frame);
+    expect(bytes.length).toBeLessThanOrEqual(MAX_DATA_FRAME_BYTES);
+    expect(decodeSyncFrame(bytes)).toEqual(frame);
   });
 
   // 数据帧放宽到 288KiB（含 base64 载荷）但不得越界：这是历史快照跨 WS 分片的物理上限。

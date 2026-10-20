@@ -12,6 +12,12 @@
   "reconnecting": "重连中...",
   "reconnectingDesc": "连接已断开，正在自动重连；如长时间未恢复可点击重试",
   "wsSendFailed": "连接已断开，操作未能发送；请等待重连或点击重连",
+  "historyGap": "中间有部分历史未加载",
+  "historyGapLoad": "加载缺失历史",
+  "historyGapLatest": "回到最新",
+  "historyRecoveryIncomplete": "历史同步未完成：{{count}} 个文档未能恢复，工具与思考内容可能缺失。",
+  "historyRecoveryRetry": "重试历史同步",
+  "historyRecoveryRetrying": "正在重试历史同步...",
   "filePicker": {
     "title": "选择文件"
   }

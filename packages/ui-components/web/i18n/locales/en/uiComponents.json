@@ -21,6 +21,28 @@
   "chat": {
     "agentPanel": {},
     "components": {
+      "activityChain": {
+        "category": {
+          "command": "Command",
+          "edit": "Edit",
+          "question": "Question",
+          "read": "Read",
+          "search": "Search",
+          "skill": "Skill",
+          "subagent": "Sub-agent",
+          "todo": "Todo",
+          "tool": "Tool",
+          "web": "Web"
+        },
+        "collapse": "Collapse process",
+        "expand": "Expand process",
+        "failed": "{{count}} failed",
+        "moreCategories": "{{count}} more types",
+        "process": "Detailed process",
+        "running": "Running",
+        "steps": "{{count}} steps",
+        "thinking": "Thought"
+      },
       "acpMain": {
         "assignSpaceFailed": "Failed to update session space: {{message}}",
         "cancel": "Cancel",
@@ -145,6 +167,7 @@
         "toggle": "Expand or collapse status"
       },
       "chatView": {
+        "loadingSession": "Loading session…",
         "stage": {
           "callingTool": "Calling tool",
           "generating": "Generating",
@@ -309,9 +332,16 @@
         "output": "Output"
       },
       "toolCallRow": {
+        "collapseDetails": "Collapse details",
+        "diffUnchanged": "{{count}} unchanged lines",
+        "expandDetails": "Expand details",
+        "noChanges": "No changes",
+        "noOutput": "No output",
+        "output": "Output",
         "previewFile": "Preview {{path}}",
         "running": "Tool is running…",
         "toolName": "Tool",
+        "truncated": "Output truncated",
         "viewParams": "View Parameters"
       }
     },

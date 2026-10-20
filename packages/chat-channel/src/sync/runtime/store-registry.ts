@@ -40,9 +40,16 @@ interface RegistryEntry {
 export class SyncStoreRegistry {
   private readonly entries = new Map<string, RegistryEntry>();
 
-  /** 取得（或创建）scope 对应的共享 store，并把引用计数 +1。 */
-  acquire(scope: SyncScope, createStore: () => ProjectionStore): SharedProjectionStore {
-    const key = scopeKey(scope);
+  /**
+   * 取得（或创建）scope 对应的共享 store，并把引用计数 +1。
+   *
+   * `binding` 是投影代次（宿主用旧 Chat/Session Doc 的 generation）：同一 scope 内
+   * `load_session` / `create_session` 会整体换代，新代次不得复用旧 store 与旧历史引导，
+   * 否则新会话的实时事件会追加到上一会话的时间线上。
+   */
+  acquire(scope: SyncScope, createStore: () => ProjectionStore, binding?: string): SharedProjectionStore {
+    const scopeKeyValue = scopeKey(scope);
+    const key = binding === undefined || binding.length === 0 ? scopeKeyValue : `${scopeKeyValue}#${binding}`;
     let entry = this.entries.get(key);
     if (entry === undefined) {
       entry = {
@@ -67,7 +74,8 @@ export class SyncStoreRegistry {
         released = true;
         owned.refs -= 1;
         if (owned.refs <= 0 && owned.bootstrapInflight === null) {
-          this.entries.delete(key);
+          // 只删除自己登记的那一条：同 key 可能已被后来者重新创建。
+          if (this.entries.get(key) === owned) this.entries.delete(key);
           return;
         }
         // 引用归零但引导仍在途：等它落定后再决定是否丢弃（成功或失败都不影响已建立连接）。

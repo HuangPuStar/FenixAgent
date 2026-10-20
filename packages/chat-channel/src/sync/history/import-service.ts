@@ -40,6 +40,7 @@ import { BlockDispatcher } from "./build-dispatch";
 import type { BlockBuildPool } from "./build-pool";
 import { type CommittedBlockRef, HistoryCommitter } from "./committer";
 import { HistoryIngest, type HistoryRecordMeta, type IngestedRecord } from "./ingest";
+import { planHistoryParts } from "./object-parts";
 import type { HistorySpool } from "./spool";
 
 /** 导入状态；`importComplete` 只表示完整性验证已通过，原子换代仍由 `finalize` 完成。 */
@@ -190,18 +191,31 @@ export class HistoryImportService {
     return { loadId, generation };
   }
 
-  /** 接收一条对象并保留构建所需的轻量元数据；接收窗口由 HistoryIngest 负责冻结。 */
+  /** 接收一条对象并保留构建所需的轻量元数据；超大对象按记录预算拆成多条物理记录。 */
   async accept(value: unknown, meta: HistoryRecordMeta): Promise<IngestedRecord> {
     const attempt = this.requireAttempt();
     if (attempt.state !== "receiving") {
       throw this.incomplete("receiving boundary is frozen");
     }
     try {
-      const record = await attempt.ingest.accept(value, meta);
-      attempt.records.push(record);
-      attempt.metadata.push(meta);
-      attempt.receivedOrdinal = record.sourceOrdinal;
-      return record;
+      const parts = planHistoryParts({
+        value,
+        meta,
+        // 单条记录的可传输预算按 Doc 硬限扣掉 Yjs/记录头余量；块目标只决定分组，不触发拆分。
+        recordBudgetBytes: Math.max(1, this.capacity.inputs.historyBlockHardBytes - 4096),
+        largeFrameThresholdBytes: this.capacity.inputs.largeFrameThresholdBytes,
+        digest: this.digest,
+      });
+      let last: IngestedRecord | null = null;
+      for (const part of parts) {
+        const record = await attempt.ingest.accept(part.value, part.meta);
+        attempt.records.push(record);
+        attempt.metadata.push(part.meta);
+        attempt.receivedOrdinal = record.sourceOrdinal;
+        last = record;
+      }
+      if (last === null) throw this.incomplete("history object produced no record");
+      return last;
     } catch (error) {
       await this.fail(error);
       throw error;

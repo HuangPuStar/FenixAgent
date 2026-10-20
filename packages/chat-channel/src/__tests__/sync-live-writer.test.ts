@@ -9,6 +9,7 @@ import * as Y from "yjs";
 
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
 import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
+import { fidelitySerialize } from "../sync/history/fidelity-json";
 import {
   type BarrierKind,
   createLiveWriter,
@@ -46,6 +47,43 @@ const BOOTSTRAP_TTL_MS = 5_000;
 const MERGE = { maxDelayMs: 600_000, maxBytes: 1 << 20 };
 const UTF8 = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
+/** 历史导入完成后 `ensureWritableContentDoc` 确定性创建的实时尾块。 */
+const LIVE_TAIL_ID = docIdFor("content", 1, "live-tail");
+
+/** 历史导入记录的扁平形态：`text_part` + 旧协议数字槽位 0。 */
+interface HistoryRecordFixture {
+  readonly recordId: string;
+  readonly entryId: string;
+  readonly contentSlot: number;
+  readonly contentType: string;
+  readonly partIndex: number;
+  readonly kind: "text_part";
+  readonly payload: Uint8Array;
+}
+
+function historyRecord(entryId: string, text: string): HistoryRecordFixture {
+  return {
+    recordId: `rec_${entryId}`,
+    entryId,
+    contentSlot: 0,
+    contentType: "text/plain",
+    partIndex: 0,
+    kind: "text_part",
+    payload: fidelitySerialize(text),
+  };
+}
+
+function encodeHistoryRecords(records: readonly HistoryRecordFixture[]): Uint8Array {
+  const doc = new Y.Doc();
+  try {
+    const target = new Y.Array<HistoryRecordFixture>();
+    doc.getMap("root").set("records", target);
+    target.push([...records]);
+    return Y.encodeStateAsUpdate(doc);
+  } finally {
+    doc.destroy();
+  }
+}
 
 interface TimeControl {
   clock: Clock;
@@ -102,8 +140,18 @@ function docRecord(docId: string, kind: DocKind, blockIndex: number, snapshot: U
  * `GENERATION_NOT_CURRENT` 拒绝写者的一切写入。内容块入口写在 `entryRefs` 里——写者不自建入口，
  * 恢复路径也依赖它。
  */
-async function seed(runtime: Runtime, options: { contentBlocks?: boolean } = {}): Promise<void> {
+async function seed(
+  runtime: Runtime,
+  options: {
+    contentBlocks?: boolean;
+    /** 已封口的导入历史：入口闭包末位是历史块，写者必须另建 active 尾块。 */
+    historyRecords?: readonly HistoryRecordFixture[];
+    /** 不在入口闭包里的已封口块：用于验证 claim 不会把无关旧块当作已提交事实。 */
+    orphanRecords?: readonly HistoryRecordFixture[];
+  } = {},
+): Promise<void> {
   const { store, time } = runtime;
+  const historyRecords = options.historyRecords ?? [];
   const contentDocIds = options.contentBlocks === false ? [] : [runtime.contentId];
   const entryRefs: GenerationEntryRefs = {
     controlDocId: docIdFor("control", 0, "control"),
@@ -118,7 +166,7 @@ async function seed(runtime: Runtime, options: { contentBlocks?: boolean } = {})
     acpSessionId: "acp-session-1",
     loadId: "load-1",
     state: "staging",
-    importEndOrdinal: null,
+    importEndOrdinal: historyRecords.length > 0 ? historyRecords.length : null,
     entryRefs,
     createdAt: 1_000,
   };
@@ -137,12 +185,34 @@ async function seed(runtime: Runtime, options: { contentBlocks?: boolean } = {})
     epoch: lease.epoch,
     doc: docRecord(runtime.runtimeId, "runtime", 0, emptyState()),
   });
-  for (const docId of contentDocIds) {
-    await store.createDoc({
+  const putSealed = async (docId: string, records: readonly HistoryRecordFixture[]): Promise<void> => {
+    const snapshot = encodeHistoryRecords(records);
+    const base = docRecord(docId, "content", 0, snapshot);
+    await store.putSealedIfAbsent({
       scopeKey: SCOPE_KEY,
       epoch: lease.epoch,
-      doc: docRecord(docId, "content", 0, emptyState()),
+      doc: {
+        ...base,
+        state: "sealed",
+        finalSeq: 0,
+        ordinalStart: 1,
+        ordinalEnd: records.length,
+      },
     });
+  };
+  if (historyRecords.length > 0) {
+    await putSealed(runtime.contentId, historyRecords);
+  } else {
+    for (const docId of contentDocIds) {
+      await store.createDoc({
+        scopeKey: SCOPE_KEY,
+        epoch: lease.epoch,
+        doc: docRecord(docId, "content", 0, emptyState()),
+      });
+    }
+  }
+  if (options.orphanRecords !== undefined) {
+    await putSealed(docIdFor("content", 0, "orphan"), options.orphanRecords);
   }
   // 引导租约到期：写者才能以新的 epoch 取得写权（存储不提供主动释放）。
   time.advance(BOOTSTRAP_TTL_MS + 1);
@@ -199,6 +269,31 @@ async function setup(options: { capacity?: SyncCapacityProfile; seed?: string; w
   const writer = newWriter(runtime, { seed: options.seed, wrap: options.wrap });
   await writer.acquire();
   return { ...runtime, writer } satisfies Fixture;
+}
+
+/** 带已封口导入历史的夹具：模拟历史先落库、写者随后 attach。 */
+async function setupWithHistory(
+  historyRecords: readonly HistoryRecordFixture[],
+  orphanRecords?: readonly HistoryRecordFixture[],
+): Promise<Fixture> {
+  const runtime = createRuntime();
+  await seed(runtime, { historyRecords, orphanRecords });
+  const writer = newWriter(runtime);
+  await writer.acquire();
+  return { ...runtime, writer };
+}
+
+/** attach 窗口补水：用户消息带 idempotent，同 turn 只能写一次。 */
+function userInput(turnId: string, delta: string): LiveInput {
+  return {
+    turnId,
+    entryId: `${turnId}:user`,
+    contentSlot: "text",
+    contentType: "text/plain",
+    kind: "text-delta",
+    delta,
+    idempotent: true,
+  };
 }
 
 function textDelta(entryId: string, delta: string): LiveInput {
@@ -335,6 +430,49 @@ test("同键增量合并为一条记录，语义屏障先冲刷再推进", async
   await fix.writer.close();
 });
 
+// 历史已含该用户消息（旧协议数字槽位 0）时，同轮 attach 补水不得再写一条；屏障确保补水真的走到写者。
+test("历史已含用户消息时同轮补水只保留一条", async () => {
+  const fix = await setupWithHistory([historyRecord("turn-pending:user", "pending question")]);
+  await fix.writer.accept(userInput("turn-pending", "pending question"));
+  await fix.writer.accept(semantic("tool", { entityId: "barrier-tool" }));
+
+  const historyTexts = readRecords(fix, fix.contentId).filter((record) => record.entryId === "turn-pending:user");
+  const liveTexts = readRecords(fix, LIVE_TAIL_ID).filter((record) => record.entryId === "turn-pending:user");
+  expect(historyTexts).toHaveLength(1);
+  expect(liveTexts).toHaveLength(0);
+  await fix.writer.close();
+});
+
+// 相同文本的两次合法提问属于不同轮次：判重按 entryId 而不是正文，两条都必须保留。
+test("不同轮次的相同文本各保留一条", async () => {
+  const fix = await setup();
+  await fix.writer.accept(userInput("turn-a", "same question"));
+  await fix.writer.accept(userInput("turn-b", "same question"));
+  await fix.writer.accept(semantic("tool", { entityId: "barrier-tool" }));
+
+  const texts = readRecords(fix, fix.contentId)
+    .filter((record) => record.kind === "text" && record.entryId.endsWith(":user"))
+    .map(textOf);
+  expect(texts).toEqual(["same question", "same question"]);
+  await fix.writer.close();
+});
+
+// claim 只读取当前代次入口闭包：闭包之外的旧块（等价于已退役/不可达）不能把新消息误判成已存在。
+test("claim 不读取入口闭包之外的内容块", async () => {
+  const fix = await setupWithHistory(
+    [historyRecord("turn-committed:user", "committed history")],
+    [historyRecord("turn-orphan:user", "orphan text")],
+  );
+  await fix.writer.accept(userInput("turn-orphan", "orphan text"));
+  await fix.writer.accept(semantic("tool", { entityId: "barrier-tool" }));
+
+  const liveTexts = readRecords(fix, LIVE_TAIL_ID)
+    .filter((record) => record.entryId === "turn-orphan:user")
+    .map(textOf);
+  expect(liveTexts).toEqual(["orphan text"]);
+  await fix.writer.close();
+});
+
 // 换消息或跨语义屏障的正文属于不同片段：合并它们会把两段内容拼到一起，读者无法再分开。
 test("键切换与语义屏障隔离正文，前后不跨屏障合并", async () => {
   const fix = await setup();
@@ -446,18 +584,16 @@ test("unknown 且查询到异摘要：写者停写", async () => {
   await fix.writer.close();
 });
 
-// 写后超硬上限时不持久化不发布：先确认该批未提交，恢复原 canonical + tail 并封口，再把同输入拆小写进新块。
-test("超硬上限的正文先封口再拆小写入新块", async () => {
+// 记录超限只拆记录；Doc 仍有空间时不得无谓封口或生成空前驱块。
+test("正文按记录预算拆分且复用仍有空间的块", async () => {
   const capacity = cappedCapacity({ activeHardEncodedBytes: 4_096, payloadChunkMaxBytes: 64 });
   const fix = await setup({ capacity });
   const text = "x".repeat(200);
   await fix.writer.accept(textDelta("entry-1", text));
   await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
-  expect(updatesOf(fix, fix.contentId)).toHaveLength(0);
-  expect(docOf(fix, fix.contentId)?.state).toBe("sealed");
-  const successor = committed(fix).docs.find((doc) => doc.kind === "content" && doc.state === "active");
-  expect(successor).toBeDefined();
-  const pieces = readRecords(fix, successor?.docId ?? "");
+  expect(updatesOf(fix, fix.contentId)).toHaveLength(4);
+  expect(docOf(fix, fix.contentId)?.state).toBe("active");
+  const pieces = readRecords(fix, fix.contentId);
   expect(pieces.length).toBeGreaterThan(1);
   expect(pieces.map(textOf).join("")).toBe(text);
   for (const piece of pieces) expect(piece.payload.byteLength).toBeLessThanOrEqual(64);

@@ -137,8 +137,15 @@ export async function createSyncHostSession(input: {
   readonly storeRegistry?: SyncStoreRegistry;
   /** 稳定历史源；缺省或读取为空时回退空基线。读取失败不缓存，下一次连接可重试。 */
   readonly historySource?: SyncHistorySource;
+  /**
+   * 投影代次（旧 Chat/Session Doc 的 generation）。同一 scope 换代时必须换 store，
+   * 否则新连接会复用上一代次的已提交时间线与一次性历史引导。
+   */
+  readonly storeBinding?: string;
   readonly owner?: string;
   readonly onError?: (message: string, error: unknown) => void;
+  /** 入口永久停写：宿主据此让客户端重建投影，不能只留服务端日志。 */
+  readonly onIngressStopped?: (error: unknown) => void;
 }): Promise<SyncHostSession> {
   assertIdentifier(input.scope.organizationId, "scope.organizationId");
   assertIdentifier(input.scope.rcsSessionId, "scope.rcsSessionId");
@@ -171,6 +178,7 @@ export async function createSyncHostSession(input: {
     () =>
       input.store ??
       new MemoryProjectionStore({ clock, digest, capacity: config.capacity, lifecycle: config.lifecycle }),
+    input.storeBinding,
   );
   const store =
     sharedStore?.store ??
@@ -346,6 +354,7 @@ export async function createSyncHostSession(input: {
     if (stopped) return;
     stopped = true;
     ingressFailures.report(error);
+    input.onIngressStopped?.(error);
   };
   /**
    * 同 scope 已有其他连接的写者时，本连接是 follower：实时入口丢弃，靠 tick 从共享 store 追赶。
@@ -392,10 +401,14 @@ export async function createSyncHostSession(input: {
           turnId,
         });
       case "tool_call_started":
-      case "tool_call_updated":
-      case "tool_call_completed":
-      case "tool_call_failed":
         return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
+      case "tool_call_updated":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
+      // 私有结果/错误帧的终态由帧类型表达；不能退化成 tool_call_update，否则无 status 时永远 running。
+      case "tool_call_completed":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_result", turnId });
+      case "tool_call_failed":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_error", turnId });
       case "permission_requested":
         return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "permission_request", turnId });
       case "permission_resolved":
@@ -445,6 +458,7 @@ export async function createSyncHostSession(input: {
           contentSlot: USER_CONTENT_SLOT,
           contentType: TEXT_CONTENT_TYPE,
           delta: text,
+          idempotent: true,
         },
       ]);
     },

@@ -3,8 +3,10 @@
 // lifecycle 必须由装配方显式提供；宽限期没有冻结数值，不能在 adapter 内隐藏默认值。
 // export/restore 只用于测试「已提交快照 + 连续 tail」恢复，不替代 PostgreSQL adapter。
 
+import * as Y from "yjs";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
+import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import {
   type CommitRecord,
   compositeKey,
@@ -60,6 +62,10 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     this.digest = options.digest;
     this.capacity = options.capacity;
     this.lifecycle = options.lifecycle;
+  }
+
+  private assertSnapshotSize(snapshot: Uint8Array): void {
+    if (snapshot.byteLength > MAX_DOC_SNAPSHOT_BYTES) fail("CAPACITY_EXCEEDED", "snapshot exceeds transport budget");
   }
 
   async acquireWriter(scopeKey: string, owner: string, ttlMs: number): Promise<WriterLease> {
@@ -122,6 +128,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   async createDoc(input: CreateDocInput): Promise<RegistrationResult> {
     this.requireLease(input.scopeKey, input.epoch);
     const doc = input.doc;
+    this.assertSnapshotSize(doc.snapshot);
     if (doc.scopeKey !== input.scopeKey) fail("DOC_NOT_FOUND", "document generation is not registered");
     const key = compositeKey(input.scopeKey, doc.docId);
     const existing = this.docs.get(key);
@@ -231,6 +238,19 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
         batchId: input.batchId,
         digest: input.digest,
       }));
+      // 便宜上界能证明安全时不重建；临界区按真实 Yjs 编码检查，整批提交前失败不污染任何 Doc。
+      const bound =
+        doc.baseSnapshot.byteLength + [...ledger, ...records].reduce((sum, item) => sum + item.bytes.byteLength, 0);
+      if (bound > MAX_DOC_SNAPSHOT_BYTES) {
+        const projection = new Y.Doc();
+        try {
+          Y.applyUpdate(projection, doc.baseSnapshot);
+          for (const item of [...ledger, ...records]) Y.applyUpdate(projection, item.bytes);
+          this.assertSnapshotSize(Y.encodeStateAsUpdate(projection));
+        } finally {
+          projection.destroy();
+        }
+      }
       return { doc, ledger, records, lastSeq: list[list.length - 1].fromSeq };
     });
     const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
@@ -246,6 +266,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
     this.requireLease(input.scopeKey, input.epoch);
     const doc = input.doc;
+    this.assertSnapshotSize(doc.snapshot);
     if (doc.scopeKey !== input.scopeKey || doc.state !== "sealed" || this.digest(doc.snapshot) !== doc.hash)
       fail("MALFORMED_FRAME", "sealed document is invalid");
     const key = compositeKey(input.scopeKey, doc.docId);
@@ -275,6 +296,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   }
 
   async sealDoc(input: SealDocInput): Promise<SealDocResult> {
+    this.assertSnapshotSize(input.finalSnapshot);
     const scope = this.requireLease(input.scopeKey, input.epoch);
     const doc = this.docs.get(compositeKey(input.scopeKey, input.docId));
     if (doc === undefined || doc.scopeKey !== input.scopeKey) fail("DOC_NOT_FOUND", "document is unknown");

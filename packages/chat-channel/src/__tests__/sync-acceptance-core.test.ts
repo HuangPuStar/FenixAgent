@@ -42,8 +42,8 @@ async function open(options?: CoreHarnessOptions): Promise<CoreHarness> {
 }
 
 const TEXT_SLOT = "text";
-/** 设计 §10.2：单内容块的编码状态硬限（`capacity.inputs.historyBlockHardBytes`）。 */
-const BLOCK_HARD_BYTES = 262144;
+/** 设计 §10.2：单内容块的编码状态硬限；由线上数据帧上限反推，必须与容量档案同值。 */
+const BLOCK_HARD_BYTES = 218100;
 /** 设计 §10.2：历史入口的单对象大帧阈值（`capacity.inputs.largeFrameThresholdBytes`）。 */
 const LARGE_FRAME_THRESHOLD_BYTES = 1048576;
 /** 运行态实体上限（`RUNTIME_DOC_LIMITS.maxEntities`）。 */
@@ -294,20 +294,25 @@ describe("T03 大量小对象与少数巨型对象混合", () => {
     }
   });
 
-  // 单条记录放不进空的 256KiB 块时，构建期必须给出一次明确的容量错误，且不得切换代次。
-  test("单条超过块硬限时明确失败且不切换代次", async () => {
+  // 单条文本超过块硬限时按记录预算分片后跨块提交：不因合法大输入停写，也不产生截断。
+  test("单条超过块硬限的文本分片提交且不切换代次之外的状态", async () => {
     const harness = await open();
     const before = await harness.currentGeneration();
-    const docsBefore = harness.allDocs().length;
+    const text = "x".repeat(BLOCK_HARD_BYTES + 40 * 1024);
 
     await harness.beginImport();
-    await harness.acceptHistoryText("x".repeat(BLOCK_HARD_BYTES + 40 * 1024), { entryId: "huge-0" });
-    await expectCode(() => harness.finishImport(), "CAPACITY_EXCEEDED");
+    await harness.acceptHistoryText(text, { entryId: "huge-0" });
+    const finished = await harness.finishImport();
+    expect(finished.outcome).toBe("committed");
 
-    expect(harness.importStatus()?.state).toBe("failed");
-    expect(harness.importStatus()?.failure?.code).toBe("CAPACITY_EXCEEDED");
-    expect(await harness.currentGeneration()).toBe(before);
-    expect(harness.allDocs().length).toBe(docsBefore);
+    const records = await harness.flatRecords();
+    expect(joinPayloadText(records, "huge-0", 0)).toBe(text);
+    for (const block of await harness.blocks()) {
+      expect((await harness.canonicalBytes(block.docId)).byteLength).toBeLessThanOrEqual(BLOCK_HARD_BYTES);
+    }
+    expect(harness.importStatus()?.gaps).toEqual([]);
+    expect(await harness.currentGeneration()).toBe(finished.generation);
+    expect(await harness.currentGeneration()).not.toBe(before);
   });
 
   // 超过单对象大帧阈值的历史对象在接收期就被拒：入口没有注入 `frameParse` 额度，明确失败而非静默截断。
@@ -648,32 +653,34 @@ describe("T06 旧轮尾部与新输入交错", () => {
 // ------------------------------------------------------------------ T07
 
 describe("T07 封口提交点与断线恢复", () => {
-  // 单条增量超过分片上限时写入层先封口当前块再拆小重写：旧块摘要此后不变，正文跨块仍可完整重建。
+  // 单条增量超过块余量时按记录预算跨 successor 提交：旧块摘要此后不变，正文跨块仍可完整重建。
   test("封口后摘要不变且正文跨块完整重建", async () => {
     const harness = await open();
     await harness.handshake();
     await harness.subscribe([harness.seedContentDocId]);
     await harness.writeText("第一块正文");
 
-    const tail = "尾".repeat(40 * 1024);
+    // 270KiB：超过单块硬限，必须落成 successor；不能靠一次重拆把整段塞回原块。
+    const tail = "尾".repeat(90 * 1024);
     await harness.writeText(tail);
 
     const rows = harness.docsOfKind("content");
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBeGreaterThan(1);
     const sealed = required(rows[0], "sealed content block");
-    const successor = required(rows[1], "successor content block");
-    expect([sealed.state, successor.state]).toEqual(["sealed", "active"]);
     const sealedDigest = await harness.canonicalDigest(sealed.docId);
+    expect(rows.slice(1).every((row) => row.state === "active" || row.state === "sealed")).toBe(true);
 
     await harness.writeText("第二块继续");
 
     expect(await harness.canonicalDigest(sealed.docId)).toBe(sealedDigest);
-    const sealedRecords = await harness.canonicalRecords(sealed.docId);
-    const successorRecords = await harness.canonicalRecords(successor.docId);
-    expect(liveText(sealedRecords, "turn-1:assistant", TEXT_SLOT)).toBe("第一块正文");
-    expect(liveText(successorRecords, "turn-1:assistant", TEXT_SLOT)).toBe(`${tail}第二块继续`);
-    // 两个块合起来仍是完整正文，且与 oracle 逐字相等。
-    await expectLiveTextMatchesLog(harness, [sealed.docId, successor.docId]);
+    const docIds = harness.docsOfKind("content").map((row) => row.docId);
+    const texts: string[] = [];
+    for (const docId of docIds) {
+      texts.push(liveText(await harness.canonicalRecords(docId), "turn-1:assistant", TEXT_SLOT));
+    }
+    // 每块只贡献自己的连续片段；按块序拼接后与 oracle 逐字相等，无漏字、无重复。
+    expect(texts.join("")).toBe(harness.log.textFor("turn-1:assistant", TEXT_SLOT));
+    expect(texts.join("")).toBe(`第一块正文${tail}第二块继续`);
   });
 
   // 断线只丢在途帧，不丢已提交内容：新连接重新握手订阅后拿到的字节与 store 的已提交边界逐字节相同。

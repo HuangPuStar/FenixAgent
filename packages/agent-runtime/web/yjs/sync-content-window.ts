@@ -5,11 +5,13 @@
 // 轮换块的 blockIndex 来源不同，不能单独作为全局时间序。窗口只裁决「哪些块先订阅」，不改变
 // 目录与投影的排序规则。
 //
-// 双向淘汰：
+// 双向淘汰与双向读取：
 // - live 追加把窗口向前推，最旧的已订阅块移入 `earlier`（仍可重新加载）；
 // - 显式加载更早历史把窗口向后拉，超过驻留预算时释放除最新块外的已订阅块并移入 `later`，
 //   避免“加载越早、驻留越多”，也避免下一次目录刷新把它们自动订阅回来；最新块（live tail）
-//   始终保留，否则流式回复会随淘汰一并消失。
+//   始终保留，否则流式回复会随淘汰一并消失；
+// - `later` 不是“不存在”：向下阅读可经 `loadLater` 按目录顺序重新加载；`focusLatest` 只定位
+//   目录末尾窗口（“回到最新”），不会无界恢复所有缺口。
 
 /** 首屏订阅的最近内容块数。单块目标载荷 128KiB，四块把首屏下行控制在约 512KiB 量级。 */
 export const SYNC_HISTORY_INITIAL_BLOCKS = 4;
@@ -72,6 +74,33 @@ export interface SyncContentWindow {
    * `release` 中的块进入 `later`，后续目录刷新不会自动重新订阅；释放后仍由页目录保留重新加载入口。
    */
   loadEarlier(allDocIds: readonly string[], retained: ReadonlySet<string>, batchSize?: number): ContentWindowLoadPlan;
+  /**
+   * 从 `later`（向历史扩展时被淘汰的较新块）按目录顺序取一批，恢复中间缺口。
+   *
+   * 与 `loadEarlier` 对称：越过驻留预算时释放最旧的已订阅块而不是最新块，保证 live tail
+   * 与当前阅读位置仍在窗口内。`protectedDocIds`（等待基线的批次）永不进入 `release`。
+   */
+  loadLater(
+    allDocIds: readonly string[],
+    retained: ReadonlySet<string>,
+    batchSize?: number,
+    protectedDocIds?: ReadonlySet<string>,
+  ): ContentWindowLoadPlan;
+  /** 当前目录末尾 `initialBlocks` 块；用于“回到最新”的有界定位。 */
+  latestDocIds(allDocIds: readonly string[]): readonly string[];
+  /**
+   * 有界定位最新区间：只保留目录末尾 `initialBlocks` 块，其余已驻留块进入 `earlier`。
+   * 被历史加载淘汰的中间块同样回到 `earlier`，由后续“显示更早”按序取回。
+   */
+  focusLatest(
+    allDocIds: readonly string[],
+    retained: ReadonlySet<string>,
+    protectedDocIds?: ReadonlySet<string>,
+  ): ContentWindowLoadPlan;
+  /** 订阅失败/超时：把这批 later 块放回缺口集合，允许用户重试。 */
+  restoreLater(docIds: readonly string[]): void;
+  /** 是否存在“中间缺口”：被 loadEarlier 淘汰到 `later` 的块尚未重新加载。 */
+  hasLater(): boolean;
   /** 查看下一批更早块，不改变状态；返回顺序仍是目录顺序。 */
   peekEarlier(allDocIds: readonly string[], batchSize?: number): readonly string[];
   /** 确认这批更早块已进入订阅；从更早集合移除。 */
@@ -81,11 +110,6 @@ export interface SyncContentWindow {
   hasEarlier(): boolean;
   /** 当前更早集合，按目录顺序过滤；空目录参数会丢弃已不存在的块。 */
   earlierDocIds(allDocIds: readonly string[]): readonly string[];
-  /**
-   * 回到最新位置：清空 `later`，让被历史加载淘汰的块在下一次 `plan()` 中作为 fresh 重新订阅。
-   * 不改变 `earlier` / `order`。
-   */
-  returnToLatest(): void;
   /** 因向历史方向扩展而被淘汰的最新块；用于测试与诊断。 */
   laterDocIds(allDocIds: readonly string[]): readonly string[];
 }
@@ -213,8 +237,60 @@ export function createSyncContentWindow(options: SyncContentWindowOptions = {}):
       }
     },
 
-    returnToLatest(): void {
+    loadLater(allDocIds, retained, batchSize = SYNC_HISTORY_LOAD_BLOCKS, protectedDocIds): ContentWindowLoadPlan {
+      refreshOrder(allDocIds);
+      const batch = order.filter((docId) => later.has(docId)).slice(0, Math.max(1, Math.floor(batchSize)));
+      if (batch.length === 0) return { retain: [], release: [], hasEarlier: earlier.size > 0 };
+      const retainedContent = order.filter((docId) => retained.has(docId));
+      const overflow = Math.max(0, retainedContent.length + batch.length - maxRetainedBlocks);
+      // 与 loadEarlier 对称：向下补缺口时释放最旧的已订阅块，live tail（最新 retained）始终保留。
+      const releasable = retainedContent
+        .slice(0, -1)
+        .filter((docId) => !batch.includes(docId) && !(protectedDocIds?.has(docId) ?? false));
+      const release = releasable.slice(0, Math.min(overflow, releasable.length));
+      for (const docId of release) {
+        later.delete(docId);
+        earlier.add(docId);
+      }
+      for (const docId of batch) {
+        later.delete(docId);
+        earlier.delete(docId);
+      }
+      return { retain: batch, release, hasEarlier: earlier.size > 0 };
+    },
+
+    latestDocIds(allDocIds): readonly string[] {
+      refreshOrder(allDocIds);
+      return order.slice(-initialBlocks);
+    },
+
+    focusLatest(allDocIds, retained, protectedDocIds): ContentWindowLoadPlan {
+      refreshOrder(allDocIds);
+      const latest = order.slice(-initialBlocks);
+      const latestSet = new Set(latest);
+      const retain = latest.filter((docId) => !retained.has(docId));
+      const release = order.filter(
+        (docId) => retained.has(docId) && !latestSet.has(docId) && !(protectedDocIds?.has(docId) ?? false),
+      );
+      const released = new Set(release);
+      // 释放后仍未驻留的块都在最新区间之前：下一次“显示更早”按目录顺序取回。
+      earlier = new Set(
+        order.filter((docId) => !latestSet.has(docId) && !(retained.has(docId) && !released.has(docId))),
+      );
       later = new Set();
+      return { retain, release, hasEarlier: earlier.size > 0 };
+    },
+
+    restoreLater(docIds): void {
+      for (const docId of docIds) {
+        if (!order.includes(docId)) continue;
+        earlier.delete(docId);
+        later.add(docId);
+      }
+    },
+
+    hasLater(): boolean {
+      return later.size > 0;
     },
 
     hasEarlier(): boolean {

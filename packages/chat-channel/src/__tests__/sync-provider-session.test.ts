@@ -339,6 +339,7 @@ describe("provider session", () => {
     // 回执未到：既不补 BASE_READY，也不发 tail。
     expect(await harness.session.tick()).toHaveLength(0);
 
+    subscribed[0].onHandedOff?.();
     const readyFrames = await harness.session.onAck(subscribed[0].deliveryId, "processed");
     expect(typesOf(readyFrames)).toEqual(["BASE_READY"]);
     expect(frameOf(readyFrames, "BASE_READY").baseSeq).toBe(base.baseSeq);
@@ -363,13 +364,13 @@ describe("provider session", () => {
     expect(rebuilt.getText("t").toString()).toBe(seeded.serverDoc.getText("t").toString());
 
     // 回执结清传输额度：两帧全部结算后窗口回到零。
+    tailFrames[0].onHandedOff?.();
     await harness.session.onAck(tailFrames[0].deliveryId, "processed");
     expect(harness.quota.snapshot().outstandingBytes).toBe(0);
     expect(harness.ledger.outstandingCount()).toBe(0);
   });
 
-  // 交接前被丢弃的投递（出帧网关搁置位被顶替）由会话自结算：字节归还，游标与 attempt 不动——客户端会因序号
-  // 缺口申请补齐，服务端随后按新 attempt 重发（设计 §8.5：丢弃的是冗余发送任务，不是唯一内容）。
+  // 未交接基线被放弃时必须恢复调度责任，迟到回执不能替未到达的基线确认完成。
   test("abandonDelivery 归还窗口字节但不推进游标，重复调用与未知 id 无副作用", async () => {
     const seeded = await seed(["one", "two"]);
     const harness = makeHarness(seeded.store);
@@ -387,9 +388,12 @@ describe("provider session", () => {
     harness.session.abandonDelivery("dlv_0011223344556677");
     expect(harness.quota.snapshot().outstandingBytes).toBe(0);
 
-    // 游标没动：base 仍在等回执，因此没有 BASE_READY，也没有尾部更新。
-    expect(await harness.session.tick()).toHaveLength(0);
-    expect(typesOf(await harness.session.onAck(base.deliveryId, "processed"))).toEqual(["BASE_READY"]);
+    expect(await harness.session.onAck(base.deliveryId, "processed")).toHaveLength(0);
+    const retried = await harness.session.tick();
+    expect(typesOf(retried)).toEqual(["DOC_BASE"]);
+    expect(retried[0].deliveryId).not.toBe(base.deliveryId);
+    retried[0].onHandedOff?.();
+    expect(typesOf(await harness.session.onAck(retried[0].deliveryId, "processed"))).toEqual(["BASE_READY"]);
   });
 
   // rejected 只结清传输额度并进入 resync：不推进 base、不发 BASE_READY、不发 tail。
@@ -400,6 +404,7 @@ describe("provider session", () => {
     const subscribed = await harness.session.subscribe(subscribeRequest(seeded.refs.runtimeDocId));
     const base = frameOf(subscribed, "DOC_BASE");
 
+    subscribed[0].onHandedOff?.();
     expect(await harness.session.onAck(subscribed[0].deliveryId, "rejected")).toHaveLength(0);
     expect(harness.session.state).toBe("resync-required");
     // 传输额度已结清，但业务边界没动：既没有 BASE_READY，也没有尾部更新。
@@ -428,7 +433,10 @@ describe("provider session", () => {
     const staleBytes = encodeSyncFrame(first[0].frame).length;
 
     const notice = frameOf(await harness.session.resync(seeded.refs.runtimeDocId), "RESYNC");
-    const fresh = frameOf(await harness.session.tick(), "DOC_BASE");
+    const freshFrames = await harness.session.tick();
+    freshFrames[0].onHandedOff?.();
+    first[0].onHandedOff?.();
+    const fresh = frameOf(freshFrames, "DOC_BASE");
     expect(fresh.syncAttemptId).toBe(notice.attemptId);
     expect(fresh.deliveryId).not.toBe(stale.deliveryId);
     const outstanding = harness.quota.snapshot().outstandingBytes;
