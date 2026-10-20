@@ -2,9 +2,14 @@
 // 连接级同步 runtime 的创建语义：并发首帧只 attach 一次，失败后允许下一帧重试。
 
 import { describe, expect, test } from "bun:test";
+import * as Y from "yjs";
 import { createChatDoc } from "../state/factory";
+import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
+import { deterministicRandomSource, sha256Digest, systemClock } from "../sync/clock";
+import { encodeSyncFrame, SYNC_PROTOCOL_VERSION } from "../sync/protocol/frames";
 import type { SyncScope } from "../sync/protocol/identity";
 import { SyncStoreRegistry } from "../sync/runtime/store-registry";
+import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { ProjectionStore } from "../sync/store/types";
 import { createClient, createWs } from "./connection-test-helpers";
 import type { SyncConnection } from "./connection-types";
@@ -179,5 +184,143 @@ describe("ensureGatewaySyncConnection", () => {
     );
     expect(connection).toBeUndefined();
     expect(ws.closed).toEqual([[1012, "sync init retry"]]);
+  });
+});
+
+/** 从已提交状态重建内容 Doc：只读已提交字节，避免用写者内存状态自证。 */
+function committedTexts(store: MemoryProjectionStore): string[] {
+  const snapshot = store.exportCommittedState();
+  const decoder = new TextDecoder();
+  const texts: string[] = [];
+  for (const doc of snapshot.docs) {
+    if (doc.kind !== "content") continue;
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, doc.baseSnapshot);
+    for (const update of snapshot.updates) {
+      if (update.docId === doc.docId) Y.applyUpdate(ydoc, update.bytes);
+    }
+    const records = ydoc.getMap<unknown>("root").get("records");
+    if (records instanceof Y.Array) {
+      for (const record of records.toArray() as Array<{ payload: Uint8Array }>) {
+        texts.push(decoder.decode(record.payload));
+      }
+    }
+    ydoc.destroy();
+  }
+  return texts;
+}
+
+async function waitFor(predicate: () => boolean, label: string): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+describe("同步用户消息的代次复核", () => {
+  // 跨进程换代后旧 store 不再接收用户消息：写入前复核 Redis，失败时以可重试码关闭连接。
+  test("drops a user message and invalidates the connection when the projection is stale", async () => {
+    const rcsSessionId = "rcs-sync-stale-message";
+    const chat = createChatDoc(rcsSessionId, null, "gen-old");
+    let current = true;
+    const store = new MemoryProjectionStore({
+      clock: systemClock,
+      digest: sha256Digest,
+      capacity: DEFAULT_SYNC_CAPACITY,
+      lifecycle: { sealGraceMs: 2_000, retireGraceMs: 30_000 },
+    });
+    const docs = {
+      getChat: () => ({ ydoc: chat.ydoc, generation: chat.generation }),
+      openChat: async () => ({ ydoc: chat.ydoc, generation: chat.generation }),
+      isGenerationCurrent: async () => current,
+    };
+    const ws = createWs();
+    const connection = await attachGatewaySyncConnection(
+      ws,
+      { enabled: true, sealGraceMs: 2_000, retireGraceMs: 30_000 },
+      "org-1",
+      rcsSessionId,
+      "owner",
+      () => {},
+      {
+        store,
+        clock: systemClock,
+        random: deterministicRandomSource("sync-generation-guard"),
+        digest: sha256Digest,
+        tickIntervalMs: 1_000,
+      },
+      { acpSessionId: null, docs },
+    );
+    await connection!.onInboundBytes(
+      encodeSyncFrame({
+        type: "HELLO",
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        scope: { organizationId: "org-1", rcsSessionId },
+        loadedDocs: [],
+        stateful: false,
+      }),
+    );
+
+    current = false;
+    connection!.acceptUserMessage("turn-stale", "stale text");
+    await waitFor(() => ws.closed.length > 0, "stale connection invalidation");
+
+    // 首次关闭是让客户端重建的可重试码；dispose 对已关闭 socket 的再次 close 在真实适配器上是 no-op。
+    expect(ws.closed[0]).toEqual([1012, "projection replaced"]);
+    expect(committedTexts(store)).toEqual([]);
+    connection!.dispose();
+    chat.ydoc.destroy();
+  });
+
+  // 代次仍为当前时用户消息照常落库：复核不能把正常写入一并挡掉。
+  test("commits the user message when the projection generation is current", async () => {
+    const rcsSessionId = "rcs-sync-live-message";
+    const chat = createChatDoc(rcsSessionId, null, "gen-live");
+    const store = new MemoryProjectionStore({
+      clock: systemClock,
+      digest: sha256Digest,
+      capacity: DEFAULT_SYNC_CAPACITY,
+      lifecycle: { sealGraceMs: 2_000, retireGraceMs: 30_000 },
+    });
+    const docs = {
+      getChat: () => ({ ydoc: chat.ydoc, generation: chat.generation }),
+      openChat: async () => ({ ydoc: chat.ydoc, generation: chat.generation }),
+      isGenerationCurrent: async () => true,
+    };
+    const ws = createWs();
+    const connection = await attachGatewaySyncConnection(
+      ws,
+      { enabled: true, sealGraceMs: 2_000, retireGraceMs: 30_000 },
+      "org-1",
+      rcsSessionId,
+      "owner",
+      () => {},
+      {
+        store,
+        clock: systemClock,
+        random: deterministicRandomSource("sync-generation-current"),
+        digest: sha256Digest,
+        tickIntervalMs: 1_000,
+      },
+      { acpSessionId: null, docs },
+    );
+    await connection!.onInboundBytes(
+      encodeSyncFrame({
+        type: "HELLO",
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        scope: { organizationId: "org-1", rcsSessionId },
+        loadedDocs: [],
+        stateful: false,
+      }),
+    );
+
+    connection!.acceptUserMessage("turn-live", "live text");
+    await waitFor(() => committedTexts(store).includes("live text"), "live user message commit");
+
+    expect(committedTexts(store)).toEqual(["live text"]);
+    expect(ws.closed).toEqual([]);
+    connection!.dispose();
+    chat.ydoc.destroy();
   });
 });

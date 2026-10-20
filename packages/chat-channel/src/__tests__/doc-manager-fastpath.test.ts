@@ -115,6 +115,8 @@ describe("DocManager 投影生命周期栅栏（快路径）", () => {
 
     const entriesBefore = getEntryOrder(chat.ydoc).length;
     const turnId = manager.registerUserMessage(rcsSessionId, "message during outage");
+    // Redis 模式下用户消息写入前会异步复核 active generation；等复核落定后再断言投影。
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(typeof turnId).toBe("string");
     // user entry + 预置的 assistant pending entry 各一条。

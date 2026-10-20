@@ -171,6 +171,25 @@ export async function attachGatewaySyncConnection(
         reportError("[YJS-FE] sync event acceptance failed", error);
       }
     };
+    /**
+     * 用户消息写入前复核 Redis active generation。
+     *
+     * 同步 runtime 的 store 在跨进程换代后仍是旧代次，2 秒 watcher 窗口内的用户消息会被静默丢弃。
+     * 只对用户消息做这次复核（低频、用户可感知）；ACP 增量与广播保持每帧零 Redis I/O。
+     * Redis 故障按可用性放行，恢复后由周期 watcher 收敛（与 DocManager 口径一致）。
+     */
+    const verifyActiveGeneration = async (): Promise<boolean> => {
+      if (runtime.closed || !isCurrent()) return false;
+      if (history === undefined || storeBinding === undefined || history.docs.isGenerationCurrent === undefined) {
+        return true;
+      }
+      try {
+        return (await history.docs.isGenerationCurrent(rcsSessionId, storeBinding)) !== false;
+      } catch (error) {
+        reportError("[YJS-FE] sync generation recheck failed", error);
+        return true;
+      }
+    };
     if (!isCurrent()) {
       invalidate();
       return;
@@ -192,7 +211,17 @@ export async function attachGatewaySyncConnection(
         if (isCurrent()) await runtime.onInboundBytes(bytes);
       },
       acceptNormalizedEvent: (event) => accept(() => runtime.acceptNormalizedEvent(event)),
-      acceptUserMessage: (turnId, text) => accept(() => runtime.acceptUserMessage(turnId, text)),
+      acceptUserMessage: (turnId, text) => {
+        void verifyActiveGeneration()
+          .then((current) => {
+            if (!current) {
+              invalidate();
+              return;
+            }
+            accept(() => runtime.acceptUserMessage(turnId, text));
+          })
+          .catch((error: unknown) => reportError("[YJS-FE] sync user message acceptance failed", error));
+      },
       diagnostics: () => runtime.diagnostics(),
       ingressDiagnostics: () => runtime.ingressDiagnostics(),
       dispose: () => {

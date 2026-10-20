@@ -13,6 +13,7 @@
 
 import type { SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import type { DocManager } from "../state";
+import type { ProjectionDocs } from "../types";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection } from "./connection-types";
@@ -23,6 +24,9 @@ import type { GatewaySyncHostOverrides } from "./sync-connection";
 
 /** attach 窗口内暂存的用户消息上限：只覆盖首 prompt 竞态，不承接长期离线队列。 */
 const MAX_PENDING_USER_MESSAGES = 8;
+
+/** 跨进程 legacy 换代复核周期：与 sync 连接同一量级，避免每个广播都查 Redis。 */
+const LEGACY_GENERATION_WATCH_INTERVAL_MS = 2_000;
 
 /** Chat 域宿主依赖（全部经构造器注入，包内禁止直接 import src/ 宿主模块） */
 export interface ChatChannelDependencies {
@@ -74,6 +78,8 @@ export class ChatChannelController {
   readonly sessionChannel: SessionChannel;
   readonly relayEvents: RelayEventHandler;
   readonly gateway: Gateway;
+  /** 跨进程 legacy 投影复核（公开以便测试与诊断主动触发）。 */
+  readonly legacyGenerationWatcher: LegacyGenerationWatcher;
 
   constructor(dependencies: ChatChannelDependencies) {
     this.registry = new ConnectionRegistry();
@@ -169,5 +175,99 @@ export class ChatChannelController {
       isMachineOffline: dependencies.isMachineOffline,
       classifyPermanentSpawnFailure: dependencies.classifyPermanentSpawnFailure,
     });
+    this.legacyGenerationWatcher = new LegacyGenerationWatcher({
+      registry: this.registry,
+      broadcaster: this.broadcaster,
+      docManager: dependencies.docManager,
+      reportError: dependencies.reportError,
+      reportLog: dependencies.log,
+    });
+    this.legacyGenerationWatcher.start();
+  }
+}
+
+/** legacy 跨进程换代复核所依赖的最小宿主端口（只读连接表 + 投影广播）。 */
+export interface LegacyGenerationWatcherDeps {
+  readonly registry: ConnectionRegistry;
+  readonly broadcaster: YjsBroadcaster;
+  readonly docManager: DocManager;
+  readonly reportError: (message: string, error: unknown) => void;
+  readonly reportLog: (message: string) => void;
+}
+
+/**
+ * 跨进程 legacy 连接失效路径。
+ *
+ * `replaceProjection` 只能触达本进程连接；节点 A 换代后，节点 B 的 legacy 连接仍持有旧 Doc。
+ * 这里周期复核 Redis active generation，重载本地投影后以 replace 帧让客户端换代。
+ * 刻意不关闭 socket：动作连接可能正在等待 `load_session` 回执，关闭会释放共享 relay 并让命令失败。
+ */
+export class LegacyGenerationWatcher {
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly inflight = new Map<string, Promise<void>>();
+
+  constructor(private readonly deps: LegacyGenerationWatcherDeps) {}
+
+  start(): void {
+    if (this.timer !== null) return;
+    this.timer = setInterval(() => {
+      void this.checkNow();
+    }, LEGACY_GENERATION_WATCH_INTERVAL_MS);
+    this.timer.unref?.();
+  }
+
+  stop(): void {
+    if (this.timer !== null) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  /** 立即复核全部含 legacy 连接的会话（定时器与测试共用同一入口）。 */
+  async checkNow(): Promise<void> {
+    const sessions = new Set<string>();
+    this.deps.registry.forEachClient((client) => {
+      if (!client.syncOnly) sessions.add(client.rcsSessionId);
+    });
+    await Promise.all([...sessions].map((rcsSessionId) => this.checkSession(rcsSessionId)));
+  }
+
+  private checkSession(rcsSessionId: string): Promise<void> {
+    const running = this.inflight.get(rcsSessionId);
+    if (running !== undefined) return running;
+    const run = this.reloadIfStale(rcsSessionId)
+      .catch((error: unknown) => {
+        this.deps.reportError("[YJS-FE] legacy projection generation refresh failed", error);
+      })
+      .finally(() => {
+        if (this.inflight.get(rcsSessionId) === run) this.inflight.delete(rcsSessionId);
+      });
+    this.inflight.set(rcsSessionId, run);
+    return run;
+  }
+
+  private async reloadIfStale(rcsSessionId: string): Promise<void> {
+    const generation = this.deps.docManager.getProjectionGeneration(rcsSessionId);
+    if (generation === null) return;
+    if (await this.deps.docManager.isGenerationCurrent(rcsSessionId, generation)) return;
+    // 旧批次的 flush 会从 map 取当前 Doc，重载前必须丢弃，否则旧会话增量写进新投影。
+    this.deps.docManager.cancelACPBatch(rcsSessionId);
+    const chat = await this.deps.docManager.openChat(rcsSessionId);
+    const session = await this.deps.docManager.openSession("", "", rcsSessionId);
+    // 并发路径可能已完成本次换代：只广播成对且确实推进了代次的结果。
+    if (chat.generation === generation || chat.generation !== session.generation) return;
+    const projection: ProjectionDocs = {
+      rcsSessionId,
+      generation: chat.generation,
+      targetAcpSessionId: null,
+      chat,
+      session,
+    };
+    const chatName = `chat:${rcsSessionId}`;
+    const sessionName = `session:${rcsSessionId}`;
+    this.deps.broadcaster.registerYjsDocListener(chat.ydoc, chatName, projection.generation);
+    this.deps.broadcaster.registerYjsDocListener(session.ydoc, sessionName, projection.generation);
+    // force：动作连接不能因背压丢掉唯一的失效信号。
+    this.deps.broadcaster.broadcastReplacement(chat.ydoc, chatName, projection.generation, true);
+    this.deps.broadcaster.broadcastReplacement(session.ydoc, sessionName, projection.generation, true);
+    this.deps.reportLog(`[YJS-FE] reloaded cross-process projection: rcsSessionId=${rcsSessionId}`);
   }
 }
