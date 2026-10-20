@@ -276,8 +276,8 @@
 
 ## 4. 验证证据
 
-- 包内测试：`bun test packages/chat-channel/src` **1537 通过 / 0 失败**（83 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。
-- 目标两文件：`doc-manager-open-fence.test.ts` + `snapshot-hydration.test.ts` **27 通过 / 0 失败**（含本轮新增的 Redis 故障快路径降级 2 条）。
+- 包内测试：`bun test packages/chat-channel/src` **1537 通过 / 0 失败**（84 个文件；包含服务端 host/runtime、网关开关及旧路径行为）。
+- 目标文件：`doc-manager-open-fence.test.ts` + `doc-manager-fastpath.test.ts` + `snapshot-hydration.test.ts` **27 通过 / 0 失败**（含本轮新增的 Redis 故障快路径降级 2 条）。
 - 浏览器测试：**11 通过 / 0 失败**，覆盖默认无代次 HELLO、MANIFEST → directory `contentDocIds` → SUBSCRIBE → 消息投影，以及 ERROR 终态不重连。
 - 端到端接线：`sync-gateway-e2e.test.ts` 用真实 `ChatChannelController` / `Gateway` / `SyncHostSession` / runtime 与假 WebSocket、假时钟，
   贯通开关开启的 stateless HELLO → MANIFEST → 目录 `contentDocIds` → 内容订阅 → `DOC_BASE` → 用户消息 `DOC_UPDATE` → `APPLY_ACK`，
@@ -338,9 +338,9 @@
 - 旧全量通道退役（§3.8）：`sync-legacy-retirement.test.ts` 5 pass（无 sync-request/快照、无旧广播、
   忽略 state-vector、action 可达、旧连接不变）；`sync-chat-messages.test.tsx` 13 pass 与
   `use-chat-hydration.test.tsx` 5 pass 覆盖文本退役、非文本保留、空投影与回退。chat-channel 全量
-  **1537 pass / 0 fail / 83 files**，agent-runtime web + apps/web **479 pass / 57 files**；`bun run typecheck`、
+  **1537 pass / 0 fail / 84 files**，agent-runtime web + apps/web **479 pass / 57 files**；`bun run typecheck`、
   `bun run build:web`、`bun run fastcheck` 均通过；`bun run precheck` 全绿（package-tests 10457 通过 / 2 跳过 /
-  0 失败、874 files；server-and-script 981；web-app 360）。
+  0 失败、875 files；server-and-script 981；web-app 360）。
 
 ## 5. 未覆盖与不可做
 
