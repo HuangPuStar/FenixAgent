@@ -93,7 +93,19 @@ export class AgentExecutor implements NodeExecutor {
           next_delay_ms: delay,
         });
 
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = (): void => {
+            clearTimeout(retryTimer);
+            signal.removeEventListener("abort", onAbort);
+            reject(signal.reason ?? new DOMException("Request aborted", "AbortError"));
+          };
+          const retryTimer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, delay);
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) onAbort();
+        });
       }
 
       try {
@@ -160,13 +172,16 @@ export class AgentExecutor implements NodeExecutor {
 
     // 连接 Transport（resolvedAgent 是环境名称，Transport 层负责解析为 envId）
     console.error(`[workflow] AgentExecutor connecting: nodeId=${node.id} agent=${resolvedAgent}`);
+    signal.throwIfAborted();
     const session = await this.transport.connect(resolvedAgent, {
+      signal,
       spawnedInstanceIds: ctx.spawnedInstanceIds,
       // C-P2.5：触发者 userId 透传，宿主 ensureRunning 按此计入用户配额桶
       userId: ctx.callerUserId,
     });
 
     try {
+      signal.throwIfAborted();
       console.error(
         `[workflow] AgentExecutor connected: nodeId=${node.id} signalAborted=${signal.aborted} dagSignalAborted=${ctx.signal.aborted}`,
       );

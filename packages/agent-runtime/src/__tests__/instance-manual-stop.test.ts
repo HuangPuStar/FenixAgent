@@ -99,7 +99,6 @@ describe("AOS-BUG-002 主动停止", () => {
           markRelayAttached() {},
           markRelayDetached() {},
           touchInstanceActivity() {},
-          terminateLocalDeadInstance() {},
           isMachineOffline: () => false,
           classifyPermanentSpawnFailure,
           maxClients: () => 10,
@@ -191,11 +190,18 @@ describe("AOS-BUG-002 主动停止", () => {
     const gate = new Promise<void>((resolve) => {
       releaseStart = resolve;
     });
+    let markStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const active = new Map<string, number>();
     let delay = false;
     const coordinator = new AgentInstanceRuntimeCoordinator({
       async start(record, generation) {
-        if (delay) await gate;
+        if (delay) {
+          markStarted();
+          await gate;
+        }
         active.set(record.id, generation);
       },
       async stop(id, generation) {
@@ -205,10 +211,13 @@ describe("AOS-BUG-002 主动停止", () => {
     await coordinator.ensureRuntime(instance);
     await coordinator.stopRuntime(instance, "strict");
     delay = true;
-    const restarting = coordinator.restartRuntime(instance);
-    await coordinator.stopRuntime(instance, "strict");
+    const restarting = coordinator.restartRuntime(instance).catch((error: unknown) => error);
+    await started;
+    const stopping = coordinator.stopRuntime(instance, "strict");
     releaseStart?.();
-    await restarting;
+    const [failure] = await Promise.all([restarting, stopping]);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("superseded");
     expect(active.size).toBe(0);
     await expect(coordinator.ensureRuntime(instance)).rejects.toMatchObject({ code: "INSTANCE_STOPPED" });
     await coordinator.ensureRuntime({ ...instance, id: "inst_00000000000000000000000000000003" });

@@ -17,10 +17,11 @@
 // 已在休克疗法中删除，不再恢复。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { error as logError } from "@fenix/logger";
+import { hasActiveAgentExecutions, isAgentExecutionIdleReclaimable } from "../../services/agent-execution-admission";
 import { globalInstanceRegistry } from "../../services/instance-registry";
 import { getOrchestrationController } from "../../services/orchestration-bootstrap";
-import { stopInstanceViaController } from "../../services/orchestration-instance";
 import type { InstanceSpawnSource, InstanceSupplement } from "../../types/instance";
+import { agentInstanceRuntimeCoordinator } from "./agent-instance-service";
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
 // ────────────────────────────────────────────
@@ -189,6 +190,14 @@ export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): 
   };
 }
 
+/** 监控视图与回收执行共用策略，活跃执行优先于实例来源或历史启动来源。 */
+export function canAutomaticallyReclaimInstance(instanceId: string, supplement: InstanceSupplement): boolean {
+  return (
+    !hasActiveAgentExecutions(instanceId) &&
+    (supplement.spawnSource !== "interactive" || isAgentExecutionIdleReclaimable(instanceId))
+  );
+}
+
 /** 将实例与 registry 中的空闲观测状态组装为监控视图。 */
 export function toInstanceActivityInfo(
   instance: SpawnedInstance,
@@ -197,11 +206,10 @@ export function toInstanceActivityInfo(
   activityTimeoutSeconds: number,
   now = Date.now(),
 ): InstanceActivityInfo {
-  const idleSince = supplement.lastRelayDetachedAt ?? now;
+  const idleSince = Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0);
   const idleSeconds = supplement.relayCount === 0 ? Math.max(0, Math.floor((now - idleSince) / 1000)) : 0;
   const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
-  // interactive 来源是用户打开的 Chat，必须显式停止才释放；后台任务仍允许自动回收。
-  const automaticReclaimEnabled = supplement.spawnSource !== "interactive";
+  const automaticReclaimEnabled = canAutomaticallyReclaimInstance(instance.id, supplement);
   return {
     ...toInstanceInfo(instance),
     user: {
@@ -299,7 +307,12 @@ export function getInstance(id: string, userId?: string): SpawnedInstance | unde
   return toSpawnedInstance(snapshot, sup);
 }
 
-export async function stopInstance(id: string, organizationId: string): Promise<{ ok: boolean; error?: string }> {
+export async function stopInstance(
+  id: string,
+  organizationId: string,
+  automaticReclaim = false,
+  expectedGeneration?: number,
+): Promise<{ ok: boolean; error?: string }> {
   const sup = registry.get(id);
   // 多租户：仅对已知实例做归属校验；无 supplement 的实例（已停止/从未存在）
   // 无法归属，按幂等语义直接视为目标状态已达成，不泄漏实例存在性信息。
@@ -326,7 +339,14 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   }
 
   try {
-    await stopInstanceViaController(id);
+    if (automaticReclaim) {
+      await agentInstanceRuntimeCoordinator.reclaimRuntime(
+        { id },
+        expectedGeneration ?? getCoreRuntime().getInstance(id)?.runtimeGeneration,
+      );
+    } else {
+      await agentInstanceRuntimeCoordinator.stopRuntime({ id }, "strict");
+    }
     return { ok: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -335,35 +355,15 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   }
 }
 
+/** 停止所有已知执行投影，任一实体无法确认终止时保留原始失败。 */
 export async function stopAllInstances(): Promise<void> {
-  // 休克疗法（I4）：优先遍历编排域活跃表走 stopInstanceViaController（活跃表移除 +
-  // 节点引用归还 + core 停止 + supplement 清理，内部对已停止实例幂等吞错），
-  // 再兜底 core 中非编排域残留实例，最后清空 supplement 注册表。
-  const controller = getOrchestrationController();
-  const orchestrationIds = controller.listInstances().map((inst) => inst.instanceId);
-  await Promise.all(
-    orchestrationIds.map(async (instanceId) => {
-      try {
-        await stopInstanceViaController(instanceId);
-      } catch (err: unknown) {
-        logError(`[Instance] Failed to stop orchestration instance ${instanceId}:`, err);
-      }
-    }),
-  );
-
-  // 兜底：core 中仍活跃且不在编排域活跃表的实例（旧路径遗留，部署后不存在）
-  const facade = getCoreRuntime();
-  await Promise.all(
-    facade
+  const instanceIds = new Set([
+    ...getOrchestrationController()
       .listInstances()
-      .filter((s) => s.status !== "stopped" && s.status !== "stopping" && !orchestrationIds.includes(s.instanceId))
-      .map(async (snapshot) => {
-        try {
-          await facade.stopInstance(snapshot.instanceId);
-        } catch (err: unknown) {
-          logError(`[Instance] Failed to stop ${snapshot.instanceId}:`, err);
-        }
-      }),
-  );
-  registry.clear();
+      .map((instance) => instance.instanceId),
+    ...getCoreRuntime()
+      .listInstances()
+      .map((instance) => instance.instanceId),
+  ]);
+  await Promise.all([...instanceIds].map((id) => agentInstanceRuntimeCoordinator.stopRuntime({ id }, "strict")));
 }

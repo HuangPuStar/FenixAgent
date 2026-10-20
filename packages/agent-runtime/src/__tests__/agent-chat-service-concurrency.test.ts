@@ -8,9 +8,13 @@
  * 使用纯 fake relay handle（模拟 plugin-opencode relay-handle 的
  * fan-out 广播与首个监听器注册时缓冲回放），不碰 DB、不用 mock.module。
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { createAgentSession, createPromptTurn, startPromptTurn } from "../services/agent-chat-service";
+
+import { releaseAgentSessionTurns } from "../services/agent-session-admission";
+
+afterEach(() => releaseAgentSessionTurns("inst"));
 
 /** 模拟 relay-handle 的 sent 消息（JSON-RPC 请求） */
 interface SentRpc {

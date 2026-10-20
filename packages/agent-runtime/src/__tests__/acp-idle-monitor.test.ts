@@ -9,6 +9,7 @@ import {
   setAcpIdleMonitorDeps,
   shouldCountInstanceActivity,
 } from "../services/acp-idle-monitor";
+import { acquireAgentExecution } from "../services/agent-execution-admission";
 import { globalInstanceRegistry } from "../services/instance-registry";
 
 function makeInstance(id: string, environmentId: string): SpawnedInstance {
@@ -267,5 +268,98 @@ describe("acp idle monitor", () => {
     // 业务活动刚刷新（1s 前），且 relay 保持连接：idle 与 activity 均不满足回收条件
     await runAcpIdleMonitorSweep(1000 + 1000);
     expect(stopCalls).toEqual([]);
+  });
+
+  // 首次按 interactive 启动的 API 实例仍按执行策略回收，运行中的任何来源执行都必须同时阻止展示与实际回收。
+  test("后台实例的观测资格与执行租约保护一致", async () => {
+    const instance = makeInstance("inst_background_policy", "env-policy");
+    const supplement = {
+      userId: "user-1",
+      environmentId: "env-policy",
+      organizationId: "org-1",
+      spawnSource: "interactive" as const,
+      executionIdleReclaimable: true,
+      lastActivityAt: 1000,
+      relayCount: 0,
+      lastRelayDetachedAt: 1000,
+    };
+    globalInstanceRegistry.register(instance.id, supplement);
+    let stops = 0;
+    setAcpIdleMonitorDeps({
+      getCoreRuntime: () =>
+        ({
+          listInstances: () => [{ instanceId: instance.id, status: "running", runtimeGeneration: 7 }],
+        }) as unknown as CoreRuntimeFacade,
+      getInstance: () => instance,
+      stopInstance: async (_id, _organizationId, automatic, generation) => {
+        expect(automatic).toBe(true);
+        expect(generation).toBe(7);
+        stops++;
+        return { ok: true };
+      },
+    });
+    const lease = acquireAgentExecution({ userId: "user-1", source: "interactive" });
+    lease.attach(instance.id);
+    const now = 1000 + 3601 * 1000;
+    try {
+      expect(listInstanceActivitySnapshots(now)[0]).toMatchObject({
+        idle_kill_eligible: false,
+        activity_kill_eligible: false,
+      });
+      await runAcpIdleMonitorSweep(now);
+      expect(stops).toBe(0);
+    } finally {
+      lease.release();
+    }
+    const current = globalInstanceRegistry.get(instance.id);
+    if (current) current.lastActivityAt = 1000;
+    expect(listInstanceActivitySnapshots(now)[0]).toMatchObject({
+      idle_kill_eligible: true,
+      activity_kill_eligible: true,
+    });
+    await runAcpIdleMonitorSweep(now);
+    expect(stops).toBe(1);
+  });
+
+  // idle 检查与异步回收之间新取得的执行租约必须在最终准入处生效。
+  test("回收准备期间新增执行不能被旧快照误停", async () => {
+    const instance = makeInstance("inst_idle_execution_race", "env-race");
+    globalInstanceRegistry.register(instance.id, {
+      userId: "user-1",
+      environmentId: "env-race",
+      organizationId: "org-1",
+      spawnSource: "scheduled",
+      lastActivityAt: 1000,
+      relayCount: 0,
+      lastRelayDetachedAt: 1000,
+    });
+    let reads = 0;
+    let lease: ReturnType<typeof acquireAgentExecution> | undefined;
+    let stops = 0;
+    setAcpIdleMonitorDeps({
+      getCoreRuntime: () =>
+        ({
+          listInstances() {
+            reads++;
+            if (reads === 2) {
+              lease = acquireAgentExecution({ userId: "user-1", source: "interactive" });
+              lease.attach(instance.id);
+            }
+            return [{ instanceId: instance.id, status: "running", runtimeGeneration: 1 }];
+          },
+        }) as unknown as CoreRuntimeFacade,
+      getInstance: () => instance,
+      stopInstance: async () => {
+        stops++;
+        return { ok: true };
+      },
+    });
+    try {
+      await runAcpIdleMonitorSweep(1000 + 3601 * 1000);
+      expect(reads).toBeGreaterThan(1);
+      expect(stops).toBe(0);
+    } finally {
+      lease?.release();
+    }
   });
 });

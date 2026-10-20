@@ -5,6 +5,7 @@
  * 共享于 WS relay、Yjs 前端、HTTP OpenAI 端点、Workflow 等场景。
  */
 
+import { error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import { getBoundCoreRuntime } from "../services/core-runtime-port";
 
@@ -27,21 +28,37 @@ export async function connectAgentRelay(
   requestId?: string,
 ): Promise<EngineRelayHandle> {
   const facade = getBoundCoreRuntime();
-  try {
-    const handle = await facade.connectInstanceRelay({ instanceId, sessionId, requestId });
-    const full = handle as FullRelayHandle;
-    if (full.ready) await full.ready;
-    return handle;
-  } catch (err) {
-    // 本地实例 relay 无法建立（进程已死且无法重生）：触发实例级清理，
-    // 让下一次 ensureRunning 重新 spawn 而非无限复用死实例（C-P2.4）。
-    // 远程实例/已停止实例由 terminateLocalDeadInstance 内部校验排除；
-    // "local-default" 与 local-node-service 的 LOCAL_DEFAULT_NODE_ID 保持一致。
-    const snapshot = facade.getInstance(instanceId);
-    if (snapshot?.nodeId === "local-default" && (snapshot.status === "running" || snapshot.status === "error")) {
+  const snapshot = facade.getInstance(instanceId);
+  const identity =
+    snapshot?.runtimeGeneration !== undefined && snapshot.serverEpoch
+      ? { runtimeGeneration: snapshot.runtimeGeneration, serverEpoch: snapshot.serverEpoch }
+      : undefined;
+  const reclaimCapturedRuntime = async () => {
+    // 连接失败只能影响连接建立时捕获的实体，不能按稳定 UID 回收后来的运行代次。
+    if (snapshot?.nodeId !== "local-default" || !identity) return;
+    try {
       const { terminateLocalDeadInstance } = await import("../../services/orchestration-instance");
-      void terminateLocalDeadInstance(instanceId);
+      await terminateLocalDeadInstance(instanceId, identity);
+    } catch (error) {
+      logError(`[agent-relay] runtime death cleanup failed: instanceId=${instanceId}`, error);
     }
-    throw err;
+  };
+  let handle: EngineRelayHandle | undefined;
+  try {
+    handle = await facade.connectInstanceRelay({ instanceId, sessionId, requestId });
+    handle.onMessage?.((message) => {
+      if (message.type === "relay_closed") void reclaimCapturedRuntime();
+    });
+    if (handle.ready) await handle.ready;
+    return handle;
+  } catch (error) {
+    // 句柄是当前消费者租约；握手失败只释放本消费者的监听器。
+    try {
+      await handle?.close();
+    } catch (cleanupError) {
+      logError(`[agent-relay] consumer lease release failed: instanceId=${instanceId}`, cleanupError);
+    }
+    await reclaimCapturedRuntime();
+    throw error;
   }
 }

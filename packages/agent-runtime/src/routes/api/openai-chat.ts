@@ -3,6 +3,7 @@ import Elysia from "elysia";
 import * as z from "zod/v4";
 import { OpenAIChatCompletionRequestSchema, OpenAIErrorResponseSchema } from "../../schemas/openai-chat.schema";
 import { openAgentSession } from "../../services/agent-chat-service";
+import { classifyAgentTurnEvent, iterateWithSignal, waitWithSignal } from "../../services/agent-turn-events";
 import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "../../services/openai-response-mapper";
 import type { AuthContext } from "../../types/auth";
 import type { AgentRuntimeAuthDependencies } from "../dependencies";
@@ -76,34 +77,61 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
       // 不再嗅探 message 子串或拼接原文（A-P1.1 收敛）——编排域错误 message 可能
       // 携带 envId/machineId（如 ConcurrencyExceededError 拼接环境 ID），直出会泄漏
       // 内部资源标识；AppError/OrchestrationError 携带稳定 code，errorPlugin 可精确分类。
-      const result = await sessionDeps.openAgentSession({
-        userId: authCtx.userId,
-        agentConfigId,
-        organizationId: authCtx.organizationId,
-        sessionId,
-        startSource: "interactive",
-        // 宿主请求中间件写入 ALS 的关联 ID（§7）：显式传入编排域，
-        // 使实例 / relay 链路的日志能与本次 HTTP 请求对齐
-        requestId: requestAls.getStore()?.requestId,
-      });
+      const timeoutController = new AbortController();
+      const deadline = setTimeout(
+        () => timeoutController.abort(new DOMException("Agent execution timeout", "TimeoutError")),
+        AGENT_TIMEOUT_MS,
+      );
+      const signal = AbortSignal.any([request.signal, timeoutController.signal]);
+      let result: Awaited<ReturnType<typeof openAgentSession>>;
+      try {
+        result = await waitWithSignal(
+          sessionDeps.openAgentSession({
+            userId: authCtx.userId,
+            agentConfigId,
+            organizationId: authCtx.organizationId,
+            sessionId,
+            startSource: "interactive",
+            signal,
+            // 宿主请求中间件写入 ALS 的关联 ID（§7）：显式传入编排域，
+            // 使实例 / relay 链路的日志能与本次 HTTP 请求对齐
+            requestId: requestAls.getStore()?.requestId,
+          }),
+          signal,
+          (late) => late.turn.dispose(),
+        );
+      } catch (err) {
+        clearTimeout(deadline);
+        if (timeoutController.signal.aborted) {
+          const response = buildOpenAIError(504, "Agent execution timeout after 300s", "timeout");
+          return error(response.status, response.body);
+        }
+        throw err;
+      }
       const turn = result.turn;
       const instanceId = result.instanceId;
       log(`[openai] Agent session opened: instanceId=${instanceId}`);
 
       // 发送 prompt
-      turn.prompt([{ type: "text", text: userContent }]);
+      try {
+        signal.throwIfAborted();
+        turn.prompt([{ type: "text", text: userContent }]);
+      } catch (err) {
+        clearTimeout(deadline);
+        await turn.dispose();
+        throw err;
+      }
 
       if (isStream) {
         // ── 流式响应 ──
-        const abortController = new AbortController();
-        const streamTimeoutId = setTimeout(() => {
-          abortController.abort();
-        }, AGENT_TIMEOUT_MS);
+        const clientCancel = new AbortController();
+        const streamSignal = AbortSignal.any([signal, clientCancel.signal]);
+        let cancelled = false;
         const stream = new ReadableStream({
           async start(controller) {
             const encoder = new TextEncoder();
             try {
-              for await (const chunk of mapToSSEChunks(turn.events(), agentConfigId, abortController.signal)) {
+              for await (const chunk of mapToSSEChunks(turn.events(), agentConfigId, streamSignal)) {
                 controller.enqueue(encoder.encode(chunk));
               }
             } catch (e) {
@@ -111,21 +139,23 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
               // message 可能携带 envId/machineId 等内部标识，直出会泄漏），
               // 完整诊断保留在服务端日志。
               logError("[openai] Stream failed:", e);
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ error: { message: "Agent execution failed", type: "server_error" } })}\n\n`,
-                ),
-              );
+              if (!cancelled)
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ error: { message: "Agent execution failed", type: "server_error" } })}\n\n`,
+                  ),
+                );
             } finally {
-              clearTimeout(streamTimeoutId);
-              controller.close();
-              await turn.dispose().catch(() => {});
+              clearTimeout(deadline);
+              if (!cancelled) controller.close();
+              await turn.dispose().catch((err) => logError("[openai] Turn release failed", err));
             }
           },
           cancel() {
-            clearTimeout(streamTimeoutId);
-            abortController.abort();
-            turn.dispose().catch(() => {});
+            cancelled = true;
+            clearTimeout(deadline);
+            clientCancel.abort();
+            void turn.dispose().catch((err) => logError("[openai] Cancel release failed", err));
           },
         });
 
@@ -140,29 +170,14 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
       }
 
       // ── 非流式响应 ──
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error("Agent execution timeout")), AGENT_TIMEOUT_MS);
-      });
 
       try {
         const events: Array<{ type: string; payload?: unknown }> = [];
-        await Promise.race([
-          (async () => {
-            for await (const ev of turn.events()) {
-              events.push(ev as unknown as { type: string; payload?: unknown });
-              // 兼容两种格式检测完成信号
-              const asRaw = ev as unknown as Record<string, unknown>;
-              const rpc = asRaw.jsonrpc === "2.0" ? asRaw : (ev.payload as Record<string, unknown> | undefined);
-              if (
-                rpc?.jsonrpc === "2.0" &&
-                (rpc as unknown as { result?: { stopReason?: unknown } }).result?.stopReason
-              )
-                break;
-            }
-          })(),
-          timeoutPromise,
-        ]);
+        for await (const ev of iterateWithSignal(turn.events(), signal)) {
+          events.push(ev);
+          const terminal = classifyAgentTurnEvent(ev);
+          if (terminal) break;
+        }
 
         const response = mapToNonStreamingResponse(events, agentConfigId);
         log(
@@ -170,8 +185,7 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
         );
         return response;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg === "Agent execution timeout") {
+        if (timeoutController.signal.aborted) {
           const errResp = buildOpenAIError(504, "Agent execution timeout after 300s", "timeout");
           return error(errResp.status, errResp.body);
         }
@@ -179,7 +193,7 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
         // 不再本地拼接 500 原文（可能泄漏内部标识）。
         throw err;
       } finally {
-        clearTimeout(timeoutId);
+        clearTimeout(deadline);
         await turn.dispose();
       }
     },

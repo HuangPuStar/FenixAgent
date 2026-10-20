@@ -23,7 +23,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
+import {
+  bindAgentInstanceRuntimeOperations,
+  globalInstanceRegistry,
+  resetAgentInstanceRuntimeOperations,
+} from "@fenix/agent-runtime/server/testing";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { cleanupSpawnedInstances } from "../server/services/workflow";
@@ -40,6 +44,7 @@ const ORG_2 = "org-2";
 /** core facade：listInstances 恒为空（无 core 快照），stopInstance 静默成功，供三侧收敛检查。 */
 const fakeFacade = {
   listInstances: () => [],
+  getInstance: () => null,
   stopInstance: async () => {},
 } as unknown as CoreRuntimeFacade;
 
@@ -62,6 +67,16 @@ describe("cleanupSpawnedInstances", () => {
     clearInstanceLeases();
     resetAllStubs();
     bindStubCoreRuntime(fakeFacade);
+    bindAgentInstanceRuntimeOperations({
+      async spawnInstance() {
+        throw new Error("cleanup must not start a runtime");
+      },
+      hasActiveInstance: () => false,
+      async stopInstance(instanceId) {
+        await fakeFacade.stopInstance(instanceId);
+        globalInstanceRegistry.unregister(instanceId);
+      },
+    });
   });
 
   afterEach(() => {
@@ -69,6 +84,7 @@ describe("cleanupSpawnedInstances", () => {
     clearInstanceLeases();
     resetAllStubs();
     restoreCoreRuntimePort();
+    resetAgentInstanceRuntimeOperations();
   });
 
   // 幂等：不存在的 instanceId 被 stopInstance 以 ok:false 静默跳过，cleanup 重复执行无害

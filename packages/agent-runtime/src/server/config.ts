@@ -41,7 +41,7 @@ export interface AgentRuntimeModuleConfig {
   readonly agentMaxConcurrency?: number;
   /** 单用户活跃 Agent 实例的并发上限；缺省表示不限制单用户。 */
   readonly userAgentMaxConcurrency?: number;
-  /** 定时任务触发的活跃 Agent 实例并发上限；缺省表示不限制定时来源。 */
+  /** scheduled 来源的活跃执行并发上限（同实例多任务分别计数）；缺省表示不限制。 */
   readonly scheduledAgentMaxConcurrency?: number;
   /** 非交互式实例的空闲回收阈值（秒）。 */
   readonly acpIdleTimeoutSeconds: number;
