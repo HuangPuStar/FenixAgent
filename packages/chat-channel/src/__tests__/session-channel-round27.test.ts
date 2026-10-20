@@ -1,67 +1,9 @@
-// packages/chat-channel/src/__tests__/session-channel-round27.test.ts
-// SessionChannel 的内存边界测试：不启动 WebSocket、Redis 或 Agent 进程。
-
 import { describe, expect, test } from "bun:test";
-import { SessionChannel, type SessionConnection } from "../channel/session-channel";
-import type { ActionAck, ActionError } from "../channel/types";
+import { SessionChannel } from "../channel/session-channel";
+import type { ActionError } from "../channel/types";
 import { getSessionInfo } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
-
-interface Harness {
-  channel: SessionChannel;
-  manager: DocManager;
-  connection: SessionConnection;
-  sent: Record<string, unknown>[];
-  acks: ActionAck[];
-  errors: ActionError[];
-  replacements: number[];
-  synced: string[];
-  reports: Array<{ message: string; error: unknown }>;
-}
-
-async function createHarness(overrides: Partial<SessionConnection> = {}): Promise<Harness> {
-  const manager = new DocManager({ acpBatchWindowMs: 0 });
-  await manager.openChat("rcs-1");
-  await manager.openSession("user-1", "agent-1", "rcs-1");
-  const sent: Record<string, unknown>[] = [];
-  const acks: ActionAck[] = [];
-  const errors: ActionError[] = [];
-  const replacements: number[] = [];
-  const synced: string[] = [];
-  const reports: Array<{ message: string; error: unknown }> = [];
-  let rpcId = 0;
-  const connection: SessionConnection = {
-    userId: "user-1",
-    agentId: "agent-1",
-    instanceId: "instance-1",
-    rcsSessionId: "rcs-1",
-    acpSessionId: "ses-1",
-    agentStatusReceived: true,
-    sessionLoaded: false,
-    workspacePath: "/trusted-workspace",
-    sendToRelay: (message) => sent.push(message),
-    getNextRpcId: () => ++rpcId,
-    ...overrides,
-  };
-  const channel = new SessionChannel({
-    docManager: manager,
-    replaceProjection: () => replacements.push(1),
-    syncSessionId: (_connection, sessionId) => synced.push(sessionId),
-    reportError: (message, error) => reports.push({ message, error }),
-  });
-  return { channel, manager, connection, sent, acks, errors, replacements, synced, reports };
-}
-
-async function submit(harness: Harness, action: Record<string, unknown>): Promise<void> {
-  await harness.channel.handleAction(harness.connection, action, {
-    sendAck: (ack) => harness.acks.push(ack),
-    sendError: (error) => harness.errors.push(error),
-  });
-}
-
-function committed(harness: Harness): ActionAck | undefined {
-  return harness.acks.find((ack) => ack.status === "committed");
-}
+import { committed, createHarness, submit } from "./session-channel-round27-test-helpers";
 
 describe("SessionChannel 内存协议与状态边界", () => {
   // send_prompt 必须绑定服务端会话，而不能信任浏览器提供的 sessionId。
@@ -178,7 +120,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
 
   // 同一 ACP 会话重复 load 必须避免重复 RPC。
   test("load_session 同会话幂等跳过", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({ sessionLoaded: true });
     await submit(harness, { action: "load_session", commandId: "load-same", sessionId: "ses-1" });
     expect(harness.sent).toEqual([]);
     expect(harness.replacements).toEqual([]);
@@ -329,13 +271,13 @@ describe("SessionChannel 内存协议与状态边界", () => {
   });
 
   // dispose 后必须释放去重状态，后继连接可以使用相同 commandId。
-  test("disposeRcsSession 后释放 commandId 去重状态", async () => {
+  test("disposeRcsSession 后保留 commandId 去重状态", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "list_sessions", commandId: "after-dispose" });
     harness.channel.disposeRcsSession("rcs-1");
     await submit(harness, { action: "list_sessions", commandId: "after-dispose" });
-    expect(harness.sent).toHaveLength(2);
-    expect(harness.acks.at(-1)?.status).toBe("committed");
+    expect(harness.sent).toHaveLength(1);
+    expect(harness.acks.at(-1)?.status).toBe("duplicate");
   });
 
   // 不同 RCS session 的去重表必须相互隔离。
@@ -413,21 +355,21 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(harness.sent).toHaveLength(1);
   });
 
-  // 刷新恢复已有投影时不重复请求全量回放，后续 prompt 仍必须绑定恢复后的服务端会话。
+  // 仅持久投影的恢复必须先确认 load，后续 prompt 使用确认后的服务端会话。
   test.each([null, "ses-saved"])("恢复连接绑定 %s 后 prompt 使用投影会话", async (acpSessionId) => {
     const harness = await createHarness({ acpSessionId, sessionLoaded: false });
     getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).set("sessionId", "ses-saved");
     await harness.manager.registerUserMessage("rcs-1", "已保存的用户消息");
     await submit(harness, { action: "load_session", commandId: "restore-saved", sessionId: "ses-saved" });
-    expect(harness.sent).toEqual([]);
-    expect(harness.replacements).toEqual([]);
+    expect(harness.sent[0]).toMatchObject({ method: "session/load", params: { sessionId: "ses-saved" } });
+    expect(harness.replacements).toEqual([1]);
     await submit(harness, {
       action: "send_prompt",
       commandId: "prompt-after-restore",
       sessionId: "ses-untrusted",
       content: [{ type: "text", text: "刷新后继续" }],
     });
-    expect(harness.sent[0]).toMatchObject({ method: "session/prompt", params: { sessionId: "ses-saved" } });
+    expect(harness.sent[1]).toMatchObject({ method: "session/prompt", params: { sessionId: "ses-saved" } });
     await harness.manager.closeAll();
   });
 
@@ -452,136 +394,5 @@ describe("SessionChannel 内存协议与状态边界", () => {
     await submit(harness, { action: "respond_question", commandId: "question-missing" });
     expect(harness.sent).toEqual([]);
     expect(committed(harness)).toBeDefined();
-  });
-
-  // commandId 的去重仅在 dispose 前生效。
-  test("dispose 后新 commandId 仍能正常提交", async () => {
-    const harness = await createHarness();
-    harness.channel.disposeRcsSession("rcs-1");
-    await submit(harness, { action: "list_sessions", commandId: "new-after-dispose" });
-    expect(harness.sent).toHaveLength(1);
-    expect(harness.errors).toEqual([]);
-  });
-
-  // null workspace 是合法绑定，不能由浏览器的 cwd 覆盖。
-  test("空 workspace 不接受浏览器 cwd", async () => {
-    const harness = await createHarness({ workspacePath: null });
-    await submit(harness, { action: "list_sessions", commandId: "null-workspace", cwd: "/browser" });
-    expect(harness.sent[0]).toMatchObject({ method: "session/list", params: { cwd: null } });
-  });
-
-  // 命令完成 ack 必须携带当前投影版本，供客户端进行乐观并发校验。
-  test("committed ack 携带投影版本", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "list_sessions", commandId: "ack-version" });
-    expect(committed(harness)?.committedProjectionVersion).toBeTypeOf("number");
-  });
-
-  // load_session 注册回调必须只收到该会话同步请求的 RPC id。
-  test("create_session 登记会话同步 RPC id", async () => {
-    const ids: Array<number | string> = [];
-    const harness = await createHarness({ registerSessionSyncRpcId: (id) => ids.push(id) });
-    await submit(harness, { action: "create_session", commandId: "create-register" });
-    expect(ids).toEqual([1]);
-  });
-
-  // 已完成命令的 duplicate ack 应保留原始投影版本。
-  test("duplicate ack 复用已提交结果", async () => {
-    const harness = await createHarness();
-    const action = { action: "list_sessions", commandId: "duplicate-result" };
-    await submit(harness, action);
-    const original = committed(harness);
-    await submit(harness, action);
-    expect(harness.acks.at(-1)).toEqual({ ...original, status: "duplicate" });
-  });
-
-  // 空字符串 sessionId 同样属于非法 load 输入。
-  test("load_session 空 sessionId 返回 INVALID_STATE", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "load_session", commandId: "load-empty", sessionId: "" });
-    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
-  });
-
-  // 非数值 expectedProjectionVersion 不应进入并发校验。
-  test("非数值投影版本被忽略", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "list_sessions", commandId: "version-string", expectedProjectionVersion: "0" });
-    expect(harness.errors).toEqual([]);
-    expect(harness.sent).toHaveLength(1);
-  });
-
-  // cancel 的请求 id 必须随连接计数器单调递增。
-  test("连续 cancel 使用递增 RPC id", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "cancel", commandId: "cancel-one" });
-    await submit(harness, { action: "cancel", commandId: "cancel-two" });
-    expect(harness.sent.map((message) => message.id)).toEqual([1, 2]);
-  });
-
-  // resume_session 切换 ACP 会话时同样必须换代，不能把目标会话历史写进旧投影。
-  test("resume_session 切换会话时替换投影", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "resume_session", commandId: "resume-replace", sessionId: "ses-2" });
-    expect(harness.replacements).toHaveLength(1);
-    expect(harness.synced).toEqual(["ses-2"]);
-  });
-
-  // 取消前没有活动 turn 时依旧只发送取消协议请求。
-  test("无活动 turn 的 cancel 不创建投影状态", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "cancel", commandId: "cancel-no-turn" });
-    expect(getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).get("activeTurnId")).toBeUndefined();
-    expect(harness.sent).toHaveLength(1);
-  });
-
-  // create_session 不应擅自修改旧连接的 acpSessionId。
-  test("create_session 保留旧会话绑定直到响应到达", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "create_session", commandId: "create-keep-binding" });
-    expect(harness.connection.acpSessionId).toBe("ses-1");
-  });
-
-  // 多段文本 content 应合并为同一个用户消息 turn。
-  test("多段文本 prompt 合并为一个 turn", async () => {
-    const harness = await createHarness();
-    await submit(harness, {
-      action: "send_prompt",
-      commandId: "multi-text",
-      content: [
-        { type: "text", text: "第一段" },
-        { type: "image", data: "ignored" },
-        { type: "text", text: "第二段" },
-      ],
-    });
-    expect(committed(harness)?.turnId).toBeDefined();
-    expect(harness.sent).toHaveLength(1);
-  });
-
-  // reload 后重复同一绑定会话仍不得产生额外 relay 调用。
-  test("切换后同会话 load 保持静默", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "load_session", commandId: "load-first", sessionId: "ses-2" });
-    await submit(harness, { action: "load_session", commandId: "load-second", sessionId: "ses-2" });
-    expect(harness.sent).toHaveLength(1);
-  });
-
-  // relay 发送错误不得泄露其内部错误文本给客户端。
-  test("relay 错误响应不泄露内部信息", async () => {
-    const harness = await createHarness({ sendToRelay: () => Promise.reject(new Error("credential=secret")) });
-    await submit(harness, { action: "list_sessions", commandId: "sanitized-error" });
-    expect(harness.errors[0]?.error).toMatchObject({
-      type: "ACTION.AGENT_UNAVAILABLE",
-      message: "The Agent is unavailable for the action.",
-    });
-    expect(JSON.stringify(harness.errors[0])).not.toContain("credential=secret");
-    expect(JSON.stringify(harness.errors)).not.toContain("credential=secret");
-  });
-
-  // dispose 仅清理指定 RCS session，其他会话的命令仍可执行。
-  test("dispose 隔离其他 RCS session", async () => {
-    const harness = await createHarness();
-    harness.channel.disposeRcsSession("rcs-other");
-    await submit(harness, { action: "list_sessions", commandId: "other-dispose" });
-    expect(harness.sent).toHaveLength(1);
   });
 });

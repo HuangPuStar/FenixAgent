@@ -6,6 +6,7 @@
 // 多标签页不复用旧历史。
 
 import { describe, expect, test } from "bun:test";
+import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import * as Y from "yjs";
 import { createWs, type MockWs } from "../channel/connection-test-helpers";
 import { ChatChannelController } from "../channel/controller";
@@ -30,6 +31,7 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
   relayed: string[];
 } {
   const relayed: string[] = [];
+  let relayListener: ((message: EngineRelayMessage) => void) | undefined;
   const controller = new ChatChannelController({
     docManager,
     getEnvironment: async () => ({ userId: "user-1", organizationId: "org-1" }),
@@ -40,6 +42,22 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
       state: "open",
       send(message: Record<string, unknown>) {
         relayed.push(String(message.method ?? message.type));
+        if (["session/load", "session/resume", "session/new"].includes(String(message.method))) {
+          const params = message.params as { sessionId?: string } | undefined;
+          queueMicrotask(() =>
+            relayListener?.({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { sessionId: params?.sessionId ?? "ses-created" },
+            } as unknown as EngineRelayMessage),
+          );
+        }
+      },
+      onMessage(listener) {
+        relayListener = listener;
+        return () => {
+          relayListener = undefined;
+        };
       },
       close() {},
     }),
@@ -47,7 +65,6 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
     markRelayAttached() {},
     markRelayDetached() {},
     touchInstanceActivity() {},
-    terminateLocalDeadInstance() {},
     isMachineOffline: () => false,
     classifyPermanentSpawnFailure: () => null,
     maxClients: () => 10,
@@ -252,6 +269,8 @@ async function writeCommittedText(docManager: DocManager, text: string): Promise
 }
 
 /** 通过真实 Action 链路切换 ACP 会话（load/resume 均由 SessionChannel 处理）。 */
+let switchCommandSequence = 0;
+
 async function switchSession(
   controller: ChatChannelController,
   ws: MockWs,
@@ -262,7 +281,7 @@ async function switchSession(
   await controller.gateway.handleMessage(
     ws,
     wsId,
-    JSON.stringify({ action, sessionId, commandId: `switch-${action}` }),
+    JSON.stringify({ action, sessionId, commandId: `switch-${++switchCommandSequence}-${action}-${sessionId}` }),
   );
 }
 
@@ -337,6 +356,7 @@ describe("会话切换的服务端权威换代", () => {
     try {
       const actionWs = createWs();
       await controller.gateway.handleOpen(actionWs, "ws-action", "user-1", "agent-1", LOCATOR);
+      await switchSession(controller, actionWs, "ws-action", "load_session", "ses-confirmed");
       const syncWs1 = createWs();
       const syncWs2 = createWs();
       await connect(controller, "ws-sync1", syncWs1);
@@ -386,6 +406,7 @@ describe("会话切换的服务端权威换代", () => {
     try {
       const actionWs = createWs();
       await controller.gateway.handleOpen(actionWs, "ws-action-race", "user-1", "agent-1", LOCATOR);
+      await switchSession(controller, actionWs, "ws-action-race", "load_session", "ses-confirmed");
       const syncWs1 = createWs();
       const syncWs2 = createWs();
       await controller.gateway.handleOpen(syncWs1, "ws-race1", "user-1", "agent-1", LOCATOR);

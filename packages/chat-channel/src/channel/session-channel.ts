@@ -1,31 +1,11 @@
-// packages/chat-channel/src/channel/session-channel.ts
-// SessionChannel：连接绑定至会话频道，路由 Action 至 CommandCoordinator。
-//
-// 职责（文档 2.3）：
-// - 将前端 Action（旧 {action, ...} 形态 + commandId）归一化为服务端 Command；
-// - 承载会话守卫语义（迁移自原 yjs-frontend/session-transition.ts，语义原样保留）：
-//   load_session 需合法 sessionId、Agent status 到达前不发 list_sessions、
-//   cwd 由服务端根据已认证 environment 注入（浏览器不可覆盖）；
-// - 执行命令的业务效果（Doc 清理 / 用户消息写入 / relay 转发 / 取消终态标记），
-//   并通过注入的 sinks 把 Ack / Error 发送给发起连接。
-//
-// 本类不直接 import 任何宿主服务；宿主能力（Redis 快照、多标签页同步、relay 发送）
-// 全部经依赖注入，保证包内可用 fake 依赖独立测试（Q12）。
-
 import { translateSimpleAction } from "../protocol/translator";
-import {
-  DEFAULT_PERMISSION_TIMEOUT_MS,
-  DEFAULT_QUESTION_TIMEOUT_MS,
-  normalizeQuestionAnswers,
-  type QuestionAnswer,
-} from "../schema";
-import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
-import type { DocManager } from "../state/doc-manager";
-import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
-import { expireQuestion, respondQuestion } from "../state/question";
-import type { ProjectionDocs } from "../types";
+import { normalizeQuestionAnswers, type QuestionAnswer } from "../schema";
+import { bumpProjectionVersion } from "../state/chat-writer";
+import { applyPermissionResolution } from "../state/permission";
+import { respondQuestion } from "../state/question";
 import { CommandCoordinator } from "./command-coordinator";
-import type { SyncConnection, UserInputRequestHandle, UserInputRequestKind } from "./connection-types";
+import type { SessionChannelDependencies, SessionConnection } from "./session-connection";
+import { SessionExpirations } from "./session-expirations";
 import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
 import {
   type ActionSinks,
@@ -36,107 +16,44 @@ import {
 } from "./types";
 import { executeUserInputQueueAction, validateUserInputQueueAction } from "./user-input-queue-action";
 
-/** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
-const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
+export type { SessionChannelDependencies, SessionConnection } from "./session-connection";
 
-/** 连接在会话频道上的绑定上下文（多标签页共享同一 rcsSessionId 的频道状态） */
-export interface SessionConnection {
-  userId: string;
-  /**
-   * 环境属主（gateway 从已认证 environment 注入）。与 userId 不一致 = 只读观察者：
-   * steer 等会话写操作必须拒绝，缺省（旧装配）时不判定。
-   */
-  ownerUserId?: string;
-  agentId: string;
-  instanceId: string;
-  rcsSessionId: string;
-  acpSessionId: string | null;
-  /** Agent status 是否已到达（确认 ACP 初始化完成，list_sessions 守卫） */
-  agentStatusReceived: boolean;
-  /** 是否已执行过至少一次 load_session（区分重连首次加载 vs 后续正常切换） */
-  sessionLoaded: boolean;
-  workspacePath: string | null;
-  /** 客户端最近一次 keep_alive 时间戳（宿主侧连接活动观测用，控制面不读取） */
-  lastClientKeepalive?: number;
-  /** 发送 RPC 到 relay（测试中为记录型 fake） */
-  sendToRelay: (message: Record<string, unknown>) => Promise<void> | void;
-  /** JSON-RPC id 递增计数器，保证同一 instance 下生成唯一 id */
-  getNextRpcId: () => number;
-  /**
-   * 登记在途会话同步请求（create/load/resume）的 rpcId：响应到达时 relay 的
-   * 会话同步 result 分支按 id 校验（JSON-RPC 响应无 method 字段，rename/delete
-   * 等其他携带 sessionId 的响应不得劫持该分支）。可选注入，宿主由 gateway 提供。
-   */
-  registerSessionSyncRpcId?: (rpcId: number | string) => void;
-  /**
-   * 登记在途 prompt 请求（send_prompt）的 rpcId 与对应 turnId：Agent 子进程死亡时
-   * acp-link 以 JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛
-   * turn_failed（防止 loading 永久卡死）；turnId 随终态事件回传聚合层，使终态
-   * 归属校验（连续 prompt 时旧 turn 的迟到终态不误伤新 turn）成为可能。
-   * 可选注入，宿主由 gateway 提供。
-   */
-  registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
-  /** 登记会话变更响应；relay 断开或超时时以 false 完成。 */
-  awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
-  /** 新同步协议连接级运行时；仅用于后端单写用户消息。 */
-  syncConnection?: SyncConnection;
-  /**
-   * 登记在途 steer（session/input/*）请求：JSON-RPC 响应帧只有 id 无 method，
-   * relay 的队列响应分支按登记收敛（prompt / 会话同步同理各按自己的登记寻址）。
-   * 可选注入，宿主由 gateway 提供；未注入时 steer action 以 AGENT_UNAVAILABLE 失败。
-   */
-  awaitUserInputRequest?: (
-    rpcId: number | string,
-    kind: UserInputRequestKind,
-    timeoutMs: number,
-  ) => UserInputRequestHandle | undefined;
-  /**
-   * 登记 create_session 的创建回执：resolve 为 Agent 实际创建出的 session id
-   * （超时 / relay 断开 / agent 拒绝时为 null）。可选注入，宿主由 gateway 提供。
-   */
-  awaitSessionCreation?: (rpcId: number | string) => { completed: Promise<string | null>; cancel: () => void };
-}
-
-export interface SessionChannelDependencies {
-  docManager: DocManager;
-  /** 新 ACP session 创建前刷新当前实例的 workspace 配置与 Skills。 */
-  refreshInstanceEnvironment?: (connection: SessionConnection) => Promise<void>;
-  /** 新投影交换后重绑 broadcaster 并向同 RCS 会话全部客户端发送 replace frame。 */
-  replaceProjection: (projection: ProjectionDocs) => void;
-  /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */
-  syncSessionId: (connection: SessionConnection, newSessionId: string) => void;
-  /**
-   * 用户消息写入唯一同步入口：按 rcsSessionId 扇出到该会话所有同步连接。
-   * 发起动作的旧 socket 通常没有 sync runtime，不能只写它自己的连接。
-   */
-  publishUserMessage?: (rcsSessionId: string, turnId: string, text: string) => void;
-  reportError: (message: string, error: unknown) => void;
-  /** 公开错误安全事件 sink；不得记录原始异常或 Action payload。 */
-  reportLog?: (message: string) => void;
-  /** 每 rcsSessionId 有界队列上限（透传给 CommandCoordinator） */
-  maxPendingPerSession?: number;
-  /** 取消超时（毫秒）：cancel 后 Agent 未确认时 turn 收敛为 interrupted，默认 10s */
-  cancelTimeoutMs?: number;
-  /** 权限请求超时（毫秒）：超过 expiresAt 未响应时迁移 pending → expired，默认 5min */
-  permissionTimeoutMs?: number;
-  /** steer（session/input/*）等待 peri 回执的上限（毫秒），缺省 DEFAULT_USER_INPUT_REQUEST_TIMEOUT_MS */
-  userInputQueueTimeoutMs?: number;
+interface SessionBinding {
+  sessionId: string | null;
+  loaded: boolean;
+  generation: number;
+  loading: boolean;
+  confirmed: boolean;
 }
 
 export class SessionChannel {
   private readonly coordinator: CommandCoordinator;
-  /** 频道级连接上下文：同一 rcsSessionId 的命令串行执行时取最新连接的绑定状态 */
-  private readonly activeConnections = new Map<string, SessionConnection>();
-  /** 取消超时定时器（每 rcsSessionId 至多一个：单活动 turn 保证），随实例生命周期释放 */
-  private readonly cancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** 权限过期定时器（rcsSessionId → permissionId → timer），disposeRcsSession 时全部释放 */
-  private readonly permissionTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
-  /** AskUserQuestion 过期定时器（rcsSessionId → questionId → timer），disposeRcsSession 时全部释放 */
-  private readonly questionTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
+  private readonly bindings = new Map<string, SessionBinding>();
+  private readonly contexts = new WeakMap<
+    Command,
+    {
+      connection: SessionConnection;
+      origin: SessionConnection;
+      binding: SessionBinding;
+      generation: number;
+      loading: boolean;
+    }
+  >();
+  private readonly expirations: SessionExpirations;
 
   constructor(private readonly dependencies: SessionChannelDependencies) {
+    this.expirations = new SessionExpirations(dependencies);
     this.coordinator = new CommandCoordinator({
-      executeCommand: (command) => this.executeCommand(command),
+      executeCommand: async (command, signal) => {
+        try {
+          return await this.executeCommand(command, signal);
+        } finally {
+          if (["create_session", "load_session", "resume_session"].includes(command.type)) {
+            const context = this.contexts.get(command);
+            if (context) context.binding.loading = false;
+          }
+        }
+      },
       validateAction: (command) => this.validateAction(command),
       getProjectionVersion: (rcsSessionId) => this.getProjectionVersion(rcsSessionId),
       maxPendingPerSession: dependencies.maxPendingPerSession,
@@ -146,12 +63,12 @@ export class SessionChannel {
     // 权限请求投影成功 → 安排超时迁移（控制面持有定时器；聚合层保持纯投影无 I/O）。
     // 单槽位装配：DocManager 为单例，同一实例只应有一个控制面绑定。
     dependencies.docManager.setPermissionRequestedHandler((rcsSessionId, permission) => {
-      this.armPermissionExpiry(rcsSessionId, permission.permissionId, permission.expiresAt);
+      this.expirations.armPermissionExpiry(rcsSessionId, permission.permissionId, permission.expiresAt);
     });
     // AskUserQuestion 问题投影成功 → 安排 120s 超时迁移（与权限定时器同模式：
     // acp-link 侧 120s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
     dependencies.docManager.setQuestionRequestedHandler((rcsSessionId, question) => {
-      this.armQuestionExpiry(rcsSessionId, question.questionId, question.expiresAt);
+      this.expirations.armQuestionExpiry(rcsSessionId, question.questionId, question.expiresAt);
     });
   }
 
@@ -164,29 +81,32 @@ export class SessionChannel {
     rawAction: Record<string, unknown>,
     sinks: ActionSinks,
   ): Promise<void> {
-    this.activeConnections.set(connection.rcsSessionId, connection);
     const command = this.normalizeAction(connection, rawAction);
+    let binding = this.bindings.get(connection.rcsSessionId);
+    if (!binding) {
+      binding = {
+        sessionId: connection.acpSessionId,
+        loaded: connection.sessionLoaded,
+        generation: 0,
+        loading: false,
+        confirmed: connection.sessionLoaded && connection.acpSessionId !== null,
+      };
+      this.bindings.set(connection.rcsSessionId, binding);
+    }
+    this.contexts.set(command, {
+      connection: { ...connection },
+      origin: connection,
+      binding,
+      generation: binding.generation,
+      loading: binding.loading,
+    });
     await this.coordinator.submit(command, sinks);
   }
 
   /** 释放 rcsSessionId 的频道状态（去重表 / 队列 / 连接绑定 / 取消定时器 / 权限定时器），随实例生命周期调用 */
   disposeRcsSession(rcsSessionId: string): void {
-    const timer = this.cancelTimers.get(rcsSessionId);
-    if (timer) {
-      clearTimeout(timer);
-      this.cancelTimers.delete(rcsSessionId);
-    }
-    const permTimers = this.permissionTimers.get(rcsSessionId);
-    if (permTimers) {
-      for (const t of permTimers.values()) clearTimeout(t);
-      this.permissionTimers.delete(rcsSessionId);
-    }
-    const questionTimers = this.questionTimers.get(rcsSessionId);
-    if (questionTimers) {
-      for (const t of questionTimers.values()) clearTimeout(t);
-      this.questionTimers.delete(rcsSessionId);
-    }
-    this.activeConnections.delete(rcsSessionId);
+    this.expirations.dispose(rcsSessionId);
+    this.bindings.delete(rcsSessionId);
     this.coordinator.disposeRcsSession(rcsSessionId);
   }
 
@@ -215,13 +135,13 @@ export class SessionChannel {
   private validateAction(command: Command): void {
     // 会话存在性以 docManager 内存 Doc 为准（频道已建立 = 实例会话存活），
     // 仅注册过连接不构成会话（disposeRcsSession 后同 ID 重发必须拒绝）。
-    const connection = this.activeConnections.get(command.rcsSessionId);
+    const connection = this.contexts.get(command)?.connection;
     if (!connection || !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)) {
       throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
     }
     if (command.type === "load_session" || command.type === "resume_session") {
       const sessionId = command.payload.sessionId;
-      if (typeof sessionId !== "string" || sessionId.length === 0) {
+      if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId.length > 256) {
         throw new CommandExecutionError("ACTION.INVALID_STATE");
       }
     }
@@ -238,9 +158,26 @@ export class SessionChannel {
 
   // ── 命令执行（守卫语义迁移自 session-transition.ts）──
 
-  private async executeCommand(command: Command): Promise<CommandOutcome> {
-    const connection = this.activeConnections.get(command.rcsSessionId);
-    if (!connection) throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
+  private async executeCommand(command: Command, signal: AbortSignal): Promise<CommandOutcome> {
+    const context = this.contexts.get(command);
+    if (!context || signal.aborted) throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
+    const { binding } = context;
+    const assertCurrent = () => {
+      if (signal.aborted || this.bindings.get(command.rcsSessionId) !== binding)
+        throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
+    };
+    const connection = { ...context.connection, acpSessionId: binding.sessionId, sessionLoaded: binding.loaded };
+    if (
+      ["send_prompt", "cancel", "set_session_mode", "respond_permission", "respond_question"].includes(command.type) ||
+      isUserInputQueueAction(command.type)
+    ) {
+      if (
+        context.loading ||
+        (!binding.confirmed && (binding.generation > 0 || command.type === "send_prompt")) ||
+        context.generation !== binding.generation
+      )
+        throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
+    }
 
     const { docManager } = this.dependencies;
 
@@ -262,40 +199,50 @@ export class SessionChannel {
     }
 
     if (command.type === "load_session" || command.type === "resume_session") {
-      const shouldForward = await this.prepareLoadSession(connection, command.payload.sessionId);
-      if (!shouldForward) return {};
+      const shouldForward = await this.prepareLoadSession(
+        connection,
+        command.payload.sessionId,
+        assertCurrent,
+        binding.confirmed,
+      );
+      if (!shouldForward) {
+        binding.sessionId = connection.acpSessionId;
+        binding.loaded = connection.sessionLoaded;
+        binding.confirmed = true;
+        context.origin.acpSessionId = connection.acpSessionId;
+        context.origin.sessionLoaded = connection.sessionLoaded;
+        return {};
+      }
+      binding.loading = true;
+      binding.confirmed = false;
+      binding.generation++;
     }
 
     if (command.type === "create_session") {
-      await this.prepareCreateSession(connection);
+      binding.loading = true;
+      binding.confirmed = false;
+      binding.generation++;
+      await this.prepareCreateSession(connection, assertCurrent);
     }
 
     let turnId: string | undefined;
     if (command.type === "send_prompt") {
       turnId = await this.writePromptText(connection, command.payload.content);
-      // 出站显式绑定目标 session（服务端权威，浏览器传入值不可信，与 cwd 注入同理）：
-      // prompt 不带 sessionId 时 acp-dispatcher fallback 连接级当前会话——多会话共享
-      // 同一 relay 时该值可能已被其他会话的 load/create 改写，prompt 会落到错误会话
-      // 并被接受，当前 turn 永远收不到响应（loading 卡死根因）。以服务端绑定的
-      // acpSessionId（load/create 后 syncSessionId 更新）为权威目标。
+      assertCurrent();
+      // 同一 relay 可承载多个 ACP 会话，出站目标必须来自本频道已确认绑定。
       command.payload = {
         ...command.payload,
-        sessionId: connection.acpSessionId || undefined,
+        sessionId: connection.acpSessionId ?? undefined,
       };
     }
 
     if (command.type === "respond_permission") {
-      // C5 权限 CAS：仅 pending → resolved 迁移一次，迁移成功才向 Agent 发送
-      // permission.resolve（JSON-RPC 响应，translator 构造）。重复响应
-      // （已 resolved / expired / 不存在）不发 RPC、返回幂等成功——
-      // 防止重复授权导致 Agent 执行两遍。
+      // 只有 CAS 成功才发权限响应，避免重复授权。
       if (!this.resolvePermissionViaCas(connection, command.payload)) return {};
     }
 
     if (command.type === "respond_question") {
-      // AskUserQuestion CAS：仅 pending → resolved 迁移一次，迁移成功才向 Agent 发送
-      // control_response 帧（translator 构造，非 JSON-RPC）。重复响应不发帧、
-      // 返回幂等成功——防止 Agent 收到两份答案重复执行。
+      // 只有 CAS 成功才发问题答案，避免重复执行。
       if (!this.respondQuestionViaCas(connection, command.payload)) return {};
     }
 
@@ -318,23 +265,31 @@ export class SessionChannel {
     // rpcId 单独捕获：会话同步请求需用同一 id 登记，等待响应按 id 校验
     const rpcId = connection.getNextRpcId();
     const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, rpcId);
-    // 会话同步请求登记（create/load/resume）：响应帧只有 id 无 method，relay 的
-    // 会话同步 result 分支仅放行登记过的请求；rename/delete 等其他携带 sessionId
-    // 的响应不得劫持该分支（否则 registry 活跃会话被 clobber、绑定校验丢弃当前
-    // 会话增量、误开回放窗口——rename 非当前会话即触发，review M1 加固）。
     if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
-      connection.registerSessionSyncRpcId?.(rpc.id as number | string);
+      connection.registerSessionSyncRpcId?.(
+        rpc.id as number | string,
+        command.type === "create_session" ? undefined : command.sessionId,
+      );
     }
-    // 创建回执登记必须在 sendToRelay **之前**：Agent 可能在登记前就把 session/new 结果回传，
-    // 晚登记的调用方会白白等到超时。只有 create_session 需要回执（load/resume 的会话 id
-    // 由调用方自己给定，见 KNOWN_ACTION_TYPES 语义）。
+    // 回执必须先登记后发送，覆盖 Agent 同步响应的窗口。
+    const loadReceipt =
+      command.type === "load_session" || command.type === "resume_session"
+        ? connection.awaitSessionMutation?.(rpc.id as number | string)
+        : undefined;
+    if ((command.type === "load_session" || command.type === "resume_session") && !loadReceipt) {
+      binding.loading = false;
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
+    }
     const createReceipt =
       command.type === "create_session" ? connection.awaitSessionCreation?.(rpc.id as number | string) : undefined;
-    // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/
-    // -32603），relay 按 id 匹配登记收敛 turn_failed，否则 turn 永久卡 accepting、
-    // 前端 loading 永不消失（R1：发送后完全无输出、仅刷新恢复）。
-    // turnId 一并登记：终态事件按 rpcId 回传 turnId，聚合层据此校验终态归属
-    // （连续 prompt 时旧 turn 的迟到终态不得终结新 turn）。
+    const cancelReceipts = () => {
+      loadReceipt?.cancel();
+      createReceipt?.cancel();
+    };
+    signal.addEventListener("abort", cancelReceipts, { once: true });
+    void Promise.all([loadReceipt?.completed, createReceipt?.completed]).finally(() =>
+      signal.removeEventListener("abort", cancelReceipts),
+    );
     if (command.type === "send_prompt") {
       connection.registerPendingPrompt?.(rpc.id as number | string, turnId);
     }
@@ -343,10 +298,14 @@ export class SessionChannel {
       return {};
     }
     try {
+      assertCurrent();
       await connection.sendToRelay(rpc);
+      assertCurrent();
     } catch (err) {
       // 回执登记随发送失败一起撤销：否则它会留到超时才退场，而这次创建根本没发出去。
       createReceipt?.cancel();
+      loadReceipt?.cancel();
+      binding.loading = false;
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
       throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
@@ -361,91 +320,79 @@ export class SessionChannel {
         update: {},
         content: null,
       });
-      this.armCancelTimeout(connection.rcsSessionId);
+      this.expirations.armCancelTimeout(connection.rcsSessionId);
     }
 
     // create_session 等 Agent 的 session/new 结果：committed Ack 必须携带真实 session id，
     // 否则调用方拿不到「本次创建出了哪个会话」的回执，只能靠共享投影变化去猜（多标签页下会猜错）。
-    // 拿不到回执（超时 / relay 断开 / agent 拒绝）时不带 sessionId 提交——命令已发出，
-    // 失败面由调用方按「无回执」处理，不把未确认的创建当成成功回执。
+    // 超时、断开和拒绝均报错，不得提交没有确认的会话。
+    if (loadReceipt) {
+      const succeeded = await loadReceipt.completed;
+      assertCurrent();
+      binding.loading = false;
+      if (!succeeded) throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
+      if (loadReceipt.isCurrent?.() === false) throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
+      binding.sessionId = command.sessionId;
+      binding.loaded = true;
+      binding.confirmed = true;
+      context.origin.acpSessionId = command.sessionId;
+      context.origin.sessionLoaded = true;
+      this.dependencies.syncSessionId(connection, command.sessionId);
+      return { sessionId: command.sessionId };
+    }
     if (createReceipt) {
       const createdSessionId = await createReceipt.completed;
-      return createdSessionId ? { turnId, sessionId: createdSessionId } : { turnId };
+      assertCurrent();
+      binding.loading = false;
+      if (!createdSessionId) throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
+      if (createReceipt.isCurrent?.() === false) return { turnId, sessionId: createdSessionId };
+      binding.sessionId = createdSessionId;
+      binding.loaded = true;
+      binding.confirmed = true;
+      context.origin.acpSessionId = createdSessionId;
+      context.origin.sessionLoaded = true;
+      this.dependencies.syncSessionId(connection, createdSessionId);
+      return { turnId, sessionId: createdSessionId };
     }
+    if (command.type === "create_session") binding.loading = false;
 
     return { turnId };
   }
 
-  /**
-   * 启动取消超时兜底：Agent 长时间未确认取消（进程挂起/断连）时 turn 收敛为 interrupted，
-   * 不能停留在 cancelling 中间态。回调校验 activeTurn 仍是发起取消时的 turn 且仍处
-   * cancelling——用户可能已发起新 turn（旧 turn 被终结）或 Agent 已确认终态，
-   * 此时不得误中断当前 turn。
-   */
-  private armCancelTimeout(rcsSessionId: string): void {
-    const sessionDoc = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
-    const turnId = sessionDoc ? (getSessionInfo(sessionDoc).get("activeTurnId") as string | null) : null;
-    if (!turnId) return;
-
-    const timer = setTimeout(() => {
-      this.cancelTimers.delete(rcsSessionId);
-      const current = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
-      const info = current ? getSessionInfo(current) : null;
-      if (!info) return;
-      if (info.get("activeTurnId") !== turnId || info.get("activeTurnStatus") !== "cancelling") return;
-      this.dependencies.docManager.processNormalizedEvent(rcsSessionId, {
-        type: "turn_interrupted",
-        update: {},
-        content: null,
-      });
-    }, this.dependencies.cancelTimeoutMs ?? DEFAULT_CANCEL_TIMEOUT_MS);
-    this.cancelTimers.set(rcsSessionId, timer);
-  }
-
   /** load_session 守卫：非法 sessionId 拒绝；同会话重复加载静默跳过（不重复 RPC） */
-  private async prepareLoadSession(connection: SessionConnection, sessionId: unknown): Promise<boolean> {
-    if (typeof sessionId !== "string" || sessionId.length === 0) {
+  private async prepareLoadSession(
+    connection: SessionConnection,
+    sessionId: unknown,
+    assertCurrent: () => void,
+    allowRestore: boolean,
+  ): Promise<boolean> {
+    if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId.length > 256) {
       throw new CommandExecutionError("ACTION.INVALID_STATE");
     }
 
-    if (connection.acpSessionId === sessionId) {
+    if (allowRestore && connection.acpSessionId === sessionId && connection.sessionLoaded) {
       connection.acpSessionId = sessionId;
       return false;
     }
 
-    // Redis 或内存中已有目标会话的投影时，首次恢复只绑定会话，不再请求 Agent 全量回放。
-    // 时间线非空本身不能证明它属于当前点击的目标：同一 rcsSessionId 下若保留的是
-    // 另一会话，跳过 load 会让前端先高亮目标、却继续显示旧时间线，直到再次切换才恢复。
-    const currentSessionDoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
-    const currentProjectionSessionId = currentSessionDoc ? getSessionInfo(currentSessionDoc).get("sessionId") : null;
-    if (
-      !connection.sessionLoaded &&
-      currentProjectionSessionId === sessionId &&
-      this.dependencies.docManager.hasTimelineContent(connection.rcsSessionId)
-    ) {
-      connection.acpSessionId = sessionId;
-      connection.sessionLoaded = true;
-      this.dependencies.syncSessionId(connection, sessionId);
-      return false;
-    }
-
+    // 持久投影不证明当前 runtime 已加载该会话；只有活跃绑定的确认回执允许跳过 RPC。
     const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, sessionId);
+    assertCurrent();
     this.dependencies.replaceProjection(projection);
-    connection.acpSessionId = sessionId;
-    connection.sessionLoaded = true;
-    this.dependencies.syncSessionId(connection, sessionId);
     return true;
   }
 
   /** create_session：先同步运行环境，再换代 Chat/Session 投影，确保新会话冻结当前 Skills。 */
-  private async prepareCreateSession(connection: SessionConnection): Promise<void> {
+  private async prepareCreateSession(connection: SessionConnection, assertCurrent: () => void): Promise<void> {
     try {
       await this.dependencies.refreshInstanceEnvironment?.(connection);
     } catch (error) {
       this.dependencies.reportError("[SessionChannel] instance environment refresh failed", error);
       throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
+    assertCurrent();
     const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, null);
+    assertCurrent();
     this.dependencies.replaceProjection(projection);
   }
 
@@ -468,10 +415,7 @@ export class SessionChannel {
   // ── 权限 CAS（C5）──
 
   /**
-   * 解析权限响应（CAS）：仅 pending → resolved 迁移一次，成功返回 true。
-   * 迁移成功后投影工具调用/turn 收敛并 bump 投影版本（控制面路径不走聚合层，
-   * 与聚合层 permission_resolved 事件共用 state/permission.ts 单一实现）。
-   * 失败（重复响应/已过期/不存在/无 Doc）返回 false，调用方不发 RPC。
+   * 控制面复用聚合层的权限 CAS，保证并发响应只投影一次且共享版本收敛规则。
    */
   private resolvePermissionViaCas(connection: SessionConnection, payload: Record<string, unknown>): boolean {
     const permissionId = typeof payload.requestId === "string" ? payload.requestId : "";
@@ -487,44 +431,6 @@ export class SessionChannel {
       bumpProjectionVersion(sessionDoc.getMap("root"));
     }
     return migrated;
-  }
-
-  // ── 权限超时（C5）──
-
-  /**
-   * 为权限请求安排过期定时器（幂等：同 permissionId 已有定时器则跳过，
-   * 覆盖重放 permission_requested 帧的重复通知）。定时器到期后执行
-   * pending → expired CAS 迁移并收敛 turn/工具调用状态。
-   */
-  private armPermissionExpiry(rcsSessionId: string, permissionId: string, expiresAt: string): void {
-    let timers = this.permissionTimers.get(rcsSessionId);
-    if (!timers) {
-      timers = new Map();
-      this.permissionTimers.set(rcsSessionId, timers);
-    }
-    if (timers.has(permissionId)) return;
-
-    const parsed = new Date(expiresAt).getTime();
-    const timeoutMs = Number.isFinite(parsed)
-      ? Math.max(0, parsed - Date.now())
-      : (this.dependencies.permissionTimeoutMs ?? DEFAULT_PERMISSION_TIMEOUT_MS);
-    const timer = setTimeout(() => {
-      timers.delete(permissionId);
-      this.expirePermission(rcsSessionId, permissionId);
-    }, timeoutMs);
-    timers.set(permissionId, timer);
-  }
-
-  /** 权限过期迁移：CAS pending → expired（重复过期无副作用），收敛由 state/permission.ts 统一处理 */
-  private expirePermission(rcsSessionId: string, permissionId: string): void {
-    const chatDoc = this.dependencies.docManager.getChatYdoc(rcsSessionId);
-    const sessionDoc = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
-    if (!chatDoc || !sessionDoc) return;
-    const migrated = applyPermissionExpiration({ chat: chatDoc, session: sessionDoc }, permissionId);
-    if (migrated) {
-      bumpProjectionVersion(chatDoc.getMap("root"));
-      bumpProjectionVersion(sessionDoc.getMap("root"));
-    }
   }
 
   // ── AskUserQuestion CAS（与权限 C5 同模式）──
@@ -557,44 +463,6 @@ export class SessionChannel {
       bumpProjectionVersion(sessionDoc.getMap("root"));
     }
     return migrated;
-  }
-
-  // ── AskUserQuestion 超时（120s，与 acp-link 自动空答案对齐）──
-
-  /**
-   * 为问题请求安排过期定时器（幂等：同 questionId 已有定时器则跳过，
-   * 覆盖重放 question_requested 帧的重复通知）。定时器到期后执行
-   * pending → expired CAS 迁移（投影失效，前端弹窗随状态过滤消失）。
-   */
-  private armQuestionExpiry(rcsSessionId: string, questionId: string, expiresAt: string): void {
-    let timers = this.questionTimers.get(rcsSessionId);
-    if (!timers) {
-      timers = new Map();
-      this.questionTimers.set(rcsSessionId, timers);
-    }
-    if (timers.has(questionId)) return;
-
-    const parsed = new Date(expiresAt).getTime();
-    // 超时固定与 acp-link 120s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
-    // 不提供配置覆盖：acp-link 侧无对应配置项，可配会破坏两侧失效时刻一致
-    const timeoutMs = Number.isFinite(parsed) ? Math.max(0, parsed - Date.now()) : DEFAULT_QUESTION_TIMEOUT_MS;
-    const timer = setTimeout(() => {
-      timers.delete(questionId);
-      this.expireQuestionTimer(rcsSessionId, questionId);
-    }, timeoutMs);
-    timers.set(questionId, timer);
-  }
-
-  /** 问题过期迁移：CAS pending → expired（重复过期无副作用），实现见 state/question.ts */
-  private expireQuestionTimer(rcsSessionId: string, questionId: string): void {
-    const chatDoc = this.dependencies.docManager.getChatYdoc(rcsSessionId);
-    const sessionDoc = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
-    if (!chatDoc || !sessionDoc) return;
-    const migrated = expireQuestion({ chat: chatDoc, session: sessionDoc }, questionId);
-    if (migrated) {
-      bumpProjectionVersion(chatDoc.getMap("root"));
-      bumpProjectionVersion(sessionDoc.getMap("root"));
-    }
   }
 }
 

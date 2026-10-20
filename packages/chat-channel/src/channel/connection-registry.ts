@@ -15,6 +15,7 @@ export class ConnectionRegistry {
   /** 新协议二进制帧在 entry 创建前到达时的暂存（HELLO 可能在 open 异步初始化期间到达）。 */
   private readonly pendingBinaryBuffers = new Map<string, Uint8Array[]>();
   /** 与 `pendingBinaryBuffers` 同步维护的暂存字节数；消费/丢弃时必须一并清除，避免计数泄漏。 */
+  private readonly pendingTextBytes = new Map<string, number>();
   private readonly pendingBinaryBytes = new Map<string, number>();
   private readonly sharedRelays = new Map<string, SharedRelay>();
   private readonly relayAcquisitions = new Map<string, Promise<SharedRelay>>();
@@ -48,17 +49,36 @@ export class ConnectionRegistry {
   }
 
   /** 缓冲未就绪连接的消息（pending 阶段或 relayReady=false 的 active 阶段） */
-  bufferPending(wsId: string, message: string): void {
-    const pending = this.pendingBuffers.get(wsId);
-    if (pending) {
-      pending.push(message);
-      return;
-    }
+  bufferPending(wsId: string, message: string): boolean {
     const client = this.clients.get(wsId);
-    if (client && !client.relayReady) client.pendingMessages.push(message);
+    const pending =
+      this.pendingBuffers.get(wsId) ?? (client && !client.relayReady ? client.pendingMessages : undefined);
+    if (!pending) return false;
+    const bytes = new TextEncoder().encode(message).byteLength;
+    const held = this.pendingTextBytes.get(wsId) ?? 0;
+    let cancellation = false;
+    if (bytes <= 1024) {
+      try {
+        cancellation = JSON.parse(message)?.action === "cancel";
+      } catch {
+        /* 无效帧仍受普通消息预算约束。 */
+      }
+    }
+    const reserve = cancellation ? 2 : 0;
+    if (pending.length >= 64 + reserve || held + bytes > 1024 * 1024 + reserve * 1024) return false;
+    if (cancellation) pending.unshift(message);
+    else pending.push(message);
+    this.pendingTextBytes.set(wsId, held + bytes);
+    return true;
+  }
+
+  /** 诊断用：未就绪文本帧的实际 UTF-8 字节数。 */
+  pendingTextByteCount(wsId: string): number {
+    return this.pendingTextBytes.get(wsId) ?? 0;
   }
 
   consumePending(wsId: string): string[] | undefined {
+    this.pendingTextBytes.delete(wsId);
     const client = this.clients.get(wsId);
     if (client) {
       if (client.pendingMessages.length === 0) return;
@@ -107,6 +127,7 @@ export class ConnectionRegistry {
   }
 
   discardPending(wsId: string): void {
+    this.pendingTextBytes.delete(wsId);
     this.pendingBuffers.delete(wsId);
     this.pendingBinaryBuffers.delete(wsId);
     this.pendingBinaryBytes.delete(wsId);
@@ -116,6 +137,10 @@ export class ConnectionRegistry {
     const pending = this.consumePending(wsId);
     if (pending?.length) client.pendingMessages.push(...pending);
     this.clients.set(wsId, client);
+    this.pendingTextBytes.set(
+      wsId,
+      client.pendingMessages.reduce((sum, text) => sum + new TextEncoder().encode(text).byteLength, 0),
+    );
   }
 
   getClient(wsId: string): ClientConnection | undefined {
@@ -125,6 +150,7 @@ export class ConnectionRegistry {
   removeClient(wsId: string): ClientConnection | undefined {
     const client = this.clients.get(wsId);
     this.clients.delete(wsId);
+    this.pendingTextBytes.delete(wsId);
     if (client) client.syncClosed = true;
     return client;
   }

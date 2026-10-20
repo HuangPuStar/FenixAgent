@@ -69,11 +69,12 @@ function createConnection(overrides: Partial<SessionConnection> = {}): SessionCo
     rcsSessionId: "rcs-1",
     acpSessionId: "ses-1",
     agentStatusReceived: true,
-    sessionLoaded: false,
+    sessionLoaded: true,
     workspacePath: "/workspace/org-1/user-1/env-1",
     lastClientKeepalive: 0,
     sendToRelay: () => {},
     getNextRpcId: () => ++nextRpcId,
+    awaitSessionMutation: () => ({ completed: Promise.resolve(true), cancel: () => {} }),
     ...overrides,
   };
 }

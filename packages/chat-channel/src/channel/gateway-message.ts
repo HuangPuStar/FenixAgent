@@ -57,7 +57,10 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
       return;
     }
     if (!entry?.relayReady) {
-      deps.registry.bufferPending(wsId, data);
+      if (!deps.registry.bufferPending(wsId, data)) {
+        deps.registry.discardPending(wsId);
+        ws.close(1013, "pending message budget exceeded");
+      }
       return;
     }
     let parsed: Record<string, unknown>;

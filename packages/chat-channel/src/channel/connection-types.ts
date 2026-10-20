@@ -178,6 +178,10 @@ export interface SharedRelay {
    * 被 clobber、绑定校验丢弃当前会话增量、误开回放窗口）。请求出口登记、响应消费后删除。
    */
   pendingSessionSyncIds?: Set<number | string>;
+  /** 加载中目标只用于接收历史回放；Agent 确认前不作为可发送 prompt 的绑定。 */
+  pendingSessionTarget?: { rpcId: number | string; sessionId: string | undefined };
+  /** 会话同步回执处理跨 await 的提交身份。 */
+  sessionSyncGeneration?: number;
   /** 会话变更按 RPC id 等待 Agent 结果，避免发送成功被误报为持久化成功。 */
   pendingSessionMutations?: Map<number | string, (succeeded: boolean) => void>;
   /**

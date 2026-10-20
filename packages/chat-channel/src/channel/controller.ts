@@ -49,7 +49,6 @@ export interface ChatChannelDependencies {
   markRelayDetached: (instanceId: string) => void;
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
   /** 本地死实例回收（宿主 orchestration-instance 语义，内部校验 nodeId） */
-  terminateLocalDeadInstance: (instanceId: string) => void;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连 */
@@ -147,7 +146,6 @@ export class ChatChannelController {
       reportError: dependencies.reportError,
       log: dependencies.log,
       touchInstanceActivity: dependencies.touchInstanceActivity,
-      terminateLocalDeadInstance: dependencies.terminateLocalDeadInstance,
       onNormalizedEvent: (rcsSessionId, event) => {
         this.registry.forEachByRcsSession(rcsSessionId, (client) => {
           client.syncConnection?.acceptNormalizedEvent(event);

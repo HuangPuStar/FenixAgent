@@ -189,7 +189,6 @@ function createHarness(): Harness {
       broadcaster.registerYjsDocListener(ydoc, docName, generation),
     reportError: (message, error) => reports.push([message, error]),
     touchInstanceActivity: () => {},
-    terminateLocalDeadInstance: () => {},
   });
 
   const gateway = new Gateway({
@@ -277,7 +276,7 @@ async function openChat(harness: Harness): Promise<void> {
 /**
  * 模拟 Redis 恢复的持久化投影：Session Doc 记录目标 ACP 会话、Chat Doc 已有时间线。
  * 必须在 handleOpen 之前调用（gateway 打开连接时会读取 Session Doc 的 sessionId 作为
- * 连接初始绑定，这也是「刷新后首个 load 直接复用投影」的真实前提）。
+ * 连接初始目标；首次 load 仍需要当前 Agent 确认）。
  */
 async function seedPersistedProjection(harness: Harness, sessionId: string, text: string): Promise<void> {
   const sessionDoc = (await harness.docManager.openSession("user-1", "agent-1", RCS_SESSION_ID)).ydoc;
@@ -288,7 +287,7 @@ async function seedPersistedProjection(harness: Harness, sessionId: string, text
 
 /** 模拟用户点击侧边栏历史项：前端发 load_session，返回该请求的 rpcId */
 async function startSwitch(harness: Harness, sessionId: string): Promise<number | undefined> {
-  await harness.gateway.handleMessage(
+  void harness.gateway.handleMessage(
     harness.ws,
     "ws-1",
     JSON.stringify({
@@ -299,7 +298,10 @@ async function startSwitch(harness: Harness, sessionId: string): Promise<number 
   );
   await settle();
   harness.pump();
-  return harness.relay.lastRequestOf("session/load")?.id as number | undefined;
+  const request = harness.relay.lastRequestOf("session/load");
+  return (request?.params as { sessionId?: string } | undefined)?.sessionId === sessionId
+    ? (request?.id as number)
+    : undefined;
 }
 
 /** Agent 回放一条历史用户消息（同 rcsSessionId，携带目标 ACP sessionId） */
@@ -377,9 +379,11 @@ describe("会话切换后客户端可见性", () => {
     const firstLoad = await startSwitch(harness, "ses-A");
     await emitUserMessage(harness, "ses-A", "会话 A 的历史消息");
     // 用户未等 A 的响应即切到 B
-    const secondLoad = await startSwitch(harness, "ses-B");
+    expect(await startSwitch(harness, "ses-B")).toBeUndefined();
+    // A 确认后串行执行 B；重复的 A 回执随后到达，不得提交到 B 的投影。
+    await emitLoadResult(harness, "ses-A", firstLoad);
+    const secondLoad = harness.relay.lastRequestOf("session/load")?.id as number;
     await emitUserMessage(harness, "ses-B", "会话 B 的历史消息");
-    // A 的迟到响应
     await emitLoadResult(harness, "ses-A", firstLoad);
     // 迟到的旧目标响应不得改写投影会话（新投影只应等待 B 的响应；被改写会让前端
     // 高亮/输入路由回退到已切走的会话，且 B 的增量被绑定校验丢弃）
@@ -391,18 +395,21 @@ describe("会话切换后客户端可见性", () => {
     expect(harness.client.sessionId()).toBe("ses-B");
     expect(harness.client.timelineTexts()).toEqual(["会话 B 的历史消息", "会话 B 的助手回答"]);
   });
-  // 10s 回放窗口未过期时的连续切换：第一次点击复用持久化投影（不清空、不请求 Agent，
-  // 窗口以「已有内容」开启），随后切到别的会话时新会话回放必须仍被投影——
-  // 跳过判定不得跨换代继承。
-  test("复用持久化投影后的窗口内切换仍可见新会话回放", async () => {
+  // 恢复持久投影仍需 Agent 确认，确认后同会话跳过回放，切换新会话时必须重新采样回放窗口。
+  test("确认恢复后的窗口内切换仍可见新会话回放", async () => {
     const harness = createHarness();
     await seedPersistedProjection(harness, "ses-A", "持久化投影里的历史消息");
     await openChat(harness);
 
-    // 首次点击 ses-A：持久化投影已属于目标会话 → 静默绑定，不清空投影、不请求 Agent
+    const first = await startSwitch(harness, "ses-A");
+    expect(first).toBeDefined();
+    await emitUserMessage(harness, "ses-A", "Agent 确认的历史消息");
+    await emitLoadResult(harness, "ses-A", first);
+    expect(harness.client.timelineTexts()).toEqual(["Agent 确认的历史消息"]);
+    const sentBeforeRepeat = harness.relay.sent.length;
     await startSwitch(harness, "ses-A");
-    expect(harness.relay.lastRequestOf("session/load")).toBeUndefined();
-    expect(harness.client.timelineTexts()).toEqual(["持久化投影里的历史消息"]);
+    expect(harness.relay.sent).toHaveLength(sentBeforeRepeat);
+    expect(harness.client.timelineTexts()).toEqual(["Agent 确认的历史消息"]);
 
     // 窗口未过期即切到 ses-B
     const second = await startSwitch(harness, "ses-B");

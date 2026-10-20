@@ -467,6 +467,8 @@ describe("Gateway shared relay", () => {
     });
     const entry = registry.getClient("ws-sync-adapter");
     expect(entry).toBeDefined();
+    entry!.acpSessionId = "ses-confirmed";
+    entry!.sessionLoaded = true;
     entry!.syncConnection = {
       onInboundBytes: async () => {},
       acceptNormalizedEvent: () => {},

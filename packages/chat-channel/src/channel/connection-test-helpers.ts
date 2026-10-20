@@ -190,7 +190,6 @@ export function createRelayEvents(
     registerYjsDocListener: () => {},
     reportError: () => {},
     touchInstanceActivity: () => {},
-    terminateLocalDeadInstance: () => {},
     ...overrides,
   });
 }

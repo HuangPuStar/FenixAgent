@@ -183,8 +183,8 @@ describe("CommandCoordinator dedup", () => {
     expect(retry.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
   });
 
-  // disposeRcsSession 释放去重表与队列：同 commandId 重发视为新命令（随实例生命周期清理）。
-  test("disposeRcsSession clears dedup table so resubmit re-executes", async () => {
+  // 断线重连保留已完成命令，防止同 commandId 再次产生副作用。
+  test("disposeRcsSession retains dedup table so resubmit does not execute", async () => {
     let executions = 0;
     const { coordinator } = createCoordinator(async () => {
       executions += 1;
@@ -195,7 +195,7 @@ describe("CommandCoordinator dedup", () => {
     coordinator.disposeRcsSession("rcs-1");
     await coordinator.submit(command(), createSinks());
 
-    expect(executions).toBe(2);
+    expect(executions).toBe(1);
   });
 
   // 形状校验：缺 commandId 或未知 action type 返回 INVALID_STATE，且不发 accepted。
