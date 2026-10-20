@@ -485,7 +485,13 @@ function applyReplayStarted(pair: DocPair, event: NormalizedEvent): ApplyResult 
   if (typeof turnId !== "string" || turnId.length === 0) {
     return { applied: false, reason: "replay_started missing turnId" };
   }
-  if (readActiveTurn(pair.session).turnId !== null) {
+  const active = readActiveTurn(pair.session);
+  // 只有「非终态的活动 turn」才阻止回放开始。turn 终态后 activeTurnId 不会自动清空，
+  // 若仍只按 turnId 非空拒绝，终态之后的 replay_started 会被误拒，presenting 停在 done，
+  // 而 convergeReplayWindow 仍会发出 turn_completed。turnStatus 缺失按非终态处理，
+  // 避免把未知状态当成已结束而覆盖。
+  const terminal = active.turnStatus !== null && TURN_TERMINAL_STATUSES.has(active.turnStatus);
+  if (active.turnId !== null && !terminal) {
     return { applied: false, reason: "turn active" };
   }
   setActiveTurn(pair.session, turnId, "running");

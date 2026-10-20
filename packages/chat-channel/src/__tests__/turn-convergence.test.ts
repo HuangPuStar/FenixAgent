@@ -180,6 +180,22 @@ test("replayed user_message of an old turn does not hijack the active turn", () 
   expect((userBlocks?.get("text")?.get("text") as Y.Text | undefined)?.toString() ?? "").toBe("hi");
 });
 
+// 回放窗口只在非终态活动 turn 时被拒：终态 turn 的 activeTurnId 会保留，若继续按非空拒绝，
+// replay_started 会被误拒、presenting 停在 done，而窗口收敛仍会发 turn_completed。
+test("terminal turn does not block a new replay window", () => {
+  setActiveTurn(pair.session, "turn_live", "running");
+  const blocked = applyNormalizedEvent(pair, event("replay_started", {}, "turn_replay"));
+  expect(blocked.applied).toBe(false);
+  expect(getSessionInfo(pair.session).get("activeTurnId")).toBe("turn_live");
+
+  setActiveTurn(pair.session, "turn_live", "completed");
+  const started = applyNormalizedEvent(pair, event("replay_started", {}, "turn_replay"));
+  expect(started.applied).toBe(true);
+  expect(getSessionInfo(pair.session).get("activeTurnId")).toBe("turn_replay");
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("running");
+  expect(getSessionInfo(pair.session).get("replayState")).toBe("active");
+});
+
 // 展示态投影（Q12）：setActiveTurn 同步投影 session.presenting / loading / canCancel，
 // 前端只读不再自行派生——真实 turn running 展示 responding+loading+可取消，回放 turn
 // turn_replay_* 展示 replaying 且抑制 loading/canCancel，idle 与终态均无 loading/取消。
