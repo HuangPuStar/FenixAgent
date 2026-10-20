@@ -320,6 +320,40 @@ describe("createYjsWsClient", () => {
     expect(incomplete).toEqual([]);
   });
 
+  // 初始同步完成是显式信号：只有它能把“缺失文档已恢复”告诉恢复门禁，普通 update 不具备该语义。
+  test("forwards sync-complete frames with delivered docs", () => {
+    const completed: Array<{ docs: readonly string[]; generation?: string }> = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onSyncComplete: (info) => completed.push(info),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "yjs:sync-complete",
+      docs: ["chat:rcs-1", "session:rcs-1"],
+      generation: "gen-1",
+    });
+
+    expect(completed).toEqual([{ docs: ["chat:rcs-1", "session:rcs-1"], generation: "gen-1" }]);
+  });
+
+  // 字段不完整的完成帧不得驱动恢复状态（不可信输入按未知消息忽略）。
+  test("ignores malformed sync-complete frames", () => {
+    const completed: unknown[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onSyncComplete: (info) => completed.push(info),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({ type: "yjs:sync-complete", docs: [1, 2] });
+
+    expect(completed).toEqual([]);
+  });
+
   // action_error 帧必须透传完整 ActionError 对象给 onActionError，
   // 且不触发 onYjsUpdate / onError（错误分流，避免误判为连接级错误）。
   test("forwards action_error frames to onActionError without touching other callbacks", () => {

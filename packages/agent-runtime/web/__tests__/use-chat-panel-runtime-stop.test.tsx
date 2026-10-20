@@ -216,6 +216,15 @@ describe("useChatPanelRuntime 主动停止实例", () => {
     act(() => {
       secondRetrySocket?.onmessage?.({ data: legacyUpdateFrame("chat:rcs-1") } as MessageEvent);
     });
+    // 握手期间穿插的实时 update 不能证明缺失快照已恢复，门禁必须保持不变。
+    expect(harness.latest.current?.historyRecovery).not.toBeNull();
+    expect(harness.latest.current?.historyRecoveryRetrying).toBe(true);
+
+    act(() => {
+      secondRetrySocket?.onmessage?.({
+        data: JSON.stringify({ type: "yjs:sync-complete", docs: ["chat:rcs-1"] }),
+      } as MessageEvent);
+    });
     expect(harness.latest.current?.historyRecovery).toBeNull();
     expect(harness.latest.current?.historyRecoveryRetrying).toBe(false);
 
@@ -266,6 +275,15 @@ describe("useChatPanelRuntime 主动停止实例", () => {
 
       act(() => {
         retrySocket?.onmessage?.({ data: legacyUpdateFrame("chat:rcs-1") } as MessageEvent);
+      });
+      // 实时 update 不是恢复证明：缺失文档未确认交付前不能放开发送门禁。
+      expect(harness.latest.current?.historyRecovery).not.toBeNull();
+      expect(harness.latest.current?.syncDegradedBlocked).toBe(true);
+
+      act(() => {
+        retrySocket?.onmessage?.({
+          data: JSON.stringify({ type: "yjs:sync-complete", docs: ["chat:rcs-1"] }),
+        } as MessageEvent);
       });
       expect(harness.latest.current?.historyRecovery).toBeNull();
       expect(harness.latest.current?.historyRecoveryRetrying).toBe(false);
