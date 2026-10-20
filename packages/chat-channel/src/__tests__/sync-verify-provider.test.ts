@@ -486,10 +486,11 @@ describe("doc-hub 状态机", () => {
     hub.enqueue(verifyTask({ deliveryId: "dlv_fit", payload }));
     await hub.drain();
     expect(outcomes.map((outcome) => outcome.result)).toEqual(["processed"]);
-    // 同尺寸载荷再来一帧：单项不超上限，但队列已在上限（此时已被 drain 取走，故先入队两帧再 drain）
+    // 第二帧必须复用同一份编码字节：new Y.Doc() 的 client ID 随机，重新编码偶尔多 1 字节，
+    // 会越过单项上限触发 payload-too-large，测不到队列溢出。
     const second = createHarness({ maxQueueBytes: payload.byteLength, maxQueueTasks: 64 });
     second.hub.enqueue(verifyTask({ deliveryId: "dlv_a", payload }));
-    second.hub.enqueue(verifyTask({ deliveryId: "dlv_b", payload: encodedDoc("y") }));
+    second.hub.enqueue(verifyTask({ deliveryId: "dlv_b", payload }));
     expect(second.outcomes.map((outcome) => outcome.reason)).toEqual(["queue-overflow"]);
     hub.dispose();
     second.hub.dispose();
