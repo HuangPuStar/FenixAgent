@@ -203,6 +203,7 @@ export function createGateway(
   docManagerOverrides: Record<string, unknown> = {},
 ): Gateway {
   const mockDocManager = {
+    getChat: () => undefined,
     openChat: async () => ({ ydoc: new Y.Doc() }),
     openSession: async () => ({ ydoc: new Y.Doc() }),
     getSessionYdoc: () => undefined,

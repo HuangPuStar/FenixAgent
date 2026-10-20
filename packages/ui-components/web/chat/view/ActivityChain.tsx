@@ -63,7 +63,12 @@ export interface ActivityChainProps {
   isLoading: boolean;
   /** 当前会话末条条目；只有它会被当作流式内容。 */
   lastEntry?: ThreadEntry;
-  /** 链前是否紧邻助手正文：成立时收紧上边距。 */
+  /**
+   * 链前是否紧邻助手正文。
+   *
+   * 仅作为 `data-after-message` 钩子保留：折叠标题让活动链从「正文的延续」变成独立过程块，
+   * 上下间距统一为 `my-2`，不再用负上边距贴住正文。
+   */
   afterMessage: boolean;
   sessionId?: string;
   envId?: string;
@@ -101,12 +106,9 @@ export function ActivityChain({
   return (
     <div
       // 本行工具类即源 `chat-design-messages.css` 的 `.chat-activity-chain` 声明；
-      // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
-      className={cn(
-        "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
-        "before:absolute before:top-2.75 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']",
-        afterMessage && "-mt-3.5",
-      )}
+      // 标题与正文左缘对齐，轨道缩进只作用于展开后的链内条目（见下方 rail 包裹层）。
+      // 上下对称的 `my-2` 与相邻条目各自的 `py-3` 组成一致的过程块间距。
+      className="grid gap-px mx-0 my-2"
       data-slot="chat-activity-chain"
       data-after-message={afterMessage || undefined}
     >
@@ -160,24 +162,31 @@ export function ActivityChain({
       </button>
 
       {expanded && (
-        <div id={bodyId} className="grid max-h-100 gap-px overflow-y-auto" data-slot="chat-activity-chain-body">
-          {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
-              Context（源的后代选择器对嵌套工具组一视同仁）。 */}
-          <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
-            {items.map((item, itemIndex) => (
-              <ChatRenderItemView
-                key={renderItemKey(item, itemIndex)}
-                item={item}
-                inActivityChain
-                isLoading={isLoading && item.type === "entry" && item.entry === lastEntry}
-                sessionId={sessionId}
-                envId={envId}
-                cardEmitter={cardEmitter}
-                onQuote={onQuote}
-                onOpenWorkspaceFile={onOpenWorkspaceFile}
-              />
-            ))}
-          </SubAgentToolCallGroupContext.Provider>
+        // 轨道线挂在滚动容器外层，避免随内容滚动。折叠体是滚动容器，会裁剪越界内容：
+        // 链内工具行用 `-ml-8` 把图标放回轨道槽，故用 `pl-8` 让裁剪框覆盖槽位，否则图标会被裁掉。
+        <div
+          className="relative before:absolute before:top-0 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']"
+          data-slot="chat-activity-chain-rail"
+        >
+          <div id={bodyId} className="grid max-h-100 gap-px overflow-y-auto pl-8" data-slot="chat-activity-chain-body">
+            {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
+                Context（源的后代选择器对嵌套工具组一视同仁）。 */}
+            <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
+              {items.map((item, itemIndex) => (
+                <ChatRenderItemView
+                  key={renderItemKey(item, itemIndex)}
+                  item={item}
+                  inActivityChain
+                  isLoading={isLoading && item.type === "entry" && item.entry === lastEntry}
+                  sessionId={sessionId}
+                  envId={envId}
+                  cardEmitter={cardEmitter}
+                  onQuote={onQuote}
+                  onOpenWorkspaceFile={onOpenWorkspaceFile}
+                />
+              ))}
+            </SubAgentToolCallGroupContext.Provider>
+          </div>
         </div>
       )}
     </div>

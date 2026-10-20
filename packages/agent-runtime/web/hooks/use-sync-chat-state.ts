@@ -17,6 +17,12 @@ export interface UseSyncChatStateOptions {
   readonly organizationId: string | null;
   /** ACP 会话切换时释放旧投影；不作为协议 generation 发送。 */
   readonly sessionKey?: string | null;
+  /**
+   * 旧 Chat/Session Doc 的换代版本（DocHub replace 计数）。`load_session` / `create_session`
+   * 换代后必须重建同步连接，让服务端按新投影代次选择 store 与历史，而不是把新会话事件
+   * 追加到上一会话的时间线上。
+   */
+  readonly projectionVersion?: number;
   readonly contentDocIds?: readonly string[];
   readonly generation?: string;
   /** 测试注入；生产使用浏览器 WebSocket。 */
@@ -81,6 +87,7 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     options.rcsSessionId,
     options.organizationId,
     options.sessionKey,
+    options.projectionVersion ?? null,
   ]);
   const [snapshot, setSnapshot] = useState({ scope, state: EMPTY_STATE });
   const fallbackScope = useRef<string | null>(null);

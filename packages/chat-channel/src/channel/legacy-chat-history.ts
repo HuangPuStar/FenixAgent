@@ -25,8 +25,14 @@ export const LEGACY_HISTORY_PART_CHARS = 64 * 1024;
 
 /** 旧 Chat Doc 的最小读取面（DocManager 的形状子集，避免 channel 依赖具体实现）。 */
 export interface LegacyChatDocumentSource {
-  getChat(rcsSessionId: string): { readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration } | undefined;
-  openChat(rcsSessionId: string): Promise<{ readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration }>;
+  getChat(
+    rcsSessionId: string,
+  ): { readonly ydoc: Y.Doc; readonly hydration?: SnapshotHydration; readonly generation?: string } | undefined;
+  openChat(rcsSessionId: string): Promise<{
+    readonly ydoc: Y.Doc;
+    readonly hydration?: SnapshotHydration;
+    readonly generation?: string;
+  }>;
 }
 
 /** 读取一个旧条目的可见正文；工具块和 reasoning 不计入。 */

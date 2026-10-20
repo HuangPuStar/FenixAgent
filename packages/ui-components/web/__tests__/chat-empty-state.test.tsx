@@ -91,8 +91,8 @@ describe("Chat 空状态", () => {
     expect(zh.chat.components.chatEmpty.suggestionBuild).toBe("讨论构建失败的可能原因");
   });
 
-  // 可见正文后紧接工具调用时应标记专用紧凑边界，避免出现过大的垂直空白。
-  test("正文后的工具调用使用紧凑间距", () => {
+  // 活动链紧邻正文时保留来源标记；折叠标题是独立过程块，间距改由统一的 `my-2` 承担。
+  test("正文后的活动链保留来源标记", () => {
     const entries: ThreadEntry[] = [
       { type: "assistant_message", id: "assistant-1", chunks: [{ type: "message", text: "开始读取文件" }] },
       {
@@ -102,8 +102,8 @@ describe("Chat 空状态", () => {
     ];
     const markup = renderToStaticMarkup(<ChatView entries={entries} />);
 
-    // 类名 `chat-activity-chain--after-message` 已迁为条件工具类，紧凑边界改按数据状态断言；
-    // `chat-activity-chain` 类名保留（工具簇样式表仍以它作作用域钩子），锚点为 `data-slot`。
+    // 类名 `chat-activity-chain--after-message` 已迁为数据状态钩子，锚点为 `data-slot`；
+    // 该标记只表达「链前是正文」，不再参与间距计算（见 `ActivityChain` 的 `afterMessage` 注释）。
     expect(markup).toContain('data-slot="chat-activity-chain"');
     expect(markup).toContain('data-after-message="true"');
   });

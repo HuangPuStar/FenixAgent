@@ -71,6 +71,7 @@ interface HostOptions {
   readonly storeRegistry?: SyncStoreRegistry;
   readonly store?: ProjectionStore;
   readonly historySource?: SyncHistorySource;
+  readonly storeBinding?: string;
   readonly onError?: (message: string, error: unknown) => void;
   readonly randomSeed?: string;
 }
@@ -96,6 +97,7 @@ async function createHost(
     storeRegistry: options.storeRegistry,
     store: options.store,
     historySource: options.historySource,
+    storeBinding: options.storeBinding,
     onError: options.onError,
   });
   return { session, frames, closeReasons };
@@ -512,6 +514,46 @@ describe("sync host session 生命周期", () => {
     expect(manifestOf(second.frames).generation).not.toBe(firstGeneration);
     expect(source.reads).toBe(2);
     await second.session.dispose();
+  });
+
+  // 投影换代：旧连接尚未释放时，新代次必须使用独立 store 并重新导入历史，不得复用上一会话时间线。
+  test("投影换代后新连接绑定独立 store 并重新导入历史", async () => {
+    const registry = new SyncStoreRegistry();
+    const oldSource = historySourceOf("old session history");
+    const newSource = historySourceOf("new session history");
+    const oldHost = await createHost(
+      {},
+      {
+        storeRegistry: registry,
+        historySource: oldSource,
+        storeBinding: "gen_old",
+        randomSeed: "projection-old",
+      },
+    );
+    await sendStatelessHello(oldHost.session);
+    const oldManifest = manifestOf(oldHost.frames);
+
+    const newHost = await createHost(
+      {},
+      {
+        storeRegistry: registry,
+        historySource: newSource,
+        storeBinding: "gen_new",
+        randomSeed: "projection-new",
+      },
+    );
+    await sendStatelessHello(newHost.session);
+    const newManifest = manifestOf(newHost.frames);
+
+    expect(newManifest.generation).not.toBe(oldManifest.generation);
+    expect(newManifest.directoryDocId).not.toBe(oldManifest.directoryDocId);
+    expect(oldSource.reads).toBe(1);
+    expect(newSource.reads).toBe(1);
+    expect(registry.size).toBe(2);
+
+    await oldHost.session.dispose();
+    await newHost.session.dispose();
+    expect(registry.size).toBe(0);
   });
 
   // 重启恢复：从已提交快照恢复的导入代次不得再次读取历史源，generation 与内容块逐项复用。

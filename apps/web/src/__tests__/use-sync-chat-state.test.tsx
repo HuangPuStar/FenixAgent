@@ -148,6 +148,19 @@ describe("新同步开关与 hook 生命周期", () => {
     expect(FakeSocket.instances[1]?.closed.at(-1)?.code).toBe(1000);
   });
 
+  // 投影换代（load/create）同样重建连接：新会话不能沿用上一代次的 store 与历史。
+  test("投影换代版本变化时重建同步连接", () => {
+    const harness = renderHook({ ...options, projectionVersion: 0 });
+    const first = FakeSocket.instances[0]!;
+    act(() => first.open());
+    harness.rerender({ ...options, projectionVersion: 1 });
+    expect(first.closed.at(-1)?.code).toBe(1000);
+    expect(first.onmessage).toBeNull();
+    expect(FakeSocket.instances).toHaveLength(2);
+    harness.unmount();
+    expect(FakeSocket.instances[1]?.closed.at(-1)?.code).toBe(1000);
+  });
+
   // 默认开启，只有显式 0 回退，旧的 1 链接继续可用。
   test("开关默认开启，chatSync=0 才关闭", () => {
     expect(readSyncChatSwitch("")).toBe(true);

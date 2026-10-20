@@ -11,7 +11,7 @@ import { ChatStatusPanel } from "../chat/panels/chat-status-panel";
 import { PermissionPanel } from "../chat/panels/PermissionPanel";
 import { QuestionPanel } from "../chat/panels/QuestionPanel";
 import { ToolCallRow } from "../chat/timeline/ToolCallRow";
-import type { ToolCallData, UserMessageEntry } from "../chat/types";
+import type { ThreadEntry, ToolCallData, UserMessageEntry } from "../chat/types";
 import { ChatView } from "../chat/view/ChatView";
 import { PromptJumpRail } from "../chat/view/chat-navigation-aids";
 import { CHAT_DIR, classTokens, MIGRATED_CLASS_NAMES } from "./chat-style-migration-helpers";
@@ -220,6 +220,39 @@ describe("chat 样式迁移：工具时间线", () => {
   test("活动链内的工具行带对齐补偿，链外不带", () => {
     expect(toolRow(true)).toContain("-ml-8");
     expect(toolRow(false)).not.toContain("-ml-8");
+  });
+
+  // 折叠体是滚动容器，会裁剪越界内容；工具行用 `-ml-8` 把图标放回轨道槽，
+  // 故折叠体必须用 `pl-8` 让裁剪框覆盖槽位（否则图标被裁掉只剩竖线）。
+  // 轨道缩进只作用于展开体：折叠标题与正文左缘对齐，不能把标题也缩进 24px。
+  test("活动链标题贴左，折叠体让出轨道槽", () => {
+    const entries: ThreadEntry[] = [
+      { type: "assistant_message", id: "assistant-1", chunks: [{ type: "message", text: "开始读取文件" }] },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "tool-1",
+          title: "Read",
+          kind: "read-file",
+          status: "running",
+          rawInput: { file_path: "src/app.ts" },
+        },
+      },
+    ];
+    const html = renderToStaticMarkup(createElement(ChatView, { entries }));
+
+    const chainTag = html.match(/<div[^>]*data-slot="chat-activity-chain"[^>]*>/)?.[0] ?? "";
+    const chainTokens = classTokens(chainTag);
+    expect(chainTokens).not.toContain("pl-8");
+    // 折叠标题是独立过程块：上下对称的 `my-2` 取代正文后的负上边距，避免标题压住正文。
+    expect(chainTokens).toContain("my-2");
+    expect(chainTokens).not.toContain("-mt-3.5");
+
+    const bodyTag = html.match(/<div[^>]*data-slot="chat-activity-chain-body"[^>]*>/)?.[0] ?? "";
+    const bodyTokens = classTokens(bodyTag);
+    expect(bodyTokens).toContain("pl-8");
+    expect(bodyTokens).not.toContain("-ml-8");
+    expect(html).toContain('data-slot="chat-activity-chain-rail"');
   });
 
   // 提示词导航轨：刻度与预览卡改为 beui 的 `PreviewRail` 原样渲染，本组件只剩浮层锚点与工具类。

@@ -249,6 +249,7 @@ export function useChatPanelRuntime({
   const { state: legacySessionState } = useSessionState(docHubKey);
   // ACP id 从空到首个值的补全不重建同步投影；只有真实会话切换才改变 sessionKey。
   const syncSessionKey = useStableSyncSessionKey(docHubKey, legacySessionState.acpSessionId);
+  const replacementVersion = useDocHubReplacementVersion(docHubKey);
   const syncChatSearch = typeof window === "undefined" ? "" : window.location.search;
   const syncEnabled = readSyncChatSwitch(syncChatSearch);
   const syncChat = useSyncChatState({
@@ -258,8 +259,9 @@ export function useChatPanelRuntime({
     rcsSessionId: rcsSessionKey ?? null,
     organizationId: readSyncChatOrganizationId(),
     sessionKey: syncSessionKey,
+    // 投影换代（load/create）必须换同步连接：服务端按旧 Doc 代次隔离 store 与历史。
+    projectionVersion: replacementVersion,
   });
-  const replacementVersion = useDocHubReplacementVersion(docHubKey);
   // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
   const mergeScope = `${docHubKey}:${replacementVersion}`;
   // 服务端 replay_complete（含零历史）与本地新建会话都无需等待回放；active 回放优先。

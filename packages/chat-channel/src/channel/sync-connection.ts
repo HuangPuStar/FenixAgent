@@ -86,6 +86,20 @@ interface SyncHistoryContext {
   readonly docs: LegacyChatDocumentSource;
 }
 
+/**
+ * 读取连接应绑定的投影代次。
+ *
+ * 旧 Chat/Session Doc 每次 `replaceProjection` 都会生成新代次；新同步协议的 store 必须与它
+ * 一一对应，否则客户端换代重连后会复用上一会话的已提交时间线。优先读已驻留 Doc，未打开时
+ * 走 `openChat`（与 handleOpen 共享在途 Promise，不会重复水合）。
+ */
+async function resolveStoreBinding(docs: LegacyChatDocumentSource, rcsSessionId: string): Promise<string | undefined> {
+  const current = docs.getChat(rcsSessionId);
+  if (current?.generation !== undefined) return current.generation;
+  const opened = await docs.openChat(rcsSessionId);
+  return opened.generation;
+}
+
 export async function attachGatewaySyncConnection(
   ws: WsConnection,
   config: ChatSyncProtocolConfig,
@@ -105,6 +119,7 @@ export async function attachGatewaySyncConnection(
             rcsSessionId,
             acpSessionId: history.acpSessionId,
           });
+    const storeBinding = history === undefined ? undefined : await resolveStoreBinding(history.docs, rcsSessionId);
     return await createSyncHostSession({
       scope: { organizationId, rcsSessionId },
       runtimeConfig: {
@@ -120,6 +135,7 @@ export async function attachGatewaySyncConnection(
       store: overrides.store,
       storeRegistry: overrides.storeRegistry,
       historySource,
+      storeBinding,
       owner,
       onError: reportError,
     });
