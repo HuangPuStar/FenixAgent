@@ -57,8 +57,12 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-10-16 用户反馈修正（chat space）：按「不要『移动到』这个按钮，用拖拽就是最好的」删除会话行的
  *   归属菜单，只服务于它的 `acpMain.moveToSpace` 一键随之清掉（拖放失败提示 `moveToSpaceFailed`
  *   仍由拖拽路径使用，保留），368 → 367（实测两份字典扁平键数均为 367）。
+ * 2026-10-16 子任务区批次（peri agent 状态 + 折叠入口 + Markdown 详情）：`chat.components.periTask.*`
+ *   加 6 键——折叠入口 `moreAgents` / `showLess`、空态 `empty`、失败原因缺失时的 `failureUnavailable`、
+ *   耗时 `elapsed` 与不可用时 `timeUnavailable`。
+ * 2026-10-20 汇总批次（待发送队列 + 子任务区）：两批合计 21 键，实测两份字典扁平键数均为 388。
  */
-const KEY_BASELINE = 367;
+const KEY_BASELINE = 388;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,
