@@ -69,6 +69,63 @@ function isPureText(message: StructuredMessage): boolean {
   return !message.error && message.chunks.every((chunk) => chunk.type === "message");
 }
 
+/**
+ * 用户消息前后的非用户锚点：同一轮的两次双写共享相同相邻助手/工具身份，
+ * 不同轮的同文本提问则不会同时落在同一侧。正文相同不足以区分合法重复提问。
+ */
+interface UserTurnContext {
+  readonly previous: string | null;
+  readonly next: string | null;
+}
+
+/** 锚点只取助手回复；工具/计划只存在于旧通道，参与比较会让同一轮双写永远无法配对。 */
+function anchorKey(message: Extract<StructuredMessage, { type: "assistant_message" }>): string {
+  const text = normalizedText(textOf(message));
+  return text.length > 0 ? `assistant:${text}` : `assistant-id:${message.id}`;
+}
+
+/** 一次扫描得到每个用户消息的相邻助手回复，避免在配对循环里反复查找（线性复杂度）。 */
+function userTurnContexts(messages: readonly StructuredMessage[]): WeakMap<StructuredMessage, UserTurnContext> {
+  const contexts = new WeakMap<StructuredMessage, UserTurnContext>();
+  const previous: Array<string | null> = [];
+  let anchor: string | null = null;
+  for (const message of messages) {
+    previous.push(anchor);
+    if (message.type === "assistant_message") anchor = anchorKey(message);
+  }
+  const next: Array<string | null> = Array.from({ length: messages.length }, () => null);
+  anchor = null;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message === undefined) continue;
+    next[index] = anchor;
+    if (message.type === "assistant_message") anchor = anchorKey(message);
+  }
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message?.type !== "user_message") continue;
+    contexts.set(message, { previous: previous[index] ?? null, next: next[index] ?? null });
+  }
+  return contexts;
+}
+
+/**
+ * 同一轮的双写应共享相邻锚点；两侧锚点分别落在不同方向时说明是两次真实提问。
+ * 无锚点（只有用户消息）时退回按出现次数配对。
+ */
+function isSameUserTurn(legacy: UserTurnContext | undefined, sync: UserTurnContext | undefined): boolean {
+  if (legacy === undefined || sync === undefined) return true;
+  if (legacy.previous !== null && sync.previous !== null) return legacy.previous === sync.previous;
+  if (legacy.next !== null && sync.next !== null) return legacy.next === sync.next;
+  if (legacy.previous === null && sync.previous === null) {
+    return legacy.next === null || sync.next === null || legacy.next === sync.next;
+  }
+  if (legacy.next === null && sync.next === null) {
+    return legacy.previous === null || sync.previous === null || legacy.previous === sync.previous;
+  }
+  return false;
+}
+
 export interface SyncMessageMergerOptions {
   /**
    * 新投影一旦含有文本，就丢弃未配对到新消息的纯文本旧消息（默认开启）。
@@ -109,13 +166,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     // 分段 entry 除外：新投影只能表达合并后的整条正文，覆盖证明不成立。
     const segmentedBases = segmentedEntryBases(legacy);
     const segmentedText = segmentedTextByBase(legacy, segmentedBases);
-    const syncCoversText = retireLegacyText && sync.some(isText);
-    const syncTextUnion = normalizedText(
-      sync
-        .filter(isText)
-        .map((message) => textOf(message))
-        .join(""),
-    );
+    const syncCoversAssistantText = retireLegacyText && sync.some((message) => message.type === "assistant_message");
     // 分段 entry 的单条合并文本，只有被旧结构正文完整覆盖时才可退役。
     const coveredBySegments = (message: StructuredMessage): boolean => {
       if (message.type !== "assistant_message") return false;
@@ -159,6 +210,9 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     }
 
     const pairs = new Map<string, StructuredMessage>();
+    const pairedSyncs = new Set<StructuredMessage>();
+    const legacyContexts = userTurnContexts(legacy);
+    const syncContexts = userTurnContexts(sync);
     for (const message of sync) {
       // 分段 entry 不参与配对：旧结构决定工具顺序，合并文本只作为缺段时的兜底消息。
       if (segmentedBases.has(message.id)) continue;
@@ -169,20 +223,59 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
         const bucket = textIndex.get(`${message.type}\u0000${textOf(message)}`);
         if (bucket !== undefined) {
           const syncTime = syncTimes.get(message);
-          match = bucket.find(
-            (item) =>
-              !used.has(item.id) &&
-              !segmentedBases.has(entryBaseId(item.id)) &&
-              syncTime !== undefined &&
-              Math.abs((legacyTimes.get(item) ?? 0) - syncTime) <= matchWindowMs,
-          );
+          match = bucket.find((item) => {
+            if (used.has(item.id) || segmentedBases.has(entryBaseId(item.id))) return false;
+            // 用户消息按出现顺序与相邻轮次上下文配对，异通道时间戳可能相差很大；助手仍保留 5 秒双写窗口。
+            if (message.type === "user_message") {
+              return isSameUserTurn(legacyContexts.get(item), syncContexts.get(message));
+            }
+            return syncTime !== undefined && Math.abs((legacyTimes.get(item) ?? 0) - syncTime) <= matchWindowMs;
+          });
         }
       }
       if (match && !used.has(match.id)) {
         pairs.set(match.id, message);
         used.add(match.id);
+        pairedSyncs.add(message);
       }
     }
+
+    // 退役预算：一条未配对的新投影助手文本至多抵消一条未配对旧助手文本。
+    // 用全局文本并集会把其他轮次的同文本旧消息一并删掉（B02）。
+    const coverage: Array<{ text: string }> = [];
+    const exactCoverage = new Map<string, number[]>();
+    const coverageIds = new Set<string>();
+    for (const message of sync) {
+      if (message.type !== "assistant_message" || pairedSyncs.has(message)) continue;
+      if (segmentedBases.has(message.id) || exactIds.has(message.id)) continue;
+      // 已绑定别名的同步消息代表上一轮已显示的条目，不能再次抵消另一条旧消息。
+      if (aliases.has(`sync:${message.id}`) || coverageIds.has(message.id)) continue;
+      coverageIds.add(message.id);
+      const text = normalizedText(textOf(message));
+      coverage.push({ text });
+      const bucket = exactCoverage.get(text);
+      if (bucket) bucket.push(coverage.length - 1);
+      else exactCoverage.set(text, [coverage.length - 1]);
+    }
+    const usedCoverage = new Set<number>();
+    const takeCoverage = (text: string): boolean => {
+      for (const index of exactCoverage.get(text) ?? []) {
+        if (!usedCoverage.has(index)) {
+          usedCoverage.add(index);
+          return true;
+        }
+      }
+      // 流式正文可能比旧快照更长；逐条比较仍保证每条新文本只抵消一条旧消息。
+      for (let index = 0; index < coverage.length; index += 1) {
+        if (usedCoverage.has(index)) continue;
+        const candidate = coverage[index];
+        if (candidate?.text.includes(text)) {
+          usedCoverage.add(index);
+          return true;
+        }
+      }
+      return false;
+    };
 
     for (const message of legacy) {
       const pair = pairs.get(message.id);
@@ -190,11 +283,11 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       // 助手纯文本仅在正文被新投影实际包含时退役（分段 entry 另由结构覆盖判定）。
       if (
         pair === undefined &&
-        syncCoversText &&
+        syncCoversAssistantText &&
         message.type === "assistant_message" &&
         isPureText(message) &&
         !segmentedBases.has(entryBaseId(message.id)) &&
-        syncTextUnion.includes(normalizedText(textOf(message)))
+        takeCoverage(normalizedText(textOf(message)))
       )
         continue;
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
