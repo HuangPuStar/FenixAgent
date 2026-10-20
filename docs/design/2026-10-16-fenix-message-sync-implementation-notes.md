@@ -74,8 +74,9 @@
 12. **默认启用但保留旧连接**：服务端 `RCS_CHAT_SYNC_PROTOCOL_ENABLED` 默认 `true`；前端独立默认新协议，
     `?chatSync=0` 显式回退，`?chatSync=1` 保持兼容，不读取服务端 env。旧连接继续读取历史、非文本和发送动作，
     待新协议具备完整历史恢复与动作能力后移除；每连接 runtime / 内存 store、多标签不共享的限制仍在。
-    新连接收到 `1008` 且 reason 含 `sync protocol disabled`，或 `1002` / `PROTOCOL_VERSION_UNSUPPORTED` 时，
-    释放 transport 与镜像并锁定本会话旧路径，不再自动重连；普通 `1008`、`1011` 与其他内部错误显示错误卡，不静默回退。
+    新连接收到 `1002`、`1008`（含 reason `sync protocol disabled`），或本地判定 `PROTOCOL_VERSION_UNSUPPORTED` 时，
+    释放 transport 与镜像并锁定本会话旧路径，不再自动重连；`1003` / `1009` / `1011` 等相同终态关闭显示错误卡，
+    网络断开按退避重连，均不静默回退。
     会话/组织切换或显式重新启用才重新尝试，组件卸载释放新连接，旧 Doc 生命周期保持原逻辑。
     合并优先按 `entryId`（投影中的 `id`）去重，异 ID 按角色、完整正文与 5 秒窗口一对一配对；无时间戳时使用首次观察时间，
     不把 `0` 当历史时间。已配对别名保持到条目离开视图，保留首次显示 key、已有相对顺序和未变文本对象；历史按旧 Doc 顺序补入。
@@ -328,7 +329,7 @@
   确定性事实收口：旧路径在回放窗口开启时由服务端写入 `replay_started`（`presenting=replaying`），load/resume 响应后
   acp-link 再发 `session/replay_complete`（含零历史），relay 立即收敛窗口并写 `replayState=complete`；新协议等首批
   DOC_BASE 的 processed APPLY_ACK 全部匹配。旧宿主不发 `replay_complete` 时保留 1.5s 兜底与 12s 硬上限。10k 消息/
-  200 批回放期间 0 次提交，结束后一次提交；渲染窗口默认挂载最近 1000 条，避免单次提交 >1s。用例见
+  200 批回放期间 0 次提交，结束后一次提交；渲染窗口默认挂载最近 100 条，避免单次提交 >1s。用例见
   `chat-hydration-gate.test.ts`、`use-chat-hydration.test.tsx`、`chat-hydration-scroll.test.tsx`、
   `chat-render-window.test.tsx` 与 `chat-replay-signal.test.ts`。
 - 空会话与关闭诊断：连接建立时 Session Doc 写入 `timelineEmpty`，首次加载已有空会话可直接渲染空状态（不依赖
@@ -361,7 +362,7 @@
 | UI 渲染 | 文本已退役旧通道 | 用户/助手文本以新投影为准；未配对旧纯文本不再进入合并视图，工具/计划/思考/错误仍依赖旧 Doc。移除条件 = final/工具对象接入新投影 |
 | 旧全量通道退役 | 服务端与展示层已实施 | `chatSync=1` 连接跳过旧快照、旧 Doc 广播与 state-vector；动作与非文本仍走旧 Yjs WS。删除旧通道的前置条件见 §3.8 |
 | 初次加载 hydrate 完成信号 | 客户端门控已实施 | 旧路径由服务端在窗口开启时写入 `replay_started`，load/resume 后由 acp-link 发 `session/replay_complete`（含零历史），relay 立即收敛并写 `replayState=complete`；连接建立时写 `timelineEmpty` 供首次加载已有空会话直接放行；新协议用 DOC_BASE 的 processed APPLY_ACK。旧宿主不发 `replay_complete` 时保留 1.5s 兜底、12s 硬上限；完整基线后到的首次合并放宽 5s 配对窗口一次。重连 HELLO 不复用上一代 generation。移除条件 = 全量宿主升级后删除客户端兜底 |
-| 大基线渲染窗口 | 已实施 | 默认只挂载最近 1000 条，更早消息由用户显式加载；DOM 有界（10k 条目一次性渲染从 1.7s 降至约 0.2s）。加载更早后滚到第一条新增历史，不再钉在底部；移除条件 = 引入带锚点的虚拟列表 |
+| 大基线渲染窗口 | 已实施 | 默认只挂载最近 100 条，更早消息由用户显式加载；DOM 有界（10k 条目一次性渲染从 1.7s 降至约 0.2s）。加载更早后滚到第一条新增历史，不再钉在底部；移除条件 = 引入带锚点的虚拟列表 |
 
 ## 6. 下一步（按设计分阶段）
 

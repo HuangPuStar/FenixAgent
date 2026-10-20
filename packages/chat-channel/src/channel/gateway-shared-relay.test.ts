@@ -5,11 +5,13 @@
 
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { DocManager } from "../state/doc-manager";
 import { createDeterministicRcsSessionId } from "../util/id";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
 import { createGateway, createRelayEvents, createWs, deferred, textFrames } from "./connection-test-helpers";
 import type { ClientConnection, RelayMessage } from "./connection-types";
+import { SessionChannel } from "./session-channel";
 
 describe("Gateway shared relay", () => {
   // 新建共享 relay 时必须先执行 ACP connect 握手，远端 dispatcher 才会回传 status 并允许后续 session/list。
@@ -432,5 +434,49 @@ describe("Gateway shared relay", () => {
     lifecycle.handleClose("ws-2");
     expect(closeCalls).toBe(1);
     expect(unsubCalls).toBe(1);
+  });
+
+  // 生产适配必须把连接级同步 runtime 传给 SessionChannel：send_prompt 的用户消息依赖
+  // connection.syncConnection.acceptUserMessage 进入新投影，测试手工构造会掩盖漏传。
+  test("passes the connection sync runtime through the action path", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const docManager = new DocManager({ onError: () => {}, onLog: () => {} });
+    const accepted: Array<{ turnId: string; text: string }> = [];
+    const sessionChannel = new SessionChannel({
+      docManager,
+      replaceProjection: () => {},
+      syncSessionId: () => {},
+      reportError: () => {},
+    });
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, { docManager, sessionChannel });
+    const ws = createWs();
+
+    // syncOnly 跳过旧全量快照握手，聚焦 action → SessionChannel 的适配路径。
+    await lifecycle.handleOpen(ws, "ws-sync-adapter", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+      syncOnly: true,
+    });
+    const entry = registry.getClient("ws-sync-adapter");
+    expect(entry).toBeDefined();
+    entry!.syncConnection = {
+      onInboundBytes: async () => {},
+      acceptNormalizedEvent: () => {},
+      acceptUserMessage: (turnId, text) => accepted.push({ turnId, text }),
+      dispose: () => {},
+    };
+
+    await lifecycle.handleMessage(
+      ws,
+      "ws-sync-adapter",
+      JSON.stringify({ action: "send_prompt", commandId: "cmd-sync", content: [{ type: "text", text: "hello" }] }),
+    );
+
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.text).toBe("hello");
+    expect(accepted[0]?.turnId.length).toBeGreaterThan(0);
+    lifecycle.handleClose("ws-sync-adapter");
   });
 });

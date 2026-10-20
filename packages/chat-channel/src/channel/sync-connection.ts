@@ -135,6 +135,39 @@ export async function attachGatewaySyncConnection(
 }
 
 /**
+ * 首次同步帧的 attach 在途登记。
+ *
+ * 并发首帧若各自看到 `entry.syncConnection === undefined`，会各建一份 runtime；后写覆盖前者，
+ * 先建的 provider/subscriber/定时器无人释放。登记按 entry 生命周期托管（WeakMap 随 GC 释放），
+ * 落定后立即删除，失败时下一帧可重新尝试。
+ */
+const pendingSyncAttachments = new WeakMap<ClientConnection, Promise<SyncConnection | null>>();
+
+/**
+ * 确保连接级同步 runtime 存在；并发调用共享同一次 attach。
+ *
+ * 已存在时直接复用。attach 返回 `undefined`（初始化失败）或 reject 时清除在途登记，
+ * 下一帧可重试；失败诊断由 attach 自身负责。
+ */
+export async function ensureGatewaySyncConnection(
+  entry: ClientConnection,
+  attach: () => Promise<SyncConnection | undefined>,
+): Promise<SyncConnection | undefined> {
+  if (entry.syncConnection) return entry.syncConnection;
+  const inflight = pendingSyncAttachments.get(entry);
+  if (inflight) return (await inflight) ?? undefined;
+  const pending = attach().then((connection) => connection ?? null);
+  pendingSyncAttachments.set(entry, pending);
+  try {
+    const connection = await pending;
+    if (connection) entry.syncConnection = connection;
+    return connection ?? undefined;
+  } finally {
+    if (pendingSyncAttachments.get(entry) === pending) pendingSyncAttachments.delete(entry);
+  }
+}
+
+/**
  * 处理 binary 帧的新协议分流。
  *
  * 返回 `true` 表示该帧已由本函数处理（新协议或明确拒绝），调用方不得再进入旧 Yjs 分支。
@@ -168,19 +201,22 @@ export async function routeSyncProtocolFrame(
     return true;
   }
   // 首次新协议帧到达时才创建 runtime：只说不发新帧的连接不承担内存投影成本。
-  entry.syncConnection ??= await attachGatewaySyncConnection(
-    ws,
-    config,
-    entry.organizationId ?? entry.userId,
-    entry.rcsSessionId,
-    `${entry.userId}:${entry.instanceId}`,
-    reportError,
-    overrides,
-    pending?.docManager === undefined ? undefined : { acpSessionId: entry.acpSessionId, docs: pending.docManager },
+  // 并发首帧共享同一次 attach，避免重复创建 runtime 后相互覆盖泄漏。
+  const syncConnection = await ensureGatewaySyncConnection(entry, () =>
+    attachGatewaySyncConnection(
+      ws,
+      config,
+      entry.organizationId ?? entry.userId,
+      entry.rcsSessionId,
+      `${entry.userId}:${entry.instanceId}`,
+      reportError,
+      overrides,
+      pending?.docManager === undefined ? undefined : { acpSessionId: entry.acpSessionId, docs: pending.docManager },
+    ),
   );
-  if (!entry.syncConnection) return true;
+  if (!syncConnection) return true;
   try {
-    await entry.syncConnection.onInboundBytes(data);
+    await syncConnection.onInboundBytes(data);
   } catch (error) {
     reportError("[YJS-FE] sync protocol inbound failed", error);
     const code =

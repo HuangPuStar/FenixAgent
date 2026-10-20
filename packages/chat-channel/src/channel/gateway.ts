@@ -488,6 +488,8 @@ export class Gateway {
       agentStatusReceived: entry.agentStatusReceived,
       sessionLoaded: entry.sessionLoaded,
       workspacePath: entry.workspacePath,
+      // 适配对象每次 action 重建，取当前值即可：runtime 在首次同步帧到达后才创建。
+      syncConnection: entry.syncConnection,
       sendToRelay: (message) => entry.relayHandle.send(message as never),
       getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
       registerSessionSyncRpcId: (rpcId) => {

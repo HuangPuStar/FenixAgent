@@ -234,8 +234,18 @@ export const ChatView = React.memo(
       </SubAgentToolCallGroupContext.Provider>
     );
   },
-  // 比较所有 prop 引用（含 onPermissionRespond），因为调用方现在传入稳定 useCallback
-  (prev, next) =>
+  // 比较所有 prop 引用（含历史加载回调），因为调用方现在传入稳定 useCallback
+  areChatViewPropsEqual,
+);
+
+/**
+ * ChatView 的 memo 比较器：必须覆盖全部会影响渲染的 props。
+ *
+ * 调用方传入稳定回调；漏比历史加载相关 props 会让按钮在 `historyLoading` / 数量变化时
+ * 停留在旧状态，因此这几项与渲染窗口开关一并纳入。
+ */
+function areChatViewPropsEqual(prev: Readonly<ChatViewProps>, next: Readonly<ChatViewProps>): boolean {
+  return (
     prev.entries === next.entries &&
     prev.isLoading === next.isLoading &&
     prev.emptyTitle === next.emptyTitle &&
@@ -249,8 +259,14 @@ export const ChatView = React.memo(
     prev.onApplySuggestedPrompt === next.onApplySuggestedPrompt &&
     prev.onQuote === next.onQuote &&
     prev.onOpenWorkspaceFile === next.onOpenWorkspaceFile &&
-    prev.emptyLogoSrc === next.emptyLogoSrc,
-);
+    prev.emptyLogoSrc === next.emptyLogoSrc &&
+    prev.hasEarlierHistory === next.hasEarlierHistory &&
+    prev.earlierMessageCount === next.earlierMessageCount &&
+    prev.historyLoading === next.historyLoading &&
+    prev.onLoadEarlierHistory === next.onLoadEarlierHistory &&
+    prev.preWindowed === next.preWindowed
+  );
+}
 
 // =============================================================================
 // 空状态 — 与 Chat 设计稿保持一致
