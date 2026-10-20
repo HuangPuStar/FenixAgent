@@ -72,6 +72,8 @@ function storeOptions(capacity: SyncCapacityProfile): {
   return { clock, digest, capacity, lifecycle: { sealGraceMs: 1000, retireGraceMs: 1000 } };
 }
 
+type StoreOptions = ReturnType<typeof storeOptions>;
+
 /**
  * 测试存储：真实 `MemoryProjectionStore`，只加两项记录设施，读写语义与生产实现完全一致。
  *
@@ -123,6 +125,21 @@ class ImportServiceTestStore extends MemoryProjectionStore {
   }
 }
 
+/** 只返回指定换代结局、不真正落盘的存储：用于验证 finalize 对 conflict/unknown 的判定。 */
+class ForcedCommitOutcomeStore extends ImportServiceTestStore {
+  constructor(
+    options: StoreOptions,
+    private readonly forcedOutcome: "conflict" | "unknown",
+  ) {
+    super(options);
+  }
+
+  override async commitGeneration(input: CommitGenerationInput): Promise<CommitGenerationResult> {
+    this.commitInputs.push(input);
+    return { outcome: this.forcedOutcome, pointerRevision: 0, currentGeneration: input.newGeneration.generation };
+  }
+}
+
 interface Harness {
   store: ImportServiceTestStore;
   spool: HistorySpool;
@@ -133,12 +150,17 @@ interface Harness {
 
 /** 装配一套真实依赖；`buildBlock` 缺省即 canonical 块构建器。 */
 async function createHarness(
-  options: { capacity?: SyncCapacityProfile; buildBlock?: BuildBlockFn } = {},
+  options: {
+    capacity?: SyncCapacityProfile;
+    buildBlock?: BuildBlockFn;
+    createStore?: (storeOptions: StoreOptions) => ImportServiceTestStore;
+  } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(join(tmpdir(), "sync-import-"));
   tempRoots.push(root);
   const capacity = options.capacity ?? capacityWithBlockTarget(BLOCK_TARGET_BYTES);
-  const store = new ImportServiceTestStore(storeOptions(capacity));
+  const optionsForStore = storeOptions(capacity);
+  const store = options.createStore?.(optionsForStore) ?? new ImportServiceTestStore(optionsForStore);
   const admission = new AdmissionController(capacity);
   const pool = new BlockBuildPool(deriveBuildPoolConfig(capacity.fairness), admission, clock);
   const spool = new HistorySpool(
@@ -279,6 +301,24 @@ async function importAndFinalize(
   await harness.service.buildAndCommit();
   const result = await harness.service.finalize();
   return { ...began, previous, result };
+}
+
+/**
+ * 让 finalize 收到指定的非成功换代结局；返回失败 harness 与首次错误。
+ *
+ * 存储桩不落盘，因此「指针仍未切换」同时证明服务没有把存储返回的 generation 当成功结果缓存。
+ */
+async function finalizeWithForcedOutcome(
+  outcome: "conflict" | "unknown",
+): Promise<{ harness: Harness; error: SyncProtocolError }> {
+  const harness = await createHarness({
+    createStore: (optionsForStore) => new ForcedCommitOutcomeStore(optionsForStore, outcome),
+  });
+  await harness.service.begin(beginInput());
+  await receiveAll(harness.service, 1);
+  await harness.service.buildAndCommit();
+  const error = await captureSyncError(() => harness.service.finalize());
+  return { harness, error };
 }
 
 describe("HistoryImportService 接收与冻结", () => {
@@ -540,6 +580,37 @@ describe("HistoryImportService 换代与幂等", () => {
       current: before?.currentGeneration,
       revision: before?.pointerRevision,
     });
+  });
+
+  // 意图：换代 conflict 表示指针已被并发改写，新代次未生效；必须报错并清理，不得缓存错误 generation。
+  test("finalize 遇到 conflict 抛 POINTER_REVISION_STALE 且不缓存代次", async () => {
+    const { harness, error } = await finalizeWithForcedOutcome("conflict");
+
+    expect(error.code).toBe("POINTER_REVISION_STALE");
+    expect(harness.service.status()).toMatchObject({
+      state: "failed",
+      failure: { code: "POINTER_REVISION_STALE", retryable: false },
+    });
+    expect((await harness.store.readScopePointer(SCOPE_KEY))?.currentGeneration ?? null).toBeNull();
+    // 第二次 finalize 仍走失败路径，不会返回被缓存的「成功」结果，也不会再提交换代。
+    expect((await captureSyncError(() => harness.service.finalize())).code).toBe("POINTER_REVISION_STALE");
+    expect(harness.store.commitInputs).toHaveLength(1);
+    expectResourcesReleased(harness);
+  });
+
+  // 意图：换代 unknown 的结果不可确认，调用方不得把它当成功；按可重试错误上报，交由上层重读边界。
+  test("finalize 遇到 unknown 抛 COMMIT_OUTCOME_UNKNOWN 且不缓存代次", async () => {
+    const { harness, error } = await finalizeWithForcedOutcome("unknown");
+
+    expect(error.code).toBe("COMMIT_OUTCOME_UNKNOWN");
+    expect(harness.service.status()).toMatchObject({
+      state: "failed",
+      failure: { code: "COMMIT_OUTCOME_UNKNOWN", retryable: true },
+    });
+    expect((await harness.store.readScopePointer(SCOPE_KEY))?.currentGeneration ?? null).toBeNull();
+    expect((await captureSyncError(() => harness.service.finalize())).code).toBe("COMMIT_OUTCOME_UNKNOWN");
+    expect(harness.store.commitInputs).toHaveLength(1);
+    expectResourcesReleased(harness);
   });
 
   // 意图：同键同内容的换代提交必须幂等——存储层认幂等键并回放已提交事实，不重复递增 pointerRevision。

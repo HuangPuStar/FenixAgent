@@ -307,6 +307,18 @@ export class HistoryImportService {
         entryClosure,
         expectedPointerRevision,
       });
+      // conflict/unknown 都不代表新代次已切换：若照常缓存并 cleanup，调用方会把错误代次当成功复用，
+      // 也无法再凭原租约重读指针。交给 catch 走 fail()，让本次导入显式失败。
+      if (result.outcome === "conflict") {
+        throw new SyncProtocolError("POINTER_REVISION_STALE", {
+          message: "generation switch conflicts with current pointer",
+        });
+      }
+      if (result.outcome === "unknown") {
+        throw new SyncProtocolError("COMMIT_OUTCOME_UNKNOWN", {
+          message: "generation switch outcome is unknown",
+        });
+      }
       const finalResult = {
         outcome: result.outcome,
         generation: result.currentGeneration,
