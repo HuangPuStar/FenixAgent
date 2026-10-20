@@ -401,10 +401,14 @@ export async function createSyncHostSession(input: {
           turnId,
         });
       case "tool_call_started":
-      case "tool_call_updated":
-      case "tool_call_completed":
-      case "tool_call_failed":
         return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
+      case "tool_call_updated":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
+      // 私有结果/错误帧的终态由帧类型表达；不能退化成 tool_call_update，否则无 status 时永远 running。
+      case "tool_call_completed":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_result", turnId });
+      case "tool_call_failed":
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_error", turnId });
       case "permission_requested":
         return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "permission_request", turnId });
       case "permission_resolved":

@@ -16,6 +16,7 @@ import { createRotationController, type RotationController, type RotationControl
 import type { FinalEntityDescriptor, RuntimeDocLimits, RuntimeEntityRecord } from "./runtime-doc";
 import { createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
+import { createTextClaim, type TextClaim } from "./text-claim";
 import {
   applyFrontiers,
   bytes,
@@ -128,7 +129,9 @@ class LiveWriterImpl implements LiveWriter {
   private generation: string | null = null;
   private readonly cursors = new Map<DocKind, Cursor>();
   private readonly directory: DirectoryAppender;
-  private readonly idempotentTextKeys = new Set<string>();
+  private readonly textClaim: TextClaim;
+  /** 当前代次的入口闭包（历史导入块）；为空表示没有可对照的历史。 */
+  private historyContentDocIds: readonly string[] = [];
   private closed = false;
   constructor(private readonly options: LiveWriterOptions) {
     const { store, clock, digest, random } = options;
@@ -137,6 +140,7 @@ class LiveWriterImpl implements LiveWriter {
     this.rotation = createRotationController(options.rotation);
     this.sealing = createSealingMachine({ store, clock, digest, random });
     this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
+    this.textClaim = createTextClaim(store);
     this.merge = this.newMerge();
   }
   async acquire(): Promise<void> {
@@ -165,7 +169,16 @@ class LiveWriterImpl implements LiveWriter {
     }
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
-    if (input.idempotent === true && !this.claimText(`${entryId}\u0000${contentSlot}`)) return;
+    if (
+      input.idempotent === true &&
+      !(await this.textClaim.claim({
+        entryId,
+        contentSlot,
+        activeDoc: this.cursor(CONTENT_KIND).doc,
+        historyDocIds: this.historyContentDocIds,
+      }))
+    )
+      return;
     const key: MergeKey = { generation: this.requireGeneration(), turnId, entryId, contentSlot, contentType };
     this.lastFlush = null;
     this.merge.push(key, delta);
@@ -353,15 +366,6 @@ class LiveWriterImpl implements LiveWriter {
     this.rotation.reset();
     return { oldDocId: previous.docId, newDocId: successor.docId, requiredBaseSeq: 0 };
   }
-  /** 用户消息幂等：先看已提交记录，再看本写者已接收但未落地的键。 */
-  private claimText(key: string): boolean {
-    if (this.idempotentTextKeys.has(key)) return false;
-    const stored = records<LiveRecordValue>(this.cursor(CONTENT_KIND).doc)?.toArray() ?? [];
-    const [entryId, contentSlot] = key.split("\u0000");
-    if (stored.some((record) => record.entryId === entryId && record.contentSlot === contentSlot)) return false;
-    this.idempotentTextKeys.add(key);
-    return true;
-  }
   /** 捕获一个改动成切片：每个改动一个事务、各得一条独立 update，同一 Doc 的序号顺延；无变更的事务不占序号（纯删除也算变更，见 `captureChange`）。 */
   private capture(slices: Slice[], cursor: Cursor, mutate: () => void): void {
     const update = captureChange(cursor.doc, mutate);
@@ -440,7 +444,7 @@ class LiveWriterImpl implements LiveWriter {
     // 恢复的语义是「本机未提交输入已经不存在」：丢弃缓冲与未落地的幂等声明，
     // 重新按已提交记录判定，避免失败后同一用户消息被永久拒绝。
     this.merge.dispose();
-    this.idempotentTextKeys.clear();
+    this.textClaim.reset();
     this.merge = this.newMerge();
     const pointer = await this.options.store.readScopePointer(this.scopeKey);
     const generationId = pointer?.currentGeneration ?? null;
@@ -449,6 +453,8 @@ class LiveWriterImpl implements LiveWriter {
     if (generation === null) fail("GENERATION_MISMATCH", "current generation record is missing");
     if (["retired", "failed"].includes(generation.state)) fail("RESOURCE_RETIRED", generationId);
     this.generation = generation.generation;
+    // 只有导入过历史的代次才需要跨块判重；空基线的入口闭包只是一个空活跃块。
+    this.historyContentDocIds = (generation.importEndOrdinal ?? 0) > 0 ? generation.entryRefs.contentDocIds : [];
     await this.loadCursor(generation.entryRefs.runtimeDocId, RUNTIME_KIND);
     await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
     const closureTail = generation.entryRefs.contentDocIds.at(-1);

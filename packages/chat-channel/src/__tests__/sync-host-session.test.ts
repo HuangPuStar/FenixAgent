@@ -12,6 +12,8 @@ import { createGateway, createRelayEvents, createSharedRelay, createWs } from ".
 import type { DocManager } from "../state/doc-manager";
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
+import { fidelityDeserialize } from "../sync/history/fidelity-json";
+import { createRuntimeDoc, RUNTIME_DOC_LIMITS, type RuntimeEntityRecord } from "../sync/live/runtime-doc";
 import { readDirectoryPage, readDirectoryRoot } from "../sync/protocol/directory";
 import {
   type ApplyAckFrame,
@@ -131,7 +133,7 @@ async function sendStatelessHello(session: SyncHostSession): Promise<void> {
 }
 
 /** 一条可计数的稳定历史源；`text_part` 是历史记录的真实保真形态（字符串值）。 */
-function historySourceOf(text: string): SyncHistorySource & { readonly reads: number } {
+function historySourceOf(text: string, entryId = "turn-1:assistant"): SyncHistorySource & { readonly reads: number } {
   let reads = 0;
   return {
     acpSessionId: "ses_legacy",
@@ -140,7 +142,7 @@ function historySourceOf(text: string): SyncHistorySource & { readonly reads: nu
     },
     async read() {
       reads += 1;
-      return [{ value: text, meta: { kind: "text_part", entryId: "turn-1:assistant", contentSlot: 0, partIndex: 0 } }];
+      return [{ value: text, meta: { kind: "text_part", entryId, contentSlot: 0, partIndex: 0 } }];
     },
   };
 }
@@ -252,6 +254,74 @@ function textsOfDoc(frames: readonly SyncFrame[], docId: string): readonly strin
       : [];
   doc.destroy();
   return texts;
+}
+
+/** 历史导入是保真 JSON 的 `text_part`，实时是裸 UTF-8 的 `text`：两种记录都解码成可见正文。 */
+function visibleTextsOfDoc(frames: readonly SyncFrame[], docId: string): readonly string[] {
+  const doc = new Y.Doc();
+  for (const frame of frames) {
+    if ((frame.type === "DOC_BASE" || frame.type === "DOC_UPDATE") && frame.docId === docId) {
+      Y.applyUpdate(doc, Buffer.from(frame.payload, "base64"));
+    }
+  }
+  const records = doc.getMap<unknown>("root").get("records");
+  const texts: string[] = [];
+  if (records instanceof Y.Array) {
+    for (const value of records.toArray()) {
+      if (typeof value !== "object" || value === null) continue;
+      const record = value as { kind?: unknown; payload?: unknown };
+      if (!(record.payload instanceof Uint8Array)) continue;
+      if (record.kind === "text") texts.push(new TextDecoder().decode(record.payload));
+      else if (record.kind === "text_part") {
+        const parsed = fidelityDeserialize(record.payload);
+        if (typeof parsed === "string") texts.push(parsed);
+      }
+    }
+  }
+  doc.destroy();
+  return texts;
+}
+
+/** 按 canonical 快照 + 连续 tail 重建存储中的已提交 Doc。 */
+async function readStoredDoc(store: ProjectionStore, docId: string): Promise<Y.Doc> {
+  const base = await store.readDocStateAt(docId, 0);
+  if (base === null) throw new Error(`expected committed base for ${docId}`);
+  const doc = new Y.Doc({ guid: docId });
+  Y.applyUpdate(doc, base.snapshot);
+  let lastSeq = 0;
+  for (;;) {
+    const updates = await store.readUpdatesAfter(docId, lastSeq, 256);
+    if (updates.length === 0) break;
+    for (const update of updates) {
+      Y.applyUpdate(doc, update.bytes);
+      lastSeq = update.updateSeq;
+    }
+  }
+  return doc;
+}
+
+async function runtimeEntities(store: ProjectionStore, runtimeDocId: string): Promise<readonly RuntimeEntityRecord[]> {
+  const doc = await readStoredDoc(store, runtimeDocId);
+  try {
+    return createRuntimeDoc("runtime", RUNTIME_DOC_LIMITS, doc).exportForRotation();
+  } finally {
+    doc.destroy();
+  }
+}
+
+/** 等待运行态实体数量收敛；写入是异步的，不能靠单次读取判定。 */
+async function waitForEntityCount(
+  store: ProjectionStore,
+  runtimeDocId: string,
+  count: number,
+  label: string,
+): Promise<readonly RuntimeEntityRecord[]> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const entities = await runtimeEntities(store, runtimeDocId);
+    if (entities.length === count) return entities;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting for ${label}`);
 }
 
 function helloFrame(generation: string): HelloFrame {
@@ -711,6 +781,32 @@ describe("sync host session 生命周期", () => {
     await session.dispose();
   });
 
+  // 私有工具结果/错误帧可能不带 status：必须按帧类型收口并移出运行态实体（B06）。
+  test("无 status 的私有工具终态帧收口实体并回收", async () => {
+    const store = createMemoryStore();
+    const { session, frames } = await createHost({}, { store, randomSeed: "tool-frame-terminal" });
+    await sendStatelessHello(session);
+    const { runtimeDocId } = manifestOf(frames);
+    session.acceptNormalizedEvent({
+      type: "tool_call_started",
+      update: { toolCallId: "ok", status: "in_progress" },
+      turnId: "turn-tools",
+    });
+    session.acceptNormalizedEvent({
+      type: "tool_call_started",
+      update: { toolCallId: "bad", status: "in_progress" },
+      turnId: "turn-tools",
+    });
+    const started = await waitForEntityCount(store, runtimeDocId, 2, "two open tools");
+    expect(started.map((entity) => entity.entityId).sort()).toEqual(["bad", "ok"]);
+
+    session.acceptNormalizedEvent({ type: "tool_call_completed", update: { toolCallId: "ok" }, turnId: "turn-tools" });
+    session.acceptNormalizedEvent({ type: "tool_call_failed", update: { toolCallId: "bad" }, turnId: "turn-tools" });
+    const remaining = await waitForEntityCount(store, runtimeDocId, 0, "terminal tools collected");
+    expect(remaining).toEqual([]);
+    await session.dispose();
+  });
+
   // 256 个真正未完成的工具仍受实体表上限约束；第 257 个必须明确停写而不是无限扩张（B06）。
   test("256 个未完成工具仍触发容量上限", async () => {
     const { session } = await createHost({}, { randomSeed: "tool-open-limit" });
@@ -791,6 +887,28 @@ describe("sync host session 生命周期", () => {
     expect(texts.filter((text) => text === "only once")).toHaveLength(1);
     await first.session.dispose();
     await second.session.dispose();
+  });
+
+  // 历史导入已含该用户消息（数字槽位 0）时，attach 补水不得再写一条（B01）。
+  test("历史已含用户消息时 attach 补水不再重复写入", async () => {
+    const { session, frames } = await createHost(
+      {},
+      { historySource: historySourceOf("pending question", "turn-pending:user"), randomSeed: "history-user-dup" },
+    );
+    await sendStatelessHello(session);
+    session.acceptUserMessage("turn-pending", "pending question");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const contentDocIds = await discoverContentDocIds(session, frames, manifestOf(frames));
+    for (const docId of contentDocIds) {
+      await session.onInboundBytes(
+        encodeSyncFrame({ type: "SUBSCRIBE", protocolVersion: 1, docIds: [docId], priority: "live" }),
+      );
+      await tickUntil(session, () => baseFrame(frames, docId) !== undefined, `content ${docId} DOC_BASE`);
+    }
+    const texts = contentDocIds.flatMap((docId) => visibleTextsOfDoc(frames, docId));
+    expect(texts.filter((text) => text === "pending question")).toHaveLength(1);
+    await session.dispose();
   });
 
   // 空闲超过写者租约后下一轮仍必须写入：tick 续租/重竞争，不得把 LEASE_EXPIRED 固化为永久停写（B03）。
