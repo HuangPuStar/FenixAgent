@@ -164,10 +164,10 @@ services:
     command:
       - --enable-adminserver
     ports:
-      # RAGFlow Web 页面：只绑回环，用浏览器拿 API key、建知识库
-      - "127.0.0.1:${RAGFLOW_WEB_PORT:-18080}:80"
-      # RAGFlow HTTP API：只绑回环，供本地源码运行（bun run dev）的 RAGFLOW_API_URL 使用
-      - "127.0.0.1:${RAGFLOW_API_PORT:-19380}:9380"
+      # RAGFlow Web 页面：用浏览器拿 API key、建知识库
+      - "${RAGFLOW_WEB_PORT:-18080}:80"
+      # RAGFlow HTTP API：供本地源码运行（bun run dev）的 RAGFLOW_API_URL 使用
+      - "${RAGFLOW_API_PORT:-19380}:9380"
     expose:
       - "80"
       - "9380"
