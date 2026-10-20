@@ -5,7 +5,7 @@
  * 可展示的类别计数与运行态，不持有 React 状态，便于单测和后续调整分组策略。
  */
 
-import type { ToolCallData, ToolCardKind } from "../types";
+import type { ThreadEntry, ToolCallData, ToolCardKind } from "../types";
 import type { ChatRenderItem } from "./chat-render-layout";
 
 /** 活动链摘要中的工具类别；同类工具合并计数，避免长会话标题被单个工具名淹没。 */
@@ -61,12 +61,21 @@ function toolCallsOf(item: ChatRenderItem): ToolCallData[] {
   return item.entry.type === "tool_call" ? [item.entry.toolCall] : [];
 }
 
-/** 判断活动链是否仍在运行：工具未终态，或加载中且末项是正在产出的助手消息。 */
-export function isActivityChainActive(items: readonly ChatRenderItem[], isLoading: boolean): boolean {
+/**
+ * 判断活动链是否仍在运行：工具未终态，或加载中且末项是当前会话正在产出的助手消息。
+ *
+ * `lastEntry` 参与比较的原因：加载新回复时旧活动链的末项仍是历史助手消息，
+ * 只凭 `isLoading` 会把已结束的旧链重新展开，故只有会话末条条目才算流式内容。
+ */
+export function isActivityChainActive(
+  items: readonly ChatRenderItem[],
+  isLoading: boolean,
+  lastEntry?: ThreadEntry,
+): boolean {
   if (items.some((item) => toolCallsOf(item).some((tool) => isToolActive(tool.status)))) return true;
   if (!isLoading) return false;
   const last = items.at(-1);
-  return last?.type === "entry" && last.entry.type === "assistant_message";
+  return last?.type === "entry" && last.entry.type === "assistant_message" && last.entry === lastEntry;
 }
 
 function isToolActive(status: ToolCallData["status"]): boolean {

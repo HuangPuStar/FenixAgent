@@ -168,6 +168,11 @@ export function computeLineDiff(
     if (op.type === "add") added += 1;
     else if (op.type === "remove") removed += 1;
   }
+  // 退化分支的 ops 已截断到展示行数，增删统计必须回到完整 middle 行数，否则少报真实差异。
+  if (fallback) {
+    added = newMiddle.length;
+    removed = oldMiddle.length;
+  }
 
   const compacted = compactContext([...leading, ...middleOps, ...trailing], contextLines);
   const lines: DiffLine[] = [];

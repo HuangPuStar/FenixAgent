@@ -72,8 +72,8 @@ describe("工具 diff 投影", () => {
 
     expect(diff.truncated).toBe(true);
     expect(diff.lines).toHaveLength(240);
-    expect(diff.removed).toBe(120);
-    expect(diff.added).toBe(120);
+    expect(diff.removed).toBe(450);
+    expect(diff.added).toBe(450);
   });
 
   // CRLF 输入必须按 LF 归一化，避免每行都被判定为变化。

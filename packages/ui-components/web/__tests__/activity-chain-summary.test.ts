@@ -23,7 +23,9 @@ function thought(id: string, text: string): ChatRenderItem {
   return { type: "entry", entry, density: "activity" };
 }
 
-function message(id: string): ChatRenderItem {
+type EntryItem = Extract<ChatRenderItem, { type: "entry" }>;
+
+function message(id: string): EntryItem {
   const entry: AssistantMessageEntry = { type: "assistant_message", id, chunks: [{ type: "message", text: "正文" }] };
   return { type: "entry", entry, density: "activity" };
 }
@@ -74,11 +76,21 @@ describe("活动链运行态判定", () => {
     expect(isActivityChainActive([group(tool("a", "read-file", "waiting_for_confirmation"))], false)).toBe(true);
   });
 
-  // 加载中且末项是正在产出的助手消息时，思考仍在继续，不能提前折叠。
-  test("加载中且末项为助手消息时视为运行中", () => {
-    expect(isActivityChainActive([group(tool("a", "read-file")), message("m1")], true)).toBe(true);
-    expect(isActivityChainActive([group(tool("a", "read-file")), message("m1")], false)).toBe(false);
-    expect(isActivityChainActive([group(tool("a", "read-file", "running")), message("m1")], false)).toBe(true);
+  // 加载中且末项正是会话末条助手消息时，思考仍在继续，不能提前折叠。
+  test("加载中且末项为当前会话助手消息时视为运行中", () => {
+    const item = message("m1");
+    expect(isActivityChainActive([group(tool("a", "read-file")), item], true, item.entry)).toBe(true);
+    expect(isActivityChainActive([group(tool("a", "read-file")), item], false, item.entry)).toBe(false);
+    expect(isActivityChainActive([group(tool("a", "read-file", "running")), item], false, item.entry)).toBe(true);
+  });
+
+  // 加载新回复时旧活动链末项已不是会话末条条目，不能因 isLoading 短暂展开旧链。
+  test("加载中但末项不是会话末条条目时不视为运行中", () => {
+    const stale = message("m1");
+    const latest = message("m2");
+
+    expect(isActivityChainActive([group(tool("a", "read-file")), stale], true, latest.entry)).toBe(false);
+    expect(isActivityChainActive([group(tool("a", "read-file")), stale], true)).toBe(false);
   });
 
   // 仅加载中但末项已是工具时，工具已终态即可折叠。

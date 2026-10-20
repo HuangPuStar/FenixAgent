@@ -92,7 +92,7 @@ export function ActivityChain({
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const bodyId = useId();
   const summary = useMemo(() => summarizeActivityChain(items), [items]);
-  const active = isActivityChainActive(items, isLoading);
+  const active = isActivityChainActive(items, isLoading, lastEntry);
   // `null` 表示尚未手动干预：展开状态完全跟随运行态，链结束后自动折叠。
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const expanded = manualExpanded ?? active;
