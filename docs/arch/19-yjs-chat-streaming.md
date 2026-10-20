@@ -322,6 +322,8 @@ sequenceDiagram
 - 实例生命周期在连接建立时完成：`ensureRunning(ownerUserId, agentId, requestedInstanceUid?)`（宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配，内部走 `agentInstanceService.resolveInstanceForOperation` + `ensureInstanceRuntime`）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
 - **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
+- **跨进程投影换代**：`replaceProjection` 只能触达本进程连接；其他节点上的 legacy 连接由 `LegacyGenerationWatcher` 每 2 秒复核 Redis active generation，重载本地 Chat/Session 投影后强制广播成对 replace 帧。不得关闭 legacy 动作 socket：它可能正是 `load_session` 的调用方，关闭会释放共享 relay 让命令失败。
+- **陈旧窗口不落库**：同步连接的用户消息与 legacy `registerUserMessage` 在写入前复核 active generation；世代已过期则丢弃并让连接换代，不能把新会话的消息静默写进旧 generation。ACP 增量与广播保持每帧零 Redis I/O。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
 - **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
 - **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：新 projection 无时间线内容，load/resume 转发时开启；窗口内 Agent 历史回放由 `relay-event-handler` 合成到新 generation。重连恢复已有时间线时跳过重复合成。
@@ -329,7 +331,7 @@ sequenceDiagram
 - **未配对用户消息不可退役**：合并器只有在 `turnId + entryId` 或等价稳定身份证明覆盖后才能删除旧用户消息；“sync 存在任意文本”不构成覆盖证明。分页缺段时保留新投影合并正文兜底。
 - **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。
 - **写者租约按 scope 续租**：空闲期由 runtime tick 续租；过期后重新竞争新 epoch 并从已提交状态重建。入口停写必须由宿主关闭同步连接（可重试码）让客户端重建，不能只写服务端日志。
-- **工具/权限终态回收**：`completed|complete|done|failed|error` 与权限 `resolved` 先提交终态索引/描述符，再同批移出运行态实体；内容 Doc 达到软水位时先封口轮换，避免累计完成次数撑停入口。工具原始输入输出仍由旧通道承载，不在本投影范围。
+- **工具/权限终态回收**：`completed|complete|done|failed|error` 与权限 `resolved` 先提交终态索引/描述符，再同批移出运行态实体；内容 Doc 达到软水位时先封口轮换，避免累计完成次数撑停入口。私有 `tool_call_result` / `tool_call_error` 帧即使不携带 `status`，也必须按帧类型收口为终态；工具原始输入输出仍由旧通道承载，不在本投影范围。
 - 能恢复既有 `acpSessionId` 时优先恢复（从 Session Doc `session.sessionId` 反查 binding）；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
 - Agent capability 未确认前，相关 Action 必须拒绝或排队在有界队列中。
 
