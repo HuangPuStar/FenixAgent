@@ -3,18 +3,18 @@ import "./ChatView.css";
 import React, { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
-import { cn } from "../../lib/cn";
-import { buildChatRenderBlocks, type ChatRenderItem } from "../lib/chat-render-layout";
+import { buildChatRenderBlocks } from "../lib/chat-render-layout";
 import { Conversation, ConversationContent, ConversationScrollButtons } from "../primitives/conversation";
 import { AgentBadgeSkeleton, type AgentSkillInfo } from "../shell/AgentBadge";
 import { SubAgentToolCallGroupContext } from "../timeline/sub-agent-tool-call-context";
 import { ToolCallGroup } from "../timeline/ToolCallGroup";
 import type { ThreadEntry, ToolCallEntry } from "../types";
+import { ActivityChain } from "./ActivityChain";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
+import { ChatRenderItemView, renderItemKey } from "./chat-render-item-view";
 import { ChatLoadEarlier, useChatRenderWindow } from "./chat-render-window";
 import type { CardEmitter } from "./internal/card-emitter";
-import { AssistantBubble, UserBubble } from "./MessageBubble";
 
 // =============================================================================
 // 统一聊天视图 — Anthropic 编辑式排版
@@ -55,25 +55,6 @@ interface ChatViewProps {
 
 function renderSubAgentToolGroup(entries: ToolCallEntry[]) {
   return <ToolCallGroup entries={entries} />;
-}
-
-/** 活动链作用域内的子 Agent 工具组渲染器：与链内其它工具行一致地带上对齐补偿。 */
-function renderChainToolGroup(entries: ToolCallEntry[]) {
-  return <ToolCallGroup entries={entries} inActivityChain />;
-}
-
-/**
- * 把宿主的 `onOpenWorkspaceFile(envId, path)` 绑定为工具卡片所需的 `onPreviewFile(path)`。
- *
- * 来源差异说明：源实现给 `ToolCallGroup` 透传的是 `envId`，本包 timeline 组已把该契约纯化为
- * `onPreviewFile(path)` 回调；View 层是唯一知道当前会话 envId 的地方，因此在此完成绑定。
- */
-function bindPreviewFile(
-  envId: string | undefined,
-  onOpenWorkspaceFile?: (envId: string, path: string) => void,
-): ((path: string) => void) | undefined {
-  if (!envId || !onOpenWorkspaceFile) return;
-  return (path) => onOpenWorkspaceFile(envId, path);
 }
 
 /**
@@ -177,36 +158,18 @@ export const ChatView = React.memo(
                       previousBlock.item.type === "entry" &&
                       previousBlock.item.entry.type === "assistant_message";
                     return (
-                      <div
+                      <ActivityChain
                         key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
-                        // 本行工具类即源 `chat-design-messages.css` 的 `.chat-activity-chain` 声明；
-                        // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
-                        className={cn(
-                          "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
-                          "before:absolute before:top-2.75 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']",
-                          followsAssistantMessage && "-mt-3.5",
-                        )}
-                        data-slot="chat-activity-chain"
-                        data-after-message={followsAssistantMessage || undefined}
-                      >
-                        {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
-                            Context（源的后代选择器对嵌套工具组一视同仁）。 */}
-                        <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
-                          {block.items.map((item, itemIndex) => (
-                            <ChatRenderItemView
-                              key={renderItemKey(item, itemIndex)}
-                              item={item}
-                              inActivityChain
-                              isLoading={isLoading && item.type === "entry" && item.entry === visibleEntries.at(-1)}
-                              sessionId={sessionId}
-                              envId={envId}
-                              cardEmitter={cardEmitter}
-                              onQuote={onQuote}
-                              onOpenWorkspaceFile={onOpenWorkspaceFile}
-                            />
-                          ))}
-                        </SubAgentToolCallGroupContext.Provider>
-                      </div>
+                        items={block.items}
+                        isLoading={isLoading}
+                        lastEntry={visibleEntries.at(-1)}
+                        afterMessage={followsAssistantMessage}
+                        sessionId={sessionId}
+                        envId={envId}
+                        cardEmitter={cardEmitter}
+                        onQuote={onQuote}
+                        onOpenWorkspaceFile={onOpenWorkspaceFile}
+                      />
                     );
                   }
                   return (
@@ -271,174 +234,6 @@ function areChatViewPropsEqual(prev: Readonly<ChatViewProps>, next: Readonly<Cha
 // =============================================================================
 // 空状态 — 与 Chat 设计稿保持一致
 // =============================================================================
-
-// =============================================================================
-// 间距逻辑 — 用户消息前后间距大，工具调用紧贴
-// =============================================================================
-
-/**
- * 消息条目的外层容器类名（源 `chat-design-messages.css` 的 `.chat-entry*` 间距 + 提示词导航高亮）。
- *
- * `.chat-active-prompt-entry` 承接源 `.chat-entry--active-prompt`：该状态由 `PromptJumpRail` 在运行时
- * 用 `setAttribute("data-active-prompt", "")` 打在本节点上（跨组件契约，用 data 属性替代类名），
- * 对应的闪动关键帧与「减弱动效」覆盖都在同目录 `./ChatView.css`（未分层，压过工具类）。
- * 留在 className 的只有标准变体：选中态的圆角、减弱动效下的静态底色。
- */
-const ENTRY_ACTIVE_PROMPT_CLASS =
-  "chat-active-prompt-entry data-[active-prompt]:rounded-xl motion-reduce:data-[active-prompt]:bg-slate-500/10";
-
-/** 按渲染项密度与条目类型给出外层容器类名（源实现的间距规则逐字保留）。 */
-function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): string {
-  const base = ENTRY_ACTIVE_PROMPT_CLASS;
-  if (item.density === "activity") return `py-0.5 ${base}`;
-  const { entry } = item;
-  // 用户消息前后大留白 — Claude.ai 式宽松间距
-  if (entry?.type === "user_message") {
-    return `py-3 ${base}`;
-  }
-  // 助手消息 — 工具调用紧贴，否则多留白
-  if (entry?.type === "assistant_message") {
-    return `py-3 ${base}`;
-  }
-  return `py-2 ${base}`;
-}
-
-/** 生成渲染项 key：优先使用协议 id，缺失时回落到下标。 */
-function renderItemKey(item: ChatRenderItem | undefined, fallbackIndex: number): string {
-  if (!item) return `item-${fallbackIndex}`;
-  if (item.type === "tool_group") return item.entries[0]?.toolCall.id ?? `tool-group-${fallbackIndex}`;
-  return item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
-}
-
-interface ChatRenderItemViewProps {
-  item: ChatRenderItem;
-  /** 是否位于活动链内：透传给本项渲染出的工具组（工具行据此做对齐补偿）。 */
-  inActivityChain?: boolean;
-  isLoading: boolean;
-  sessionId?: string;
-  envId?: string;
-  cardEmitter?: CardEmitter;
-  onQuote?: (text: string, sessionId?: string) => void;
-  onOpenWorkspaceFile?: (envId: string, path: string) => void;
-}
-
-/**
- * 渲染单个渲染项：工具组走 ToolCallGroup，其余走 EntryRenderer。
- *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
- * 纯化改动点：新增向下透传 `cardEmitter` / `onQuote` / `onOpenWorkspaceFile`（宿主注入点）；
- * 消息节点 id `chat-entry-${entryId}` 为跨组件契约（PromptJumpRail 依赖），保持不变。
- */
-function ChatRenderItemView({
-  item,
-  inActivityChain,
-  isLoading,
-  sessionId,
-  envId,
-  cardEmitter,
-  onQuote,
-  onOpenWorkspaceFile,
-}: ChatRenderItemViewProps) {
-  if (item.type === "tool_group") {
-    return (
-      <div>
-        <ToolCallGroup
-          entries={item.entries}
-          onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)}
-          inActivityChain={inActivityChain}
-        />
-      </div>
-    );
-  }
-
-  const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
-  const entryIsStreaming = isLoading && item.entry.type === "assistant_message";
-  return (
-    <div id={`chat-entry-${entryId}`} className={entryClassName(item)}>
-      <EntryRenderer
-        entry={item.entry}
-        density={item.density}
-        inActivityChain={inActivityChain}
-        isLoading={entryIsStreaming}
-        sessionId={sessionId}
-        envId={envId}
-        cardEmitter={cardEmitter}
-        onQuote={onQuote}
-        onOpenWorkspaceFile={onOpenWorkspaceFile}
-      />
-    </div>
-  );
-}
-
-// =============================================================================
-// 单条目渲染器
-// =============================================================================
-
-const EntryRenderer = React.memo(
-  function EntryRenderer({
-    entry,
-    density,
-    inActivityChain,
-    isLoading,
-    sessionId,
-    envId,
-    cardEmitter,
-    onQuote,
-    onOpenWorkspaceFile,
-  }: {
-    entry: ThreadEntry;
-    /** 渲染密度（来自 `ChatRenderItem`）：`activity` 表示条目并入活动链，助手消息正文块间距收紧 */
-    density: "normal" | "activity";
-    /** 是否位于活动链内（透传给工具组，见 `ToolCallGroup` 的 `inActivityChain`）。 */
-    inActivityChain?: boolean;
-    isLoading: boolean;
-    sessionId?: string;
-    envId?: string;
-    cardEmitter?: CardEmitter;
-    onQuote?: (text: string, sessionId?: string) => void;
-    onOpenWorkspaceFile?: (envId: string, path: string) => void;
-  }) {
-    switch (entry.type) {
-      case "user_message":
-        return <UserBubble entry={entry} envId={envId} onOpenWorkspaceFile={onOpenWorkspaceFile} />;
-      case "assistant_message":
-        return (
-          <AssistantBubble
-            entry={entry}
-            compact={density === "activity"}
-            isStreaming={isLoading}
-            sessionId={sessionId}
-            envId={envId}
-            cardEmitter={cardEmitter}
-            onQuote={onQuote}
-          />
-        );
-      case "tool_call":
-        return (
-          <ToolCallGroup
-            entries={[entry as ToolCallEntry]}
-            onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)}
-            inActivityChain={inActivityChain}
-          />
-        );
-      case "plan":
-        return null;
-      default:
-        return null;
-    }
-  },
-  // 比较所有 prop 引用（含 onPermissionRespond），调用方传入稳定 useCallback
-  (prev, next) =>
-    prev.entry === next.entry &&
-    prev.density === next.density &&
-    prev.inActivityChain === next.inActivityChain &&
-    prev.isLoading === next.isLoading &&
-    prev.sessionId === next.sessionId &&
-    prev.envId === next.envId &&
-    prev.cardEmitter === next.cardEmitter &&
-    prev.onQuote === next.onQuote &&
-    prev.onOpenWorkspaceFile === next.onOpenWorkspaceFile,
-);
 
 // =============================================================================
 // 加载指示器 — 阶段文字 + 流光条
