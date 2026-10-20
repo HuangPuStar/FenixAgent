@@ -2,6 +2,7 @@ import { beforeEach, expect, test } from "bun:test";
 import type { ModuleContribution, ModuleManifest } from "@fenix/platform-sdk";
 import { initializeTestApplicationInfrastructure } from "@fenix/platform-sdk/testing";
 import { Elysia } from "elysia";
+import { CE_ASSEMBLY_PROFILE_PATH } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
 import {
   API_SLOT,
@@ -175,9 +176,12 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
 
   // 宿主与 workflow-v2 的必填键都不预设进程环境里有，按 `assembly-env.test.ts` 的同一口径经 `loadEnv`
   // 注入（fixture 在后，覆盖进程环境里的同名值），其余键仍取真实进程环境。
+  // 显式钉住 ce.json：缺省会跟随部署面的 `RCS_ASSEMBLY_PROFILE_PATH`（本地覆盖成 ce-tickets 时，下面按
+  // ce.json 写死的路由清单会多出 git/tickets 的入口，错在环境而不是路由贡献本身）。
   await bootstrapServerAssembly({
     mountContribution: mountServerRouteContribution,
     loadEnv: (definitions) => loadServerEnv(definitions, { ...process.env, ...ASSEMBLY_ENV_INPUT }),
+    profilePath: CE_ASSEMBLY_PROFILE_PATH,
   });
 
   // 直接检查真实装配后的路由表，防止已退役端点从其它贡献重新挂入。

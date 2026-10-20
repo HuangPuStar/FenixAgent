@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createModuleRegistry, loadDeclaredEnv, type ModuleManifest } from "@fenix/platform-sdk";
 import { generatedModuleManifests } from "../../../generated/module-registry";
-import { loadAssemblyProfile } from "../assembly-config";
+import { CE_ASSEMBLY_PROFILE_PATH, loadAssemblyProfile } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
 
 /**
@@ -59,7 +59,9 @@ const contractManifests: readonly ModuleManifest[] = generatedModuleManifests;
 
 // 真实 ce.json 必须能被真实生成的 registry 解析，否则发布组合在启动前就不可用。
 test("真实 profile 与生成的 registry 可解析", async () => {
-  const profile = await loadAssemblyProfile();
+  // 显式钉住 ce.json：缺省参数会跟随部署面的 `RCS_ASSEMBLY_PROFILE_PATH`（本地被覆盖成 ce-tickets 时，
+  // 下面这份按 ce.json 写死的期待会整体错位，且错在环境而不是发布组合上）。其它 profile 由 tickets-assembly 覆盖。
+  const profile = await loadAssemblyProfile(CE_ASSEMBLY_PROFILE_PATH);
   const resolved = createModuleRegistry(generatedModuleManifests).resolveProfile(profile);
 
   expect(resolved.modules.map((manifest) => [manifest.id, manifest.kind])).toEqual(EXPECTED_SERVER_MODULES);
@@ -150,8 +152,9 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
 
 // 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：每个受控资源主表都必须各自声明
 // 自己的 `storage`，漏声明的那一个会在运行期以「未注册存储绑定」报错，而不是静默放宽授权范围。
-// 六项 = 五张以 `visibility` 表达平台受众的主表 + `agent_site_app`（站点的 `visibility` 是发布范围，
-// 注册只声明归属列，见 `agent-config/src/server/access/agent-site-app-resource.ts` 文件头）。
+// 七项 = 五张以 `visibility` 表达平台受众的主表 + `agent_site_app`（站点的 `visibility` 是发布范围，见
+// `agent-config/src/server/access/agent-site-app-resource.ts` 文件头）+ `ticket_project`（工单项目无受众列、
+// 只声明归属列，见 `packages/resources/tickets/src/server/access/ticket-project-resource.ts` 文件头）。
 test("受控资源 manifest 各自声明存储绑定", async () => {
   const declaredTypes = contractManifests
     .flatMap((manifest) => manifest.accessControlBindings ?? [])
@@ -165,6 +168,7 @@ test("受控资源 manifest 各自声明存储绑定", async () => {
     "plugin_market_package",
     "provider",
     "skill",
+    "ticket_project",
   ]);
 });
 

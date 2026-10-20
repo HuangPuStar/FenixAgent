@@ -121,7 +121,11 @@ test("侧栏壳几何由刻度类表达，CSS 只留表达不了的", () => {
   expect(view).toContain("agent-sidebar-tree-resize-handle h-px z-2 shrink-0 cursor-row-resize");
   expect(view).toContain("agent-sidebar-user-button flex min-h-10 px-3 w-full items-center");
   expect(view).toContain("agent-sidebar-user-name truncate flex-1 min-w-0 pl-2.5 text-left text-13");
-  expect(view).toContain("agent-sidebar-org-row flex min-h-10 px-3 w-full items-center");
+  // 组织行是**容器**（左侧底栏入口 + 右侧组织切换）：入口最小高度与组织按钮一致（40px），组织按钮拿
+  // 剩余宽度（`min-w-0 flex-1`），长组织名才会截断而不是把入口挤走。
+  expect(view).toContain("agent-sidebar-org-row flex min-h-10 w-full items-center");
+  expect(view).toContain("agent-sidebar-footer-entry flex min-h-10 shrink-0 cursor-pointer items-center gap-2 px-3");
+  expect(view).toContain("agent-sidebar-org-trigger flex min-h-10 min-w-0 flex-1 items-center");
   expect(view).toContain("agent-sidebar-org-name truncate flex-1 min-w-0 pl-2.5 text-left text-11 font-normal");
   // 头像槽 32×26、头像 26px 圆、组织图标 16px、两处 chevron 14px、品牌标记 44px 与字标间距 / 下边距
   expect(view).toContain("agent-sidebar-avatar-slot w-8 h-6.5 flex shrink-0 items-center justify-center");

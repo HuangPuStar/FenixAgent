@@ -232,6 +232,13 @@
       "when": 1790734597642,
       "tag": "0032_workflow-v2-rename-upstream-identifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791873276135,
+      "tag": "0033_common-git-tickets-tables",
+      "breakpoints": true
     }
   ]
 }

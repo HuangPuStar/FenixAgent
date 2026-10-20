@@ -12,7 +12,7 @@ import { describe, expect, test } from "bun:test";
 import type { WebAppContribution } from "@fenix/web-runtime/shell/contribution";
 import { FileText } from "lucide-react";
 
-import { ASSEMBLED_NAV_GROUPS, assembleNavGroups, filterNavGroups } from "../shell/shell-navigation";
+import { ASSEMBLED_NAVIGATION, assembleNavigation, filterNavEntries, filterNavGroups } from "../shell/shell-navigation";
 
 /**
  * 迁移前的宿主 `SIDEBAR_NAV_GROUPS` 逐项快照（分组 id → 组内项 id，顺序即显示顺序）。
@@ -58,18 +58,18 @@ function contribution(navigation: readonly { id: string; groupId: string; order:
 describe("WebShell 导航装配", () => {
   // 侧栏的分组、组序与项序是用户可见契约：所有权从宿主旧表搬到产物之后必须逐项相同。
   test("真实产物装配出的导航与迁移前逐项一致", () => {
-    expect(ASSEMBLED_NAV_GROUPS.map((group) => group.id)).toEqual(PRE_MIGRATION_NAV.map(([id]) => id));
-    expect(groupIds(ASSEMBLED_NAV_GROUPS)).toEqual(PRE_MIGRATION_NAV.map(([, items]) => [...items]));
+    expect(ASSEMBLED_NAVIGATION.groups.map((group) => group.id)).toEqual(PRE_MIGRATION_NAV.map(([id]) => id));
+    expect(groupIds(ASSEMBLED_NAVIGATION.groups)).toEqual(PRE_MIGRATION_NAV.map(([, items]) => [...items]));
   });
 
   // 分组标签的 owner 仍是宿主 `sidebar` 字典：Shell 声明分组时只写 labelKey，译文由渲染处取。
   test("分组标签以 labelKey 形式声明，不由包提供", () => {
-    expect(ASSEMBLED_NAV_GROUPS.map((group) => group.labelKey)).toEqual(["navGroupCore", "navGroupConfig"]);
+    expect(ASSEMBLED_NAVIGATION.groups.map((group) => group.labelKey)).toEqual(["navGroupCore", "navGroupConfig"]);
   });
 
   // 每一项都要带自己的命名空间：Shell 用 t(labelKey, { ns }) 取值，缺 ns 会回退成 key 回显。
   test("每个导航项都携带非空的 ns 与 labelKey", () => {
-    for (const group of ASSEMBLED_NAV_GROUPS) {
+    for (const group of ASSEMBLED_NAVIGATION.groups) {
       for (const item of group.items) {
         expect(item.ns.length, `${item.id} 缺少 ns`).toBeGreaterThan(0);
         expect(item.labelKey.length, `${item.id} 缺少 labelKey`).toBeGreaterThan(0);
@@ -79,7 +79,7 @@ describe("WebShell 导航装配", () => {
 
   // 组内顺序由 order 决定，与包在产物里的声明先后无关（profile 的 web 列表顺序即包顺序）。
   test("组内按 order 升序，与声明顺序无关", () => {
-    const groups = assembleNavGroups([
+    const { groups } = assembleNavigation([
       contribution([
         { groupId: "core", id: "third", order: 30 },
         { groupId: "core", id: "first", order: 10 },
@@ -90,9 +90,36 @@ describe("WebShell 导航装配", () => {
     expect(groupIds(groups)).toEqual([["first", "second", "third"], []]);
   });
 
+  // 底栏版位（`footer`）不是分组：声明在它名下的项不进任何分组，单独按 order 出现在 footer 里——
+  // 「版位归 Shell、载荷归包」这条所有权口径的落点就是这里。
+  test("底栏版位的项不进分组，按 order 进入 footer", () => {
+    const { footer, groups } = assembleNavigation([
+      contribution([
+        { groupId: "core", id: "home", order: 10 },
+        { groupId: "footer", id: "second-entry", order: 20 },
+        { groupId: "footer", id: "first-entry", order: 10 },
+      ]),
+    ]);
+
+    expect(footer.map((entry) => entry.id)).toEqual(["first-entry", "second-entry"]);
+    expect(groupIds(groups)).toEqual([["home"], []]);
+  });
+
+  // 同一版位内 order 必须唯一：底栏与分组共用一条校验，重复时底栏的顺序同样不可预测。
+  test("底栏版位内 order 重复导致装配失败", () => {
+    expect(() =>
+      assembleNavigation([
+        contribution([
+          { groupId: "footer", id: "alpha", order: 10 },
+          { groupId: "footer", id: "beta", order: 10 },
+        ]),
+      ]),
+    ).toThrow('在 "footer" 内声明了相同的 order 10');
+  });
+
   // 分组表由 Shell 持有：包声明 Shell 不认识的分组说明两端漂移，必须失败而不是静默丢项。
   test("未声明的分组导致装配失败", () => {
-    expect(() => assembleNavGroups([contribution([{ groupId: "ghost", id: "x", order: 10 }])])).toThrow(
+    expect(() => assembleNavigation([contribution([{ groupId: "ghost", id: "x", order: 10 }])])).toThrow(
       '未声明的导航分组 "ghost"',
     );
   });
@@ -100,18 +127,18 @@ describe("WebShell 导航装配", () => {
   // 同一分组内 order 必须唯一：重复时排序结果取决于实现细节，版式会变得不可预测。
   test("组内 order 重复导致装配失败", () => {
     expect(() =>
-      assembleNavGroups([
+      assembleNavigation([
         contribution([
           { groupId: "core", id: "alpha", order: 10 },
           { groupId: "core", id: "beta", order: 10 },
         ]),
       ]),
-    ).toThrow('在分组 "core" 内声明了相同的 order 10');
+    ).toThrow('在 "core" 内声明了相同的 order 10');
   });
 
   // 没有贡献的分组仍然出现（空组由渲染与裁剪决定），保证分组表本身不随贡献内容变化。
   test("无贡献的分组产空组", () => {
-    expect(assembleNavGroups([])).toEqual([
+    expect(assembleNavigation([]).groups).toEqual([
       { id: "core", items: [], labelKey: "navGroupCore" },
       { id: "config", items: [], labelKey: "navGroupConfig" },
     ]);
@@ -121,7 +148,7 @@ describe("WebShell 导航装配", () => {
 describe("WebShell 导航的运行时裁剪", () => {
   // 隐藏项只按 id 匹配，命中即从所在组消失，其余项与组序原样保留。
   test("隐藏单项后其余项与组序不变", () => {
-    const filtered = filterNavGroups([...ASSEMBLED_NAV_GROUPS], ["mcp"]);
+    const filtered = filterNavGroups([...ASSEMBLED_NAVIGATION.groups], ["mcp"]);
 
     expect(groupIds(filtered)[0]).toEqual([...PRE_MIGRATION_NAV[0][1]]);
     expect(groupIds(filtered)[1]).toEqual([
@@ -139,8 +166,23 @@ describe("WebShell 导航的运行时裁剪", () => {
 
   // 整组被隐藏后不得在界面上留下空标题。
   test("整组隐藏后移除空组", () => {
-    const filtered = filterNavGroups([...ASSEMBLED_NAV_GROUPS], ["home", "agents", "workflow", "vertical-models"]);
+    const filtered = filterNavGroups(
+      [...ASSEMBLED_NAVIGATION.groups],
+      ["home", "agents", "workflow", "vertical-models"],
+    );
 
     expect(filtered.map((group) => group.id)).toEqual(["config"]);
+  });
+
+  // 底栏入口与分组共用同一份隐藏列表：同一个 id 被隐藏时，底栏那份也必须消失（两处不同步会让用户
+  // 在一个版位里看到的入口在另一个版位里凭空消失）。
+  test("底栏入口按同一份隐藏列表裁剪且不改序", () => {
+    const entries = [
+      { id: "tickets", order: 10 },
+      { id: "feedback", order: 20 },
+    ];
+
+    expect(filterNavEntries(entries, ["tickets"]).map((entry) => entry.id)).toEqual(["feedback"]);
+    expect(filterNavEntries(entries, []).map((entry) => entry.id)).toEqual(["tickets", "feedback"]);
   });
 });

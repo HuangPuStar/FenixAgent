@@ -26,6 +26,7 @@ const EMPTY_IDENTITY_DIRECTORY: IdentityDirectory = {
     throw new Error("IdentityDirectory.resolveSystemTenant 未在测试中 stub");
   },
   listOrganizationsWithMembers: async () => [],
+  listOrganizationMembers: async () => ({ items: [], total: 0 }),
 };
 
 let identityDirectoryStub: Partial<IdentityDirectory> = {};
