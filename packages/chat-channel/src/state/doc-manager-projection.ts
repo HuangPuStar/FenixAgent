@@ -47,28 +47,32 @@ export function normalizeUserText(text: string): string {
  * 只对用户消息做一次 Redis 复核（低频且用户可感知）；ACP 增量与广播保持每帧零 Redis。
  * Redis 故障由 `isGenerationCurrent` 按可用性放行，恢复后由连接层 watcher 收敛。
  */
-export function scheduleUserMessageWrite(input: {
+export async function scheduleUserMessageWrite(input: {
   readonly redisPresent: boolean;
   readonly doc: ChatDoc | undefined;
   readonly currentDoc: () => ChatDoc | undefined;
   readonly isGenerationCurrent: (generation: string) => Promise<boolean>;
   readonly write: () => void;
   readonly onDropped: () => void;
-}): void {
+  readonly onError?: (error: unknown) => void;
+}): Promise<void> {
   const doc = input.doc;
   if (!input.redisPresent || doc === undefined) {
     input.write();
     return;
   }
-  void input.isGenerationCurrent(doc.generation).then((current) => {
-    if (!current) {
-      input.onDropped();
-      return;
-    }
-    // 复核 await 窗口内可能已换代：这条消息属于旧 ACP 会话，不能写进新投影。
-    if (input.currentDoc() !== doc) return;
-    input.write();
-  });
+  await input
+    .isGenerationCurrent(doc.generation)
+    .then((current) => {
+      if (!current) {
+        input.onDropped();
+        return;
+      }
+      // 复核 await 窗口内可能已换代：这条消息属于旧 ACP 会话，不能写进新投影。
+      if (input.currentDoc() !== doc) return;
+      input.write();
+    })
+    .catch((error: unknown) => input.onError?.(error));
 }
 
 /** 按 blockOrder 拼接 entry 文本，块间分隔防止跨块误匹配。 */

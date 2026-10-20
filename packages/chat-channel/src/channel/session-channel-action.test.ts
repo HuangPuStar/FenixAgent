@@ -423,7 +423,7 @@ describe("SessionChannel action flow", () => {
     const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
     const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
     const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
-    harness.docManager.registerUserMessage("rcs-1", "message from the previous session");
+    await harness.docManager.registerUserMessage("rcs-1", "message from the previous session");
     setSessionInfo(oldSession, { sessionId: "ses-old", title: "旧会话", status: "ready" });
 
     await harness.channel.handleAction(
@@ -447,7 +447,7 @@ describe("SessionChannel action flow", () => {
     const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
     const persistedChat = (await harness.docManager.openChat("rcs-1")).ydoc;
     const persistedSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
-    harness.docManager.registerUserMessage("rcs-1", "message from the persisted session");
+    await harness.docManager.registerUserMessage("rcs-1", "message from the persisted session");
     setSessionInfo(persistedSession, { sessionId: "ses-target", title: "已恢复会话", status: "ready" });
 
     await harness.channel.handleAction(

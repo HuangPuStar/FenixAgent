@@ -458,7 +458,7 @@ export class SessionChannel {
     } catch (err) {
       this.dependencies.reportError("[SessionChannel] Failed to ensure session doc for user message:", err);
     }
-    const turnId = this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
+    const turnId = await this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
     // 用户消息只由后端写入：turnId 来自 registerUserMessage 的可信绑定，Agent 回显不进入新协议入口。
     // 同步连接可能属于另一个 socket，必须经会话级入口扇出，而不是查询发起动作的连接。
     if (turnId) this.dependencies.publishUserMessage?.(connection.rcsSessionId, turnId, text);

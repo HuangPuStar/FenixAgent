@@ -349,9 +349,9 @@ export class DocManager {
   /**
    * 注册用户消息：生成新 turn 并投递 user_message 规范化事件。
    * turnId 每次调用生成新值（恢复执行必须创建显式新 turn，不得复用已终结 turn）；
-   * 返回 turnId 供控制面（CommandCoordinator）写入 committed Ack。
+   * resolve 时消息已写入（或确认代次过期而丢弃），调用方可安全转发 prompt。
    */
-  registerUserMessage(rcsSessionId: string, content: string): string {
+  async registerUserMessage(rcsSessionId: string, content: string): Promise<string> {
     const turnId = `turn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const event: NormalizedEvent = {
       type: "user_message",
@@ -359,13 +359,14 @@ export class DocManager {
       content: { type: "text", text: content },
       turnId,
     };
-    scheduleUserMessageWrite({
+    await scheduleUserMessageWrite({
       redisPresent: this.getRedis() !== null,
       doc: this.chatDocs.get(rcsSessionId),
       currentDoc: () => this.chatDocs.get(rcsSessionId),
       isGenerationCurrent: (generation) => this.isGenerationCurrent(rcsSessionId, generation),
       write: () => this.processNormalizedEvent(rcsSessionId, event),
       onDropped: () => this.onLog?.(`[DocManager] user message dropped: projection is stale for ${rcsSessionId}`),
+      onError: (error) => this.onError?.("[DocManager] user message write failed", error),
     });
     return turnId;
   }

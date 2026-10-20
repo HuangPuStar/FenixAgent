@@ -129,7 +129,7 @@ describe("跨进程 legacy 投影换代", () => {
     ).toEqual([`chat:${RCS}:${replaced.generation}`, `session:${RCS}:${replaced.generation}`].sort());
 
     // 换代后的 legacy 写入只能出现在新代次，旧 Doc 不再接收数据。
-    managerB.registerUserMessage(RCS, "after-reload");
+    await managerB.registerUserMessage(RCS, "after-reload");
     await settle();
     expect(userTexts(currentChat!.ydoc)).toContain("after-reload");
     expect(userTexts(oldChat!.ydoc)).not.toContain("after-reload");
@@ -156,7 +156,7 @@ describe("跨进程 legacy 投影换代", () => {
     const replaced = await managerA.replaceProjection(RCS, "ses-B");
 
     // 不触发 watcher：模拟 2 秒轮询窗口内用户先发出消息。
-    managerB.registerUserMessage(RCS, "window-write");
+    await managerB.registerUserMessage(RCS, "window-write");
     await settle();
 
     expect(managerB.getChat(RCS)?.generation).toBe(oldChat!.generation);
