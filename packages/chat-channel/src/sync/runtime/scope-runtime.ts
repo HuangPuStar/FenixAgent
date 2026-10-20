@@ -371,8 +371,8 @@ export async function createSyncScopeRuntime(input: {
           bound.scanTimeouts();
         }
       }
-      // 空闲期也要续租：常规 tick 是唯一不依赖新写入的心跳。
-      await renewWriterLease(true);
+      // 空闲期也要续租，但必须遵守续租间隔；tick 的 100ms 节拍不得变成持续存储写。
+      await renewWriterLease(false);
       releaseExpiredCoexistence();
     },
 

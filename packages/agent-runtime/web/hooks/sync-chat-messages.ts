@@ -44,6 +44,21 @@ function segmentedEntryBases(legacy: readonly StructuredMessage[]): Set<string> 
   return bases;
 }
 
+/** 分段 entry 的旧文本并集；用于判断新投影的合并正文是否已被旧结构完整覆盖。 */
+function segmentedTextByBase(legacy: readonly StructuredMessage[], bases: ReadonlySet<string>): Map<string, string> {
+  const texts = new Map<string, string>();
+  for (const message of legacy) {
+    const base = entryBaseId(message.id);
+    if (!bases.has(base) || !isText(message)) continue;
+    texts.set(base, `${texts.get(base) ?? ""}${textOf(message)}`);
+  }
+  return texts;
+}
+
+function normalizedText(value: string): string {
+  return value.replace(/\s+/g, "");
+}
+
 /**
  * 纯文本旧消息：用户消息，或无错误、只含 message chunk 的助手消息。
  * 工具、计划、思考与错误属于旧通道仍需保留的非文本能力。
@@ -93,7 +108,21 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     // 新投影已有文本即视为文本覆盖成立；不因某次实时帧暂时为空而回退旧全量。
     // 分段 entry 除外：新投影只能表达合并后的整条正文，覆盖证明不成立。
     const segmentedBases = segmentedEntryBases(legacy);
+    const segmentedText = segmentedTextByBase(legacy, segmentedBases);
     const syncCoversText = retireLegacyText && sync.some(isText);
+    const syncTextUnion = normalizedText(
+      sync
+        .filter(isText)
+        .map((message) => textOf(message))
+        .join(""),
+    );
+    // 分段 entry 的单条合并文本，只有被旧结构正文完整覆盖时才可退役。
+    const coveredBySegments = (message: StructuredMessage): boolean => {
+      if (message.type !== "assistant_message") return false;
+      const legacyText = segmentedText.get(message.id);
+      if (legacyText === undefined) return false;
+      return normalizedText(legacyText).includes(normalizedText(textOf(message)));
+    };
 
     const legacyTimes = new WeakMap<StructuredMessage, number>();
     const syncTimes = new WeakMap<StructuredMessage, number>();
@@ -131,7 +160,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
 
     const pairs = new Map<string, StructuredMessage>();
     for (const message of sync) {
-      // 整条 entry 被旧结构分段表达时，新投影的单条合并文本不参与配对，也不作为独立消息加入。
+      // 分段 entry 不参与配对：旧结构决定工具顺序，合并文本只作为缺段时的兜底消息。
       if (segmentedBases.has(message.id)) continue;
       const alias = aliases.get(`sync:${message.id}`);
       let match = legacyById.get(message.id);
@@ -157,9 +186,16 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
 
     for (const message of legacy) {
       const pair = pairs.get(message.id);
-      // 未配对纯文本：新投影已覆盖文本，旧副本只会造成重复或绕过分页。
-      // 分段 entry 必须整组保留，否则工具后的最终答案会被当作“未配对纯文本”删除。
-      if (pair === undefined && syncCoversText && isPureText(message) && !segmentedBases.has(entryBaseId(message.id)))
+      // 未配对用户消息必须保留：任意 sync 文本不构成“该轮已被覆盖”的证明。
+      // 助手纯文本仅在正文被新投影实际包含时退役（分段 entry 另由结构覆盖判定）。
+      if (
+        pair === undefined &&
+        syncCoversText &&
+        message.type === "assistant_message" &&
+        isPureText(message) &&
+        !segmentedBases.has(entryBaseId(message.id)) &&
+        syncTextUnion.includes(normalizedText(textOf(message)))
+      )
         continue;
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
@@ -169,7 +205,8 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       legacyKeys.push(key);
     }
     for (const message of sync) {
-      if (segmentedBases.has(message.id)) continue;
+      // 旧分段完整覆盖时合并文本退役；缺段（分页/旧结构缺失）时保留为兜底，不能整条丢弃。
+      if (segmentedBases.has(message.id) && coveredBySegments(message)) continue;
       if (nextAliases.has(`sync:${message.id}`)) continue;
       const key = aliases.get(`sync:${message.id}`) ?? message.id;
       nextAliases.set(`sync:${message.id}`, key);

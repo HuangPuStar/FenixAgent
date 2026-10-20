@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { StructuredMessage } from "@fenix/chat-channel";
+import type { NormalizedEvent, StructuredMessage } from "@fenix/chat-channel";
+import { applyNormalizedEvent, createChatDoc, createSessionDoc } from "@fenix/chat-channel/server";
 import { AssistantBubble, UserBubble } from "@fenix/ui-components/chat/view/MessageBubble";
-import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
+import {
+  chatDocEntriesToStructuredMessages,
+  structuredToThreadEntries,
+} from "@fenix/web-runtime/chat/structured-to-thread";
 import { createInstance } from "i18next";
 import { createElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
@@ -11,6 +15,12 @@ import { createSyncMessageMerger } from "../../../../packages/agent-runtime/web/
 function user(id: string, content: string, ts = 10000): StructuredMessage {
   return { type: "user_message", id, content, ts, seq: 0 };
 }
+function textOf(message: StructuredMessage): string {
+  return message.type === "assistant_message"
+    ? message.chunks.map((chunk) => (chunk.type === "message" ? chunk.text : "")).join("")
+    : "";
+}
+
 function assistant(id: string, text: string, ts = 10000): StructuredMessage {
   return { type: "assistant_message", id, chunks: [{ type: "message", text }], ts, seq: 1 };
 }
@@ -70,8 +80,67 @@ describe("新旧消息合并视图", () => {
     expect(merged.at(-1)).toMatchObject({ id: "entry-1#1" });
   });
 
-  // 新投影已含文本时，旧通道纯文本历史退役；工具/计划/思考/错误仍由旧通道补充。
-  test("新投影覆盖文本后旧纯文本退役且非文本保留", () => {
+  // 真实 Chat Doc 切分 → 合并器：工具前后多段正文、多工具与错误终态都必须保留最终答案（B02）。
+  test("真实 Chat Doc 的多段正文与工具顺序经合并后不丢最终答案", () => {
+    const chat = createChatDoc("rcs-real-merge", null).ydoc;
+    const session = createSessionDoc("rcs-real-merge", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问题" } }, "turn-real"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "前文" } }, "turn-real"));
+    applyNormalizedEvent(pair, event("reasoning_delta", { content: { type: "text", text: "思考" } }, "turn-real"));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-a", title: "Read" }, "turn-real"));
+    applyNormalizedEvent(
+      pair,
+      event("tool_call_completed", { toolCallId: "tool-a", status: "completed" }, "turn-real"),
+    );
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-b", title: "Grep" }, "turn-real"));
+    applyNormalizedEvent(pair, event("tool_call_completed", { toolCallId: "tool-b", status: "failed" }, "turn-real"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "最终答案" } }, "turn-real"));
+    applyNormalizedEvent(pair, event("turn_failed", {}, "turn-real"));
+
+    const legacy = chatDocEntriesToStructuredMessages(chat);
+    const sync = [assistant("turn-real:assistant", "前文最终答案", 0)];
+    const merged = createSyncMessageMerger()(legacy, sync);
+    const visible = merged.map((message) => (message.type === "assistant_message" ? textOf(message) : "")).join("");
+    expect(visible).toContain("最终答案");
+    expect(visible.split("最终答案")).toHaveLength(2);
+    expect(merged.some((message) => message.type === "tool_call" && message.id === "tool-a")).toBe(true);
+    expect(merged.some((message) => message.type === "tool_call" && message.id === "tool-b")).toBe(true);
+  });
+
+  // 分页缺段时旧结构不完整：合并器必须保留新投影的整条正文兜底，不能把最终答案整条删除（B02）。
+  test("分页缺段时保留新投影正文兜底", () => {
+    const chat = createChatDoc("rcs-real-page", null).ydoc;
+    const session = createSessionDoc("rcs-real-page", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问题" } }, "turn-page"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "前文" } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-page", title: "Read" }));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "最终答案" } }));
+
+    const full = chatDocEntriesToStructuredMessages(chat);
+    // 模拟分页只拿到工具前内容，缺少 entryId#1 的最终答案段。
+    const paged = full.filter((message) => message.type !== "tool_call" && !message.id.includes("#"));
+    const sync = [assistant("turn-page:assistant", "前文最终答案", 0)];
+    const merged = createSyncMessageMerger()(paged, sync);
+    const visible = merged.map((message) => (message.type === "assistant_message" ? textOf(message) : "")).join("");
+    expect(visible).toContain("最终答案");
+  });
+
+  // 新投影覆盖助手正文后该助手副本退役；未配对用户消息没有身份证明，必须保留（B01）。
+  test("新投影覆盖助手文本但保留未配对用户消息", () => {
     const tool: StructuredMessage = {
       type: "tool_call",
       id: "tool",
@@ -101,14 +170,14 @@ describe("新旧消息合并视图", () => {
     };
     const merged = createSyncMessageMerger()(
       [user("legacy:user", "旧提问"), assistant("legacy:assistant", "旧回答"), tool, plan, thought, failed],
-      [user("sync:user", "新提问"), assistant("sync:assistant", "新回答")],
+      [assistant("sync:assistant", "旧回答", 0)],
     );
     expect(merged.map((message) => message.id)).toEqual([
+      "legacy:user",
       "tool",
       "plan",
       "thought",
       "failed",
-      "sync:user",
       "sync:assistant",
     ]);
   });
