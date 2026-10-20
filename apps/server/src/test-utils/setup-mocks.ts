@@ -389,6 +389,20 @@ mock.module("@fenix/resource-machine/file-ws-requests", () => {
   return obj;
 });
 
+// ── @antv/g6（图谱画布）──
+// 测试环境没有真实 canvas，G6 又由 hook 惰性 `import()`：动态导入的完成时机随 CI 负载漂移，
+// 真实实例初始化会在断言前后随机抛 canvas 错误，甚至让测试进程挂起。替身只保留
+// `use-knowledge-graph-canvas` 用到的最小生命周期 API，避免加载真实 G6（不会发生产 canvas 初始化）。
+mock.module("@antv/g6", () => ({
+  Graph: class {
+    setData(): void {}
+    render(): void {}
+    once(_event: string, _handler: (...args: unknown[]) => void): void {}
+    fitView(): void {}
+    destroy(): void {}
+  },
+}));
+
 // ── react-i18next（2026-09-20 移除，勿恢复）──
 // 此处原有「react-i18next 不可用时按需注册最小 mock」的探针与回退分支，其前提已证伪：
 // bun.lock 记录的 react-i18next@17.0.8 integrity 与 registry.npmjs.org 的 dist.integrity
