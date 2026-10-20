@@ -81,6 +81,14 @@ describe("活动链折叠", () => {
 
   const toggle = () => host.querySelector<HTMLButtonElement>('[data-slot="chat-activity-chain-toggle"]');
   const body = () => host.querySelector('[data-slot="chat-activity-chain-body"]');
+  const label = () => host.querySelector('[data-slot="chat-activity-chain-label"]');
+
+  // 折叠标题用「详细过程」前缀说明这一行是执行过程，并以两个空格与后续类别拉开距离。
+  test("折叠标题带详细过程前缀", async () => {
+    await act(async () => root.render(<ChatView entries={entries("complete")} preWindowed />));
+
+    expect(label()?.textContent).toMatch(/详细过程 {2}|Detailed process {2}/);
+  });
 
   // 已结束的活动链默认收起，标题保留类别计数，链内工具行不挂载。
   test("完成后的活动链默认折叠", async () => {

@@ -125,6 +125,11 @@ export function ActivityChain({
           className={cn("h-3 w-3 shrink-0 transition-transform motion-reduce:transition-none", expanded && "rotate-90")}
           aria-hidden
         />
+        {/* 前缀点明这一行是可折叠的执行过程，避免折叠后只剩图标与计数难以理解；两个空格拉开与类别图标的距离。 */}
+        <span className="shrink-0 whitespace-pre" data-slot="chat-activity-chain-label">
+          {t("chat.components.activityChain.process")}
+          {"  "}
+        </span>
         {summary.hasThought && (
           <span className="inline-flex shrink-0 items-center" title={t("chat.components.activityChain.thinking")}>
             <Brain className="h-3 w-3" aria-hidden />

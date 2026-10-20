@@ -38,6 +38,7 @@
         "expand": "Expand process",
         "failed": "{{count}} failed",
         "moreCategories": "{{count}} more types",
+        "process": "Detailed process",
         "running": "Running",
         "steps": "{{count}} steps",
         "thinking": "Thought"

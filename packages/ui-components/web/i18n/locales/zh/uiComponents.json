@@ -38,6 +38,7 @@
         "expand": "展开过程",
         "failed": "{{count}} 个失败",
         "moreCategories": "另有 {{count}} 类",
+        "process": "详细过程",
         "running": "进行中",
         "steps": "{{count}} 个步骤",
         "thinking": "思考"
