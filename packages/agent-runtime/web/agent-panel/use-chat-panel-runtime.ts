@@ -10,7 +10,13 @@ import {
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatAuthState } from "../hooks/chat-auth-state";
-import { resolveNoReplaySession } from "../hooks/chat-replay-signal";
+import {
+  bindLocalCreateToScope,
+  isLocalCreateScope,
+  type LocalCreateBinding,
+  NO_LOCAL_CREATE,
+  resolveNoReplaySession,
+} from "../hooks/chat-replay-signal";
 import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
 import { applyChatHydration, useChatHydration } from "../hooks/use-chat-hydration";
 import { useChatState } from "../hooks/use-chat-state";
@@ -90,8 +96,10 @@ export function useChatPanelRuntime({
   const [terminalUiCode, setTerminalUiCode] = useState<TerminalWsUiCode | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
-  /** 本地新建会话没有历史回放：门控不得用骨架替换空状态。 */
-  const noReplaySessionRef = useRef(false);
+  /** 本地 create 请求代次：每次 create 递增，load/resume 归零；scope 绑定在换代帧完成。 */
+  const localCreateEpochRef = useRef(0);
+  const localCreateBindingRef = useRef<LocalCreateBinding>(NO_LOCAL_CREATE);
+  const previousMergeScopeRef = useRef<string | null>(null);
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
   const retryHistoryRecovery = useCallback(() => {
@@ -111,7 +119,7 @@ export function useChatPanelRuntime({
   const docHubKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
   // 默认新协议读取文本；旧连接保留历史、非文本和动作，直到新协议拥有完整历史恢复能力。
   const { state: chatState } = useChatState(docHubKey);
-  const { state: legacySessionState } = useSessionState(docHubKey);
+  const { state: legacySessionState, boundScopeKey: legacyBoundScopeKey } = useSessionState(docHubKey);
   // ACP id 从空到首个值的补全不重建同步投影；只有真实会话切换才改变 sessionKey。
   const syncSessionKey = useStableSyncSessionKey(docHubKey, legacySessionState.acpSessionId);
   const replacementVersion = useDocHubReplacementVersion(docHubKey);
@@ -129,14 +137,29 @@ export function useChatPanelRuntime({
   });
   // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
   const mergeScope = `${docHubKey}:${replacementVersion}`;
+  // 换代后快照仍是旧 Doc，必须等 useSessionState 完成 rebind；期间所有旧投影信号一律不参与门控。
+  const legacyScopeReady = legacyBoundScopeKey === mergeScope;
+  // 本地 create 只认领紧随其后的换代：跨 scope 后失效，避免另一标签的远端 load 被当成新建。
+  if (previousMergeScopeRef.current !== mergeScope) {
+    localCreateBindingRef.current = bindLocalCreateToScope({
+      epoch: localCreateEpochRef.current,
+      scope: mergeScope,
+      previousScope: previousMergeScopeRef.current,
+      binding: localCreateBindingRef.current,
+    });
+    previousMergeScopeRef.current = mergeScope;
+  }
+  const localCreate = isLocalCreateScope(localCreateEpochRef.current, mergeScope, localCreateBindingRef.current);
   // 服务端 replay_complete（含零历史）与本地新建会话都无需等待回放；active 回放优先。
-  const noReplaySession = resolveNoReplaySession({
-    localCreate: noReplaySessionRef.current,
-    replayState: legacySessionState.replayState,
-    // timelineEmpty 只用于首次页面加载；会话切换必须等 replay_started/complete 的真实信号。
-    timelineEmpty: replacementVersion === 0 && legacySessionState.timelineEmpty === true,
-    hasMessages: legacySessionState.structuredMessages.length > 0,
-  });
+  const noReplaySession = legacyScopeReady
+    ? resolveNoReplaySession({
+        localCreate,
+        replayState: legacySessionState.replayState,
+        // timelineEmpty 只用于首次页面加载；会话切换必须等 replay_started/complete 的真实信号。
+        timelineEmpty: replacementVersion === 0 && legacySessionState.timelineEmpty === true,
+        hasMessages: legacySessionState.structuredMessages.length > 0,
+      })
+    : false;
   const syncTerminalError =
     syncChat.connection.status === "error" ||
     (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
@@ -154,11 +177,12 @@ export function useChatPanelRuntime({
     legacy: legacySessionState.structuredMessages,
     sync: syncChat.projection.messages,
     sourceReady: connectionState === "connected",
-    replayActive: legacySessionState.status === "replaying",
-    liveActive: legacySessionState.status === "responding",
+    replayActive: legacyScopeReady && legacySessionState.status === "replaying",
+    liveActive: legacyScopeReady && legacySessionState.status === "responding",
     blocked: hydrationBlockedBySync,
     syncTerminalError,
     noReplaySession,
+    localCreate,
   });
   const sessionState = useMemo(
     () =>
@@ -196,7 +220,8 @@ export function useChatPanelRuntime({
   } = useChatPanelActions({
     wsRef: yjsWsRef,
     sessionId: sessionState.acpSessionId,
-    noReplaySessionRef,
+    localCreateEpochRef,
+    localCreateBindingRef,
     syncDegradedBlocked,
     returnToLatestHistory: syncChat.returnToLatestHistory,
     showActionError,

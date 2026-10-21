@@ -222,6 +222,8 @@ export function useSessionState(rcsSessionId: string) {
   // 后必须重建订阅，否则切换会话 / StrictMode 双挂载后后续 update 不再触发
   // 渲染（快照永久 stale，SP-B1 回归测试捕获的真实缺陷）。
   const [bindEpoch, setBindEpoch] = useState(0);
+  // 投影快照实际绑定的换代 key（会话 + 版本）：换代后快照仍是旧 Doc，调用方据此丢弃旧信号。
+  const [boundScopeKey, setBoundScopeKey] = useState<string | null>(null);
   const subscribeReplacement = useCallback(
     (listener: () => void) => subscribeDocHubReplacement(rcsSessionId, listener),
     [rcsSessionId],
@@ -250,11 +252,12 @@ export function useSessionState(rcsSessionId: string) {
     stores.chat.switchDoc(bindingKey, bindChatDoc);
     stores.meta.switchDoc(bindingKey, bindSessionDoc);
     setBindEpoch((e) => e + 1);
+    setBoundScopeKey(bindingKey);
     return () => {
       stores.chat.destroy();
       stores.meta.destroy();
     };
   }, [stores, rcsSessionId, bindChatDoc, bindSessionDoc, replacementVersion]);
 
-  return { state };
+  return { state, boundScopeKey };
 }

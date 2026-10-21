@@ -3,7 +3,13 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SessionStateSnapshot } from "@fenix/chat-channel";
-import { resolveNoReplaySession } from "../../../../packages/agent-runtime/web/hooks/chat-replay-signal";
+import {
+  bindLocalCreateToScope,
+  isLocalCreateScope,
+  type LocalCreateBinding,
+  NO_LOCAL_CREATE,
+  resolveNoReplaySession,
+} from "../../../../packages/agent-runtime/web/hooks/chat-replay-signal";
 import { applyChatHydration } from "../../../../packages/agent-runtime/web/hooks/use-chat-hydration";
 
 describe("chat replay signal", () => {
@@ -55,5 +61,71 @@ describe("chat replay signal", () => {
     expect(
       resolveNoReplaySession({ localCreate: true, replayState: "active", timelineEmpty: true, hasMessages: true }),
     ).toBe(false);
+  });
+
+  // 本地 create 只认领换代后的第一个 scope；同一 scope 的重复渲染不得提前绑定。
+  test("create 只在换代帧绑定第一个 scope", () => {
+    const unchanged = bindLocalCreateToScope({
+      epoch: 1,
+      scope: "s0",
+      previousScope: "s0",
+      binding: NO_LOCAL_CREATE,
+    });
+    expect(unchanged).toEqual(NO_LOCAL_CREATE);
+
+    const bound = bindLocalCreateToScope({
+      epoch: 1,
+      scope: "s1",
+      previousScope: "s0",
+      binding: unchanged,
+    });
+    expect(bound).toEqual({ epoch: 1, scope: "s1" });
+    expect(isLocalCreateScope(1, "s1", bound)).toBe(true);
+  });
+
+  // 远端 load 再次换代时，本地 create 标记已消费，不得再按新建会话处理。
+  test("远端 load 换代不沿用已消费的 create 标记", () => {
+    const binding: LocalCreateBinding = { epoch: 1, scope: "s1" };
+    const afterRemoteLoad = bindLocalCreateToScope({
+      epoch: 1,
+      scope: "s2",
+      previousScope: "s1",
+      binding,
+    });
+    expect(afterRemoteLoad).toBe(binding);
+    expect(isLocalCreateScope(1, "s2", afterRemoteLoad)).toBe(false);
+  });
+
+  // 本标签再次 create 时 epoch 递增，下一次换代重新绑定；load/resume 归零必须清除旧绑定，
+  // 否则 create→load→create 后 epoch 复用 1 会命中第一次 create 的旧 scope。
+  test("新 create 重新绑定，load 归零清除绑定后 epoch 复用仍可绑定", () => {
+    const bound = bindLocalCreateToScope({
+      epoch: 2,
+      scope: "s3",
+      previousScope: "s2",
+      binding: { epoch: 1, scope: "s1" },
+    });
+    expect(bound).toEqual({ epoch: 2, scope: "s3" });
+    expect(isLocalCreateScope(2, "s3", bound)).toBe(true);
+    expect(bindLocalCreateToScope({ epoch: 2, scope: "s3", previousScope: "s2", binding: bound })).toBe(bound);
+    expect(isLocalCreateScope(0, "s3", bound)).toBe(false);
+
+    const afterLoad = bindLocalCreateToScope({
+      epoch: 0,
+      scope: "s4",
+      previousScope: "s3",
+      binding: bound,
+    });
+    expect(afterLoad).toEqual(NO_LOCAL_CREATE);
+
+    // create→load→create 的真实序列：epoch 从 1 归零后再次为 1，必须绑定新 scope。
+    const reusedEpoch = bindLocalCreateToScope({
+      epoch: 1,
+      scope: "s5",
+      previousScope: "s4",
+      binding: afterLoad,
+    });
+    expect(reusedEpoch).toEqual({ epoch: 1, scope: "s5" });
+    expect(isLocalCreateScope(1, "s5", reusedEpoch)).toBe(true);
   });
 });
