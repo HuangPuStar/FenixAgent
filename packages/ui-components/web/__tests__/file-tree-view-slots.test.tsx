@@ -111,17 +111,22 @@ function classNames(html: string): string[] {
 const REMOVED_CLASSES = ["file-real-file-icon", "is-selected", "is-danger"];
 
 describe("文件树视图（Tailwind 迁移锚点）", () => {
-  // 工具条动作区是消费方定位刷新/新建入口的锚点，首个动作必须是刷新（沿用原类名锚点的语义）。
-  test("工具条暴露 file-tree-panel-actions 锚点且刷新在新建之前", () => {
+  // 顶部工具条只保留刷新与消费方动作槽；新建/上传入口下沉到两个分区标题栏，落点由分区决定。
+  test("工具条只保留刷新，新建与上传入口按分区各有一组", () => {
     const html = renderTree();
-    const actions = slotClass(html, "file-tree-panel-actions");
+    const actionsStart = html.indexOf('data-slot="file-tree-panel-actions"');
+    const actions = html.slice(actionsStart, html.indexOf("<input", actionsStart));
 
-    expect(html).toContain('data-slot="file-tree-panel-actions"');
-    expect(actions).toContain("gap-px");
-    const refreshAt = html.indexOf(`title="${en.fileTree.refresh}"`);
-    const newFolderAt = html.indexOf(`title="${en.fileTree.contextMenu.newFolder}"`);
-    expect(refreshAt).toBeGreaterThan(-1);
-    expect(refreshAt).toBeLessThan(newFolderAt);
+    expect(actionsStart).toBeGreaterThan(-1);
+    expect(slotClass(html, "file-tree-panel-actions")).toContain("gap-px");
+    expect(actions).toContain(`title="${en.fileTree.refresh}"`);
+    expect(actions).not.toContain(`title="${en.fileTree.contextMenu.newFolder}"`);
+    expect(actions).not.toContain(`title="${en.fileTree.upload}"`);
+    expect(actions).not.toContain(`title="${en.fileTree.uploadFolder}"`);
+    expect(html.match(/data-slot="file-tree-section-actions"/g)?.length).toBe(2);
+    expect(html.match(/data-slot="file-tree-section-new-folder"/g)?.length).toBe(2);
+    expect(html.match(/data-slot="file-tree-section-upload"/g)?.length).toBe(2);
+    expect(html.match(/data-slot="file-tree-section-upload-folder"/g)?.length).toBe(2);
   });
 
   // 双分区与拖拽落点属性是上传逻辑的输入：属性缺失会让服务端收到空落点，故与分区结构一并守住。
@@ -173,7 +178,7 @@ describe("文件树视图（Tailwind 迁移锚点）", () => {
     expect(names).toContain("file-tree-panel__actions");
     expect(names).toContain("file-tree-search");
     expect(names).toContain("file-tree-sections-grid");
-    expect(names).toContain("file-tree-section-upload-button");
+    expect(names.filter((name) => name === "file-tree-section-action-button")).toHaveLength(6);
     expect(names.filter((name) => name === "file-tree-view-feedback")).toHaveLength(2);
     expect(names).toContain("file-tree-view-feedback--compact");
   });
@@ -196,6 +201,18 @@ test("文件上传显示百分比和可访问的进度条", () => {
   expect(html).toContain("Uploading 42%");
   expect(html).toContain('role="progressbar"');
   expect(html).toContain('aria-valuenow="42"');
+});
+
+// 进度条必须落在本次上传的分区里：工作区上传不能显示在「我的文件」分区，反之亦然。
+test("进度条按上传落点显示在对应分区", () => {
+  const userSectionAt = (html: string) => html.indexOf('data-upload-target="user"');
+  const progressAt = (html: string) => html.indexOf('role="progressbar"');
+  const workspaceHtml = renderTree({ uploading: true, uploadProgress: 42, uploadSection: "workspace" });
+  const userHtml = renderTree({ uploading: true, uploadProgress: 42, uploadSection: "user" });
+
+  expect(progressAt(workspaceHtml)).toBeGreaterThan(-1);
+  expect(progressAt(workspaceHtml)).toBeLessThan(userSectionAt(workspaceHtml));
+  expect(progressAt(userHtml)).toBeGreaterThan(userSectionAt(userHtml));
 });
 
 // 浏览器发送完毕仍需等服务端确认落盘，不能提前显示上传成功。

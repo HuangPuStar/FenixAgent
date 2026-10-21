@@ -137,9 +137,9 @@ test("普通文件入口显示传输进度与保存状态", async () => {
   );
   expect(UploadRequest.requests).toHaveLength(1);
   act(() => UploadRequest.requests[0].progress(42));
-  expect(state()).toEqual({ uploading: true, progress: { percent: 42, saving: false } });
+  expect(state()).toEqual({ uploading: true, progress: { percent: 42, saving: false, targetDir: "" } });
   act(() => UploadRequest.requests[0].progress(100));
-  expect(state()).toEqual({ uploading: true, progress: { percent: 100, saving: true } });
+  expect(state()).toEqual({ uploading: true, progress: { percent: 100, saving: true, targetDir: "" } });
   expect(completed).toBe(0);
   await act(async () => {
     UploadRequest.requests[0].onload?.();
@@ -158,18 +158,32 @@ test("目录分批进度按总字节数累计", async () => {
     pending = uploads.uploadFiles(files, undefined, ["folder/large.bin", "folder/small.bin"]);
   });
   act(() => UploadRequest.requests[0].progress(100));
-  expect(state().progress).toEqual({ percent: 67, saving: true });
+  expect(state().progress).toEqual({ percent: 67, saving: true, targetDir: "" });
   await act(async () => {
     UploadRequest.requests[0].onload?.();
   });
   expect(UploadRequest.requests).toHaveLength(2);
   act(() => UploadRequest.requests[1].progress(50));
-  expect(state().progress).toEqual({ percent: 83, saving: false });
+  expect(state().progress).toEqual({ percent: 83, saving: false, targetDir: "" });
   await act(async () => {
     UploadRequest.requests[1].onload?.();
     await pending;
   });
   expect(state()).toEqual({ uploading: false, progress: null });
+});
+
+// 进度状态记录上传落点，文件树据此把进度条显示在对应分区。
+test("上传进度携带落点供分区展示", async () => {
+  act(() => {
+    pending = uploads.uploadFiles([new File(["hello"], "test.txt")], undefined, undefined, "user");
+  });
+  expect(state().progress).toEqual({ percent: 0, saving: false, targetDir: "user" });
+  act(() => UploadRequest.requests[0].progress(50));
+  expect(state().progress).toEqual({ percent: 50, saving: false, targetDir: "user" });
+  await act(async () => {
+    UploadRequest.requests[0].onload?.();
+    await pending;
+  });
 });
 
 // 切换环境后取消上传，旧连接的进度事件不得污染新环境。

@@ -91,23 +91,22 @@ function renderTree(overrides: Partial<FileTreeViewProps> = {}): string {
 }
 
 describe("文件树视图（消费方契约）", () => {
-  // 顶部工具条的首个动作是刷新当前列表：刷新入口不是文件变更操作，位置变到新建之后会让误触代价升高。
-  test("工具条首个动作是刷新，且没有根级新建文件入口", () => {
+  // 顶部工具条只保留刷新；新建与上传入口按分区下沉，各自操作本分区根目录。
+  test("工具条只保留刷新，分区标题栏各有三个动作入口", () => {
     const html = renderTree();
     const actionsStart = html.indexOf('data-slot="file-tree-panel-actions"');
     const actions = html.slice(actionsStart, html.indexOf("<input", actionsStart));
 
     expect(actionsStart).toBeGreaterThan(-1);
     expect(actions.indexOf('title="fileTree.refresh"')).toBeGreaterThan(-1);
-    expect(actions.indexOf('title="fileTree.refresh"')).toBeLessThan(
-      actions.indexOf('title="fileTree.contextMenu.newFolder"'),
-    );
+    expect(actions).not.toContain('title="fileTree.contextMenu.newFolder"');
     expect(actions).not.toContain("lucide-file-plus-2");
+    expect(html.match(/data-slot="file-tree-section-actions"/g)?.length).toBe(2);
   });
 
   // 工作区与「我的文件」两个分区必须同时在场并各自声明拖拽目标：上传落点靠 `data-upload-target` 区分，
-  // 少了属性服务端就收到空落点；「我的文件」标题右侧的上传入口对应 `onUploadClick("user")` 注入点。
-  test("保留双分区、拖拽目标与分区上传入口", () => {
+  // 少了属性服务端就收到空落点；两个分区标题栏都要有新建/上传/上传文件夹三个入口。
+  test("保留双分区、拖拽目标与分区动作入口", () => {
     const html = renderTree();
     const workspaceSection = html.indexOf('data-upload-target=""');
     const userSection = html.indexOf('data-upload-target="user"');
@@ -116,8 +115,16 @@ describe("文件树视图（消费方契约）", () => {
     expect(workspaceSection).toBeGreaterThan(-1);
     expect(workspaceSection).toBeLessThan(userSection);
     expect(html.match(/data-slot="file-tree-arborist"/g)?.length).toBe(2);
+    const workspaceBlock = html.slice(workspaceSection, userSection);
     const userBlock = html.slice(userSection);
-    expect(userBlock.slice(0, userBlock.indexOf("</section>"))).toContain('data-slot="file-tree-section-upload"');
+    for (const slot of [
+      "file-tree-section-new-folder",
+      "file-tree-section-upload",
+      "file-tree-section-upload-folder",
+    ]) {
+      expect(workspaceBlock).toContain(`data-slot="${slot}"`);
+      expect(userBlock.slice(0, userBlock.indexOf("</section>"))).toContain(`data-slot="${slot}"`);
+    }
   });
 
   // 文件服务断连重连中的提示必须占据文件内容区：旧实现把它挂在搜索框下，与工作区标题重叠。
