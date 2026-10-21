@@ -427,6 +427,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 9. **连接上限与容量**：`YJS_MAX_CLIENTS` 默认 200，由 agent-runtime 模块声明并经 `AgentRuntimeModuleConfig.yjsMaxClients` 注入 chat-channel 装配（不要直读 env）；修改时必须保留限流、资源释放与单连接故障隔离。
 10. **`ChatView` 与 `EntryRenderer` 使用 `React.memo`**，comparator 必须与调用方 prop 稳定性保持一致（`ChatView.tsx`、`EntryRenderer` 有显式逐 prop 比较，`MessageResponse` 比较 `children` + `envId`）；改动 props 时同步更新 comparator 与渲染测试。
 11. **`@fenix/chat-channel` 根入口必须浏览器安全**：根入口只导出类型（`./types`）、schema、`public-error`、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（channel 控制面、persist 持久化、state 聚合层）必须经 `@fenix/chat-channel/server` 导出；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护，`scripts/check-architecture.ts` 的 `browser-entry-server-import` 同时静态拦截 `@fenix/chat-channel/server`。
+12. **实例切换保留面板缓存**：宿主按当前 `organizationId + userId` 隔离缓存，以 `environmentId + instanceUid` 标识面板；A → B → A 只切可见性，保留连接、会话、输入草稿和滚动位置。单实例重启事件必须携带 `instanceUid`，只重建该实例；环境级重启重建该环境所有已缓存面板。删除环境释放其全部面板，组织/用户变化与宿主卸载释放全部缓存。历史仍遵循单面板的有界窗口，不复制第二份聊天状态。
 
 ### 8.6 现状偏离
 - `chat-channel/src/transport/ws-close-codes.ts` 的 4503 行（`stopReconnect: true` + `uiCode: null`，用户会看到「连接停了但没有任何提示」）— 补齐 `uiCode` 是**行为变化**，必须单独一批、单独授权，不得以「消缺口」为由顺手补；裁定前保持 `null`，并在策略表注释里保留指向本节的位置（§8.3）。

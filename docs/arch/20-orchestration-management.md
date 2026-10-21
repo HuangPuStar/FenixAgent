@@ -164,6 +164,16 @@ stateDiagram-v2
 - **`stopInstance` 幂等**：三侧状态（supplement / 活跃表 / core 快照）任一存在即执行幂等停止，全无墓碑时返回 "Already stopped"（web DELETE 连续两次均 200，A/E-P2.1）。
 - 回收策略可请求 `stop()`，但不能绕过 Instance 生命周期直接操作远端进程——**断连对账除外**（机器不可达时无法走正常停止链，见 §6）。
 
+### 3.1 持久实例生命周期仲裁
+
+`AgentInstanceRuntimeCoordinator` 是持久实例生命周期的唯一仲裁者；Controller、Core 与 supplement 是执行与查询投影。
+
+1. `instanceUid` 是持久身份；`runtimeGeneration + serverEpoch` 标识一次真实运行实体。`operationId` 只标识当前操作所有权。stop/delete 推进操作身份，不改变尚未停止实体的运行身份，因此停止期间的机器断连仍能关联原实体。
+2. 高优先级 stop/delete 取消旧启动后，等待启动及其按原运行代次执行的补偿结束，再确认当前实体停止。启动桥接在 controller、LaunchSpec、Core 启动与 supplement 注册边界检查取消，本地与远程启动均携带运行身份。补偿失败保留 `unknown` 与原始错误，不返回已停止。
+3. `unknown` 拒绝自动 ensure，允许显式 stop/restart/delete 重新确认。runtime 删除阶段失败释放本次删除门禁；DB 删除失败按 `operationId` 恢复门禁，旧操作不能解除另一轮删除。
+4. 本地死亡经运行身份回收，idle 与 Workflow 自动收尾经公共 `reclaimInstance(id, organizationId, runtimeGeneration)` 进入 `reclaimRuntime`；回收不建立手动停止意图，后续 ensure 可启动新代。手动 stop 建立的禁止自动启动意图只有显式 restart 成功才解除。running 快捷路径同时核对执行投影，投影已确认不存在时重新启动。
+5. 机器断连事件按实际运行代次标记 `unknown`，clean-slate 只确认对应机器旧 runtime 已全部终止。在途操作持有槽位时延后复位，操作释放后提交 `stopped`。确认终止同时释放该实例尚未结算的执行配额。
+
 ## 4. 双层启动模型与 LaunchSpec
 
 ### 4.1 启动时序
@@ -259,19 +269,20 @@ stateDiagram-v2
 
 ## 7. 消费者边界
 
-编排域上层消费者（审计报告场景划分）：
+各入口先解析当前用户的持久 Instance，再经 Coordinator 确保 runtime。请求拥有独立消费租约、ACP session 与 turn；物理 relay 与进程由 runtime 持有。
 
-| 场景 | 入口 | 实例语义 |
+| 场景 | 入口 | 实例与退出语义 |
 |---|---|---|
-| A. HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` → `spawnInstanceViaController` | 每次独立实例，dispose 销毁 |
-| B. 前端交互式 Chat | `/acp/yjs/:agentId`（`packages/agent-runtime/src/routes/acp/index.ts`）→ `gateway.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
-| C. Workflow | `workflow/agent-chat-transport.ts` → `ensureRunning(userId, ...)` → `connectAgentRelay` | 复用，不随单次执行销毁，租约保护 |
-| D. 外部 API | `api-instance.ts` → `spawnInstanceViaController` | 每次独立实例 |
-| E. 停止 / 回收 / 断连 | `instance.ts` stopInstance / `acp-idle-monitor.ts` / `acp-ws-handler.ts` 机器清理 | AgentNode FSM + 断连对账 |
+| HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` | 复用用户的 `api/primary`；dispose 仅取消自身 turn、归还消费租约 |
+| 前端交互式 Chat | `/acp/yjs/:agentId` → gateway → `ensureInstance` | 显式实例重新校验归属；缺省选择 `chat/default`，多标签页共享连接租约 |
+| Workflow | `workflow/agent-chat-transport.ts` → `ensureInstanceRuntime` → `connectAgentRelay` | 复用 `workflow/primary`；各节点独立会话与 turn，取消信号覆盖 connect 和 execute |
+| 外部实例连接 API | `api-instance.ts` → `resolveInstanceForOperation` → `ensureInstanceRuntime` | 复用当前用户的 `api/primary`，或校验显式实例归属；返回 relay 定位信息 |
+| 停止 / 回收 / 断连 | Instance Service / idle monitor / 机器对账 | Coordinator 按 operation 与 runtime 身份确认状态，消费者不得按 UID 停止共享 runtime |
 
-- **Chat 路径的 ensureRunning 可创建实例**（D6 修订）：文档旧版假设的"ChatChannelController 只查询不创建"未落地；YJS 前端 open 时若实例不存在会 spawn 新实例（复用语义要求）。边界实际是：Chat / Workflow 路径经 `ensureRunning` 获取或创建实例，再经 relay 取得信道；编排域本体仍是唯一创建者。
-- **Workflow 复用租约（C-P1.1 教训）**：共享实例被多 run 复用时，"创建者结束即清理"会连坐使用者。`instance-lease.ts` 的 `acquireInstanceLease` 紧贴 `ensureRunning` 返回（同 tick 消除 async-gap 竞态），`cleanupSpawnedInstances` 按 instanceId + 租约守卫停止——只清理本 run spawn 的实例，正在被其他 run 使用的实例跳过。
-- **relay 与实例复用正交**：`turn.release()` 只注销 listener 不关 handle；`relayCount` / `touchInstanceActivity` 是实例级"前台使用"的唯一观测信号，idle 回收据此判断。
+1. Core 首次建连共享在途操作，并为每次调用发放独立消费租约；租约 close 只移除该消费者监听器。runtime stop 统一关闭物理连接，包括仍在握手和迟到的连接。
+2. Workflow 的 `instance-lease.ts` 在选定持久实例后、await ensure 前同步取得租约，保护连接准备与执行；`cleanupSpawnedInstances` 只消费首次创建者在 ensure 成功时登记的运行代次票据，且必须没有其他 run 租约与任何来源的活跃执行，才能自动回收。迟到或重复收尾不能改绑到新代，跳过后交由 idle 策略处理。单节点 dispose 不触发该实例策略。
+3. 活跃执行准入与 relay 计数独立。HTTP、Workflow 和定时任务每次分别 acquire 执行额度；confirmed RPC 终态归还。取消通知、传输失败和 EOF 不证明 Agent 已停止，未知执行保留额度，直到明确 RPC 终态或 Coordinator 确认 runtime 停止。
+4. 会话握手、终态分类、静默超时及取消契约见 [Agent 执行、relay 与取消](./agent-turn-lifecycle.md)。
 
 ## 8. 隔离、并发与失败
 
@@ -288,7 +299,8 @@ stateDiagram-v2
 
 | 层级 | 机制 | 状态 |
 |---|---|---|
-| 用户级 / 平台级 / 来源级 | `packages/agent-runtime/src/services/agent-concurrency.ts` 的 `beginSpawnReservation`（检查与登记同一同步段，pending 计入计数，finally 释放） | ✅ 生效（`RCS_USER_AGENT_MAX_CONCURRENCY` 等） |
+| 用户级 / 平台级实例容量 | `agent-concurrency.ts` 的 `beginSpawnReservation`，pending 计入实例数 | `RCS_USER_AGENT_MAX_CONCURRENCY` / `RCS_AGENT_MAX_CONCURRENCY` |
+| scheduled 执行并发 | `agent-execution-admission.ts` 每次执行独立准入，实例复用仍分别计数 | `RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`；未确认执行终止时保留额度 |
 | Machine 容量 | `machine.maxSessions` 数据模型 | 仅保留容量元数据，当前未执行准入；未来实现时必须使用 Machine 专属 reservation / 错误码 |
 
 Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentController` 只维护实例生命周期，禁止按 Environment 对内存实例表重新计数限流；业务并发治理统一由宿主 reservation 管理，以避免重复闸门和 TOCTOU 语义分裂。
@@ -300,10 +312,11 @@ Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentControl
 | AgentNode 不在线 | `ensureNode` 只放行 `connected`，否则抛 `AgentNodeUnavailableError`（不创建实例） | 503（message 脱敏） |
 | LaunchSpec 构建失败 | 抛 `LaunchSpecBuildError`，回滚 | 422 |
 | spawn 任一步失败（含 registerSupplement） | `stopInstanceViaController` 回滚三侧（A/D-P1.3） | 脱敏错误，不泄漏 envId/machineId |
-| 会话中途失败（connectRelay / prompt 抛错） | 有 dispose 的路径自动清理（A/D-P1.4） | 脱敏错误 |
+| relay 连接或会话握手失败 | 归还本消费者租约；未发 prompt 可释放执行准入，保留持久 runtime | 脱敏错误；握手超时或缺少 ID 明确失败 |
+| turn RPC 错误 / 取消 / 传输失败 / EOF | 统一终态分类；仅明确正常 stopReason 成功。取消发送 session/cancel；未确认终止继续持有执行额度 | 有界失败，不补成功 end_turn |
 | AgentNode 运行中断线 | 节点断连即终态；宿主断连对账清理实例（§6） | 返回当前状态，不伪造运行中 |
-| stop 失败或超时 | 标记终止 + 移除本地实例 + 归还节点引用 | 已受理停止 |
-| workflow 执行超时 | reject `NODE_TIMEOUT`（不再 no-op 挂起）+ 配对释放租约/relay 计数（C-P1.3） | 有界失败 |
+| stop 失败或超时 | Coordinator 保留 unknown；显式 stop/restart/delete 可重新确认 | 抛出停止未确认错误 |
+| HTTP / workflow 静默超时 | 取消等待中的 next、请求取消自身 turn，归还消费资源；未确认停止的执行额度继续保留 | HTTP 504 / SSE error；workflow NODE_TIMEOUT |
 | workflow relay 关闭 | 识别 `relay_closed` → exit_code=1，engine 按 NODE_FAILED 重试自愈 | 有界失败 |
 
 ### 8.4 错误映射与脱敏（A-P1.1 / D-P2.2 教训）
@@ -358,11 +371,11 @@ errorPlugin 成为该路由错误出口的单一入口，且同时满足三条�
 
 ### 场景 C：Workflow 复用与清理
 
-workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cleanup 只停止本 run spawn 的实例（按 instanceId + 租约守卫），正在被其他 run 使用的实例跳过；执行超时 / relay 关闭均产生有界失败。
+workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后仍需显式 restart。超时或断连返回失败，执行终止未确认时保留执行额度。
 
 ### 场景 D：停止与回收
 
-用户停止或策略触发回收时，`AgentController.stopInstance` → Instance 发停止帧并标记终止 → core 停止 → registry 移除 supplement → 节点引用归还。远端无法确认停止时仍清理本地状态，交由断连对账处理。DELETE 幂等：重复删除返回 200。
+用户停止或策略回收先经 Coordinator 仲裁，再调用 `AgentController.stopInstance` → core 停止 → registry 移除 supplement → 实时资源回收。远端无法确认停止时保留 unknown，等待显式重试或机器 clean-slate 确认。手动停止与自动回收的恢复意图相互独立。默认空闲回收保护全部活跃执行；明确的 `activity-timeout` 原因仅可接管超过活动硬期限且全部执行均为已确认 scheduled 的实例，提交停止前复核运行代次、投影身份和活动时间。交互或等待启动的执行仍受保护，停止失败保留额度，确认实际停止后才释放。
 
 ### 场景 E：Agent Node 断线
 
@@ -395,18 +408,15 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 6. **回收不切断真实连接**（E-P1.1）：空闲回收只回收已断连节点；回收 connected 节点会切断机器 WS，引发断连-重连风暴。
 7. **FSM 语义必须与现实一致**（E-P2.2）：声称"自动重连"却没有连接工厂的 FSM 是空转表演，产生虚假状态抖动与诊断误导；无能力即移除，不保留装饰。
 8. **双份构建是过渡态**（D5）：编排域扁平 LaunchSpec 与宿主 DB 重建的运行时载荷并存，必须记录收敛计划，禁止在扁平视图中继续堆积运行时字段。
-9. **断连清理要管到机器端**（R1）：三侧对账只覆盖主服务内存；机器端 InstanceManager 的进程残留无对账通道，每次断连-重连可能泄漏一个机器端 Agent 进程（见 §11 技术债）。
+9. **机器重新接入必须确认 clean-slate**：机器收到注册回执后先停止旧 InstanceManager runtime，再发送带协议版本与 server epoch 的 clean-slate 确认；主服务确认前不得接受新运行实体。主服务内存对账不能替代机器端进程清理。
 
 ## 12. 已知限制与技术债
 
 | # | 项目 | 严重度 | 说明与移除条件 |
 |---|---|---|---|
-| T1 | 机器端旧实例进程残留 | P1 | 断连-重连时主服务清理三侧状态但**不向机器补发 stop**（acp-link 指数退避重连不断连不杀子进程），每次重连泄漏一个机器端 Agent 进程直到机器重启。移除条件：registerRemoteNode 重连分支携带"需终止的旧 instanceId 列表"下发机器端对账 |
-| T2 | openai-chat `turn.prompt` 抛错无 dispose | P1 | `routes/api/openai-chat.ts` 的 `turn.prompt(...)` 在 try 之外（同步 send 抛错时泄漏实例至 idle 回收）。修复：包 try/catch，失败 `turn.dispose()` 后 rethrow（scheduler 路径已有同款保护） |
-| T3 | workflow 超时后事件流继续 touchActivity | P1 | `agent-chat-transport.ts` 超时 reject 后 `iterateEvents` 未终止，agent 持续推消息会刷新 `lastActivityAt`，实例滞留时间不可控（窗口 = agent 持续输出时长）。修复：超时/abort 分支先 `turn.release()` 再 reject |
-| T4 | sweep 路径缺 supplement reconcile | P2 | `triggerMachineCleanupByMachineId` 无 `globalInstanceRegistry.reconcile`（与 performMachineCleanup 不一致），孤儿 supplement 残留（量级小）。修复：收敛两路径 |
+| T4 | sweep 路径缺孤儿 supplement 对账 | P2 | 机器清理已逐条收敛仍有 Core 快照的实例；但 `triggerMachineCleanupByMachineId` 未执行 WS close 路径的 registry reconcile，Core 已缺失的孤儿 supplement 仍可能残留。移除条件：两条机器清理路径共用安全的孤儿对账，并覆盖启动中的登记窗口 |
 | T5 | `WsAgentNodeSocket.send` 的 ws.send 异常被吞 | P2 | `agent-node-bridge.ts` catch 只记日志不 rethrow，停止帧可能静默丢失。修复：rethrow 或与 readyState 门禁同语义 |
-| T8 | local stub 恒 connected | 已知限制 | `local-node-service.ts` 占位节点不触发节点级断连（N:1 共享节点语义）；无 relay 消费者且进程死亡的本地实例靠 idle 300s 兜底。移除条件：core 暴露进程退出事件 |
+| T8 | 本地进程退出缺主动通知 | 已知限制 | `local-node-service.ts` 为共享占位节点，不触发实例级退出事件。已有 relay 的死亡由连接工厂携运行身份通知 Coordinator；无消费者时仍依赖后续连接失败、显式停止或满足策略的空闲回收，活动执行及交互式 Chat 不承诺被 idle 回收。移除条件：Core 提供带运行身份的进程退出事件并接入 Coordinator |
 | T9 | 测试缺口 | P2 | 以下修复无测试保护：C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（重连分支"先清理再接受新连接"仅有单侧测试）、C-P2.5（配额桶归属） |
 
-> 验证记录：2026-08-04 校验，215 个相关测试全绿，server / orchestration / web 三侧 tsc 通过；本表 T1-T5 为校验中新发现（已交叉验证），T6/T7 为审计已知未修复项。
+> 验证边界：生命周期回归覆盖启动取消补偿、停止失败恢复、机器断连与 clean-slate、空闲执行保护，以及迟到 relay 的运行身份隔离；真实机器进程退出通知与孤儿 supplement 对账仍受上表限制。测试门禁结果以本次变更的验证报告为准。

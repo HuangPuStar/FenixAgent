@@ -85,7 +85,7 @@ flowchart TB
 2. **YJS 是实时状态投影，不是业务命令总线**：YJS Update 用于同步已经确认的会话事实；创建会话、发送消息、取消生成、权限应答等操作使用显式 Action。
 3. **Instance ACP session data 是实时恢复真相，Y.Doc 是随实例生命周期存在的镜像**：Durable Store 仅保存业务会话元数据；Redis 只承担存活实例的有界热快照、active generation 恢复和跨节点同步，不能把已断链实例的旧 Y.Doc 提升为业务真相。
 4. **同一 Instance ACP session 的消息按其协议顺序处理**：服务端必须将其数据单写入对应 `rcsSessionId` 的 Y.Doc，避免重连或复用实例产生混写。
-5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端通过 `commandId`、`turnId` 和状态机实现幂等。
+5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端在有界去重窗口内通过 `commandId`、`turnId` 和状态机实现幂等。
 6. **流式增量可丢、最终状态不可丢**：短暂的 token delta 可以合并；turn 完成、错误、取消、工具调用和权限决策必须可靠落盘。
 7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。
 8. **慢消费者不能阻塞 Agent**：广播与 ACP 读取解耦；连接达到背压阈值后重新同步当前实时 Doc 或断开重连，而不是无限缓存。
@@ -217,9 +217,15 @@ classDiagram
 
 连接建立采用 generation-aware state-vector 握手（`channel/gateway.ts` + `channel/gateway-sync.ts`）：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(ownerUserId, agentId, requestedInstanceUid?)` → `acquireRelay`（共享 relay）→ 打开同一 active generation 的 Chat/Session Doc 并注册广播监听 → 登记客户端（`relayReady = false`）→ 服务端发送 `yjs:sync-request` → 客户端分别返回 generation + state vector → 服务端定向发送缺失 update；客户端 generation 不一致时以空 payload 声明“无当前世代状态”，服务端返回完整当前 projection，客户端按 replacement 处理。握手超时后才兼容性发送当前快照。随后服务端完成 relay `connect` 握手，成功后置 `relayReady = true` 并 flush 有界缓冲中的 Action。（`ensureRunning` 的装配在宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`：`resolveInstanceForOperation` + `ensureInstanceRuntime` 后返回 `instance.id`。）
 
+路由授权后立即启动有界入站分派，并发等待 `Gateway.open`，因此 state-vector 响应可在初始握手期间进入 Gateway；业务 Action 仍由 `relayReady` 守卫缓冲。初始同步的交付证明按 `wsId + generation` 绑定。超时快照未成功投递时保留该连接的恢复记录，只有同代 state-vector 对应的所需文档差量全部成功交接 socket 后才发送 `yjs:sync-complete`；普通实时 update 不解除历史门禁，连接关闭即清理记录。大型 Doc 的同代小差量可以完成恢复，不要求再次发送全量快照。前端失败后保留当前连接轮次、缺失文档及其 generation，允许同连接迟到的显式成功结算；完成证明须覆盖全部缺失文档，且其 generation 与已应用的 DocHub 代次一致。旧连接、普通更新、缺失或错误代次不能解除门禁；换代后旧证明不能与新证明拼接。重试超时只恢复按钮，不改变历史完整性。
+
+路由入站队列以连接共享的 `ws.data` 为身份；Elysia 为每次 `open`、`message`、`close` 创建新的 WS 包装对象，不能用包装对象作为跨回调索引。连接关闭从同一身份释放缓存和预算。
+
 Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
 
 旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。
+
+每轮同步至多一次缺失通知和一次完成通知，各自限制为 4 KiB，允许排在已交付差量之后而不受普通控制帧的 64 KiB 背压跳帧影响，避免差量填充缓冲后丢掉自己的结果通知。成功交接完成通知后才消费恢复记录；发送异常则以 1013 关闭连接交由重连恢复。普通控制帧与文档数据继续执行既有背压限制。
 
 **新协议可传输不变量**：任何已提交 Doc 的 canonical snapshot 都必须能由空客户端用一帧 `DOC_BASE` 完整重建。存储、实时轮换、历史构建、目录与运行态统一引用 `MAX_DOC_SNAPSHOT_BYTES`（288KiB 数据帧上限扣除最大头与 base64 封装后的 218,100B），启用期由容量 profile 校验；禁止单层调高硬限。历史逻辑对象超过单记录预算时在导入入口拆成自描述 `object_part` 记录，物理记录仍逐条满足上限，逻辑对象按 part 元数据重组。投递分 planned / socket 已交接 / 已应用三态：未交接的回执只结清额度，不得推进基线顺序；被放弃的基线必须回滚 attempt 或换新 attempt 重发。
 
@@ -245,6 +251,8 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 
 - **多实例隔离**：不同实例 → 不同 `rcsSessionId` → 不同 `chat:{rcsSessionId}` / `session:{rcsSessionId}` Y.Doc，同一 agent 的多个实例不混写。
 - **刷新可达**：刷新或新标签页带回同一 `instanceUid` → 同一 `rcsSessionId` → 回到同一份 Y.Doc，而不是重建一份空投影。
+
+宿主的实例面板缓存在当前 `organizationId + userId` 内按 `environmentId + instanceUid` 保留。实例切换只改变可见性，原面板、连接、会话、草稿和滚动位置保持；每个面板继续使用自身的历史窗口和 MCP 数据。单实例重启以 `agent:reconnect` 的 `envId + instanceUid` 精确失效，只有环境级事件省略 `instanceUid`；删除环境释放对应面板，组织/用户变化和宿主卸载释放全部缓存。
 
 `instanceUid` 只决定 Doc 归属，不决定 ACP 会话：**同一实例内切换 ACP 会话不改 URL、也不改 `rcsSessionId`**，由 `SessionChannel` 调 `docManager.replaceProjection(rcsSessionId, sessionId)` 在同一个 `rcsSessionId` 下整份替换投影（新 generation，见 §4.2）。因此「换实例」与「同实例换会话」是两条不同的路径，前者换命名空间，后者只有投影换代。
 
@@ -322,6 +330,8 @@ sequenceDiagram
 - 实例生命周期在连接建立时完成：`ensureRunning(ownerUserId, agentId, requestedInstanceUid?)`（宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配，内部走 `agentInstanceService.resolveInstanceForOperation` + `ensureInstanceRuntime`）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
 - **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
+- **切换确认与输入归属**：`load_session` / `resume_session` 登记 RPC id 和独立的 loading target 后才发送；loading target 只允许该目标的历史回放，不充当 prompt 的发送绑定。成功回执可省略 sessionId，此时沿用登记目标；错误、超时、断开、非法结果或目标不符均不能提交绑定。失败后同目标重试仍会发 RPC。只有当前活跃 relay 上已收到成功回执的会话绑定可以跳过重复 load；单独的 locator、持久投影或时间线不证明当前 runtime 已加载，重新建立频道后必须重新确认；仅有 locator 的首次 prompt 返回 `ACTION.VERSION_CONFLICT`，确认 load 后才允许发送。
+- **排队命令身份**：每条命令保留发起连接和提交时的会话代次，出队后从逻辑频道的已确认绑定解析目标。切换前排队或切换期间提交的会话输入返回 `ACTION.VERSION_CONFLICT`，由调用方重新确认输入；无效动作不能覆盖其他命令的连接身份。RPC 响应处理在每个异步提交点复核同步代次，旧回执不能改写新投影或绑定。
 - **跨进程投影换代**：`replaceProjection` 只能触达本进程连接；其他节点上的 legacy 连接由 `LegacyGenerationWatcher` 每 2 秒复核 Redis active generation，重载本地 Chat/Session 投影后强制广播成对 replace 帧。不得关闭 legacy 动作 socket：它可能正是 `load_session` 的调用方，关闭会释放共享 relay 让命令失败。
 - **陈旧窗口不落库**：同步连接的用户消息与 legacy `registerUserMessage` 在写入前复核 active generation；世代已过期则丢弃并让连接换代，不能把新会话的消息静默写进旧 generation。ACP 增量与广播保持每帧零 Redis I/O。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
@@ -704,9 +714,9 @@ Instance ACP session 断链（`relay_closed`）或实例回收时，`RelayEventH
 
 ```ts
 interface ClientAction<TType extends string, TPayload> {
-  commandId: string;                       // 幂等键，同会话唯一（前端生成 UUID，重试复用同一 ID）
+  commandId: string;                       // 幂等键，同会话唯一（服务端 epoch + 客户端 UUID，重试复用完整 ID）
   type: TType;
-  sessionId: string;                       // 服务端按会话绑定补充，浏览器字段不可覆盖 binding
+  sessionId: string;                       // send_prompt 必填：浏览器所见目标；服务端执行前校验确认绑定
   payload: TPayload;
   protocolVersion?: number;                // 服务端按会话绑定补充与校验（Q9，前端不感知）
   expectedProjectionVersion?: number;      // 服务端校验 VERSION_CONFLICT；前端乐观并发增强二期
@@ -714,7 +724,9 @@ interface ClientAction<TType extends string, TPayload> {
 }
 ```
 
-**Q9 修订（前端最小配合）**：前端实际发送只携带 `commandId`（UUID，一次生成重试复用）与 `action`/`payload`；`protocolVersion` / `expectedProjectionVersion` / `client` / `sessionId` 由服务端按会话绑定补充与校验（`channel/session-channel.ts` `normalizeAction`），前端不感知。
+服务端在已认证连接上发送 `yjs:command-epoch`；前端收到后才分配 `commandId = <epoch>.<UUID>`，同一未确认意图跨断线和重连保持完整 ID。代次轮换仅影响新意图；客户端不得给旧 ID 补新前缀。epoch 只承担遗忘后的防重放围栏，不替代认证、授权或 RCS 归属校验。普通 Action 不能回退到裸 UUID；该内部协议随前后端同版本部署，旧页面需刷新完成新握手。前端 Action 携带完整 `commandId` 与业务参数。`send_prompt.sessionId` 必须是用户提交时看到的 ACP 会话，执行前与当前已确认绑定严格比较：缺失、未确认或已切换均返回 `ACTION.VERSION_CONFLICT`，在用户消息、turn 与 relay 发送之前拒绝。外层队列必须保留原字段；入队时采样到的新 generation 不能替代客户端原目标。校验通过后，真正的 relay 路由字段仍由服务端确认绑定注入。`protocolVersion` / `client` 由服务端补充；`expectedProjectionVersion` 为可选前置条件。
+
+浏览器在收到确定成功回执前保留原始文本、图片与附件引用。确定拒绝后展示保留消息，用户明确选择“发送到当前会话”才建立新意图；共享投影切换不会自动改投。已交接 socket 后断线、回执丢失或 `ACTION.OUTCOME_UNKNOWN` 均显示未知结果，保留原幂等键且不提供盲目重发按钮；核对会话后由用户处理。
 
 ```ts
 interface ActionAck {
@@ -743,7 +755,13 @@ interface ActionError {
 }
 ```
 
-`accepted` 只表示进入有界处理队列，`committed` 才表示业务事实已持久化。客户端在超时后可使用相同 `commandId` 重发，不得换 ID 猜测执行结果。**`commandId` 去重表**（`channel/command-coordinator.ts`，每 `rcsSessionId` 进程内 Map，随实例生命周期释放）覆盖客户端最大重试窗口：已提交命令重发返回原 Ack（`duplicate`），不重复调用 Agent；执行失败清除去重记录，允许重发重新执行。
+`accepted` 只表示进入有界处理队列，`committed` 才表示业务事实已持久化。客户端在超时后只能使用相同完整 `commandId` 重发，不得换 ID 猜测执行结果。
+
+1. 活动准入与历史结果独立：活动表只保留排队、验证和仍在执行的命令，最多 256 个 RCS 频道、每频道 512 条，cancel 各额外预留 2 个槽位。执行器退场即归还活动额度，断线未知历史不占活动名额。
+2. 已提交、已接纳后失败及退场未知结果保存在独立历史中，最多 16,384 条，每条从结算起保留最多 10 分钟，其他命令不续期。窗口内重发返回原结果或 `ACTION.OUTCOME_UNKNOWN`，不调用 Agent。容量压力可提前回收一批历史。
+3. 删除本代已接纳记录前必须先轮换服务端随机 epoch。到期主动维护并向已认证连接发布新代次；发送失败关闭该连接以重新握手。被回收 ID 的旧前缀永久不再被当前进程接受，进程重启也生成新代次。拒绝旧身份只证明不能安全重放，不证明外部执行已结束。
+4. 精确去重查询、历史维护、代次核验和新占位在同一个同步段完成。旧代仍在执行的精确记录继续返回原接受状态或未知结果，最终结算不能覆盖其他记录。未接纳的验证失败可释放占位；已接纳失败保留结果墓碑。
+5. 用户显式放弃保留草稿时结束该次意图，之后手动输入相同内容使用新完整 ID；未放弃的未知意图保持原 ID。新代次不触发自动重放。
 
 **转发失败兜底**（`channel/action-forward.ts` `forwardYjsAction`）：Action 到达 SessionChannel 前抛错（含 relay 发送失败）时，回退为脱敏 `AGENT_UNAVAILABLE` 错误（`retryable: true`），诊断上下文只进服务端日志；`relayReady` 前缓冲的消息在连接就绪后重放（`list_sessions` 跳过——连接建立后由 status 触发）。
 
@@ -852,7 +870,7 @@ stateDiagram-v2
 1. 同一 `rcsSessionId` 的命令按有界队列严格串行执行（`channel/command-coordinator.ts`，队列上限默认 64，超出返回 `RATE_LIMITED`）；`eventSeq` 事件日志未实现（Q5），串行性由进程内队列保证。
 2. 默认每个会话仅允许一个活动 turn；若未来支持并行 turn，必须先引入独立 branch/thread 聚合，不能直接放宽约束。
 3. 租约不实现（Q5 评审决策）：进程内单写由队列串行 + `commandId` 去重保证；`leaseEpoch` 类型占位，为多节点部署预留。
-4. `commandId` 去重记录至少覆盖客户端最大重试窗口；已提交命令返回原 Ack，不重复调用 Agent。
+4. `commandId` 的历史结果在有界窗口内返回原 Ack；结果回收前先轮换命令代次，旧完整 ID 不能因遗忘而重新执行。
 5. Permission resolution 使用 compare-and-set：仅 `pending` 可迁移一次（`state/permission.ts` `applyPermissionResolution`），重复或过期回答返回幂等结果；迁移成功后才向 Agent 发 `permission.resolve`。
 6. 标题更新、已读状态等非 Agent 操作可独立排队，但仍通过服务端领域命令写入；不能借 YJS client update 绕过授权。
 
@@ -902,7 +920,9 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 - 每连接维护有界发送队列。超过软阈值（64 KB）时合并 update 或跳过发送（客户端重连后经快照重新同步）；超过硬阈值时以可恢复错误关闭连接。（实现：`channel/broadcaster.ts` `sendToYjsWs` 的 `bufferedAmount > 64 KB` 跳过发送 + `Y.mergeUpdates` 合并；`YJS_MAX_CLIENTS` 默认 200 连接配额在 `channel/connection-registry.ts` 与 `channel/gateway.ts`。）
 - ACP 读取循环与客户端广播解耦，单个浏览器永远不能阻塞 Agent stdout/WebSocket 消费。
 - `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时默认 5min → `expired`，见 `channel/session-channel.ts`。）
-- 会话队列、事件批次、Y.Doc 大小、单消息大小、工具结果和附件均有硬上限。（已实现：每 `rcsSessionId` 命令队列上限 64、Action payload 上限 1 MB，见 `channel/command-coordinator.ts`。）
+- 命令准入在异步校验前预留预算：每 `rcsSessionId` 最多 64 条等待项及 1 条执行项，payload 合计 4 MiB，单条 Action payload 为 1 MiB（按 UTF-8 计数）。取消额外保留 2 条、2 KiB，并优先于普通等待项执行；这些容量不能替代 WebSocket 入口的积压预算。
+- 未就绪连接的文本 pending 最多 64 条、1 MiB；取消额外保留 2 条、2 KiB 并优先重放。超限以 1013 关闭该连接；消费、关闭与转为 active 时同步维护字节账。二进制握手 pending 独立限制为 8 条、64 KiB；连接总量仍由 `YJS_MAX_CLIENTS` 限制。
+- 最后一个客户端断开会 abort 旧队列、拒绝未执行项并取消回执等待；重连队列等待旧执行器退场，旧 finally 不得删除新队列。仍在执行的记录不因断线或时间逐出；已退场历史与活动准入分开，按 §7.1 的数量、期限与 epoch 围栏回收。去重检查先于版本前置条件，重放只得到原结果或明确拒绝，不得重新触发旧命令。该能力不提供外部执行终态或跨控制面结果恢复。
 - **回放窗口**（`channel/connection-types.ts` `REPLAY_WINDOW_MS`，10s）：`load_session` / `resume_session` 转发时开启，用于承接先于 JSON-RPC result 到达的 Agent 历史回放流（见 §4.2）；窗口外或 Chat Doc 已有内容时保持聚合层拒绝语义。
 - **keep_alive 心跳**（`channel/gateway.ts`）：服务端周期性下发 `keep_alive`，客户端超时未回（页面隐藏等）以 4501 关闭，不在后台自动重连；连接建立失败以 4500 / 4502 / 1011 终态或可重连码关闭（见 §4.1）。
 - Agent 实例按租户与用户并发配额治理；空闲回收必须确保无活动 turn、无待处理权限和无未提交事件（实例级活跃由 `touchInstanceActivity` 观测，见 20 号文档 §7）。
