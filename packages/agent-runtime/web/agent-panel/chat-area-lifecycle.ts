@@ -1,13 +1,4 @@
-/**
- * 聊天会话槽位的生命周期策略：删除状态的判定与驱逐。
- *
- * 归属（台账 `ce-standards-todo.md` D1）：本模块判的是「Environment 删除后哪些聊天槽位必须失效」，
- * 属 chat 域策略，随聊天容器簇从 `apps/web/src/pages/agent-panel/` 归位本包。逻辑逐字未改。
- *
- * 两个函数都是纯函数（零 import、无副作用），由宿主壳 `apps/web/src/pages/agent-panel/ChatArea.tsx`
- * 经窄子路径 `@fenix/agent-runtime/web/agent-panel/chat-area-lifecycle` 消费：槽位的挂载与渲染归宿主壳，
- * 「哪个槽位已失效」的判据归 chat 域，两者分居而不各自复制一份判据。
- */
+import { useEffect, useLayoutEffect, useState } from "react";
 
 /** ChatArea keep-alive 缓存中单个会话面板的稳定标识。 */
 export interface SessionSlot {
@@ -34,18 +25,81 @@ export function evictDeletedEnvironmentSlots<T extends SessionSlot>(
   return Object.keys(next).length === Object.keys(slots).length ? slots : next;
 }
 
-/**
- * 切换会话后驱逐上一槽位：旧投影、DOM 与 WebSocket 不再常驻后台。
- *
- * 没有上一槽位或已不存在时返回原对象，避免无意义重建；切回旧会话会重新挂载并按历史窗口
- * 只拉最近块，这是「切走后释放旧数据」的代价。
- */
-export function evictPreviousSessionSlot<T extends SessionSlot>(
-  slots: Record<string, T>,
-  previousKey: string | null,
-): Record<string, T> {
-  if (previousKey === null || !(previousKey in slots)) return slots;
-  const next = { ...slots };
-  delete next[previousKey];
-  return next;
+interface CachedSessionSlot extends SessionSlot {
+  version: number;
+}
+
+interface SessionCache {
+  ownerKey: string;
+  slots: Record<string, CachedSessionSlot>;
+}
+
+/** 宿主按返回的稳定 key 挂载面板；切换实例只改变可见性。 */
+export function useChatAreaSlots(
+  agentId: string | null,
+  sessionId: string | null,
+  ownerKey: string,
+  deletedEnvironmentIds?: ReadonlySet<string>,
+) {
+  const activeAgentId = resolveActiveChatEnvironmentId(agentId, deletedEnvironmentIds);
+  const currentKey = activeAgentId ? JSON.stringify([activeAgentId, sessionId]) : null;
+  const [cache, setCache] = useState<SessionCache>(() => ({ ownerKey, slots: {} }));
+
+  // 身份切换当帧就隔离旧面板，不能等 effect 再清理带有历史和草稿的缓存。
+  const retained = cache.ownerKey === ownerKey ? cache.slots : {};
+  const slots = deletedEnvironmentIds ? evictDeletedEnvironmentSlots(retained, deletedEnvironmentIds) : retained;
+  const current =
+    currentKey && activeAgentId
+      ? (slots[currentKey] ?? {
+          agentId: activeAgentId,
+          sessionId,
+          version: 0,
+        })
+      : null;
+  const allSlots = currentKey && current ? { ...slots, [currentKey]: current } : slots;
+
+  useLayoutEffect(() => {
+    setCache((previous) => {
+      const retained = previous.ownerKey === ownerKey ? previous.slots : {};
+      const slots = deletedEnvironmentIds ? evictDeletedEnvironmentSlots(retained, deletedEnvironmentIds) : retained;
+      if (currentKey && activeAgentId && !slots[currentKey]) {
+        return { ownerKey, slots: { ...slots, [currentKey]: { agentId: activeAgentId, sessionId, version: 0 } } };
+      }
+      return previous.ownerKey === ownerKey && previous.slots === slots ? previous : { ownerKey, slots };
+    });
+  }, [ownerKey, currentKey, activeAgentId, sessionId, deletedEnvironmentIds]);
+
+  useEffect(() => {
+    const reconnect = (event: Event) => {
+      const detail: unknown = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object" || !("envId" in detail) || typeof detail.envId !== "string") return;
+      const instanceUid = "instanceUid" in detail ? detail.instanceUid : undefined;
+      if (instanceUid !== undefined && typeof instanceUid !== "string") return;
+      setCache((previous) => {
+        if (previous.ownerKey !== ownerKey) return previous;
+        let changed = false;
+        const slots = Object.fromEntries(
+          Object.entries(previous.slots).map(([key, slot]) => {
+            if (slot.agentId !== detail.envId || (instanceUid !== undefined && slot.sessionId !== instanceUid)) {
+              return [key, slot];
+            }
+            changed = true;
+            return [key, { ...slot, version: slot.version + 1 }];
+          }),
+        );
+        return changed ? { ownerKey, slots } : previous;
+      });
+    };
+    window.addEventListener("agent:reconnect", reconnect);
+    return () => window.removeEventListener("agent:reconnect", reconnect);
+  }, [ownerKey]);
+
+  return {
+    activeRestartVersion: current?.version ?? 0,
+    slots: Object.entries(allSlots).map(([cacheKey, slot]) => ({
+      ...slot,
+      key: JSON.stringify([ownerKey, cacheKey, slot.version]),
+      active: cacheKey === currentKey,
+    })),
+  };
 }

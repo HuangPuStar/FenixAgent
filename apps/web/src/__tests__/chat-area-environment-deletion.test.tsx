@@ -5,7 +5,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   evictDeletedEnvironmentSlots,
-  evictPreviousSessionSlot,
   resolveActiveChatEnvironmentId,
 } from "@fenix/agent-runtime/web/agent-panel/chat-area-lifecycle";
 
@@ -36,18 +35,5 @@ describe("ChatArea 删除 Environment 生命周期", () => {
     };
 
     expect(evictDeletedEnvironmentSlots(slots, new Set(["env-other"]))).toBe(slots);
-  });
-
-  // 切换会话后上一槽位必须驱逐，旧投影/DOM/WS 不再常驻；无上一槽位时保持引用。
-  test("切换会话后驱逐上一槽位", () => {
-    const slots = {
-      "session-old": { agentId: "env-1", sessionId: "session-old" },
-      "session-new": { agentId: "env-1", sessionId: "session-new" },
-    };
-    expect(evictPreviousSessionSlot(slots, "session-old")).toEqual({
-      "session-new": { agentId: "env-1", sessionId: "session-new" },
-    });
-    expect(evictPreviousSessionSlot(slots, null)).toBe(slots);
-    expect(evictPreviousSessionSlot(slots, "session-missing")).toBe(slots);
   });
 });

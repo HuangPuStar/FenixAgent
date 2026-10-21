@@ -222,7 +222,9 @@ export function useAgentSidebarTree({
       await unwrap(instanceApi.restart({ id: instance.instanceUid }));
 
       // 通知 ChatPanel 重新连接（事件名是聊天容器与本模块之间的既有契约，改名要同批改消费方）
-      window.dispatchEvent(new window.CustomEvent("agent:reconnect", { detail: { envId } }));
+      window.dispatchEvent(
+        new window.CustomEvent("agent:reconnect", { detail: { envId, instanceUid: instance.instanceUid } }),
+      );
 
       await refresh();
       toast.success(t("restartSuccess"));

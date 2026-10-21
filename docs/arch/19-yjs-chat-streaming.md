@@ -252,6 +252,8 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 - **多实例隔离**：不同实例 → 不同 `rcsSessionId` → 不同 `chat:{rcsSessionId}` / `session:{rcsSessionId}` Y.Doc，同一 agent 的多个实例不混写。
 - **刷新可达**：刷新或新标签页带回同一 `instanceUid` → 同一 `rcsSessionId` → 回到同一份 Y.Doc，而不是重建一份空投影。
 
+宿主的实例面板缓存在当前 `organizationId + userId` 内按 `environmentId + instanceUid` 保留。实例切换只改变可见性，原面板、连接、会话、草稿和滚动位置保持；每个面板继续使用自身的历史窗口和 MCP 数据。单实例重启以 `agent:reconnect` 的 `envId + instanceUid` 精确失效，只有环境级事件省略 `instanceUid`；删除环境释放对应面板，组织/用户变化和宿主卸载释放全部缓存。
+
 `instanceUid` 只决定 Doc 归属，不决定 ACP 会话：**同一实例内切换 ACP 会话不改 URL、也不改 `rcsSessionId`**，由 `SessionChannel` 调 `docManager.replaceProjection(rcsSessionId, sessionId)` 在同一个 `rcsSessionId` 下整份替换投影（新 generation，见 §4.2）。因此「换实例」与「同实例换会话」是两条不同的路径，前者换命名空间，后者只有投影换代。
 
 ```mermaid
