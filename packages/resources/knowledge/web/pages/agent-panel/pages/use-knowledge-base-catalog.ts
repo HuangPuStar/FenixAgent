@@ -170,7 +170,7 @@ export function useKnowledgeBaseCatalog({
 
   /**
    * 提交创建 / 编辑表单：编辑只发名称与描述，创建还要把解析配置一起发出。
-   * 前端的两处校验（名称非空、嵌入模型的 `model@provider` 格式）在发请求前拦截。
+   * 前端校验（名称非空、嵌入模型必选且为 `model@provider` 格式、内置解析必须选分块方法）在发请求前拦截。
    */
   const submitForm = () => {
     if (!formName.trim()) {
@@ -193,6 +193,11 @@ export function useKnowledgeBaseCatalog({
     // 前端校验：嵌入模型必须含 @（RagFlow v0.26 要求 model@provider 格式）
     if (!embeddingModel.includes("@")) {
       toast.error(t("validation.embeddingModelFormat"));
+      return;
+    }
+    // 分块方法在表单上标为必填，但空值会被下面展开运算符静默省略，后端只能回英文参数错误。
+    if (formParseMethod === "builtin" && !formChunkMethod) {
+      toast.error(t("validation.chunkMethodRequired"));
       return;
     }
     const slug = name
