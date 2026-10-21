@@ -83,6 +83,25 @@ describe("RagFlowKnowledgeProvider", () => {
     });
   });
 
+  // RAGFlow v0.26.0 的 Email 分块器直接下标取 chunk_token_num，而该类型没有服务端默认值；
+  // 创建时必须补上，否则解析任务抛 KeyError。其他分块不携带该配置，保持既有默认行为。
+  test("createKnowledgeBase 仅为 email 分块补全 chunk_token_num", async () => {
+    const fetchSpy = mock(async () => Response.json({ code: 0, data: { id: "dataset-chunk" } }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const provider = new RagFlowKnowledgeProvider();
+    const base = { organizationId: "org-1", userId: "user-1", slug: "chunk", name: "Chunk" };
+
+    await provider.createKnowledgeBase({ ...base, chunkMethod: "email" });
+    await provider.createKnowledgeBase({ ...base, chunkMethod: "naive" });
+
+    const bodies = (fetchSpy as ReturnType<typeof mock>).mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)),
+    );
+    expect(bodies[0]).toMatchObject({ chunk_method: "email", parser_config: { chunk_token_num: 512 } });
+    expect(bodies[1]).toMatchObject({ chunk_method: "naive" });
+    expect(bodies[1]).not.toHaveProperty("parser_config");
+  });
+
   test("deleteKnowledgeBase 调用 DELETE /api/v1/datasets/{id} 删除整个 dataset", async () => {
     const fetchSpy = mock(async () => ({
       ok: true,
