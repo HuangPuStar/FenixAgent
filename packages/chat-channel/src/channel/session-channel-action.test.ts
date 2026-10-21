@@ -180,7 +180,12 @@ describe("SessionChannel action flow", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hello" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hello" }],
+      },
       sinks,
     );
 
@@ -210,7 +215,12 @@ describe("SessionChannel action flow", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hello" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hello" }],
+      },
       sinks,
     );
 
@@ -229,12 +239,22 @@ describe("SessionChannel action flow", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hello" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hello" }],
+      },
       first,
     );
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hello" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hello" }],
+      },
       retry,
     );
 

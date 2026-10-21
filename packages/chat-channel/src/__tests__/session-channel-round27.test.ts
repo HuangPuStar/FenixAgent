@@ -13,7 +13,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
       action: "send_prompt",
       commandId: "prompt-1",
       content: [{ type: "text", text: "你好" }],
-      sessionId: "untrusted",
+      sessionId: "ses-1",
     });
     expect(harness.sent[0]).toMatchObject({ method: "session/prompt", params: { sessionId: "ses-1" } });
     expect(committed(harness)?.turnId).toBeDefined();
@@ -366,7 +366,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
     await submit(harness, {
       action: "send_prompt",
       commandId: "prompt-after-restore",
-      sessionId: "ses-untrusted",
+      sessionId: "ses-saved",
       content: [{ type: "text", text: "刷新后继续" }],
     });
     expect(harness.sent[1]).toMatchObject({ method: "session/prompt", params: { sessionId: "ses-saved" } });

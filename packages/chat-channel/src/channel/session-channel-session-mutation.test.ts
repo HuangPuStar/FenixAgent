@@ -16,7 +16,12 @@ describe("SessionChannel action flow", () => {
     // 先发一条消息创建活动 turn，再取消
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(harness),
     );
     await harness.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, sinks);
@@ -147,7 +152,12 @@ describe("SessionChannel action flow", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(harness),
     );
     // Agent 正常完成 turn（completed 终态）
@@ -182,7 +192,12 @@ describe("SessionChannel action flow", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       sinks,
     );
 

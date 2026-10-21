@@ -13,7 +13,12 @@ describe("SessionChannel doc projection", () => {
 
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "first" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "first" }],
+      },
       createSinks(harness),
     );
     expect(relayMessages).toHaveLength(1);
@@ -21,7 +26,12 @@ describe("SessionChannel doc projection", () => {
     harness.channel.disposeRcsSession("rcs-1");
     await harness.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "again" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "again" }],
+      },
       createSinks(harness),
     );
 

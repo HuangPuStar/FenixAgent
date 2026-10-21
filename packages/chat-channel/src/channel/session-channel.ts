@@ -227,6 +227,8 @@ export class SessionChannel {
 
     let turnId: string | undefined;
     if (command.type === "send_prompt") {
+      // 浏览器所见目标可能在外层队列等待期间过期；它只作前置条件，路由仍以确认绑定为准。
+      if (command.sessionId !== binding.sessionId) throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
       turnId = await this.writePromptText(connection, command.payload.content);
       assertCurrent();
       // 同一 relay 可承载多个 ACP 会话，出站目标必须来自本频道已确认绑定。

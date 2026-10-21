@@ -126,7 +126,12 @@ describe("Agent 编排会话与队列回归", () => {
     const a = h.connection("locator");
     a.acpSessionId = sessionId;
     a.sessionLoaded = false;
-    const prompt = { action: "send_prompt", commandId: "initial-prompt", content: [{ type: "text", text: "hello" }] };
+    const prompt = {
+      sessionId: "ses-old",
+      action: "send_prompt",
+      commandId: "initial-prompt",
+      content: [{ type: "text", text: "hello" }],
+    };
     const rejected = sinks();
     await h.channel.handleAction(a, prompt, rejected);
     expect(rejected.errors[0]?.error.type).toBe("ACTION.VERSION_CONFLICT");
@@ -164,7 +169,12 @@ describe("Agent 编排会话与队列回归", () => {
     const stale = sinks();
     const pending = h.channel.handleAction(
       h.connection("b"),
-      { action: "send_prompt", commandId: "prompt-old", content: [{ type: "text", text: "旧输入" }] },
+      {
+        sessionId: h.connection("b").acpSessionId,
+        action: "send_prompt",
+        commandId: "prompt-old",
+        content: [{ type: "text", text: "旧输入" }],
+      },
       stale,
     );
     receipt.resolve(true);
@@ -173,7 +183,7 @@ describe("Agent 编排会话与队列回归", () => {
     const fresh = sinks();
     await h.channel.handleAction(
       h.connection("b"),
-      { action: "send_prompt", commandId: "prompt-new", content: [] },
+      { sessionId: "ses-new", action: "send_prompt", commandId: "prompt-new", content: [] },
       fresh,
     );
     expect(h.sent.at(-1)).toMatchObject({

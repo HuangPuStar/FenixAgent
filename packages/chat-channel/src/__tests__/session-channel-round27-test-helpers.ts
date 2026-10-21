@@ -49,7 +49,8 @@ export async function createHarness(overrides: Partial<SessionConnection> = {}):
 }
 
 export async function submit(harness: Harness, action: Record<string, unknown>): Promise<void> {
-  await harness.channel.handleAction(harness.connection, action, {
+  const frame = action.action === "send_prompt" ? { sessionId: harness.connection.acpSessionId, ...action } : action;
+  await harness.channel.handleAction(harness.connection, frame, {
     sendAck: (ack) => harness.acks.push(ack),
     sendError: (error) => harness.errors.push(error),
   });

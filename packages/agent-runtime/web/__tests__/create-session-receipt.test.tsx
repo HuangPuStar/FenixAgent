@@ -5,12 +5,16 @@
 // 因此「本页本次创建出了哪个会话」只能由这条定向 Ack 回答。
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { createDeterministicRcsSessionId, createPublicError } from "@fenix/chat-channel";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import * as Y from "yjs";
+import { PromptRecovery } from "../agent-panel/PromptRecovery";
 import type { ChatPanelRuntime } from "../agent-panel/use-chat-panel-runtime";
 import { useChatPanelRuntime } from "../agent-panel/use-chat-panel-runtime";
+import { createSessionDocBinding } from "../yjs/doc-hub";
 
 // 告知 React 当前为测试环境，消除 act() 警告。
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -75,16 +79,24 @@ function renderRuntime() {
       userId: "user-1",
       usePeriTaskViews,
     });
-    return null;
+    const current = latest.current;
+    return current.preservedPrompt
+      ? createElement(PromptRecovery, {
+          prompt: current.preservedPrompt,
+          retry: current.retryPreservedPrompt,
+          dismiss: current.dismissPreservedPrompt,
+          disabled: false,
+        })
+      : null;
   }
   const container = win.document.createElement("div");
   const root = createRoot(container as unknown as HTMLElement);
   act(() => root.render(createElement(Probe)));
-  return { latest, unmount: () => act(() => root.unmount()) };
+  return { latest, container, unmount: () => act(() => root.unmount()) };
 }
 
 /** 打开连接并返回 socket（hook 首帧即建连）。 */
-function connect(): { latest: { current: ChatPanelRuntime | null }; unmount: () => void; socket: FakeWebSocket } {
+function connect() {
   FakeWebSocket.instances = [];
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: FakeWebSocket });
   const harness = renderRuntime();
@@ -198,6 +210,101 @@ describe("onCreateSession 创建回执", () => {
     );
     expect(await second).toBe("ses-2");
     expect(lastCreateCommandId(socket)).not.toBe(firstCommandId);
+    unmount();
+  });
+});
+
+/** 真实共享投影改变目标，运行时仍通过原 WebSocket 接收动作结果。 */
+function setProjectedSession(sessionId: string) {
+  const key = createDeterministicRcsSessionId("env-1", "user-1", "inst-1");
+  const binding = createSessionDocBinding(key);
+  act(() => {
+    const root = binding.ydoc.getMap("root");
+    const session = root.get("session");
+    if (session instanceof Y.Map) session.set("sessionId", sessionId);
+    else root.set("session", new Y.Map([["sessionId", sessionId]]));
+  });
+  binding.cleanup();
+}
+
+function lastPrompt(socket: FakeWebSocket): Record<string, unknown> {
+  const frame = [...socket.sent]
+    .reverse()
+    .map((raw) => JSON.parse(raw) as Record<string, unknown>)
+    .find((item) => item.action === "send_prompt");
+  if (!frame) throw new Error("未找到发送输入");
+  return frame;
+}
+
+describe("旧目标输入恢复", () => {
+  // 已写入 socket 但回执丢失时必须可见保留且标记未知，不能把它作为确定失败重新发出。
+  test("断线使未确认输入成为可见的未知结果草稿", () => {
+    const { latest, socket, unmount, container } = connect();
+    setProjectedSession("ses-a");
+    const content = [{ type: "text", text: "等待确认的草稿 @./file.pdf" }];
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const original = lastPrompt(socket);
+    act(() => socket.close());
+    expect(latest.current?.preservedPrompt).toMatchObject({ outcomeUnknown: true, content });
+    expect(container.textContent).toContain("promptRecoveryUnknown");
+    act(() => latest.current?.retryPreservedPrompt());
+    expect(lastPrompt(socket).commandId).toBe(original.commandId);
+    unmount();
+  });
+
+  // 收到会话冲突时保留完整输入，更新投影不会自动重投，用户确认后才发送到新目标。
+  test("真实运行时保留文本图片和附件并显式重发到当前会话", () => {
+    const { latest, socket, unmount, container } = connect();
+    setProjectedSession("ses-a");
+    const content = [
+      { type: "text", text: "草稿 @./report.pdf" },
+      { type: "image", mimeType: "image/png", data: "retained-image-data" },
+    ];
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const original = lastPrompt(socket);
+    expect(original.sessionId).toBe("ses-a");
+    setProjectedSession("ses-b");
+    act(() =>
+      socket.receiveFromServer({
+        type: "action_error",
+        commandId: original.commandId,
+        error: createPublicError("ACTION.VERSION_CONFLICT"),
+      }),
+    );
+    expect(latest.current?.preservedPrompt?.content).toEqual(content);
+    expect(lastPrompt(socket).commandId).toBe(original.commandId);
+    expect(container.textContent).toContain("promptRecoverySaved");
+    act(() => container.querySelector("button")?.click());
+    const retried = lastPrompt(socket);
+    expect(retried.sessionId).toBe("ses-b");
+    expect(retried.content).toEqual(content);
+    expect(retried.commandId).not.toBe(original.commandId);
+    act(() => socket.receiveFromServer({ type: "action_ack", commandId: retried.commandId, status: "committed" }));
+    expect(latest.current?.preservedPrompt).toBeNull();
+    unmount();
+  });
+
+  // 不确定结果不能显示可盲目重发的恢复动作，也不能释放幂等键后生成新的副作用。
+  test("未知结果保留内容和原幂等键且恢复重发被禁止", () => {
+    const { latest, socket, unmount, container } = connect();
+    setProjectedSession("ses-a");
+    const content = [{ type: "text", text: "不可重复执行" }];
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const original = lastPrompt(socket);
+    act(() =>
+      socket.receiveFromServer({
+        type: "action_error",
+        commandId: original.commandId,
+        error: createPublicError("ACTION.OUTCOME_UNKNOWN"),
+      }),
+    );
+    expect(latest.current?.preservedPrompt).toMatchObject({ outcomeUnknown: true, content });
+    expect(container.textContent).toContain("promptRecoveryUnknown");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    act(() => latest.current?.retryPreservedPrompt());
+    expect(lastPrompt(socket).commandId).toBe(original.commandId);
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    expect(lastPrompt(socket).commandId).toBe(original.commandId);
     unmount();
   });
 });

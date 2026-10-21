@@ -479,7 +479,12 @@ describe("Gateway shared relay", () => {
     await lifecycle.handleMessage(
       ws,
       "ws-sync-adapter",
-      JSON.stringify({ action: "send_prompt", commandId: "cmd-sync", content: [{ type: "text", text: "hello" }] }),
+      JSON.stringify({
+        action: "send_prompt",
+        sessionId: "ses-confirmed",
+        commandId: "cmd-sync",
+        content: [{ type: "text", text: "hello" }],
+      }),
     );
 
     expect(accepted).toHaveLength(1);

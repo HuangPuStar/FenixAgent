@@ -2,8 +2,6 @@
 // 会话切换的权威换代回归：真实 ChatChannelController / Gateway / DocManager / SyncHostSession，
 // 两个 WebSocket 走完整 HELLO → 目录 → 内容订阅链路；只替换宿主依赖与传输边界。
 //
-// 覆盖：A→B→A 旧连接被服务端主动失效、换代不依赖 legacy replace 帧、resume_session 同样换代、
-// 多标签页不复用旧历史。
 
 import { describe, expect, test } from "bun:test";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
@@ -380,7 +378,12 @@ describe("会话切换的服务端权威换代", () => {
         await controller.gateway.handleMessage(
           actionWs,
           "ws-action",
-          JSON.stringify({ action: "send_prompt", commandId: `prompt-${index}`, content: [{ type: "text", text }] }),
+          JSON.stringify({
+            action: "send_prompt",
+            sessionId: "ses-confirmed",
+            commandId: `prompt-${index}`,
+            content: [{ type: "text", text }],
+          }),
         );
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -418,6 +421,7 @@ describe("会话切换的服务端权威换代", () => {
         JSON.stringify({
           action: "send_prompt",
           commandId: "prompt-race",
+          sessionId: "ses-confirmed",
           content: [{ type: "text", text: "attach race question" }],
         }),
       );

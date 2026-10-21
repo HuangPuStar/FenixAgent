@@ -25,7 +25,10 @@ import {
 
 /** 每 rcsSessionId 有界队列默认上限（超出返回 RATE_LIMITED） */
 const DEFAULT_MAX_PENDING_PER_SESSION = 64;
-/** 队列满时的建议重试间隔（毫秒） */
+const DEDUP_RETENTION_MS = 10 * 60_000;
+const MAX_DEDUP_SESSIONS = 256;
+const MAX_DEDUP_RECORDS_PER_SESSION = 512;
+const CANCEL_RESERVE = 2;
 
 export interface CommandCoordinatorDependencies {
   /** 串行执行命令（同一 rcsSessionId 内互不并发；恰好一次由去重表保证） */
@@ -38,6 +41,8 @@ export interface CommandCoordinatorDependencies {
   maxPendingPerSession?: number;
   /** 队列内 payload 总字节预算，默认 4 MiB。 */
   maxPendingBytesPerSession?: number;
+  /** 去重保留窗口使用的时钟；默认 Date.now，测试可独立推进而不影响其他定时器。 */
+  now?: () => number;
   /** 诊断日志（不得包含命令正文等敏感内容） */
   reportError?: (context: string, err: unknown) => void;
   /** 公开错误安全事件 sink；只接受 serializePublicErrorLog 的低敏 JSON。 */
@@ -54,7 +59,7 @@ interface QueueItem {
 /** 去重记录：in_flight 期间重发返回原 accepted；committed 后重发返回 duplicate */
 type DedupRecord =
   | { state: "in_flight"; ack: ActionAck }
-  | { state: "committed"; ack: ActionAck }
+  | { state: "committed"; ack: ActionAck; expiresAt: number }
   | { state: "unknown" };
 
 interface SessionQueue {
@@ -74,7 +79,6 @@ export class CommandCoordinator {
   private readonly dedup = new Map<string, Map<string, DedupRecord>>();
   /** 每 rcsSessionId 有界串行队列 */
   private readonly queues = new Map<string, SessionQueue>();
-  private readonly dedupExpiry = new Map<string, number>();
 
   constructor(private readonly dependencies: CommandCoordinatorDependencies) {}
 
@@ -92,7 +96,7 @@ export class CommandCoordinator {
 
     // 幂等检查与 in_flight 标记必须在同一同步段完成（Bun 单线程事件循环），
     // 保证并发重发不会绕过去重表导致 executeCommand 被调用两次。
-    this.pruneDedup();
+    this.pruneDedup(command.rcsSessionId);
     const existing = this.dedup.get(command.rcsSessionId)?.get(command.commandId);
     if (existing) {
       if (existing.state === "unknown") {
@@ -117,12 +121,13 @@ export class CommandCoordinator {
       }
     }
 
-    if (!this.dedup.has(command.rcsSessionId) && this.dedup.size >= 256) {
+    const reserve = command.type === "cancel" ? CANCEL_RESERVE : 0;
+    if (!this.dedup.has(command.rcsSessionId) && this.dedup.size >= MAX_DEDUP_SESSIONS + reserve) {
       sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.RATE_LIMITED"), command.commandId));
       return Promise.resolve();
     }
     const dedupTable = this.getDedupTable(command.rcsSessionId);
-    if (dedupTable.size >= 512) {
+    if (dedupTable.size >= MAX_DEDUP_RECORDS_PER_SESSION + reserve) {
       sinks.sendError({
         type: "action_error",
         commandId: command.commandId,
@@ -130,7 +135,6 @@ export class CommandCoordinator {
       });
       return Promise.resolve();
     }
-    this.dedupExpiry.set(command.rcsSessionId, Date.now() + 10 * 60_000);
     const accepted: ActionAck = { type: "action_ack", commandId: command.commandId, status: "accepted" };
     dedupTable.set(command.commandId, { state: "in_flight", ack: accepted });
 
@@ -156,7 +160,7 @@ export class CommandCoordinator {
   private async enqueue(command: Command, sinks: ActionSinks, accepted: ActionAck): Promise<void> {
     const queue = this.getQueue(command.rcsSessionId);
     const bytes = new TextEncoder().encode(JSON.stringify(command.payload)).byteLength;
-    const reserved = command.type === "cancel" ? 2 : 0;
+    const reserved = command.type === "cancel" ? CANCEL_RESERVE : 0;
     if (
       queue.pending >= (this.dependencies.maxPendingPerSession ?? DEFAULT_MAX_PENDING_PER_SESSION) + 1 + reserved ||
       queue.bytes + bytes > (this.dependencies.maxPendingBytesPerSession ?? 4 * 1024 * 1024) + reserved * 1024
@@ -203,7 +207,7 @@ export class CommandCoordinator {
     } finally {
       queue.running = false;
       queue.finish();
-      if (this.queues.get(rcsSessionId) === queue && !queue.abort.signal.aborted) this.queues.delete(rcsSessionId);
+      if (this.queues.get(rcsSessionId) === queue) this.queues.delete(rcsSessionId);
     }
   }
 
@@ -232,13 +236,15 @@ export class CommandCoordinator {
     }
   }
 
-  private pruneDedup(): void {
-    for (const [id, expiry] of this.dedupExpiry) {
-      if (expiry > Date.now()) continue;
-      if (this.queues.get(id)?.running) continue;
-      this.dedup.delete(id);
-      this.dedupExpiry.delete(id);
-      if (this.queues.get(id)?.abort.signal.aborted) this.queues.delete(id);
+  private pruneDedup(rcsSessionId: string): void {
+    const now = this.dependencies.now?.() ?? Date.now();
+    for (const [id, table] of this.dedup) {
+      if (id !== rcsSessionId && (this.dedup.has(rcsSessionId) || this.dedup.size < MAX_DEDUP_SESSIONS)) continue;
+      for (const [commandId, record] of table) {
+        // 未完成与未知副作用没有安全重放证明，不能为了腾容量而将其逐出。
+        if (record.state === "committed" && record.expiresAt <= now) table.delete(commandId);
+      }
+      if (table.size === 0) this.dedup.delete(id);
     }
   }
 
@@ -290,11 +296,17 @@ export class CommandCoordinator {
   }
 
   private recordCommitted(rcsSessionId: string, commandId: string, ack: ActionAck): void {
-    this.getDedupTable(rcsSessionId).set(commandId, { state: "committed", ack });
+    this.getDedupTable(rcsSessionId).set(commandId, {
+      state: "committed",
+      ack,
+      expiresAt: (this.dependencies.now?.() ?? Date.now()) + DEDUP_RETENTION_MS,
+    });
   }
 
   private clearDedup(rcsSessionId: string, commandId: string): void {
-    this.getDedupTable(rcsSessionId).delete(commandId);
+    const table = this.dedup.get(rcsSessionId);
+    table?.delete(commandId);
+    if (table?.size === 0) this.dedup.delete(rcsSessionId);
   }
 
   private getQueue(rcsSessionId: string): SessionQueue {
