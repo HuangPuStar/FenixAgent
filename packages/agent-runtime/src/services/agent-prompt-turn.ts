@@ -93,6 +93,7 @@ function createPromptTurnWithLease(
   let disconnected = false;
   let released = false;
   let cancelRequested = false;
+  let cancellationId: number | undefined;
   let unsubscribe: (() => void) | undefined;
   const finish = (): void => {
     done = true;
@@ -118,6 +119,11 @@ function createPromptTurnWithLease(
     void session.dispose().catch((error) => logError("[agent-turn] Session release failed", error));
   };
   unsubscribe = session.relayHandle.onMessage?.((message) => {
+    const rpc = extractJsonRpc(message);
+    if (cancellationId !== undefined && rpc?.id === cancellationId) {
+      if (rpc.error) logError("[agent-turn] Agent cancellation rejected", rpc.error);
+      return;
+    }
     if (!isTurnMessage(message, sessionId, turnId)) return;
     const outcome = classifyAgentTurnEvent(message);
     if (outcome && outcome.outcome !== "unknown") {
@@ -153,8 +159,10 @@ function createPromptTurnWithLease(
     cancelRequested = true;
     try {
       if (prompted && !terminal && !disconnected) {
+        cancellationId = nextRpcId();
         const sent = session.relayHandle.send({
           jsonrpc: "2.0",
+          id: cancellationId,
           method: "session/cancel",
           params: { sessionId },
         } as unknown as EngineRelayMessage);

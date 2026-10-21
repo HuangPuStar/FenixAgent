@@ -68,10 +68,10 @@ export class ActiveQueryRegistry<T extends { interrupt(): Promise<void> }> {
     entry.cancelRequested = true;
     try {
       await entry.query.interrupt();
-    } catch {
-      // interrupt 失败不阻塞 cancel RPC：标记已置位，for-await 收尾（adapter 的
-      // finally 注销路径）会读取标记返回 stopReason:"cancelled"；若此处抛错，
-      // dispatcher 会回 error RPC，前端将失去终态事件（只能等超时兜底）。
+    } catch (error) {
+      // The prompt still owns its terminal; a failed interrupt only records delivery uncertainty.
+      const report = this.reportError ?? console.error;
+      report("[ActiveQueryRegistry] cancellation interrupt failed", error);
     }
     return true;
   }

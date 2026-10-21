@@ -1,8 +1,10 @@
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { RelayRpcScope } from "./relay-rpc-namespace";
 
 /** A consumer owns its listeners; only the runtime owner closes the physical relay. */
 export function createRelayLease(physical: EngineRelayHandle): EngineRelayHandle {
   let released = false;
+  const rpc = new RelayRpcScope(physical);
   const listeners = new Set<() => void>();
   return {
     get state() {
@@ -11,12 +13,12 @@ export function createRelayLease(physical: EngineRelayHandle): EngineRelayHandle
     ready: physical.ready,
     send(message) {
       if (released) throw new Error("Relay lease has been released");
-      return physical.send(message);
+      return rpc.send(message);
     },
     onMessage: physical.onMessage
       ? (listener) => {
           if (released) throw new Error("Relay lease has been released");
-          const unsubscribe = physical.onMessage!((message) => {
+          const unsubscribe = rpc.subscribe((message) => {
             if (!released) listener(message);
           });
           listeners.add(unsubscribe);
@@ -29,6 +31,7 @@ export function createRelayLease(physical: EngineRelayHandle): EngineRelayHandle
     close() {
       if (released) return;
       released = true;
+      rpc.close();
       for (const unsubscribe of listeners) unsubscribe();
       listeners.clear();
     },

@@ -143,3 +143,22 @@ describe("ActiveQueryRegistry", () => {
     await expect(registry.cancel("ses-1")).resolves.toBe(true);
   });
 });
+
+// interrupt 失败只留下取消请求意图，必须保留诊断，不能以静默吞错隐藏远端执行未知状态。
+test("interrupt failure reports cancellation delivery uncertainty", async () => {
+  const errors: unknown[] = [];
+  const registry = new ActiveQueryRegistry<FakeQuery>({
+    reportError: (message, error) => {
+      errors.push({ message, error });
+    },
+  });
+  const failure = new Error("interrupt unavailable");
+  registry.register("ses-diagnostic", {
+    async interrupt() {
+      throw failure;
+    },
+  });
+  await registry.cancel("ses-diagnostic");
+  expect(errors).toEqual([{ message: "[ActiveQueryRegistry] cancellation interrupt failed", error: failure }]);
+  expect(registry.peekCancelRequested("ses-diagnostic")).toBe(true);
+});
