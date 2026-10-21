@@ -10,6 +10,7 @@ import {
   AgentSiteRemoteAppParamsSchema,
   CreateAgentSiteAppRequestSchema,
 } from "../server/schemas/agent-site.schema";
+import { AgentSitesError } from "../server/services/agent-sites";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import { installAgentModuleStub, resetAgentModuleStub, siteAppView } from "./fixtures";
 import {
@@ -136,6 +137,71 @@ describe("agent-sites 协议层", () => {
 
     const json = await (await request(`/apps/by-remote/${TEST_REMOTE_APP_ID}`)).json();
     expect(json.data.remoteAppId).toBe(TEST_REMOTE_APP_ID);
+  });
+
+  // 上游拒绝创建（如应用数量上限）必须原样透出状态码与文案：压成 500 会让控制台只剩
+  // "Internal server error"，用户不知道是数量限制还是别的原因。
+  test("POST /apps 上游 409 原样透出状态码与文案", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        create: async () => {
+          throw new AgentSitesError(409, "应用数量已达上限（max_apps）");
+        },
+      },
+    });
+
+    const res = await request("/apps", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "demo-app" }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: { code: "upstream_error", message: "应用数量已达上限（max_apps）" },
+    });
+  });
+
+  // 上游 5xx 对浏览器是网关失败：映射 502，但上游已面向调用方措辞的文案必须保留。
+  test("POST /apps 上游 5xx 映射 502 且保留文案", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        create: async () => {
+          throw new AgentSitesError(503, "PocketBase 暂不可用，请稍后重试");
+        },
+      },
+    });
+
+    const res = await request("/apps", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "demo-app" }),
+    });
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toEqual({
+      code: "upstream_error",
+      message: "PocketBase 暂不可用，请稍后重试",
+    });
+  });
+
+  // 上游 401 是 RCS 与 agent-sites 之间的 master key 失效，不是当前用户会话失效：
+  // 原样透传 401 会让前端把用户踢回登录页。
+  test("POST /apps 上游 401 映射 502 而不是 401", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        create: async () => {
+          throw new AgentSitesError(401, "master key rejected");
+        },
+      },
+    });
+
+    const res = await request("/apps", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "demo-app" }),
+    });
+    expect(res.status).toBe(502);
+    expect((await res.json()).error.message).toBe("master key rejected");
   });
 
   // 无写权限时按端点文案返回 403：同一条 forbidden 语义在不同动作上有不同说法（既有契约）。
