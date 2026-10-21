@@ -162,8 +162,8 @@ describe("Agent 会话变更结果确认", () => {
     expect(harness.reports).toContain("[SessionChannel] session title cleanup failed");
   });
 
-  // Agent 拒绝变更时不得刷新或提交，失败命令允许同 commandId 再次尝试。
-  test("错误响应返回失败且释放等待登记", async () => {
+  // Agent 拒绝后释放等待登记但保留命令错误，显式重试使用新身份。
+  test("错误响应释放等待登记，同 ID 保留失败，新意图可重试", async () => {
     const harness = await createHarness();
     const action = { action: "delete_session", commandId: "delete-failed", sessionId: "ses-other" };
     const pending = harness.send(action);
@@ -176,7 +176,13 @@ describe("Agent 会话变更结果确认", () => {
     expect(harness.sent).toHaveLength(1);
     expect(harness.shared.pendingSessionMutations?.size).toBe(0);
 
-    const retry = harness.send(action);
+    await harness.send(action);
+    expect(harness.errors).toHaveLength(2);
+    expect(harness.errors[1]).toEqual(harness.errors[0]);
+    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted"]);
+    expect(harness.sent).toHaveLength(1);
+    expect(harness.shared.pendingSessionMutations?.size).toBe(0);
+    const retry = harness.send({ ...action, commandId: "delete-new-intent" });
     await Bun.sleep(0);
     await harness.receive({ jsonrpc: "2.0", id: harness.sent[1]?.id, result: {} });
     await retry;

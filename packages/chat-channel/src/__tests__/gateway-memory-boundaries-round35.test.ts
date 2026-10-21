@@ -68,7 +68,9 @@ function createHarness(overrides: Partial<GatewayDependencies> = {}): Harness {
   const actions: Record<string, unknown>[] = [];
   const disposed: string[] = [];
   const sessionChannel = {
-    async handleAction(
+    getCommandEpoch: () => "b0dad12c-588e-40a7-8985-95958dd284a1",
+    onCommandEpochChanged: () => () => {},
+    async handleClientAction(
       _connection: SessionConnection,
       action: Record<string, unknown>,
       sinks: { sendAck: (ack: ActionAck) => void; sendError: (error: ActionError) => void },

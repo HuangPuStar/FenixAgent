@@ -78,8 +78,12 @@ describe("YJS 路由端到端握手与输入绑定", () => {
         content: [{ type: "text", text: "old context" }],
       });
       await h.respond(h.sent.filter((rpc) => rpc.method === "session/load")[1]?.id, { sessionId: "ses-b" });
-      await eventually(() => h.text().some((frame) => frame.type === "action_error" && frame.commandId === "old-page"));
-      expect(h.text().find((frame) => frame.type === "action_error" && frame.commandId === "old-page")).toMatchObject({
+      await eventually(() =>
+        h.text().some((frame) => frame.type === "action_error" && frame.commandId === h.commandId("old-page")),
+      );
+      expect(
+        h.text().find((frame) => frame.type === "action_error" && frame.commandId === h.commandId("old-page")),
+      ).toMatchObject({
         error: { type: "ACTION.VERSION_CONFLICT" },
       });
       expect(h.sent.filter((rpc) => rpc.method === "session/prompt")).toEqual([]);

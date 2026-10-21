@@ -6,7 +6,6 @@ import {
   PERI_USER_INPUT_QUEUE_CAPABILITY,
   type PublicErrorInfo,
   type TerminalWsUiCode,
-  type YjsHistoryIncomplete,
 } from "@fenix/chat-channel";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +19,7 @@ import { useSessionState } from "../hooks/use-session-state";
 import { useSyncChatState } from "../hooks/use-sync-chat-state";
 import { useUserInputQueue } from "../hooks/use-user-input-queue";
 import { useYjsDebugDump } from "../hooks/use-yjs-debug-dump";
+import { randomUUID } from "../lib/random-uuid";
 import { applyDocHubUpdate, getDocHubGenerations, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
 import {
   buildYjsUrl,
@@ -32,6 +32,7 @@ import {
 import type { UsePeriTaskViews } from "./chat-panel-host-ports";
 import type { ChatPanelDerivedState, ChatPanelRuntime } from "./chat-panel-runtime-types";
 import { useStableSyncSessionKey } from "./stable-sync-session-key";
+import { useChatHistoryRecovery } from "./use-chat-history-recovery";
 import { useChatPanelActions } from "./use-chat-panel-actions";
 
 export type { ChatPanelCallbacks, ChatPanelRuntime } from "./chat-panel-runtime-types";
@@ -39,9 +40,6 @@ export type { StableSyncSessionKeyState } from "./stable-sync-session-key";
 export { deriveStableSyncSessionKey, useStableSyncSessionKey } from "./stable-sync-session-key";
 
 import { shouldBlockPromptOnIncompleteLegacy } from "./sync-authority";
-
-/** 重试态最长持续时间：完整快照未到也要恢复重试入口，不能让门禁永久锁死。 */
-const HISTORY_RECOVERY_RETRY_TIMEOUT_MS = 10_000;
 
 /**
  * 装配 ChatPanel 的运行时。`agentId` 为空时不建连；`sessionId` 参与 RCS session id 派生，
@@ -70,16 +68,18 @@ export function useChatPanelRuntime({
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
   const [actionError, setActionError] = useState<ActionError | null>(null);
-  // 旧 Chat Doc 初始同步未完成：保留服务端给出的缺失文档与超限尺寸，渲染层据此显示重试入口。
-  const [historyRecovery, setHistoryRecovery] = useState<YjsHistoryIncomplete | null>(null);
-  const [historyRecoveryRetrying, setHistoryRecoveryRetrying] = useState(false);
-  // 用户手动重试历史同步：+1 作为建连 effect 依赖强制重建旧 Yjs 连接。
-  const [historyRecoveryAttempt, setHistoryRecoveryAttempt] = useState(0);
-  // 重试期间只有「缺失文档本身被重新交付」才算恢复完成；连接建立或清空状态都不是证据。
-  const historyRecoveryRef = useRef<YjsHistoryIncomplete | null>(null);
-  const pendingRecoveryDocsRef = useRef<Set<string> | null>(null);
-  const recoveryRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  historyRecoveryRef.current = historyRecovery;
+  const {
+    historyRecovery,
+    historyRecoveryRetrying,
+    historyRecoveryAttempt,
+    retryHistoryRecovery: retryRecovery,
+    beginConnection,
+    closeConnection,
+    ownsConnection,
+    isCurrentConnection,
+    recordIncomplete,
+    complete,
+  } = useChatHistoryRecovery();
   // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS。
   // 4500、4502 等同一 URL 无法恢复的关闭码仍需用户手动触发；Chat idle/activity
   // 与客户端 keepalive 超时不再由服务端主动断开。
@@ -94,58 +94,10 @@ export function useChatPanelRuntime({
   const noReplaySessionRef = useRef(false);
   /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
-  const clearRecoveryRetryTimer = useCallback(() => {
-    if (recoveryRetryTimerRef.current !== null) {
-      clearTimeout(recoveryRetryTimerRef.current);
-      recoveryRetryTimerRef.current = null;
-    }
-  }, []);
-  const settleHistoryRecovery = useCallback(() => {
-    pendingRecoveryDocsRef.current = null;
-    clearRecoveryRetryTimer();
-    historyRecoveryRef.current = null;
-    setHistoryRecovery(null);
-    setHistoryRecoveryRetrying(false);
-  }, [clearRecoveryRetryTimer]);
-  /** 缺失文档重新交付一次即证明本轮快照已恢复；全部到齐才解除发送门禁。 */
-  const noteRecoveredDoc = useCallback(
-    (docName: string) => {
-      const pending = pendingRecoveryDocsRef.current;
-      if (pending === null || !pending.delete(docName)) return;
-      if (pending.size > 0) return;
-      settleHistoryRecovery();
-    },
-    [settleHistoryRecovery],
-  );
-  const recordHistoryIncomplete = useCallback(
-    (info: YjsHistoryIncomplete) => {
-      // 同一连接上的迟到增量不是恢复证明，解除等待后只能由下一次建连重新开启跟踪。
-      pendingRecoveryDocsRef.current = null;
-      clearRecoveryRetryTimer();
-      historyRecoveryRef.current = info;
-      setHistoryRecovery(info);
-      setHistoryRecoveryRetrying(false);
-    },
-    [clearRecoveryRetryTimer],
-  );
-  const armHistoryRecoveryTracking = useCallback(() => {
-    const recovery = historyRecoveryRef.current;
-    pendingRecoveryDocsRef.current = recovery === null ? null : new Set(recovery.docs);
-  }, []);
   const retryHistoryRecovery = useCallback(() => {
-    if (historyRecoveryRef.current === null) return;
     setClassifiedError(null);
-    setHistoryRecoveryRetrying(true);
-    clearRecoveryRetryTimer();
-    recoveryRetryTimerRef.current = setTimeout(() => {
-      recoveryRetryTimerRef.current = null;
-      // 快照未到也恢复重试入口；历史缺失状态继续保留，门禁不能因超时被误解除。
-      setHistoryRecoveryRetrying(false);
-    }, HISTORY_RECOVERY_RETRY_TIMEOUT_MS);
-    setHistoryRecoveryAttempt((attempt) => attempt + 1);
-  }, [clearRecoveryRetryTimer]);
-  // 重试定时器跨连接存活；只在组件卸载时清理，不能在连接重建 effect 的 cleanup 里清掉。
-  useEffect(() => () => clearRecoveryRetryTimer(), [clearRecoveryRetryTimer]);
+    retryRecovery();
+  }, [retryRecovery]);
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
@@ -298,9 +250,12 @@ export function useChatPanelRuntime({
       acpSessionId: acpSessionIdRef.current || undefined,
     });
 
+    let disposed = false;
+    let connectionEpoch = 0;
     const yjsWs = createYjsWs({
       url: relayUrl,
       onYjsUpdate: (docName, data, generation) => {
+        if (disposed || !isCurrentConnection(connectionEpoch)) return;
         try {
           applyDocHubUpdate(rcsSessionKey, docName, generation ?? "", data);
         } catch (err) {
@@ -308,19 +263,25 @@ export function useChatPanelRuntime({
         }
       },
       onYjsReplace: (docName, generation, data) => {
-        noteRecoveredDoc(docName);
+        if (disposed || !isCurrentConnection(connectionEpoch)) return;
         replaceDocHubUpdate(rcsSessionKey, docName, generation, data);
       },
       getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
       getYjsGenerations: () => getDocHubGenerations(rcsSessionKey),
-      onError: (error) => setClassifiedError(error),
-      onHistoryIncomplete: (info) => recordHistoryIncomplete(info),
+      onError: (error) => {
+        if (!disposed && isCurrentConnection(connectionEpoch)) setClassifiedError(error);
+      },
+      onHistoryIncomplete: (info) => {
+        if (!disposed) recordIncomplete(connectionEpoch, info);
+      },
       // 只有服务端显式确认本轮初始同步完成才算恢复：实时 update 会在握手期间穿插到达，
       // 若拿它当证据，缺失文档尚未交付就会提前解除发送门禁。
       onSyncComplete: (info) => {
-        for (const docName of info.docs) noteRecoveredDoc(docName);
+        if (!disposed) complete(connectionEpoch, info, getDocHubGenerations(rcsSessionKey));
       },
       onClose: (close) => {
+        if (disposed || !ownsConnection(connectionEpoch)) return;
+        closeConnection(connectionEpoch);
         handleConnectionLost();
         // 关闭码语义取自策略表（`resolveYjsWsCloseOutcome`，同一份知识，见 yjs-ws.ts）：
         // 终态码（4001 实例回收 / 4002 用户主动停止 / 4004 / 4500 / 4501 / 4502）客户端不会再自动重连，
@@ -330,19 +291,18 @@ export function useChatPanelRuntime({
         // 终态码的 UI 语义留给渲染层；非终态断开（网络抖动/服务端重启）置空，避免上一次的语义残留。
         setTerminalUiCode(outcome.uiCode);
         // 本次重试未拿到快照就断开：失败仍可再次重试，历史缺失状态本身不能提前解除。
-        pendingRecoveryDocsRef.current = null;
-        clearRecoveryRetryTimer();
-        setHistoryRecoveryRetrying(false);
         // 非终态断开必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
         // 断开，sendViaWs 会静默失败（消息无声消失）；disconnected 渲染分支
         // 由 autoReconnecting 标记展示"正在自动重连"轻提示。
         setConnectionState("disconnected");
       },
       onConnectionState: (state: YjsWsState) => {
+        if (disposed) return;
+        if (state === "connecting") connectionEpoch = beginConnection();
+        if (!ownsConnection(connectionEpoch)) return;
         if (state === "connecting") {
           setAutoReconnecting(false);
           // 重试/自动重连开始：历史缺失保持到缺失文档真正重新交付，连接事件不构成恢复证明。
-          armHistoryRecoveryTracking();
           // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。
           setTerminalUiCode(null);
           setConnectionState("connecting");
@@ -350,23 +310,23 @@ export function useChatPanelRuntime({
           setAutoReconnecting(false);
           setConnectionState("connected");
 
-          // 发送 list_sessions 获取历史会话列表
-          // 注意：RCS session ID (session_xxx) ≠ ACP session ID (ses_xxx)，不能直接 load_session
-          sendViaWs({ action: "list_sessions" });
-
           // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
           // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
         } else if (state === "error") {
           handleConnectionLost();
           // 连接进入错误终态同样结束本次重试态；历史缺失保留，用户可再次点击重试。
-          pendingRecoveryDocsRef.current = null;
-          clearRecoveryRetryTimer();
-          setHistoryRecoveryRetrying(false);
+          closeConnection(connectionEpoch);
           setConnectionState("error");
         } else {
+          closeConnection(connectionEpoch);
           handleConnectionLost();
           setConnectionState("disconnected");
         }
+      },
+      onCommandEpoch: (epoch) => {
+        if (disposed || !isCurrentConnection(connectionEpoch)) return;
+        // 凭据到达后才开始只读补拉；每个连接轮次建立新意图，避免复用旧未知查询。
+        sendViaWs({ action: "list_sessions", commandId: `${epoch}.${randomUUID()}` });
       },
       onActionAck: handleActionAck,
       onActionError: handleActionError,
@@ -376,6 +336,7 @@ export function useChatPanelRuntime({
     yjsWsRef.current = yjsWs;
 
     return () => {
+      disposed = true;
       yjsWs.disconnect();
       yjsWsRef.current = null;
     };
@@ -391,10 +352,12 @@ export function useChatPanelRuntime({
     handleActionAck,
     handleActionError,
     handleConnectionLost,
-    noteRecoveredDoc,
-    recordHistoryIncomplete,
-    armHistoryRecoveryTracking,
-    clearRecoveryRetryTimer,
+    beginConnection,
+    closeConnection,
+    ownsConnection,
+    isCurrentConnection,
+    recordIncomplete,
+    complete,
     historyRecoveryAttempt,
   ]);
 

@@ -191,9 +191,21 @@ export async function createYjsRouteFixture(bigHistory = false) {
     frames
       .filter((frame): frame is string => typeof frame === "string")
       .map((frame) => JSON.parse(frame) as Record<string, unknown>);
-  const action = (message: Record<string, unknown>) => hooks.message(socket, JSON.stringify(message));
+  const commandIds = new Map<string, string>();
+  const commandId = (label: string) => {
+    let id = commandIds.get(label);
+    if (!id) {
+      id = `${controller.sessionChannel.getCommandEpoch()}.${crypto.randomUUID()}`;
+      commandIds.set(label, id);
+    }
+    return id;
+  };
+  const action = (message: Record<string, unknown>) =>
+    hooks.message(socket, JSON.stringify({ ...message, commandId: commandId(String(message.commandId)) }));
   const ack = (id: string) =>
-    text().some((frame) => frame.type === "action_ack" && frame.commandId === id && frame.status === "committed");
+    text().some(
+      (frame) => frame.type === "action_ack" && frame.commandId === commandId(id) && frame.status === "committed",
+    );
   return {
     manager,
     controller,
@@ -207,6 +219,7 @@ export async function createYjsRouteFixture(bigHistory = false) {
     errors,
     text,
     action,
+    commandId,
     ack,
     sendVectors,
     open: () => hooks.open(socket),

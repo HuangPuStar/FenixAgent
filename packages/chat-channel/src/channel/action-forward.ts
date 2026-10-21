@@ -24,7 +24,7 @@ export async function forwardYjsAction(
   dependencies: ForwardYjsActionDependencies,
 ): Promise<void> {
   try {
-    await dependencies.sessionChannel.handleAction(entry, action, {
+    await dependencies.sessionChannel.handleClientAction(entry, action, {
       sendAck: dependencies.sendAck,
       sendError: dependencies.sendError,
     });

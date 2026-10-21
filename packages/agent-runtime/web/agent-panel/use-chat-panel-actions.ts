@@ -76,11 +76,16 @@ export function useChatPanelActions({
     for (const prompt of pendingPrompts.current.values()) preserve({ ...prompt, outcomeUnknown: true });
     pendingPrompts.current.clear();
   }, [preserve]);
+  const allocateCommandId = useCallback(() => {
+    const epoch = wsRef.current?.getCommandEpoch();
+    return epoch ? `${epoch}.${randomUUID()}` : null;
+  }, [wsRef]);
   const sendViaWs = useCallback(
     (data: Record<string, unknown>): boolean => {
       const key = commandKey(data);
       const explicitId = typeof data.commandId === "string" ? data.commandId : null;
-      const id = explicitId ?? commandIds.current.get(key) ?? randomUUID();
+      const id = explicitId ?? commandIds.current.get(key) ?? allocateCommandId();
+      if (id === null) return false;
       if (!explicitId) commandIds.current.set(key, id);
       if (data.action === "send_prompt" && Array.isArray(data.content)) {
         pendingPrompts.current.set(id, {
@@ -100,7 +105,7 @@ export function useChatPanelActions({
       }
       return sent;
     },
-    [commandKey, wsRef, preserve],
+    [commandKey, wsRef, preserve, allocateCommandId],
   );
   const sendAction = useCallback(
     (data: Record<string, unknown>) => {
@@ -111,7 +116,11 @@ export function useChatPanelActions({
     [sendViaWs, t],
   );
   const createSessionWithReceipt = useCallback(async () => {
-    const commandId = randomUUID();
+    const commandId = allocateCommandId();
+    if (commandId === null) {
+      toast.error(t("wsSendFailed"));
+      return null;
+    }
     const receipt = new Promise<string | null>((resolve) => {
       const timer = setTimeout(() => settleCreate(commandId, null), 15_000);
       pendingCreates.current.set(commandId, (id) => {
@@ -121,7 +130,7 @@ export function useChatPanelActions({
     });
     if (!sendAction({ action: "create_session", commandId })) settleCreate(commandId, null);
     return receipt;
-  }, [sendAction, settleCreate]);
+  }, [sendAction, settleCreate, allocateCommandId, t]);
   useEffect(() => {
     const pending = pendingCreates.current;
     return () => {

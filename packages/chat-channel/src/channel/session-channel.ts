@@ -4,6 +4,7 @@ import { bumpProjectionVersion } from "../state/chat-writer";
 import { applyPermissionResolution } from "../state/permission";
 import { respondQuestion } from "../state/question";
 import { CommandCoordinator } from "./command-coordinator";
+import { normalizeSessionCommand } from "./session-command";
 import type { SessionChannelDependencies, SessionConnection } from "./session-connection";
 import { SessionExpirations } from "./session-expirations";
 import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
@@ -72,16 +73,37 @@ export class SessionChannel {
     });
   }
 
-  /**
-   * 处理来自连接的一条 Action：归一化 + 幂等 + 串行化 + 两阶段 Ack。
-   * sinks 绑定发起连接（多标签页下 Ack 只回给发起者）。
-   */
-  async handleAction(
+  /** 当前客户端命令代次；重连不得用新代次改写未知旧命令 ID。 */
+  getCommandEpoch(): string {
+    return this.coordinator.getCommandEpoch();
+  }
+
+  /** 历史回收前轮换代次，连接层必须广播或关闭未收到新代次的连接。 */
+  onCommandEpochChanged(listener: (epoch: string) => void): () => void {
+    return this.coordinator.onCommandEpochChanged(listener);
+  }
+
+  /** 可信内部动作入口，网络动作必须使用 handleClientAction。 */
+  handleAction(connection: SessionConnection, rawAction: Record<string, unknown>, sinks: ActionSinks): Promise<void> {
+    return this.submitAction(connection, rawAction, sinks, false);
+  }
+
+  /** 已认证客户端的严格 full commandId 入口，实时与缓冲重放共用此入口。 */
+  handleClientAction(
     connection: SessionConnection,
     rawAction: Record<string, unknown>,
     sinks: ActionSinks,
   ): Promise<void> {
-    const command = this.normalizeAction(connection, rawAction);
+    return this.submitAction(connection, rawAction, sinks, true);
+  }
+
+  private async submitAction(
+    connection: SessionConnection,
+    rawAction: Record<string, unknown>,
+    sinks: ActionSinks,
+    client: boolean,
+  ): Promise<void> {
+    const command = normalizeSessionCommand(connection, rawAction);
     let binding = this.bindings.get(connection.rcsSessionId);
     if (!binding) {
       binding = {
@@ -100,7 +122,8 @@ export class SessionChannel {
       generation: binding.generation,
       loading: binding.loading,
     });
-    await this.coordinator.submit(command, sinks);
+    if (client) await this.coordinator.submitClientCommand(command, sinks);
+    else await this.coordinator.submit(command, sinks);
   }
 
   /** 释放 rcsSessionId 的频道状态（去重表 / 队列 / 连接绑定 / 取消定时器 / 权限定时器），随实例生命周期调用 */
@@ -108,25 +131,6 @@ export class SessionChannel {
     this.expirations.dispose(rcsSessionId);
     this.bindings.delete(rcsSessionId);
     this.coordinator.disposeRcsSession(rcsSessionId);
-  }
-
-  // ── Action 归一化 ──
-
-  /** 旧协议 {action, ...} → 服务端 Command（信封字段由服务端按会话绑定补充） */
-  private normalizeAction(connection: SessionConnection, rawAction: Record<string, unknown>): Command {
-    const { action, commandId, expectedProjectionVersion, ...rest } = rawAction;
-    // protocolVersion / client 在协议类型中保留定义，二期校验；从 payload 剔除避免污染业务字段
-    const { protocolVersion, client, ...payload } = rest;
-    void protocolVersion;
-    void client;
-    return {
-      rcsSessionId: connection.rcsSessionId,
-      commandId: typeof commandId === "string" ? commandId : "",
-      type: typeof action === "string" ? action : "",
-      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : "",
-      payload,
-      ...(typeof expectedProjectionVersion === "number" ? { expectedProjectionVersion } : {}),
-    };
   }
 
   // ── CommandCoordinator 注入 ──

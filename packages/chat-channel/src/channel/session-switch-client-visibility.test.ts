@@ -8,6 +8,7 @@
 // 任何「服务端写了但客户端收不到/收错世代」的缺陷都会在此暴露。
 
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import * as Y from "yjs";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
@@ -27,6 +28,7 @@ class FakeWs implements WsConnection {
   readonly sent: Array<string | Uint8Array> = [];
   readonly closed: Array<{ code?: number; reason?: string }> = [];
   readyState = 1;
+  commandEpoch = "";
   onSend: ((data: string | Uint8Array) => void) | undefined;
 
   send(data: string | Uint8Array): void {
@@ -216,7 +218,12 @@ function createHarness(): Harness {
   ws.onSend = (data) => {
     // 客户端对初始同步握手立即回 state vector（浏览器 onopen 行为）
     if (typeof data === "string") {
-      const message = JSON.parse(data) as { type?: string; docs?: Array<{ docName: string; generation: string }> };
+      const message = JSON.parse(data) as {
+        type?: string;
+        epoch?: string;
+        docs?: Array<{ docName: string; generation: string }>;
+      };
+      if (message.type === "yjs:command-epoch") ws.commandEpoch = message.epoch ?? "";
       if (message.type !== "yjs:sync-request") return;
       for (const doc of message.docs ?? []) {
         void gateway.handleMessage(
@@ -292,7 +299,7 @@ async function startSwitch(harness: Harness, sessionId: string): Promise<number 
     "ws-1",
     JSON.stringify({
       action: "load_session",
-      commandId: `cmd-${sessionId}-${harness.relay.sent.length}`,
+      commandId: `${harness.ws.commandEpoch}.${randomUUID()}`,
       sessionId,
     }),
   );

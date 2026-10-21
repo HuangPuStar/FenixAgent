@@ -120,8 +120,8 @@ describe("Agent 编排会话与队列回归", () => {
     expect(sink.acks.at(-1)?.status).toBe("committed");
   });
 
-  // locator 或旧投影只提供目标，首次输入必须等待当前 runtime 的 load 确认。
-  test.each([null, "ses-old"])("未确认绑定 %s 拒绝 prompt，load 后重试成功", async (sessionId) => {
+  // load 确认后仍保留原输入的失败结果，用户重新提交须分配新命令身份。
+  test.each([null, "ses-old"])("未确认绑定 %s 拒绝 prompt，load 后新意图成功", async (sessionId) => {
     const h = await channelHarness();
     const a = h.connection("locator");
     a.acpSessionId = sessionId;
@@ -142,8 +142,13 @@ describe("Agent 编排会话与队列回归", () => {
       { action: "load_session", commandId: "confirm-load", sessionId: "ses-old" },
       sinks(),
     );
+    const replay = sinks();
+    await h.channel.handleAction(a, prompt, replay);
+    expect(replay.errors).toEqual(rejected.errors);
+    expect(replay.acks).toEqual([]);
+    expect(h.sent.map(({ message }) => message.method)).toEqual(["session/load"]);
     const accepted = sinks();
-    await h.channel.handleAction(a, prompt, accepted);
+    await h.channel.handleAction(a, { ...prompt, commandId: "confirmed-prompt" }, accepted);
     expect(h.sent.map(({ message }) => message.method)).toEqual(["session/load", "session/prompt"]);
     expect(h.sent.at(-1)?.message.params).toMatchObject({ sessionId: "ses-old" });
     expect(accepted.acks.at(-1)?.status).toBe("committed");
@@ -211,8 +216,8 @@ describe("Agent 编排会话与队列回归", () => {
     expect(h.sent).toEqual([expect.objectContaining({ actor: "b" })]);
   });
 
-  // 失败 load 不得提交绑定或使同目标重试被幂等守卫错误跳过。
-  test("load 拒绝后同目标重试仍发送 RPC", async () => {
+  // 失败 load 不提交绑定，同身份保留原错误，新意图可再次加载同一目标。
+  test("load 拒绝后同 ID 不重发，新意图重试同目标", async () => {
     const h = await channelHarness();
     const a = h.connection("a");
     let succeeds = false;
@@ -222,7 +227,13 @@ describe("Agent 编排会话与队列回归", () => {
     expect(failed.errors[0]?.error.type).toBe("ACTION.AGENT_UNAVAILABLE");
     expect(a.acpSessionId).toBe("ses-old");
     succeeds = true;
-    await h.channel.handleAction(a, { action: "load_session", commandId: "load", sessionId: "ses-new" }, sinks());
+    const replay = sinks();
+    await h.channel.handleAction(a, { action: "load_session", commandId: "load", sessionId: "ses-new" }, replay);
+    expect(replay.errors).toEqual(failed.errors);
+    expect(replay.acks).toEqual([]);
+    expect(h.sent).toHaveLength(1);
+    expect(a.acpSessionId).toBe("ses-old");
+    await h.channel.handleAction(a, { action: "load_session", commandId: "load-retry", sessionId: "ses-new" }, sinks());
     expect(h.sent).toHaveLength(2);
     expect(a.acpSessionId).toBe("ses-new");
   });
@@ -428,8 +439,8 @@ describe("Agent 编排会话与队列回归", () => {
     expect(cancellation.acks.at(-1)?.status).toBe("committed");
   });
 
-  // send 失败不能留下已经加载目标的假绑定，同 commandId 重试必须真正重新发出 load。
-  test("load 发送失败后仍可重试同一目标", async () => {
+  // send 失败不能留下假绑定，同身份保留原错误，新意图才能重新发出 load。
+  test("load 发送失败后同 ID 不重发，新意图重试同目标", async () => {
     const h = await channelHarness();
     const a = h.connection("a");
     let attempts = 0;
@@ -441,7 +452,13 @@ describe("Agent 编排会话与队列回归", () => {
     await h.channel.handleAction(a, action, failed);
     expect(a.acpSessionId).toBe("ses-old");
     expect(failed.errors[0]?.error.type).toBe("ACTION.AGENT_UNAVAILABLE");
-    await h.channel.handleAction(a, action, sinks());
+    const replay = sinks();
+    await h.channel.handleAction(a, action, replay);
+    expect(replay.errors).toEqual(failed.errors);
+    expect(replay.acks).toEqual([]);
+    expect(attempts).toBe(1);
+    expect(a.acpSessionId).toBe("ses-old");
+    await h.channel.handleAction(a, { ...action, commandId: "load-send-retry" }, sinks());
     expect(attempts).toBe(2);
     expect(a.acpSessionId).toBe("ses-new");
   });

@@ -163,8 +163,8 @@ describe("CommandCoordinator dedup", () => {
     expect(executed).toEqual(["cmd-1", "cmd-2", "cmd-3"]);
   });
 
-  // 执行失败：返回 action_error、清除去重记录，重发视为新执行（副作用未发生可安全重试）。
-  test("clears dedup record on execution failure so retry re-executes", async () => {
+  // 已接纳失败保留原错误，不能把部分外部副作用因错误重试执行两次。
+  test("retains the original execution failure without replay", async () => {
     let executions = 0;
     const { coordinator } = createCoordinator(async () => {
       executions += 1;
@@ -179,8 +179,9 @@ describe("CommandCoordinator dedup", () => {
     expect(first.acks.map((a) => a.status)).toEqual(["accepted"]);
 
     await coordinator.submit(command(), retry);
-    expect(executions).toBe(2);
-    expect(retry.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
+    expect(executions).toBe(1);
+    expect(retry.acks).toEqual([]);
+    expect(retry.errors).toEqual(first.errors);
   });
 
   // 断线重连保留已完成命令，防止同 commandId 再次产生副作用。

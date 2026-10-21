@@ -3,15 +3,16 @@
 //
 // 语义（PRD Q5/Q9，文档 7.1）：
 // - accepted 仅表示进入有界队列；committed 表示业务事实已提交（含 committedProjectionVersion）。
-// - commandId 去重表按 rcsSessionId 划分，在有界重试窗口内跨断线保留；
+// - full commandId 由服务端 epoch 与客户端 UUID 组成，结果在有界重试窗口内跨断线保留；
 //   已提交命令重发返回原 Ack（status=duplicate），不重复调用 executeCommand。
 // - 同一 rcsSessionId 的命令严格串行执行；队列有界，超出返回 RATE_LIMITED。
-// - 执行失败清除去重记录：重发允许重新执行（失败不视为副作用已发生）。
+// - 已接纳命令的历史回收先轮换 epoch，避免未知外部副作用被遗忘重放。
 //
 // 本类不承载任何宿主业务（会话守卫 / Doc 写入 / relay 发送），全部通过依赖注入，
 // 以便协议层测试 seam 用 fake 依赖实例化（Q12）。
 
 import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
+import { CommandHistory, type CommandRecord, readClientCommandEpoch } from "./command-history";
 import {
   type ActionAck,
   type ActionError,
@@ -25,10 +26,6 @@ import {
 
 /** 每 rcsSessionId 有界队列默认上限（超出返回 RATE_LIMITED） */
 const DEFAULT_MAX_PENDING_PER_SESSION = 64;
-const DEDUP_RETENTION_MS = 10 * 60_000;
-const UNKNOWN_RETENTION_MS = 24 * 60 * 60_000;
-const MAX_DEDUP_SESSIONS = 256;
-const MAX_DEDUP_RECORDS_PER_SESSION = 512;
 const CANCEL_RESERVE = 2;
 
 export interface CommandCoordinatorDependencies {
@@ -55,13 +52,8 @@ interface QueueItem {
   sinks: ActionSinks;
   resolve: () => void;
   bytes: number;
+  record: CommandRecord;
 }
-
-/** 去重记录：in_flight 期间重发返回原 accepted；committed 后重发返回 duplicate */
-type DedupRecord =
-  | { state: "in_flight"; ack: ActionAck }
-  | { state: "committed"; ack: ActionAck; expiresAt: number }
-  | { state: "unknown"; expiresAt: number; active: boolean };
 
 interface SessionQueue {
   items: QueueItem[];
@@ -76,37 +68,71 @@ interface SessionQueue {
 }
 
 export class CommandCoordinator {
-  /** 已确认结果保留 10 分钟；未知结果保留 24 小时，尚未退场的执行始终受保护。 */
-  private readonly dedup = new Map<string, Map<string, DedupRecord>>();
+  private readonly history: CommandHistory;
   /** 每 rcsSessionId 有界串行队列 */
   private readonly queues = new Map<string, SessionQueue>();
 
-  constructor(private readonly dependencies: CommandCoordinatorDependencies) {}
+  constructor(private readonly dependencies: CommandCoordinatorDependencies) {
+    this.history = new CommandHistory(dependencies.now ?? Date.now, dependencies.reportError);
+  }
+
+  /** 服务端随机命令代次，客户端必须把它编码到 full commandId 中。 */
+  getCommandEpoch(): string {
+    return this.history.getEpoch();
+  }
+
+  /** 订阅命令历史轮换；旧在途记录继续按完整 ID 查询和结算。 */
+  onCommandEpochChanged(listener: (epoch: string) => void): () => void {
+    return this.history.onEpochChanged(listener);
+  }
+
+  /** 外部信封入口：旧代已遗失记录永远拒绝重新执行，不提供 raw-ID 回退。 */
+  submitClientCommand(command: Command, sinks: ActionSinks): Promise<void> {
+    return this.submitCommand(command, sinks, true);
+  }
 
   /**
-   * 提交一个命令：校验 → 幂等 → 入队（accepted）→ 串行执行（committed / error）。
+   * 可信内部领域入口；外部信封必须使用 submitClientCommand，禁止网络 raw-ID 回退。
+   * 校验 → 幂等 → 入队（accepted）→ 串行执行（committed / error）。
    * 返回的 Promise 在命令处理完成（committed / error / duplicate）后 resolve，
    * 便于协议层测试直接 await 断言；生产路径可 fire-and-forget。
    */
   submit(command: Command, sinks: ActionSinks): Promise<void> {
+    return this.submitCommand(command, sinks, false);
+  }
+
+  private submitCommand(command: Command, sinks: ActionSinks, client: boolean): Promise<void> {
     const shapeError = this.validateShape(command);
     if (shapeError) {
       sinks.sendError({ type: "action_error", commandId: command.commandId, error: this.publicError(shapeError) });
       return Promise.resolve();
     }
 
-    // 幂等检查与 in_flight 标记必须在同一同步段完成（Bun 单线程事件循环），
-    // 保证并发重发不会绕过去重表导致 executeCommand 被调用两次。
-    this.pruneDedup(command.rcsSessionId);
-    const existing = this.dedup.get(command.rcsSessionId)?.get(command.commandId);
-    if (existing) {
-      if (existing.state === "unknown") {
+    const epoch = client ? readClientCommandEpoch(command.commandId) : undefined;
+    if (client && !epoch) {
+      sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.INVALID_STATE"), command.commandId));
+      return Promise.resolve();
+    }
+    // 精确查询、历史回收/换代、epoch 校验和新占位必须处于同一同步段。
+    const existingRecord = this.history.find(command.rcsSessionId, command.commandId);
+    if (existingRecord) {
+      const existing = existingRecord.result;
+      if (!existingRecord.admitted) {
+        sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.OUTCOME_UNKNOWN"), command.commandId));
+      } else if (existing.state === "unknown") {
         sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.OUTCOME_UNKNOWN"), command.commandId));
       } else if (existing.state === "committed") {
         sinks.sendAck(this.toDuplicateAck(existing.ack));
+      } else if (existing.state === "failed") {
+        sinks.sendError(existing.error);
       } else {
         sinks.sendAck(existing.ack);
       }
+      return Promise.resolve();
+    }
+    this.history.prepareAdmission();
+    if (client && epoch !== this.history.getEpoch()) {
+      sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.OUTCOME_UNKNOWN"), command.commandId));
       return Promise.resolve();
     }
 
@@ -122,43 +148,38 @@ export class CommandCoordinator {
       }
     }
 
-    const reserve = command.type === "cancel" ? CANCEL_RESERVE : 0;
-    if (!this.dedup.has(command.rcsSessionId) && this.dedup.size >= MAX_DEDUP_SESSIONS + reserve) {
+    const accepted: ActionAck = { type: "action_ack", commandId: command.commandId, status: "accepted" };
+    const record = this.history.admit(command, accepted);
+    if (!record) {
       sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.RATE_LIMITED"), command.commandId));
       return Promise.resolve();
     }
-    const dedupTable = this.getDedupTable(command.rcsSessionId);
-    if (dedupTable.size >= MAX_DEDUP_RECORDS_PER_SESSION + reserve) {
-      sinks.sendError({
-        type: "action_error",
-        commandId: command.commandId,
-        error: this.publicError("ACTION.RATE_LIMITED"),
-      });
-      return Promise.resolve();
-    }
-    const accepted: ActionAck = { type: "action_ack", commandId: command.commandId, status: "accepted" };
-    dedupTable.set(command.commandId, { state: "in_flight", ack: accepted });
-
-    return this.enqueue(command, sinks, accepted);
+    return this.enqueue(command, sinks, accepted, record);
   }
 
   /** 关闭旧队列；重连等待旧执行器退场，已发送或完成命令保留有界去重。 */
   disposeRcsSession(rcsSessionId: string): void {
     const queue = this.queues.get(rcsSessionId);
     if (!queue) return;
-    if (queue.active) this.recordUnknown(rcsSessionId, queue.active.command.commandId, true);
+    if (queue.active) this.history.markUnknown(queue.active.record);
     queue.abort.abort();
     for (const item of queue.items.splice(0)) {
-      this.clearDedup(rcsSessionId, item.command.commandId);
-      item.sinks.sendError(
-        this.toActionError(new CommandExecutionError("ACTION.SESSION_NOT_FOUND"), item.command.commandId),
-      );
+      const error = this.toActionError(new CommandExecutionError("ACTION.SESSION_NOT_FOUND"), item.command.commandId);
+      this.history.settle(item.record, { state: "failed", error });
+      item.sinks.sendError(error);
+      queue.pending--;
+      queue.bytes -= item.bytes;
       item.resolve();
     }
-    if (!queue.running) queue.finish();
+    if (queue.pending === 0) void this.processNext(rcsSessionId, queue);
   }
 
-  private async enqueue(command: Command, sinks: ActionSinks, accepted: ActionAck): Promise<void> {
+  private async enqueue(
+    command: Command,
+    sinks: ActionSinks,
+    accepted: ActionAck,
+    record: CommandRecord,
+  ): Promise<void> {
     const queue = this.getQueue(command.rcsSessionId);
     const bytes = new TextEncoder().encode(JSON.stringify(command.payload)).byteLength;
     const reserved = command.type === "cancel" ? CANCEL_RESERVE : 0;
@@ -166,8 +187,9 @@ export class CommandCoordinator {
       queue.pending >= (this.dependencies.maxPendingPerSession ?? DEFAULT_MAX_PENDING_PER_SESSION) + 1 + reserved ||
       queue.bytes + bytes > (this.dependencies.maxPendingBytesPerSession ?? 4 * 1024 * 1024) + reserved * 1024
     ) {
-      this.clearDedup(command.rcsSessionId, command.commandId);
+      this.history.discard(record);
       sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.RATE_LIMITED"), command.commandId));
+      if (queue.pending === 0) void this.processNext(command.rcsSessionId, queue);
       return;
     }
     queue.pending++;
@@ -178,14 +200,16 @@ export class CommandCoordinator {
     } catch (err) {
       queue.pending--;
       queue.bytes -= bytes;
-      this.clearDedup(command.rcsSessionId, command.commandId);
+      this.history.discard(record);
       sinks.sendError(this.toActionError(err, command.commandId));
+      if (queue.pending === 0) void this.processNext(command.rcsSessionId, queue);
       return;
     }
     return new Promise<void>((resolve) => {
-      const item = { command, sinks, resolve, bytes };
+      const item = { command, sinks, resolve, bytes, record };
       if (command.type === "cancel") queue.items.unshift(item);
       else queue.items.push(item);
+      record.admitted = true;
       sinks.sendAck(accepted);
       void this.processNext(command.rcsSessionId, queue);
     });
@@ -207,8 +231,11 @@ export class CommandCoordinator {
       }
     } finally {
       queue.running = false;
-      queue.finish();
-      if (this.queues.get(rcsSessionId) === queue) this.queues.delete(rcsSessionId);
+      // 异步验证同样持有串行屏障，只有全部验证与执行都退场才释放队列。
+      if (queue.pending === 0) {
+        queue.finish();
+        if (this.queues.get(rcsSessionId) === queue) this.queues.delete(rcsSessionId);
+      }
     }
   }
 
@@ -225,28 +252,15 @@ export class CommandCoordinator {
         ...(outcome.sessionId ? { sessionId: outcome.sessionId } : {}),
         ...(version !== null ? { committedProjectionVersion: version } : {}),
       };
-      this.recordCommitted(rcsSessionId, command.commandId, committed);
+      this.history.settle(item.record, { state: "committed", ack: committed });
       if (!signal.aborted) sinks.sendAck(committed);
     } catch (err) {
       // 断线后无法确定已发送副作用，保留去重记录阻止重连盲目重放。
-      if (signal.aborted) this.recordUnknown(rcsSessionId, command.commandId, false);
-      else this.clearDedup(rcsSessionId, command.commandId);
-      if (!signal.aborted) sinks.sendError(this.toActionError(err, command.commandId));
+      const error = this.toActionError(err, command.commandId);
+      this.history.settle(item.record, signal.aborted ? { state: "unknown" } : { state: "failed", error });
+      if (!signal.aborted) sinks.sendError(error);
     } finally {
       item.resolve();
-    }
-  }
-
-  private pruneDedup(rcsSessionId: string): void {
-    const now = this.dependencies.now?.() ?? Date.now();
-    for (const [id, table] of this.dedup) {
-      if (id !== rcsSessionId && (this.dedup.has(rcsSessionId) || this.dedup.size < MAX_DEDUP_SESSIONS)) continue;
-      for (const [commandId, record] of table) {
-        // 活跃执行可能由旧队列持有，不能只查看当前队列就淘汰未知记录。
-        if (record.state === "in_flight" || (record.state === "unknown" && record.active)) continue;
-        if (record.expiresAt <= now) table.delete(commandId);
-      }
-      if (table.size === 0) this.dedup.delete(id);
     }
   }
 
@@ -286,44 +300,6 @@ export class CommandCoordinator {
         ? { committedProjectionVersion: original.committedProjectionVersion }
         : {}),
     };
-  }
-
-  private getDedupTable(rcsSessionId: string): Map<string, DedupRecord> {
-    let table = this.dedup.get(rcsSessionId);
-    if (!table) {
-      table = new Map();
-      this.dedup.set(rcsSessionId, table);
-    }
-    return table;
-  }
-
-  private recordCommitted(rcsSessionId: string, commandId: string, ack: ActionAck): void {
-    this.getDedupTable(rcsSessionId).set(commandId, {
-      state: "committed",
-      ack,
-      expiresAt: (this.dependencies.now?.() ?? Date.now()) + DEDUP_RETENTION_MS,
-    });
-  }
-
-  private recordUnknown(rcsSessionId: string, commandId: string, active: boolean): void {
-    const table = this.getDedupTable(rcsSessionId);
-    const existing = table.get(commandId);
-    if (existing?.state === "unknown") {
-      // 断线重试与执行退场都不续期；保留期限从首次失去结果确认时计算。
-      existing.active = active;
-      return;
-    }
-    table.set(commandId, {
-      state: "unknown",
-      active,
-      expiresAt: (this.dependencies.now?.() ?? Date.now()) + UNKNOWN_RETENTION_MS,
-    });
-  }
-
-  private clearDedup(rcsSessionId: string, commandId: string): void {
-    const table = this.dedup.get(rcsSessionId);
-    table?.delete(commandId);
-    if (table?.size === 0) this.dedup.delete(rcsSessionId);
   }
 
   private getQueue(rcsSessionId: string): SessionQueue {

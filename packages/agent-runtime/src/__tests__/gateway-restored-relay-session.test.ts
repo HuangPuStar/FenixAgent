@@ -37,12 +37,14 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
       inbound.push(raw);
     },
   });
+  const sessionChannel = new SessionChannel({ docManager, replaceProjection() {}, syncSessionId() {}, reportError });
+  const freshId = () => `${sessionChannel.getCommandEpoch()}.${crypto.randomUUID()}`;
   const gateway = new Gateway({
     registry,
     broadcaster,
     docManager,
     relayEvents,
-    sessionChannel: new SessionChannel({ docManager, replaceProjection() {}, syncSessionId() {}, reportError }),
+    sessionChannel,
     getEnvironment: async () => ({ organizationId: "org", userId: "user" }),
     authorizeEnvironment: () => true,
     resolveWorkspacePath: () => "/workspace",
@@ -80,14 +82,14 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
     await gateway.handleMessage(
       ws,
       "old",
-      JSON.stringify({ action: "load_session", commandId: "load", sessionId: "ses-bound" }),
+      JSON.stringify({ action: "load_session", commandId: freshId(), sessionId: "ses-bound" }),
     );
     await gateway.handleMessage(
       ws,
       "old",
       JSON.stringify({
         action: "send_prompt",
-        commandId: "prompt",
+        commandId: freshId(),
         sessionId: "ses-bound",
         content: [{ type: "text", text: "question" }],
       }),
@@ -134,7 +136,7 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
       ["load_session", "ses-next", "ses-bound"],
       ["create_session", "ses-created", "ses-next"],
     ]) {
-      await gateway.handleMessage(ws, "second-tab", JSON.stringify({ action, commandId: action, sessionId }));
+      await gateway.handleMessage(ws, "second-tab", JSON.stringify({ action, commandId: freshId(), sessionId }));
       expect(registry.getClient("second-tab")!.acpSessionId).toBe(sessionId);
       inbound.length = 0;
       relay.emit(update(previous!, "retired session output"));

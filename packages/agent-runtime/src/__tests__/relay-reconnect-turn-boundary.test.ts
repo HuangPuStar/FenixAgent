@@ -73,7 +73,12 @@ test("reconnected Gateway survives a delayed previous lease result and accepts t
     gateway.handleMessage(
       ws,
       id,
-      JSON.stringify({ action: type, commandId, sessionId, content: [{ type: "text", text: commandId }] }),
+      JSON.stringify({
+        action: type,
+        commandId: `${sessionChannel.getCommandEpoch()}.${crypto.randomUUID()}`,
+        sessionId,
+        content: [{ type: "text", text: commandId }],
+      }),
     );
   const prompts = () =>
     (relay.sent as unknown as Array<{ id: number; method: string }>).filter(

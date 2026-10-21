@@ -45,18 +45,27 @@
 | PR326-03 | 物理 relay 持有持续递增的请求命名空间；消费租约隔离响应与会话通知，释放后迟到结果不能命中新消费方的本地 ID | core `__tests__/relay-rpc-isolation.test.ts`；agent-runtime `__tests__/relay-reconnect-turn-boundary.test.ts` |
 | PR326-04 | Workflow 自动回收使用公共 reclaim 接口并校验运行代次、租约和执行准入；不写入手动停止意图，同一持久实例可再次运行 | workflow `__tests__/workflow-primary-reclaim.test.ts` |
 | PR326-05 | PromptTurn 使用独立 ID 请求真实 cancel；Dispatcher 支持通知与请求并调用 SDK，重复取消只投递一次，取消确认不充当 prompt 终态 | agent-runtime `__tests__/prompt-turn-dispatcher-boundary.test.ts` |
-| PR326-06 | 已提交命令独立计时过期；在途和仍在执行的未知副作用受保护，已退场未知结果固定保留 24 小时；取消在单会话去重、全局去重与队列均有预留容量 | chat-channel `channel/command-dedup-retention.test.ts` |
+| PR326-06 | 历史与活动准入解耦；回收前轮换命令 epoch，旧 ID 不重放，在途仍受保护；取消在活动准入与队列均有预留容量 | chat-channel `channel/command-dedup-retention.test.ts` |
 
 ## CodeRabbit 审查回归
 
 | 审查项 | 行为与主要回归 |
 |---|---|
 | 活动硬超时与执行准入 | 超期 scheduled 可确认停止并释放配额；交互、等待启动、换代和停止失败均受保护：agent-runtime `__tests__/scheduled-activity-timeout.test.ts` |
-| 已提交记录独立过期 | 每条完成记录独立保留 10 分钟，其他命令不续期：chat-channel `channel/command-dedup-retention.test.ts` |
+| 已提交记录独立过期 | 每条完成记录最多保留 10 分钟，其他命令不续期；容量回收前轮换 epoch：chat-channel `channel/command-dedup-retention.test.ts` |
 | 重试退避取消分类 | 退避中保持 NODE_TIMEOUT / DAG_CANCELLED 与节点标识：workflow-engine `__tests__/executor/agent-retry-cancellation.test.ts` |
 | 放弃未知结果草稿 | 显式放弃释放命令身份；再次手动输入使用新 ID：agent-runtime `web/__tests__/create-session-receipt.test.tsx` |
-| 未知记录有界保留 | 已退场记录固定 24 小时，不因重试续期；仍在执行的记录受保护，全局与单会话容量可恢复：chat-channel `channel/command-dedup-retention.test.ts` |
+| 未知记录有界保留 | 退场记录进入独立有界历史，回收前轮换 epoch；仍在执行的记录受保护，历史不占活动准入：chat-channel `channel/command-dedup-retention.test.ts` |
 | 重连会话订阅 | 从服务端可信会话绑定恢复通知订阅，无需伪造请求：agent-runtime `__tests__/gateway-restored-relay-session.test.ts`；core `__tests__/relay-rpc-isolation.test.ts` |
+
+## 第二轮复审
+
+`FenixAgent-PR326-8e920131-Reaudit.md` 的两个 P1 分别补齐 UI 恢复结算和命令历史回收契约。
+
+| 编号 | 修复行为 | 主要回归测试 |
+|---|---|---|
+| PR326-R2-01 | 同连接失败后可由完整同代证明恢复发送和草稿重发；慢重试、普通更新、错误/缺失 generation、换代拼接和旧连接均验证 | agent-runtime `web/__tests__/chat-panel-history-recovery.test.tsx` |
+| PR326-R2-02 | 退场历史不占活动频道配额；epoch 在历史回收前失效，跨频道 churn、历史容量、过期、长执行与旧 ID 重连均不重放；验证中的重复请求保留身份 | chat-channel `channel/command-dedup-retention.test.ts`、`channel/command-active-retirement.test.ts`、`channel/command-client-ingress.test.ts`；agent-runtime `web/__tests__/create-session-receipt.test.tsx` |
 
 ## 验证与运行边界
 

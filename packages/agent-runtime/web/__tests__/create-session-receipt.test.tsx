@@ -49,9 +49,10 @@ class FakeWebSocket {
     this.onclose?.({ code: 1000, reason: "client_disconnect" } as CloseEvent);
   }
 
-  open(): void {
+  open(withEpoch = true): void {
     this.readyState = FakeWebSocket.OPEN;
     this.onopen?.();
+    if (withEpoch) this.receiveFromServer({ type: "yjs:command-epoch", epoch: "11111111-1111-4111-8111-111111111111" });
   }
 
   send(data: string): void {
@@ -96,13 +97,13 @@ function renderRuntime() {
 }
 
 /** 打开连接并返回 socket（hook 首帧即建连）。 */
-function connect() {
+function connect(withEpoch = true) {
   FakeWebSocket.instances = [];
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: FakeWebSocket });
   const harness = renderRuntime();
   const socket = FakeWebSocket.instances[0];
   if (!socket) throw new Error("hook 未建立 WebSocket 连接");
-  act(() => socket.open());
+  act(() => socket.open(withEpoch));
   return { ...harness, socket };
 }
 
@@ -334,4 +335,62 @@ describe("旧目标输入恢复", () => {
     expect(lastPrompt(socket).commandId).toBe(original.commandId);
     unmount();
   });
+});
+
+// 尚未收到服务端命令代次时不能先生成裸 UUID，握手完成后新建命令才可真正写入 socket。
+test("命令代次就绪前不发送，新意图携带服务端代次", async () => {
+  const { latest, socket, unmount } = connect(false);
+  try {
+    const creating = latest.current?.callbacks.onCreateSession();
+    expect(await creating).toBeNull();
+    expect(socket.sent).toEqual([]);
+    const epoch = "22222222-2222-4222-8222-222222222222";
+    act(() => socket.receiveFromServer({ type: "yjs:command-epoch", epoch }));
+    const next = latest.current?.callbacks.onCreateSession();
+    const commandId = lastCreateCommandId(socket);
+    expect(commandId.startsWith(`${epoch}.`)).toBe(true);
+    act(() => socket.receiveFromServer({ type: "action_ack", commandId, status: "committed", sessionId: "ses-new" }));
+    expect(await next).toBe("ses-new");
+  } finally {
+    unmount();
+  }
+});
+
+// 服务端轮换历史后，未知输入仍携带原完整 ID；只有用户显式放弃后才允许同内容使用新代次。
+test("代次轮换和重连不改写未知命令身份", async () => {
+  const { latest, socket, unmount } = connect();
+  try {
+    setProjectedSession("ses-a");
+    const content = [{ type: "text", text: "保持原命令" }];
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const original = lastPrompt(socket);
+    act(() =>
+      socket.receiveFromServer({
+        type: "action_error",
+        commandId: original.commandId,
+        error: createPublicError("ACTION.OUTCOME_UNKNOWN"),
+      }),
+    );
+    const nextEpoch = "33333333-3333-4333-8333-333333333333";
+    act(() => socket.receiveFromServer({ type: "yjs:command-epoch", epoch: nextEpoch }));
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    expect(lastPrompt(socket).commandId).toBe(original.commandId);
+    act(() => socket.close());
+    await act(async () => {
+      await Bun.sleep(1_100);
+    });
+    const reconnected = FakeWebSocket.instances.at(-1)!;
+    expect(reconnected).not.toBe(socket);
+    act(() => reconnected.open(false));
+    act(() => reconnected.receiveFromServer({ type: "yjs:command-epoch", epoch: nextEpoch }));
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    expect(lastPrompt(reconnected).commandId).toBe(original.commandId);
+    act(() => latest.current?.dismissPreservedPrompt());
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const fresh = lastPrompt(reconnected).commandId;
+    expect(typeof fresh === "string" && fresh.startsWith(`${nextEpoch}.`)).toBe(true);
+    expect(fresh).not.toBe(original.commandId);
+  } finally {
+    unmount();
+  }
 });

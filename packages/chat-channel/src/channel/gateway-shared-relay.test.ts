@@ -485,7 +485,7 @@ describe("Gateway shared relay", () => {
       JSON.stringify({
         action: "send_prompt",
         sessionId: "ses-confirmed",
-        commandId: "cmd-sync",
+        commandId: `${sessionChannel.getCommandEpoch()}.759096a3-182f-43ee-81df-a181b9a6fbee`,
         content: [{ type: "text", text: "hello" }],
       }),
     );

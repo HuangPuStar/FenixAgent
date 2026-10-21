@@ -209,8 +209,8 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(harness.reports[0]?.message).toContain("relay send failed");
   });
 
-  // 失败 commandId 不能永久占用去重表。
-  test("relay 失败后同 commandId 可以重试", async () => {
+  // 已接纳命令失败后保留原错误，显式重试必须使用新身份。
+  test("relay 失败后同 commandId 返回原错误，新意图可重试", async () => {
     let fail = true;
     const sent: Record<string, unknown>[] = [];
     const harness = await createHarness({
@@ -222,6 +222,11 @@ describe("SessionChannel 内存协议与状态边界", () => {
     await submit(harness, { action: "list_sessions", commandId: "retry-after-fail" });
     fail = false;
     await submit(harness, { action: "list_sessions", commandId: "retry-after-fail" });
+    expect(sent).toEqual([]);
+    expect(harness.errors).toHaveLength(2);
+    expect(harness.errors[1]).toEqual(harness.errors[0]);
+    expect(committed(harness)).toBeUndefined();
+    await submit(harness, { action: "list_sessions", commandId: "retry-new-intent" });
     expect(sent).toHaveLength(1);
     expect(committed(harness)).toBeDefined();
   });

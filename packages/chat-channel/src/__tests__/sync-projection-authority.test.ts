@@ -16,6 +16,7 @@ import { fidelityDeserialize } from "../sync/history/fidelity-json";
 import { readDirectoryPage, readDirectoryRoot } from "../sync/protocol/directory";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "../sync/protocol/frames";
 import { FakeRedis } from "./helpers/fake-redis";
+import { encodeClientAction } from "./helpers/sync-projection-actions";
 
 const LOCATOR = { instanceUid: "instance-authority", rcsSessionId: "rcs-authority" };
 const RCS = LOCATOR.rcsSessionId;
@@ -267,8 +268,6 @@ async function writeCommittedText(docManager: DocManager, text: string): Promise
 }
 
 /** 通过真实 Action 链路切换 ACP 会话（load/resume 均由 SessionChannel 处理）。 */
-let switchCommandSequence = 0;
-
 async function switchSession(
   controller: ChatChannelController,
   ws: MockWs,
@@ -276,11 +275,7 @@ async function switchSession(
   action: string,
   sessionId = "ses-B",
 ): Promise<void> {
-  await controller.gateway.handleMessage(
-    ws,
-    wsId,
-    JSON.stringify({ action, sessionId, commandId: `switch-${++switchCommandSequence}-${action}-${sessionId}` }),
-  );
+  await controller.gateway.handleMessage(ws, wsId, encodeClientAction(ws, { action, sessionId }));
 }
 
 describe("会话切换的服务端权威换代", () => {
@@ -338,8 +333,9 @@ describe("会话切换的服务端权威换代", () => {
     const { controller, docManager } = createHarness();
     try {
       await writeCommittedText(docManager, "text-A");
-      const ws = createWs(70 * 1024);
+      const ws = createWs();
       await connect(controller, "ws-blocked", ws);
+      ws.bufferedAmount = 70 * 1024;
       await switchSession(controller, ws, "ws-blocked", "load_session");
       expect(ws.closed[0]).toEqual([1012, "projection replaced"]);
       expect(controller.registry.getClient("ws-blocked")?.syncConnection).toBeUndefined();
@@ -374,14 +370,13 @@ describe("会话切换的服务端权威换代", () => {
         };
       }
 
-      for (const [index, text] of ["first question", "second question"].entries()) {
+      for (const text of ["first question", "second question"]) {
         await controller.gateway.handleMessage(
           actionWs,
           "ws-action",
-          JSON.stringify({
+          encodeClientAction(actionWs, {
             action: "send_prompt",
             sessionId: "ses-confirmed",
-            commandId: `prompt-${index}`,
             content: [{ type: "text", text }],
           }),
         );
@@ -418,9 +413,8 @@ describe("会话切换的服务端权威换代", () => {
       await controller.gateway.handleMessage(
         actionWs,
         "ws-action-race",
-        JSON.stringify({
+        encodeClientAction(actionWs, {
           action: "send_prompt",
-          commandId: "prompt-race",
           sessionId: "ses-confirmed",
           content: [{ type: "text", text: "attach race question" }],
         }),
@@ -441,8 +435,9 @@ describe("会话切换的服务端权威换代", () => {
   test("legacy 连接在背压下仍收到权威 replace 帧", async () => {
     const { controller } = createHarness();
     try {
-      const ws = createWs(70 * 1024);
+      const ws = createWs();
       await controller.gateway.handleOpen(ws, "ws-legacy-backpressure", "user-1", "agent-1", LOCATOR);
+      ws.bufferedAmount = 70 * 1024;
       await switchSession(controller, ws, "ws-legacy-backpressure", "load_session");
       const replaced = ws.messages
         .filter((message): message is Uint8Array => message instanceof Uint8Array)

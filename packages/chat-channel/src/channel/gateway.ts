@@ -5,6 +5,7 @@ import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import { bindGatewayCommandEpoch } from "./gateway-command-epoch";
 import { createGatewayMessageHandler, type GatewayMessageHandler } from "./gateway-message";
 import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } from "./gateway-open-errors";
 import { attachGatewayRelay } from "./gateway-relay-binding";
@@ -61,11 +62,13 @@ export interface ChatConnectionLocator {
 }
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
+  private readonly sendCommandEpoch: (ws: WsConnection) => boolean;
   private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
   private readonly messageHandler: GatewayMessageHandler;
   /** 同 scope 多标签页共享存储与一次性历史引导，各连接持有独立 runtime。 */
   private readonly syncHostOverrides: GatewaySyncHostOverrides;
   constructor(private readonly dependencies: GatewayDependencies) {
+    this.sendCommandEpoch = bindGatewayCommandEpoch(dependencies);
     this.syncHostOverrides = {
       storeRegistry: new SyncStoreRegistry(),
       ...dependencies.syncHostOverrides,
@@ -280,6 +283,7 @@ export class Gateway {
       syncOnly: locator.syncOnly === true,
     };
     registry.addClient(wsId, entry);
+    if (!this.sendCommandEpoch(ws)) return this.handleClose(wsId);
     await flushPendingSyncFrames(
       registry,
       wsId,
