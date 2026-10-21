@@ -35,7 +35,6 @@ export const KNOWLEDGE_CHUNK_METHODS: ChunkMethodOption[] = [
   { value: "table", label: "Table" },
   { value: "tag", label: "Tag" },
   { value: "resume", label: "Resume" },
-  { value: "audio", label: "Audio" },
 ];
 
 function _generateKnowledgeBaseId(): string {
