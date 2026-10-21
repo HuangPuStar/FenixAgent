@@ -69,6 +69,8 @@
 
 ## 验证与运行边界
 
+真实 WebSocket 回归 `agent-runtime/src/__tests__/acp-yjs-live-socket.test.ts` 使用 Bun + Elysia 监听随机端口，覆盖新同步 HELLO/目录订阅、9MiB 历史差量、会话加载、发送及关闭清理；连接身份由共享 `ws.data` 持有，不能依赖事件包装对象相等。
+
 专项回归使用可控异步边界，覆盖并发、迟到回复、断连、取消、隔离与失败恢复。统一门禁为 `bun run fastcheck`、`bun run precheck`、`bun run build:web` 和 `bun run docs:build`；最终执行结果记录在修复 PR。
 
 这些测试不构成真实远程机器、Peri 或生产数据库的端到端运行证明。上线后可从 Coordinator 的运行代次/操作状态、入站队列快照及明确错误码定位问题。回滚以整体修复提交为单位，不需要数据库补偿；不得只回滚租约或执行额度的一侧调用契约。

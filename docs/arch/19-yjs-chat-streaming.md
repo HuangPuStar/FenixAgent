@@ -219,6 +219,8 @@ classDiagram
 
 路由授权后立即启动有界入站分派，并发等待 `Gateway.open`，因此 state-vector 响应可在初始握手期间进入 Gateway；业务 Action 仍由 `relayReady` 守卫缓冲。初始同步的交付证明按 `wsId + generation` 绑定。超时快照未成功投递时保留该连接的恢复记录，只有同代 state-vector 对应的所需文档差量全部成功交接 socket 后才发送 `yjs:sync-complete`；普通实时 update 不解除历史门禁，连接关闭即清理记录。大型 Doc 的同代小差量可以完成恢复，不要求再次发送全量快照。前端失败后保留当前连接轮次、缺失文档及其 generation，允许同连接迟到的显式成功结算；完成证明须覆盖全部缺失文档，且其 generation 与已应用的 DocHub 代次一致。旧连接、普通更新、缺失或错误代次不能解除门禁；换代后旧证明不能与新证明拼接。重试超时只恢复按钮，不改变历史完整性。
 
+路由入站队列以连接共享的 `ws.data` 为身份；Elysia 为每次 `open`、`message`、`close` 创建新的 WS 包装对象，不能用包装对象作为跨回调索引。连接关闭从同一身份释放缓存和预算。
+
 Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
 
 旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。

@@ -273,6 +273,7 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
     },
   });
 
+  // Elysia 每次事件都会新建 WS 包装对象，只有连接 data 的身份跨回调保持稳定。
   const yjsMessages = new WeakMap<object, InboundMessageQueue>();
 
   /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
@@ -297,7 +298,7 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
         },
         (error) => logError("[YJS-WS] message handler failed", error),
       );
-      yjsMessages.set(ws, queue);
+      yjsMessages.set(ws.data, queue);
 
       let authResult: RequestAuthResult | null = null;
       try {
@@ -389,12 +390,12 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
                 : data instanceof ArrayBuffer
                   ? new Uint8Array(data)
                   : JSON.stringify(data);
-        yjsMessages.get(ws)?.enqueue(payload);
+        yjsMessages.get(ws.data)?.enqueue(payload);
       }
     },
     close(ws) {
-      yjsMessages.get(ws)?.close();
-      yjsMessages.delete(ws);
+      yjsMessages.get(ws.data)?.close();
+      yjsMessages.delete(ws.data);
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {

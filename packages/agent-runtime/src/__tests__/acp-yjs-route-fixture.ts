@@ -46,7 +46,7 @@ export async function eventually(check: () => boolean): Promise<void> {
 }
 
 /** 用真实路由 hooks、入站队列和 ChatController 验证接缝；只替换认证、仓储和 Agent 进程。 */
-export async function createYjsRouteFixture(bigHistory = false) {
+export async function createYjsRouteFixture(bigHistory = false, syncEnabled = false) {
   initializeAgentRuntimeModuleConfig();
   resetChatChannelBootstrap();
   setTestAuth({ organizationId: "org-route", userId: "user-route" });
@@ -123,7 +123,7 @@ export async function createYjsRouteFixture(bigHistory = false) {
       errors.push(error);
     },
     maxClients: () => 20,
-    chatSyncProtocol: () => ({ enabled: false, sealGraceMs: 0, retireGraceMs: 0 }),
+    chatSyncProtocol: () => ({ enabled: syncEnabled, sealGraceMs: 2_000, retireGraceMs: 30_000 }),
     snapshotPersist: () => ({ intervalMs: 2_000, idleMs: 500, ttlSeconds: 600 }),
     sessionTitleStore: () => ({ read: async () => ({}), write: async () => {}, delete: async () => {} }),
   });
@@ -207,6 +207,7 @@ export async function createYjsRouteFixture(bigHistory = false) {
       (frame) => frame.type === "action_ack" && frame.commandId === commandId(id) && frame.status === "committed",
     );
   return {
+    app,
     manager,
     controller,
     rcsSessionId,
