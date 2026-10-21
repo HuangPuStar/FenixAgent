@@ -8,6 +8,7 @@ import {
   resetAgentInstanceRuntimeOperations,
 } from "../server/services/agent-instance-service";
 import { stubCoreRuntimeFacade } from "../server/testing";
+import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
@@ -30,6 +31,7 @@ afterEach(() => {
   resetAllStubs();
   resetAgentInstanceRuntimeOperations();
   resetOrchestrationInstanceDeps();
+  globalInstanceRegistry.clear();
 });
 
 // 快照标为 stopped 但 fence 不匹配不能触发误杀；活动快照应通过 strict 活动停止通道确认。
@@ -94,4 +96,32 @@ test("core 丢失 runtime entry 与不存在实例使用不同 strict 结果", a
   exists = false;
   await stopInstanceViaController(record.id, "strict");
   expect(reclaimed).toBe(2);
+});
+
+// 已确认实体不存在仍需经停止漏斗清理遗留业务投影，不能只更新 Coordinator 状态。
+test("实体已不存在时仍收敛孤儿 supplement", async () => {
+  const instance = { ...record, id: "stop-orphan-supplement" };
+  globalInstanceRegistry.register(instance.id, {
+    userId: instance.ownerUserId,
+    organizationId: "org",
+    environmentId: instance.environmentId,
+    spawnSource: "system",
+    lastActivityAt: 0,
+    relayCount: 0,
+    lastRelayDetachedAt: null,
+  });
+  stubCoreRuntimeFacade({ getInstance: () => null, async stopInstance() {} });
+  setOrchestrationInstanceDeps({
+    getOrchestrationController: () => ({ async stopInstance() {} }) as unknown as AgentController,
+    async closeRelayConnectionsForStoppedInstance() {},
+    async reclaimYjsDocs() {},
+  });
+  bindAgentInstanceRuntimeOperations({
+    async spawnInstance() {},
+    hasActiveInstance: () => false,
+    stopInstance: (instanceId) => stopInstanceViaController(instanceId, "strict"),
+  });
+  await agentInstanceRuntimeCoordinator.stopRuntime(instance, "strict");
+  expect(globalInstanceRegistry.get(instance.id)).toBeUndefined();
+  expect(agentInstanceRuntimeCoordinator.snapshot(instance.id).state).toBe("stopped");
 });

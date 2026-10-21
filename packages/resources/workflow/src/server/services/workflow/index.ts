@@ -18,7 +18,7 @@ import { createWorkflowEngine } from "@fenix/workflow-engine";
 import { getWorkflowConfig } from "../../config";
 import { createAgentChatTransport } from "./agent-chat-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
-import { hasActiveInstanceLease } from "./instance-lease";
+import { hasActiveInstanceLease, takeSpawnedInstanceRuntime } from "./instance-lease";
 import { createPgStorageAdapter } from "./pg-storage-adapter";
 
 const logger = createLogger("wf-service");
@@ -49,6 +49,7 @@ const teamRuntimes = new Map<string, TeamRuntime>();
 export async function cleanupSpawnedInstances(instanceIds: Set<string>, organizationId: string): Promise<string[]> {
   const skipped: string[] = [];
   for (const instanceId of instanceIds) {
+    const generation = takeSpawnedInstanceRuntime(instanceId);
     if (hasActiveInstanceLease(instanceId)) {
       // C-P1.1-R：实例仍被其他 run 持有租约（其 execute 未结束）时不得停止，
       // 否则创建者先结束会连坐使用者。跳过后由最后使用者释放租约，实例回归
@@ -57,11 +58,12 @@ export async function cleanupSpawnedInstances(instanceIds: Set<string>, organiza
       skipped.push(instanceId);
       continue;
     }
+    if (generation === undefined) continue;
     try {
-      await getBoundAgentRuntime().stopInstance(instanceId, organizationId);
+      const result = await getBoundAgentRuntime().reclaimInstance(instanceId, organizationId, generation);
+      if (!result.ok) skipped.push(instanceId);
     } catch (err) {
-      // 单个实例停止失败不中断其余清理；stopInstance 对不存在/跨 org 实例返回
-      // ok:false 不抛错，此处仅兜底意外异常
+      // 单项失败保留诊断，其他实例继续清理；未回收实体交由后续空闲策略。
       logger.error(`Failed to stop spawned instance: instanceId=${instanceId}`, err);
     }
   }

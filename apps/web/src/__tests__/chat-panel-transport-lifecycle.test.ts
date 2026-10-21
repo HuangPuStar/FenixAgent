@@ -2,13 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// 建连 effect 与 session/load 的元数据刷新在同一个模块里（CE 阶段 2 §1.6 T6d 起 ChatPanel 的
-// runtime 被拆到 `use-chat-panel-runtime.ts`），因此被钉住的两处锚点改在该文件中定位。
-// 2026-09-25（台账 D1）：该 runtime 从宿主 `pages/agent-panel/` 迁入 chat 域 owner
-// `@fenix/agent-runtime` 的 `web/agent-panel/`，源路径随之改指包内实现——两处锚点注释与断言语义不变。
+// 连接元数据与动作发送分属两个 hook，契约同时覆盖旧 socket 的注入与实际发送端口。
 const RUNTIME_PATH = resolve(
   import.meta.dir,
   "../../../../packages/agent-runtime/web/agent-panel/use-chat-panel-runtime.ts",
+);
+
+const ACTIONS_PATH = resolve(
+  import.meta.dir,
+  "../../../../packages/agent-runtime/web/agent-panel/use-chat-panel-actions.ts",
 );
 
 describe("ChatPanel transport 生命周期", () => {
@@ -27,13 +29,17 @@ describe("ChatPanel transport 生命周期", () => {
 
   // 新协议 1008 回退后，用户动作仍走独立的旧 Yjs WS；发送链路不得依赖 syncChat。
   test("新协议回退不改变旧 WS 发送通道", () => {
-    const source = readFileSync(RUNTIME_PATH, "utf8");
+    const runtimeSource = readFileSync(RUNTIME_PATH, "utf8");
+    const source = readFileSync(ACTIONS_PATH, "utf8");
     const sendStart = source.indexOf("const sendViaWs");
     const sendEnd = source.indexOf("const sendAction", sendStart);
     const sendBlock = source.slice(sendStart, sendEnd);
     expect(sendStart).toBeGreaterThanOrEqual(0);
     expect(sendEnd).toBeGreaterThan(sendStart);
-    expect(sendBlock).toContain("yjsWsRef.current");
+    expect(runtimeSource).toContain("} = useChatPanelActions({");
+    expect(runtimeSource).toContain("wsRef: yjsWsRef");
+    expect(runtimeSource).toContain("yjsWsRef.current = yjsWs");
+    expect(sendBlock).toContain("wsRef.current.send(");
     expect(sendBlock).not.toContain("syncChat");
   });
 });

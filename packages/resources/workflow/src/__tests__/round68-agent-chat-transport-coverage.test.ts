@@ -31,6 +31,8 @@ class MemoryTurn implements PromptTurn {
 
   release(): void {}
 
+  async cancel(): Promise<void> {}
+
   dispose(): Promise<void> {
     return Promise.resolve();
   }

@@ -11,7 +11,7 @@ import { ConnectionRegistry } from "../channel/connection-registry";
 import type { RelayMessage, SharedRelay } from "../channel/connection-types";
 import { RelayEventHandler } from "../channel/relay-event-handler";
 import { SessionChannel, type SessionConnection } from "../channel/session-channel";
-import { failPendingSessionMutations, waitForSessionCreation } from "../channel/session-mutation";
+import { failPendingSessionMutations, registerSessionSync, waitForSessionCreation } from "../channel/session-mutation";
 import type { ActionAck, ActionError } from "../channel/types";
 import { DocManager } from "../state/doc-manager";
 
@@ -66,11 +66,7 @@ async function createHarness(): Promise<Harness> {
       sent.push(rpc);
     },
     getNextRpcId: () => ++shared.nextRpcId,
-    registerSessionSyncRpcId: (rpcId) => {
-      if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
-      shared.pendingSessionSyncIds.add(rpcId);
-      shared.latestSessionSyncRpcId = rpcId;
-    },
+    registerSessionSyncRpcId: (rpcId, target) => registerSessionSync(shared, rpcId, target),
     awaitSessionCreation: (rpcId) => waitForSessionCreation(shared, rpcId, 1_000),
   };
   const channel = new SessionChannel({
@@ -87,7 +83,6 @@ async function createHarness(): Promise<Harness> {
     registerYjsDocListener() {},
     reportError() {},
     touchInstanceActivity() {},
-    terminateLocalDeadInstance() {},
   });
   const receive = handler.createMessageHandler(shared);
   const harness: Harness = {
@@ -157,7 +152,7 @@ describe("create_session 创建回执", () => {
   });
 
   // Agent 拒绝创建时不产生回执：调用方据此走「无回执」分支（不写归属），而不是把失败当成功。
-  test("Agent 拒绝时提交不含 session id 的回执", async () => {
+  test("Agent 拒绝时返回错误且不提交创建成功", async () => {
     const harness = await createHarness();
     const pending = harness.send({ action: "create_session", commandId: "create-rejected" });
     await Bun.sleep(0);
@@ -168,7 +163,8 @@ describe("create_session 创建回执", () => {
     });
     await pending;
 
-    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted", "committed"]);
+    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted"]);
+    expect(harness.errors[0]?.error.type).toBe("ACTION.AGENT_UNAVAILABLE");
     expect(committed(harness)?.sessionId).toBeUndefined();
   });
 

@@ -1,58 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { CoreNodeRegistry } from "../registry/core-node-registry";
 import { EnginePluginRegistry } from "../registry/engine-plugin-registry";
 import { createInstanceOrchestrator } from "../runtime/instance-orchestrator";
 import { createRuntimeInstanceStore } from "../runtime/runtime-instance-store";
 import { createFakeEnginePlugin } from "./fixtures/fake-engine-plugin";
 
-function createLaunchSpec(): AgentLaunchSpec {
-  return {
-    workspace: "/tmp/fenix-orchestrator",
-    env: { OPENAI_API_KEY: "sk-test" },
-    agent: { name: "writer", prompt: "Be precise" },
-    model: {
-      provider: "openai",
-      protocol: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      apiKey: "sk-test",
-      model: "gpt-4.1",
-      modelName: "gpt-4.1",
-    },
-    skills: [],
-    mcpServers: [],
-  };
-}
-
-function createTestContext(options?: {
-  pluginOptions?: Parameters<typeof createFakeEnginePlugin>[0];
-  nodeStatus?: "online" | "offline";
-  nodeEngineTypes?: string[];
-}) {
-  const pluginRegistry = new EnginePluginRegistry();
-  const nodeRegistry = new CoreNodeRegistry();
-  const store = createRuntimeInstanceStore();
-  const plugin = createFakeEnginePlugin(options?.pluginOptions);
-  const engineType = options?.pluginOptions?.engineType ?? "fake-engine";
-
-  pluginRegistry.register(plugin);
-  nodeRegistry.register({
-    id: "local-default",
-    mode: "local",
-    engineTypes: options?.nodeEngineTypes ?? [engineType],
-    status: options?.nodeStatus ?? "online",
-  });
-
-  return {
-    plugin,
-    store,
-    orchestrator: createInstanceOrchestrator({
-      pluginRegistry,
-      nodeRegistry,
-      store,
-    }),
-  };
-}
+import { createLaunchSpec, createTestContext } from "./fixtures/orchestrator-context";
 
 describe("InstanceOrchestrator", () => {
   // 运行实例刷新环境时只重新 prepare，并沿用启动时的 runtime fence。
@@ -104,7 +57,8 @@ describe("InstanceOrchestrator", () => {
     expect(store.get("inst_flow")?.relayConnected).toBe(false);
 
     const relay = await orchestrator.connectRelay({ instanceId: "inst_flow", sessionId: "rcs-flow" });
-    expect(relay).toBe(plugin.runtimeState.relay);
+    expect(relay).not.toBe(plugin.runtimeState.relay);
+    expect(relay.state).toBe("open");
     expect(plugin.runtimeState.lastConnectRelayInput).toEqual({
       instanceId: "inst_flow",
       instanceUid: "inst_flow",
@@ -302,7 +256,7 @@ describe("InstanceOrchestrator", () => {
       code: "INVALID_INSTANCE_STATE",
     });
     expect(preparedContext.store.get("inst_prepared")).toMatchObject({
-      status: "error",
+      status: "prepared",
     });
 
     const runningContext = createTestContext();
@@ -319,7 +273,9 @@ describe("InstanceOrchestrator", () => {
       instanceId: "inst_running",
     });
 
-    expect(firstRelay).toBe(secondRelay);
+    expect(firstRelay).not.toBe(secondRelay);
+    await firstRelay.close();
+    expect(secondRelay.state).toBe("open");
     expect(runningContext.plugin.runtimeState.connectRelayCalls).toBe(1);
   });
 

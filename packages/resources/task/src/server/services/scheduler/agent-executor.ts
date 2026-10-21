@@ -1,5 +1,11 @@
 import type { AgentRuntimePort, PromptTurn } from "@fenix/agent-runtime/runtime";
-import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import {
+  classifyAgentTurnEvent,
+  getBoundAgentRuntime,
+  iterateWithSignal,
+  waitWithSignal,
+} from "@fenix/agent-runtime/runtime";
+import { extractJsonRpc } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 
@@ -29,31 +35,15 @@ function parseDefinition(raw: unknown): AgentDefinition {
   return { prompt: String(def.prompt ?? "") };
 }
 
-/** 从 ACP 事件中提取纯文本输出（过滤 tool_call / tool_result，只保留 agent_message_chunk） */
-function extractPlainText(events: Array<{ type: string; payload?: unknown }>): string {
-  const lines: string[] = [];
-  for (const ev of events) {
-    const payload = (ev.payload ?? ev) as Record<string, unknown> | undefined;
-    if (!payload) continue;
-
-    // JSON-RPC result 中的 stopReason → 结束信号，不参与文本提取
-    if (payload.jsonrpc === "2.0" && (payload as unknown as { result?: { stopReason?: unknown } }).result?.stopReason)
-      continue;
-
-    // session/update 通知
-    if (payload.method === "session/update") {
-      const params = payload.params as Record<string, unknown> | undefined;
-      const update = params?.update as Record<string, unknown> | undefined;
-      if (!update) continue;
-
-      // sessionUpdate 是事件类型，content 是实际内容
-      if (update.sessionUpdate !== "agent_message_chunk") continue;
-      const content = update.content as Record<string, unknown> | undefined;
-      if (content && typeof content.text === "string") lines.push(content.text);
-    }
-  }
-  const text = lines.join("").trim();
-  return text.slice(0, 2000);
+/** 只保留有界文本摘要，避免长任务缓存整段 ACP 事件流。 */
+function extractPlainText(event: unknown): string {
+  const rpc = extractJsonRpc(event);
+  if (rpc?.method !== "session/update") return "";
+  const params = rpc.params as Record<string, unknown> | undefined;
+  const update = params?.update as Record<string, unknown> | undefined;
+  if (update?.sessionUpdate !== "agent_message_chunk") return "";
+  const content = update.content as Record<string, unknown> | undefined;
+  return typeof content?.text === "string" ? content.text : "";
 }
 
 export const agentExecutor: TaskExecutor = {
@@ -69,40 +59,40 @@ export const agentExecutor: TaskExecutor = {
     }
 
     const timeoutMs = (task.timeoutSeconds ?? 300) * 1000;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new AbortController();
+    const timeoutId = setTimeout(() => deadline.abort(new Error("Agent execution timeout")), timeoutMs);
 
     let turn: PromptTurn | undefined;
     try {
-      const result = await deps.openAgentSession({
-        userId: task.userId,
-        agentConfigId: task.agentId,
-        organizationId: task.organizationId,
-        startSource: "scheduled",
-      });
+      const result = await waitWithSignal(
+        deps.openAgentSession({
+          userId: task.userId,
+          agentConfigId: task.agentId,
+          organizationId: task.organizationId,
+          startSource: "scheduled",
+          signal: deadline.signal,
+        }),
+        deadline.signal,
+        (late) => late.turn.dispose(),
+      );
       turn = result.turn;
 
+      deadline.signal.throwIfAborted();
       turn.prompt([{ type: "text", text: def.prompt }]);
 
-      const events: Array<{ type: string; payload?: unknown }> = [];
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error("Agent execution timeout")), timeoutMs);
-      });
-
-      await Promise.race([
-        (async () => {
-          for await (const ev of turn.events()) {
-            events.push(ev as unknown as { type: string; payload?: unknown });
-            const raw = ev as unknown as Record<string, unknown>;
-            const rpc = raw.jsonrpc === "2.0" ? raw : (ev.payload as Record<string, unknown> | undefined);
-            if (rpc?.jsonrpc === "2.0" && (rpc as unknown as { result?: { stopReason?: unknown } }).result?.stopReason)
-              break;
-          }
-        })(),
-        timeoutPromise,
-      ]);
-
+      let resultSummary = "";
+      let succeeded = false;
+      for await (const event of iterateWithSignal(turn.events(), deadline.signal)) {
+        resultSummary = (resultSummary + extractPlainText(event)).slice(0, 2000);
+        const terminal = classifyAgentTurnEvent(event);
+        if (!terminal) continue;
+        if (terminal.outcome !== "succeeded") throw new Error(`Agent execution ${terminal.outcome}`);
+        succeeded = true;
+        break;
+      }
+      if (!succeeded) throw new Error("Agent execution ended without a confirmed success");
       const duration = Date.now() - startTime;
-      const resultSummary = extractPlainText(events);
+      resultSummary = resultSummary.trim();
 
       // 关联 ID 取自显式输入（§7）；未给时记 null，与日志条目里由 ALS 注入的 requestId 字段区分开
       // （那个字段是当前异步上下文，直接调用本执行器时未必属于本次执行）

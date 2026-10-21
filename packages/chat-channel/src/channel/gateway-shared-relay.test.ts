@@ -369,6 +369,7 @@ describe("Gateway shared relay", () => {
     // 才能命中「释放后补注册」的竞态窗口；过早断开会被 handleOpen 中更早的容量检查拦截。
     const sessionStarted = deferred<void>();
     const sessionPending = deferred<{ ydoc: Y.Doc }>();
+    let sessionOpens = 0;
     const lifecycle = createGateway(
       registry,
       broadcaster,
@@ -376,6 +377,8 @@ describe("Gateway shared relay", () => {
       {},
       {
         openSession: () => {
+          // 首次只恢复 relay 的受信订阅；挂起客户端提升后的第二次读取以保持本用例的释放窗口。
+          if (++sessionOpens === 1) return Promise.resolve({ ydoc: new Y.Doc() });
           sessionStarted.resolve();
           return sessionPending.promise;
         },
@@ -467,6 +470,8 @@ describe("Gateway shared relay", () => {
     });
     const entry = registry.getClient("ws-sync-adapter");
     expect(entry).toBeDefined();
+    entry!.acpSessionId = "ses-confirmed";
+    entry!.sessionLoaded = true;
     entry!.syncConnection = {
       onInboundBytes: async () => {},
       acceptNormalizedEvent: () => {},
@@ -477,7 +482,12 @@ describe("Gateway shared relay", () => {
     await lifecycle.handleMessage(
       ws,
       "ws-sync-adapter",
-      JSON.stringify({ action: "send_prompt", commandId: "cmd-sync", content: [{ type: "text", text: "hello" }] }),
+      JSON.stringify({
+        action: "send_prompt",
+        sessionId: "ses-confirmed",
+        commandId: `${sessionChannel.getCommandEpoch()}.759096a3-182f-43ee-81df-a181b9a6fbee`,
+        content: [{ type: "text", text: "hello" }],
+      }),
     );
 
     expect(accepted).toHaveLength(1);

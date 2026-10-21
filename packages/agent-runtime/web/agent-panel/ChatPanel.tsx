@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import type { ChatPanelHostPorts } from "./chat-panel-host-ports";
 import { useChatPanelPorts } from "./chat-panel-ports";
+import { PromptRecovery } from "./PromptRecovery";
 import { restoreLatestThenScroll } from "./return-to-latest";
 import { useChatPanelRuntime } from "./use-chat-panel-runtime";
 
@@ -138,6 +139,9 @@ function ChatPanelView({
     connectionState,
     classifiedError,
     actionError,
+    preservedPrompt,
+    retryPreservedPrompt,
+    dismissPreservedPrompt,
     historyRecovery,
     historyRecoveryRetrying,
     syncDegradedBlocked,
@@ -178,6 +182,15 @@ function ChatPanelView({
     });
   }, [syncChat.history.returnToLatest]);
 
+  const promptRecoveryNotice = preservedPrompt && (
+    <PromptRecovery
+      prompt={preservedPrompt}
+      retry={retryPreservedPrompt}
+      dismiss={dismissPreservedPrompt}
+      disabled={syncDegradedBlocked || !sessionState.acpSessionId || connectionState !== "connected"}
+    />
+  );
+
   // 未选中实例 → 欢迎空状态（图标 64px 淡描边：`opacity-30` 原在宿主的 `.agent-welcome-empty svg` 上）
   if (!agentId) {
     return (
@@ -195,17 +208,25 @@ function ChatPanelView({
   // 排在后面会被它抢走（现象：主动停止被报成「Agent 实例启动失败。」红色满屏卡）。
   if (terminalUiCode === "instance_stopped") {
     return (
-      <PanelEmptyState
-        icon={<Bot className="h-16 w-16 opacity-30" />}
-        title={t("instanceStopped")}
-        description={t("instanceStoppedDesc")}
-      />
+      <>
+        {promptRecoveryNotice}
+        <PanelEmptyState
+          icon={<Bot className="h-16 w-16 opacity-30" />}
+          title={t("instanceStopped")}
+          description={t("instanceStoppedDesc")}
+        />
+      </>
     );
   }
 
   // 错误状态（容器形态复用空态骨架那一串：卡片自带底色与描边，缺的是居中与撑满）
   if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
-    return <PublicErrorCard error={classifiedError} t={tUi} className={EMPTY_STATE_SHELL_CLASS} />;
+    return (
+      <>
+        {promptRecoveryNotice}
+        <PublicErrorCard error={classifiedError} t={tUi} className={EMPTY_STATE_SHELL_CLASS} />
+      </>
+    );
   }
 
   // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
@@ -223,7 +244,12 @@ function ChatPanelView({
 
   // 连接中
   if (connectionState === "connecting") {
-    return <Spinner variant="panel" className="h-full" label={t("connectingAgent")} />;
+    return (
+      <>
+        {promptRecoveryNotice}
+        <Spinner variant="panel" className="h-full" label={t("connectingAgent")} />
+      </>
+    );
   }
 
   // 已连接 → 渲染 ACPMain
@@ -251,6 +277,7 @@ function ChatPanelView({
           )}
         {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
+        {promptRecoveryNotice}
         {sessionState.agentPublicError &&
           sessionState.agentPublicError.id !== classifiedError?.id &&
           sessionState.agentPublicError.id !== actionError?.error.id && (
@@ -345,9 +372,12 @@ function ChatPanelView({
 
   // 断开仅表示连接生命周期；状态机可自行重连，不生成业务错误或恢复操作。
   return (
-    <PanelEmptyState
-      title={autoReconnecting ? t("reconnecting") : t("agentDisconnected")}
-      description={autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}
-    />
+    <>
+      {promptRecoveryNotice}
+      <PanelEmptyState
+        title={autoReconnecting ? t("reconnecting") : t("agentDisconnected")}
+        description={autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}
+      />
+    </>
   );
 }

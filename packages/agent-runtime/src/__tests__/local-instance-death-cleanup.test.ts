@@ -16,14 +16,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { AgentInstanceRuntimeCoordinator } from "../server/services/agent-instance-runtime-coordinator";
 import { stubCoreRuntimeFacade } from "../server/testing";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
+  stopInstanceViaController,
   terminateLocalDeadInstance,
 } from "../services/orchestration-instance";
 
 const INSTANCE_ID = "inst-1";
+const IDENTITY = { runtimeGeneration: 1, serverEpoch: "local-death-test" };
 
 /** 记录 controller.stopInstance 调用；仅此一处状态被假 controller 修改。 */
 const controllerStopCalls: string[] = [];
@@ -48,6 +51,7 @@ function makeSnapshot(overrides: Partial<RuntimeInstanceSnapshot> = {}): Runtime
     instanceId: INSTANCE_ID,
     engineType: "opencode",
     nodeId: "local-default",
+    ...IDENTITY,
     status: "running",
     launchSpec: {} as RuntimeInstanceSnapshot["launchSpec"],
     relayConnected: false,
@@ -81,7 +85,12 @@ describe("terminateLocalDeadInstance", () => {
       controllerStopCalls.push(id);
     };
     stubCoreRuntimeFacade(fakeFacade);
+    const coordinator = new AgentInstanceRuntimeCoordinator({
+      async start() {},
+      stop: (instanceId) => stopInstanceViaController(instanceId, "strict"),
+    });
     setOrchestrationInstanceDeps({
+      reclaimRuntime: (instanceId, generation) => coordinator.reclaimRuntime({ id: instanceId }, generation),
       getOrchestrationController: () => fakeController,
       // 隔离 SP-C2 回收接线：默认实现会惰性装配真实 ChatChannelController，
       // 本文件的既有用例只验证停止语义，不依赖真实 Doc 回收
@@ -100,7 +109,7 @@ describe("terminateLocalDeadInstance", () => {
   // 本地实例 running 且活跃表存在：死亡信号应触发完整清理
   // （controller 活跃表移除 + core stopInstance），死实例不再占坑
   test("本地实例运行中且活跃表存在 → controller stop 与 core stopInstance 均被调用", async () => {
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([INSTANCE_ID]);
     expect(facadeStopCalls).toEqual([INSTANCE_ID]);
@@ -110,7 +119,7 @@ describe("terminateLocalDeadInstance", () => {
   test("远程实例（nodeId=mach_xxx）→ 静默跳过，不清理", async () => {
     snapshot = makeSnapshot({ nodeId: "mach_remote" });
 
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([]);
     expect(facadeStopCalls).toEqual([]);
@@ -120,7 +129,7 @@ describe("terminateLocalDeadInstance", () => {
   test("core 无快照 → 静默跳过", async () => {
     snapshot = null;
 
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([]);
     expect(facadeStopCalls).toEqual([]);
@@ -129,11 +138,11 @@ describe("terminateLocalDeadInstance", () => {
   // stopped/stopping 为正常终止路径的状态，不构成"死亡"，不得重复 stop
   test("快照状态为 stopped/stopping → 静默跳过", async () => {
     snapshot = makeSnapshot({ status: "stopped" });
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
     expect(controllerStopCalls).toEqual([]);
 
     snapshot = makeSnapshot({ status: "stopping" });
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
     expect(controllerStopCalls).toEqual([]);
     expect(facadeStopCalls).toEqual([]);
   });
@@ -143,7 +152,7 @@ describe("terminateLocalDeadInstance", () => {
   test("快照状态为 error（connectRelay 失败场景）→ 照常清理", async () => {
     snapshot = makeSnapshot({ status: "error" });
 
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([INSTANCE_ID]);
     expect(facadeStopCalls).toEqual([INSTANCE_ID]);
@@ -153,7 +162,7 @@ describe("terminateLocalDeadInstance", () => {
   test("实例不在编排域活跃表（已被 stop/清理）→ 静默跳过，不产生重复 stop", async () => {
     activeInstances = [];
 
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([]);
     expect(facadeStopCalls).toEqual([]);
@@ -169,8 +178,8 @@ describe("terminateLocalDeadInstance", () => {
       });
     };
 
-    const p1 = terminateLocalDeadInstance(INSTANCE_ID);
-    const p2 = terminateLocalDeadInstance(INSTANCE_ID);
+    const p1 = terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
+    const p2 = terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     // 两个调用都已同步进入：第一个已入 in-flight 集合并挂起在 stop，第二个被去重拦截
     expect(controllerStopCalls).toHaveLength(1);
@@ -190,14 +199,14 @@ describe("terminateLocalDeadInstance", () => {
       },
     });
 
-    await expect(terminateLocalDeadInstance(INSTANCE_ID)).resolves.toBeUndefined();
+    await expect(terminateLocalDeadInstance(INSTANCE_ID, IDENTITY)).resolves.toBeUndefined();
   });
 
   // SP-C2：实例停止完成点必须触发内存 YJS Doc 回收（idle reclaim 4001 路径与
   // 死实例清理共用 stopInstanceViaController funnel），且回收发生在 core 停止之后——
   // 实例可能存活时关 Doc 会丢弃实时流（C6 断链语义一）。
   test("停止完成 → 触发 yjs doc 回收，且顺序在 core stop 之后", async () => {
-    await terminateLocalDeadInstance(INSTANCE_ID);
+    await terminateLocalDeadInstance(INSTANCE_ID, IDENTITY);
 
     expect(controllerStopCalls).toEqual([INSTANCE_ID]);
     expect(facadeStopCalls).toEqual([INSTANCE_ID]);

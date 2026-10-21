@@ -30,7 +30,7 @@ import {
   markInstanceRelayDetached,
   touchInstanceActivity,
 } from "../../services/acp-idle-monitor";
-import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../../services/orchestration-instance";
+import { refreshInstanceEnvironment } from "../../services/orchestration-instance";
 import { getAgentRuntimeConfig } from "../config";
 import { environmentRepo } from "../repositories/environment";
 import { createFileSessionTitleStore } from "../repositories/session-title-store";
@@ -48,7 +48,6 @@ type ChatChannelBootstrapDeps = {
   markInstanceRelayAttached: typeof markInstanceRelayAttached;
   markInstanceRelayDetached: typeof markInstanceRelayDetached;
   touchInstanceActivity: typeof touchInstanceActivity;
-  terminateLocalDeadInstance: typeof terminateLocalDeadInstance;
   docManager: typeof docManager;
   isMachineOfflineError: typeof isMachineOfflineError;
   classifyPermanentSpawnFailure: typeof classifyPermanentSpawnFailure;
@@ -78,7 +77,6 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
   touchInstanceActivity,
-  terminateLocalDeadInstance,
   docManager,
   isMachineOfflineError,
   classifyPermanentSpawnFailure,
@@ -137,11 +135,6 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     markRelayAttached: deps.markInstanceRelayAttached,
     markRelayDetached: deps.markInstanceRelayDetached,
     touchInstanceActivity: deps.touchInstanceActivity,
-    terminateLocalDeadInstance: (instanceId) => {
-      // orchestration-instance 的回收是异步的；relay 断链路径不等待回收完成，
-      // 避免阻塞消息处理循环（回收失败由该函数内部日志保留诊断上下文）。
-      void deps.terminateLocalDeadInstance(instanceId);
-    },
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,
     maxClients: deps.maxClients,

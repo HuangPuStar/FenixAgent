@@ -90,16 +90,24 @@ export class YjsBroadcaster {
    * 发送单条 JSON 控制消息（keep_alive/pong/error/action ack）到指定连接。
    * 缓冲超过 64 KB 时跳过发送；控制帧不承载 Yjs 状态，跳过不登记 lagging，
    * 但借本次发送触发 lagging 连接的惰性 reconcile（keepalive 30s 周期是 doc
-   * 静默期间唯一的恢复检查点）。
+   * 静默期间唯一的恢复检查点）。initialSyncStatus 仅供每轮一次的同步结果使用，
+   * 允许至多 4 KiB 的结果排在已交付差量之后，避免大差量使自己的完成证明被丢弃。
    */
-  sendToYjsWs(ws: WsConnection, data: unknown): void {
-    if (ws.readyState !== 1) return;
+  sendToYjsWs(ws: WsConnection, data: unknown, initialSyncStatus = false): boolean {
+    if (ws.readyState !== 1) return false;
     this.reconcileLagging();
-    if (this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) return;
+    if (!initialSyncStatus && this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) return false;
     try {
-      ws.send(JSON.stringify(data));
-    } catch {
+      const frame = JSON.stringify(data);
+      if (initialSyncStatus && new TextEncoder().encode(frame).byteLength > 4096) return false;
+      ws.send(frame);
+      return true;
+    } catch (error) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] control delivery failed: error=${error instanceof Error ? error.name : "unknown"}`,
+      );
       // 单个连接的发送失败不得冒泡到 keepalive / message 事件循环；连接关闭由 socket 自身事件收敛。
+      return false;
     }
   }
 

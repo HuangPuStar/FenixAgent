@@ -81,22 +81,36 @@ export class AgentExecutor implements NodeExecutor {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let retryDelay: number | undefined;
       if (attempt > 0) {
         const baseDelay = retryConfig.delay ?? DEFAULT_RETRY_DELAY_MS;
         const multiplier = retryConfig.backoff === "exponential" ? 2 ** (attempt - 1) : 1;
         const jitter = 0.5 + Math.random() * 0.5;
-        const delay = Math.round(baseDelay * multiplier * jitter);
+        retryDelay = Math.round(baseDelay * multiplier * jitter);
 
         await this.emitEvent(ctx, "node.retrying", node, {
           attempt: attempt + 1,
           max_attempts: maxAttempts,
-          next_delay_ms: delay,
+          next_delay_ms: retryDelay,
         });
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
       try {
+        // 等待期间的取消与执行期间共用领域错误分类，不能让裸 AbortError 逃出重试循环。
+        if (retryDelay !== undefined)
+          await new Promise<void>((resolve, reject) => {
+            const onAbort = (): void => {
+              clearTimeout(retryTimer);
+              signal.removeEventListener("abort", onAbort);
+              reject(signal.reason ?? new DOMException("Request aborted", "AbortError"));
+            };
+            const retryTimer = setTimeout(() => {
+              signal.removeEventListener("abort", onAbort);
+              resolve();
+            }, retryDelay);
+            signal.addEventListener("abort", onAbort, { once: true });
+            if (signal.aborted) onAbort();
+          });
         return await this.executeOnce(node, ctx, resolvedPrompt, resolvedAgent, signal);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -160,13 +174,16 @@ export class AgentExecutor implements NodeExecutor {
 
     // 连接 Transport（resolvedAgent 是环境名称，Transport 层负责解析为 envId）
     console.error(`[workflow] AgentExecutor connecting: nodeId=${node.id} agent=${resolvedAgent}`);
+    signal.throwIfAborted();
     const session = await this.transport.connect(resolvedAgent, {
+      signal,
       spawnedInstanceIds: ctx.spawnedInstanceIds,
       // C-P2.5：触发者 userId 透传，宿主 ensureRunning 按此计入用户配额桶
       userId: ctx.callerUserId,
     });
 
     try {
+      signal.throwIfAborted();
       console.error(
         `[workflow] AgentExecutor connected: nodeId=${node.id} signalAborted=${signal.aborted} dagSignalAborted=${ctx.signal.aborted}`,
       );

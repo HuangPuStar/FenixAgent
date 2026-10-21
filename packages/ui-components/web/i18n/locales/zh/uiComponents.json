@@ -311,6 +311,7 @@
           "SESSION_NOT_FOUND": "操作对应的会话不存在。",
           "VERSION_CONFLICT": "操作状态版本冲突。",
           "INVALID_STATE": "当前状态不允许执行该操作。",
+          "OUTCOME_UNKNOWN": "操作结果尚未确认，请重新同步并核对后再操作。",
           "RATE_LIMITED": "当前操作请求过多。",
           "PAYLOAD_TOO_LARGE": "操作数据过大。",
           "AGENT_UNAVAILABLE": "Agent 当前不可用于该操作。",

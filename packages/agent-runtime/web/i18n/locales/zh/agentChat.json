@@ -20,5 +20,9 @@
   "historyRecoveryRetrying": "正在重试历史同步...",
   "filePicker": {
     "title": "选择文件"
-  }
+  },
+  "promptRecoveryUnknown": "消息结果尚未确认，文字、图片和附件已保留。请先核对会话内容，避免重复发送。",
+  "promptRecoverySaved": "消息未发送，文字、图片和附件已保留。请确认当前会话后重试。",
+  "promptRecoverySendCurrent": "发送到当前会话",
+  "promptRecoveryDiscard": "放弃保留的消息"
 }

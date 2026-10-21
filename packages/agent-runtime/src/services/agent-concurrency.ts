@@ -163,25 +163,17 @@ export function getActiveUserAgentCount(
  */
 export function assertAgentConcurrencyAvailable(
   userId: string,
-  source: InstanceSpawnSource,
+  _source: InstanceSpawnSource,
   runtime: Pick<CoreRuntimeFacade, "listInstances"> = _deps.getRuntime(),
   registry: Pick<InstanceRegistry, "get"> = _deps.registry,
 ): void {
-  // 配置在调用时读取（与 initializeApplicationInfrastructure 的装配顺序解耦）；三个上限缺省即不限制。
-  const {
-    agentMaxConcurrency: totalLimit,
-    userAgentMaxConcurrency: userLimit,
-    scheduledAgentMaxConcurrency: scheduledLimit,
-  } = getAgentRuntimeConfig();
+  // 配置在调用时读取（与基础设施装配顺序解耦）；实例上限与执行配额分别治理。
+  const { agentMaxConcurrency: totalLimit, userAgentMaxConcurrency: userLimit } = getAgentRuntimeConfig();
   if (totalLimit && getActiveAgentCount(runtime) >= totalLimit) {
     throw new AppError("已达到 Agent 总并发上限", "AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }
 
   if (userLimit && getActiveUserAgentCount(userId, runtime, registry) >= userLimit) {
     throw new AppError("已达到当前用户 Agent 并发上限", "USER_AGENT_CONCURRENCY_LIMIT_REACHED", 429);
-  }
-
-  if (source === "scheduled" && scheduledLimit && getActiveScheduledAgentCount(runtime, registry) >= scheduledLimit) {
-    throw new AppError("已达到定时任务 Agent 并发上限", "SCHEDULED_AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }
 }

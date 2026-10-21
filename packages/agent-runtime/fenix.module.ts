@@ -115,7 +115,7 @@ export const moduleManifest = {
       schema: z.coerce.number().int().positive().optional(),
       secret: false,
       restartRequired: true,
-      description: "定时任务触发的活跃 Agent 实例并发上限；未配置即不限制定时来源。",
+      description: "scheduled 来源的活跃 Agent 执行并发上限；共享实例上的任务分别计数，未配置即不限制。",
     },
     // ── 运行态旋钮：ACP 实例生命周期 ──
     {

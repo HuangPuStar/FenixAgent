@@ -64,6 +64,8 @@ export interface YjsWsOptions {
   onActionAck?: (ack: ActionAck) => void;
   /** 收到 action_error 帧时回调（commandId 幂等失败响应；前端据此释放重试 ID 缓存并展示错误） */
   onActionError?: (error: ActionError) => void;
+  /** 服务端命令代次就绪或轮换；只用于分配新意图的完整 commandId。 */
+  onCommandEpoch?: (epoch: string) => void;
   /** 旧 Chat Doc 初始同步未完成（超限/背压）：客户端必须展示具体缺失并提供重试入口。 */
   onHistoryIncomplete?: (info: YjsHistoryIncomplete) => void;
   /**
@@ -91,6 +93,8 @@ export interface YjsWsClient {
    */
   send(data: unknown): boolean;
   isConnected(): boolean;
+  /** 当前 socket 收到的命令代次；握手前及断连后不能分配新命令身份。 */
+  getCommandEpoch(): string | null;
 }
 
 /**
@@ -187,6 +191,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   let consecutiveUnstableDisconnects = 0;
   let connectedAt: number | null = null;
   let destroyed = false;
+  let commandEpoch: string | null = null;
 
   function setState(state: YjsWsState) {
     onConnectionState?.(state);
@@ -206,6 +211,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     if (destroyed) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
+    commandEpoch = null;
     setState("connecting");
     const socket = new WebSocket(url);
     // yjs:update 二进制帧要求以 ArrayBuffer 形态到达（浏览器默认 blob 需异步解包），
@@ -261,6 +267,17 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       }
       try {
         const msg = JSON.parse(data) as Record<string, unknown>;
+        if (msg.type === "yjs:command-epoch") {
+          if (
+            typeof msg.epoch === "string" &&
+            /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(msg.epoch) &&
+            msg.epoch !== commandEpoch
+          ) {
+            commandEpoch = msg.epoch;
+            options.onCommandEpoch?.(commandEpoch);
+          }
+          return;
+        }
         if (msg.type === "yjs:sync-request" && Array.isArray(msg.docs)) {
           const local = new Map((getYjsStateVectors?.() ?? []).map((vector) => [vector.docName, vector]));
           for (const requested of msg.docs) {
@@ -316,6 +333,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     socket.onclose = (event: CloseEvent) => {
       if (destroyed || ws !== socket) return;
       ws = null;
+      commandEpoch = null;
       const close = { code: event.code, reason: event.reason };
       onClose?.(close);
       // close code 只控制连接生命周期，不产生或改变用户可见错误。
@@ -347,6 +365,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
   function disconnect() {
     destroyed = true;
+    commandEpoch = null;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -379,5 +398,5 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     return ws?.readyState === WebSocket.OPEN;
   }
 
-  return { connect, disconnect, send, isConnected };
+  return { connect, disconnect, send, isConnected, getCommandEpoch: () => commandEpoch };
 }

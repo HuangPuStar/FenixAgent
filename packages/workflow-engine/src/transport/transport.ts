@@ -49,6 +49,8 @@ export interface Transport {
     agentId: string,
     options?: {
       cwd?: string;
+      /** Cancellation applies during connection and ACP session handshake. */
+      signal?: AbortSignal;
       /** 本次运行实际启动的实例 ID（复用不记录；供宿主清理） */
       spawnedInstanceIds?: Set<string>;
       /**

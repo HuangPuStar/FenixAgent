@@ -6,6 +6,7 @@ import {
   setAgentChatServiceDeps,
   startPromptTurn,
 } from "../services/agent-chat-service";
+import { releaseAgentSessionTurns } from "../services/agent-session-admission";
 
 function makeMockRelayHandle(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,22 +23,17 @@ describe("createAgentSession", () => {
   // 正常创建
   test("根据已有 relayHandle 创建 AgentSession", () => {
     const handle = makeMockRelayHandle();
-    let _stopped = false;
     const session = createAgentSession({
       relayHandle: handle,
       instanceId: "inst-test",
-      stopInstance: async () => {
-        _stopped = true;
-      },
     });
     expect(session.instanceId).toBe("inst-test");
     expect(session.relayHandle).toBe(handle);
   });
 
   // dispose 清理
-  test("dispose 关闭 relay handle 并 stop 实例", async () => {
+  test("dispose 归还 relay 消费租约", async () => {
     let closed = false;
-    let stopped = false;
     const handle = makeMockRelayHandle({
       close: async () => {
         closed = true;
@@ -46,13 +42,9 @@ describe("createAgentSession", () => {
     const session = createAgentSession({
       relayHandle: handle,
       instanceId: "inst-test",
-      stopInstance: async () => {
-        stopped = true;
-      },
     });
     await session.dispose();
     expect(closed).toBe(true);
-    expect(stopped).toBe(true);
   });
 });
 
@@ -80,7 +72,6 @@ describe("startPromptTurn", () => {
     const session = createAgentSession({
       relayHandle: handle,
       instanceId: "inst-test",
-      stopInstance: async () => {},
     });
 
     const { turn } = await startPromptTurn({ session });
@@ -330,3 +321,5 @@ describe("openAgentSession 持久实例与请求资源边界", () => {
     expect(relayCloseCalls).toBe(2);
   });
 });
+
+afterEach(() => releaseAgentSessionTurns("inst-test"));

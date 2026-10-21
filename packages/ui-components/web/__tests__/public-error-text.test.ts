@@ -18,6 +18,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { TFunction } from "i18next";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PublicErrorCard } from "../chat/view/PublicErrorCard";
 import { publicErrorText } from "../chat/view/public-error-text";
 
 const WEB_ROOT = resolve(import.meta.dir, "..");
@@ -97,9 +100,30 @@ function stubTranslator(dict: Map<string, string>, seen: string[]): TFunction {
 describe("公开错误正文的本地化取值", () => {
   // 源码解析本身要能失败：正则失配会让下面两条断言退化为「两边都空」，静默通过。
   test("内联契约的 type 清单可被解析，且数量与协议一致", () => {
-    expect(inlinedTypes.length).toBeGreaterThanOrEqual(28);
+    const registry = readFileSync(join(WEB_ROOT, "../../chat-channel/src/public-error.ts"), "utf8");
+    const declaration = registry.slice(registry.indexOf("export const PUBLIC_ERROR_TYPES = ["));
+    const body = declaration.slice(0, declaration.indexOf("] as const"));
+    const authoritativeTypes = [...body.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(authoritativeTypes.length).toBeGreaterThanOrEqual(28);
+    expect(inlinedTypes).toEqual(authoritativeTypes);
     expect(inlinedTypes).toContain("AGENT_RUNTIME.REQUEST_FAILED");
     expect(inlinedTypes).toContain("INTERNAL.UNCLASSIFIED");
+  });
+
+  // 断线后的未知结果必须显示明确的恢复提示，同时保留可复制的错误类型和诊断标识。
+  test.each(["zh", "en"])("未知执行结果以 %s 文案显示在错误卡片", (locale) => {
+    const dict = locale === "zh" ? zhFlat : enFlat;
+    const error = {
+      type: "ACTION.OUTCOME_UNKNOWN",
+      id: "err_0123456789abcdef0123456789abcdef",
+      message: "The action outcome is unknown. Resync and verify its result before continuing.",
+    };
+    const markup = renderToStaticMarkup(createElement(PublicErrorCard, { error, t: stubTranslator(dict, []) }));
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain(dictText(dict, `${KEY_PREFIX}${error.type}`));
+    expect(markup).toContain(error.type);
+    expect(markup).toContain(error.id);
+    expect(markup).not.toContain("chat.components.");
   });
 
   // 字典键 = 前缀 + type，双向都必须对上：缺键 → 该故障的正文退回英文（或回显 key）；多键 → 死键。

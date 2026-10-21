@@ -103,6 +103,17 @@ function installTestDeps(overrides: Partial<Parameters<typeof setExternalRelayDe
   setExternalRelayDeps({
     getEnvironmentById: async () => undefined,
     getRunningInstancesByEnvironment: () => [],
+    getOwnedInstance: async (id, ownerUserId) => ({
+      id,
+      ownerUserId,
+      environmentId: "env-1",
+      creationSource: "api",
+      name: "primary",
+      isDefault: false,
+      createdByUserId: ownerUserId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
     connectAgentRelay: async (instanceId) => {
       calls.connected.push(instanceId);
       return createRelayHandle().handle;
@@ -174,6 +185,56 @@ describe("ExternalRelay", () => {
     await handleExternalRelayOpen(ws, "ws-1", "env-1", authCtx);
 
     expect(ws.closed).toEqual([[4003, "unauthorized"]]);
+    expect(calls.connected).toEqual([]);
+  });
+
+  // 环境控制权同时要求用户和组织匹配，显式/默认实例选择都不得放宽。
+  test.each([
+    [{ userId: "user-2" }, undefined],
+    [{ userId: "user-2" }, "inst-1"],
+    [{ organizationId: "org-2" }, undefined],
+    [{ organizationId: "org-2" }, "inst-1"],
+  ])("拒绝不完整的环境归属匹配 %j", async (environment, instanceId) => {
+    installTestDeps({
+      getEnvironmentById: async () => makeEnv(environment),
+      getRunningInstancesByEnvironment: () => [makeInstance("inst-1")],
+    });
+    const ws = createWs();
+    await handleExternalRelayOpen(ws, "ws-denied", "env-1", authCtx, instanceId);
+    expect(ws.closed).toEqual([[4003, "unauthorized"]]);
+    expect(calls.connected).toEqual([]);
+  });
+
+  // 即使环境属于本人，投影实例仍必须对应当前用户的持久记录。
+  test("持久实例归属不匹配时不建立底层连接", async () => {
+    installTestDeps({
+      getEnvironmentById: async () => makeEnv(),
+      getRunningInstancesByEnvironment: () => [makeInstance("inst-1")],
+      getOwnedInstance: async () => undefined,
+    });
+    const ws = createWs();
+    await handleExternalRelayOpen(ws, "ws-denied-instance", "env-1", authCtx);
+    expect(ws.closed).toEqual([[4003, "unauthorized"]]);
+    expect(calls.connected).toEqual([]);
+  });
+
+  // 握手期间过量消息必须在建连前被拒绝，即使异步环境查询稍后才完成。
+  test("握手积压超限不再连接底层relay", async () => {
+    let resolveEnvironment!: (env: ExternalRelayEnvironment) => void;
+    installTestDeps({
+      getEnvironmentById: () =>
+        new Promise((resolve) => {
+          resolveEnvironment = resolve;
+        }),
+      getRunningInstancesByEnvironment: () => [makeInstance("inst-1")],
+    });
+    const ws = createWs();
+    const opening = handleExternalRelayOpen(ws, "ws-overflow", "env-1", authCtx);
+    for (let i = 0; i < 65; i++)
+      handleExternalRelayMessage(ws, "ws-overflow", { jsonrpc: "2.0", id: i, method: "session/prompt" });
+    resolveEnvironment(makeEnv());
+    await opening;
+    expect(ws.closed).toContainEqual([1008, "inbound queue limit"]);
     expect(calls.connected).toEqual([]);
   });
 

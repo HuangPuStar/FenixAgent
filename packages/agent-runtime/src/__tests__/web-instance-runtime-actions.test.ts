@@ -75,7 +75,7 @@ describe("Web Instance runtime actions", () => {
     stubAgentRuntimePort({
       getOwnedInstance: async () => defaultInstance,
       getOwnedEnvironment: async () => ({ id: defaultInstance.environmentId }) as never,
-      stopInstanceRuntime: (instance, mode) => coordinator.stopRuntime(instance, mode),
+      stopInstanceRuntime: (instance, mode = "strict") => coordinator.stopRuntime(instance, mode),
     });
     const response = await request(`/instances/${defaultInstance.id}/stop`, "POST");
     expect(response.status).toBeGreaterThanOrEqual(400);

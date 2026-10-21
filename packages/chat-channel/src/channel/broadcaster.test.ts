@@ -21,6 +21,7 @@ function addClient(registry: ConnectionRegistry, wsId: string, ws: MockWs, rcsSe
   registry.addClient(wsId, {
     ws,
     rcsSessionId,
+    pendingMessages: [],
   } as unknown as ClientConnection);
 }
 

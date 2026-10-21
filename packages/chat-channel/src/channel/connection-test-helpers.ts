@@ -101,10 +101,14 @@ export function createClient(overrides: Partial<ClientConnection> = {}): ClientC
   };
 }
 
-/** 记录型 SessionChannel 桩：handleAction 直接把命令转发到连接的 sendToRelay */
+/** 记录型 SessionChannel 桩：严格客户端入口直接把命令转发到连接的 sendToRelay。 */
 export function createSessionChannelStub(): SessionChannel {
   return {
-    handleAction: async (connection: { sendToRelay: (message: Record<string, unknown>) => Promise<void> | void }) => {
+    getCommandEpoch: () => "a2a41437-820d-4fd5-90f9-392b2d594771",
+    onCommandEpochChanged: () => () => {},
+    handleClientAction: async (connection: {
+      sendToRelay: (message: Record<string, unknown>) => Promise<void> | void;
+    }) => {
       await connection.sendToRelay({ jsonrpc: "2.0", id: 1, method: "session/cancel", params: {} });
     },
     disposeRcsSession: () => {},
@@ -190,7 +194,6 @@ export function createRelayEvents(
     registerYjsDocListener: () => {},
     reportError: () => {},
     touchInstanceActivity: () => {},
-    terminateLocalDeadInstance: () => {},
     ...overrides,
   });
 }

@@ -2,10 +2,9 @@
 // 会话切换的权威换代回归：真实 ChatChannelController / Gateway / DocManager / SyncHostSession，
 // 两个 WebSocket 走完整 HELLO → 目录 → 内容订阅链路；只替换宿主依赖与传输边界。
 //
-// 覆盖：A→B→A 旧连接被服务端主动失效、换代不依赖 legacy replace 帧、resume_session 同样换代、
-// 多标签页不复用旧历史。
 
 import { describe, expect, test } from "bun:test";
+import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import * as Y from "yjs";
 import { createWs, type MockWs } from "../channel/connection-test-helpers";
 import { ChatChannelController } from "../channel/controller";
@@ -17,6 +16,7 @@ import { fidelityDeserialize } from "../sync/history/fidelity-json";
 import { readDirectoryPage, readDirectoryRoot } from "../sync/protocol/directory";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "../sync/protocol/frames";
 import { FakeRedis } from "./helpers/fake-redis";
+import { encodeClientAction } from "./helpers/sync-projection-actions";
 
 const LOCATOR = { instanceUid: "instance-authority", rcsSessionId: "rcs-authority" };
 const RCS = LOCATOR.rcsSessionId;
@@ -30,6 +30,7 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
   relayed: string[];
 } {
   const relayed: string[] = [];
+  let relayListener: ((message: EngineRelayMessage) => void) | undefined;
   const controller = new ChatChannelController({
     docManager,
     getEnvironment: async () => ({ userId: "user-1", organizationId: "org-1" }),
@@ -40,6 +41,22 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
       state: "open",
       send(message: Record<string, unknown>) {
         relayed.push(String(message.method ?? message.type));
+        if (["session/load", "session/resume", "session/new"].includes(String(message.method))) {
+          const params = message.params as { sessionId?: string } | undefined;
+          queueMicrotask(() =>
+            relayListener?.({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { sessionId: params?.sessionId ?? "ses-created" },
+            } as unknown as EngineRelayMessage),
+          );
+        }
+      },
+      onMessage(listener) {
+        relayListener = listener;
+        return () => {
+          relayListener = undefined;
+        };
       },
       close() {},
     }),
@@ -47,7 +64,6 @@ function createHarness(docManager = new DocManager({ onError: () => {}, onLog: (
     markRelayAttached() {},
     markRelayDetached() {},
     touchInstanceActivity() {},
-    terminateLocalDeadInstance() {},
     isMachineOffline: () => false,
     classifyPermanentSpawnFailure: () => null,
     maxClients: () => 10,
@@ -259,11 +275,7 @@ async function switchSession(
   action: string,
   sessionId = "ses-B",
 ): Promise<void> {
-  await controller.gateway.handleMessage(
-    ws,
-    wsId,
-    JSON.stringify({ action, sessionId, commandId: `switch-${action}` }),
-  );
+  await controller.gateway.handleMessage(ws, wsId, encodeClientAction(ws, { action, sessionId }));
 }
 
 describe("会话切换的服务端权威换代", () => {
@@ -321,8 +333,9 @@ describe("会话切换的服务端权威换代", () => {
     const { controller, docManager } = createHarness();
     try {
       await writeCommittedText(docManager, "text-A");
-      const ws = createWs(70 * 1024);
+      const ws = createWs();
       await connect(controller, "ws-blocked", ws);
+      ws.bufferedAmount = 70 * 1024;
       await switchSession(controller, ws, "ws-blocked", "load_session");
       expect(ws.closed[0]).toEqual([1012, "projection replaced"]);
       expect(controller.registry.getClient("ws-blocked")?.syncConnection).toBeUndefined();
@@ -337,6 +350,7 @@ describe("会话切换的服务端权威换代", () => {
     try {
       const actionWs = createWs();
       await controller.gateway.handleOpen(actionWs, "ws-action", "user-1", "agent-1", LOCATOR);
+      await switchSession(controller, actionWs, "ws-action", "load_session", "ses-confirmed");
       const syncWs1 = createWs();
       const syncWs2 = createWs();
       await connect(controller, "ws-sync1", syncWs1);
@@ -356,11 +370,15 @@ describe("会话切换的服务端权威换代", () => {
         };
       }
 
-      for (const [index, text] of ["first question", "second question"].entries()) {
+      for (const text of ["first question", "second question"]) {
         await controller.gateway.handleMessage(
           actionWs,
           "ws-action",
-          JSON.stringify({ action: "send_prompt", commandId: `prompt-${index}`, content: [{ type: "text", text }] }),
+          encodeClientAction(actionWs, {
+            action: "send_prompt",
+            sessionId: "ses-confirmed",
+            content: [{ type: "text", text }],
+          }),
         );
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -386,6 +404,7 @@ describe("会话切换的服务端权威换代", () => {
     try {
       const actionWs = createWs();
       await controller.gateway.handleOpen(actionWs, "ws-action-race", "user-1", "agent-1", LOCATOR);
+      await switchSession(controller, actionWs, "ws-action-race", "load_session", "ses-confirmed");
       const syncWs1 = createWs();
       const syncWs2 = createWs();
       await controller.gateway.handleOpen(syncWs1, "ws-race1", "user-1", "agent-1", LOCATOR);
@@ -394,9 +413,9 @@ describe("会话切换的服务端权威换代", () => {
       await controller.gateway.handleMessage(
         actionWs,
         "ws-action-race",
-        JSON.stringify({
+        encodeClientAction(actionWs, {
           action: "send_prompt",
-          commandId: "prompt-race",
+          sessionId: "ses-confirmed",
           content: [{ type: "text", text: "attach race question" }],
         }),
       );
@@ -416,8 +435,9 @@ describe("会话切换的服务端权威换代", () => {
   test("legacy 连接在背压下仍收到权威 replace 帧", async () => {
     const { controller } = createHarness();
     try {
-      const ws = createWs(70 * 1024);
+      const ws = createWs();
       await controller.gateway.handleOpen(ws, "ws-legacy-backpressure", "user-1", "agent-1", LOCATOR);
+      ws.bufferedAmount = 70 * 1024;
       await switchSession(controller, ws, "ws-legacy-backpressure", "load_session");
       const replaced = ws.messages
         .filter((message): message is Uint8Array => message instanceof Uint8Array)
