@@ -2,6 +2,7 @@ import type { ActionAck, ActionError } from "@fenix/chat-channel";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { type LocalCreateBinding, NO_LOCAL_CREATE } from "../hooks/chat-replay-signal";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
 import type { createYjsWs } from "../yjs/yjs-ws";
@@ -11,7 +12,10 @@ import { createUserInputQueueSendPorts } from "./chat-panel-user-input-queue";
 interface Options {
   wsRef: RefObject<ReturnType<typeof createYjsWs> | null>;
   sessionId: string | null;
-  noReplaySessionRef: RefObject<boolean>;
+  /** 本地 create 代次：create 递增、load/resume 归零；scope 绑定由 runtime 在换代帧完成。 */
+  localCreateEpochRef: RefObject<number>;
+  /** 已消费的 create 归属；create/load/resume/失败时清空，避免下一次 create 复用旧 scope。 */
+  localCreateBindingRef: RefObject<LocalCreateBinding>;
   syncDegradedBlocked: boolean;
   returnToLatestHistory?: () => Promise<unknown>;
   showActionError: (error: ActionError) => void;
@@ -21,7 +25,8 @@ interface Options {
 export function useChatPanelActions({
   wsRef,
   sessionId,
-  noReplaySessionRef,
+  localCreateEpochRef,
+  localCreateBindingRef,
   syncDegradedBlocked,
   returnToLatestHistory,
   showActionError,
@@ -42,11 +47,21 @@ export function useChatPanelActions({
   const releaseCommandId = useCallback((id: string) => {
     for (const [key, value] of commandIds.current) if (value === id) commandIds.current.delete(key);
   }, []);
-  const settleCreate = useCallback((id: string, result: string | null) => {
+  const settleCreate = useCallback((id: string, result: string | null): boolean => {
     const settle = pendingCreates.current.get(id);
     pendingCreates.current.delete(id);
     settle?.(result);
+    return settle !== undefined;
   }, []);
+  // 失败/超时/发送失败/结果未知都撤销归属：宁可多一次骨架，也不把后续远端 load 误认成新建。
+  const failCreate = useCallback(
+    (id: string) => {
+      if (!settleCreate(id, null)) return;
+      localCreateEpochRef.current = 0;
+      localCreateBindingRef.current = NO_LOCAL_CREATE;
+    },
+    [settleCreate, localCreateEpochRef, localCreateBindingRef],
+  );
   const handleActionAck = useCallback(
     (ack: ActionAck) => {
       if (ack.status !== "committed" && ack.status !== "duplicate") return;
@@ -67,15 +82,20 @@ export function useChatPanelActions({
         pendingPrompts.current.delete(error.commandId);
         preserve({ ...prompt, outcomeUnknown: unknown });
       }
-      settleCreate(error.commandId, null);
+      failCreate(error.commandId);
       showActionError(error);
     },
-    [releaseCommandId, settleCreate, showActionError, preserve],
+    [releaseCommandId, failCreate, showActionError, preserve],
   );
   const handleConnectionLost = useCallback(() => {
     for (const prompt of pendingPrompts.current.values()) preserve({ ...prompt, outcomeUnknown: true });
     pendingPrompts.current.clear();
-  }, [preserve]);
+    // 断线后 create 回执不会到达：撤销归属，避免重连后的远端 load 被误认成新建。
+    if (pendingCreates.current.size > 0) {
+      localCreateEpochRef.current = 0;
+      localCreateBindingRef.current = NO_LOCAL_CREATE;
+    }
+  }, [preserve, localCreateEpochRef, localCreateBindingRef]);
   const allocateCommandId = useCallback(() => {
     const epoch = wsRef.current?.getCommandEpoch();
     return epoch ? `${epoch}.${randomUUID()}` : null;
@@ -118,19 +138,22 @@ export function useChatPanelActions({
   const createSessionWithReceipt = useCallback(async () => {
     const commandId = allocateCommandId();
     if (commandId === null) {
+      // 未分配 commandId 同样没有确认结果：撤销 create 归属，避免后续远端 load 被误认。
+      localCreateEpochRef.current = 0;
+      localCreateBindingRef.current = NO_LOCAL_CREATE;
       toast.error(t("wsSendFailed"));
       return null;
     }
     const receipt = new Promise<string | null>((resolve) => {
-      const timer = setTimeout(() => settleCreate(commandId, null), 15_000);
+      const timer = setTimeout(() => failCreate(commandId), 15_000);
       pendingCreates.current.set(commandId, (id) => {
         clearTimeout(timer);
         resolve(id);
       });
     });
-    if (!sendAction({ action: "create_session", commandId })) settleCreate(commandId, null);
+    if (!sendAction({ action: "create_session", commandId })) failCreate(commandId);
     return receipt;
-  }, [sendAction, settleCreate, allocateCommandId, t]);
+  }, [sendAction, failCreate, allocateCommandId, t, localCreateEpochRef, localCreateBindingRef]);
   useEffect(() => {
     const pending = pendingCreates.current;
     return () => {
@@ -166,15 +189,18 @@ export function useChatPanelActions({
         sendAction({ action: "cancel", sessionId: sessionId ?? undefined });
       },
       onCreateSession: () => {
-        noReplaySessionRef.current = true;
+        localCreateEpochRef.current += 1;
+        localCreateBindingRef.current = NO_LOCAL_CREATE;
         return createSessionWithReceipt();
       },
       onLoadSession: (sid) => {
-        noReplaySessionRef.current = false;
+        localCreateEpochRef.current = 0;
+        localCreateBindingRef.current = NO_LOCAL_CREATE;
         sendAction({ action: "load_session", sessionId: sid });
       },
       onResumeSession: (sid) => {
-        noReplaySessionRef.current = false;
+        localCreateEpochRef.current = 0;
+        localCreateBindingRef.current = NO_LOCAL_CREATE;
         sendAction({ action: "resume_session", sessionId: sid });
       },
       onRenameSession: (sid, title) => {
@@ -194,7 +220,7 @@ export function useChatPanelActions({
       },
       ...createUserInputQueueSendPorts(sendAction),
     }),
-    [sendPrompt, sendAction, sessionId, noReplaySessionRef, createSessionWithReceipt],
+    [sendPrompt, sendAction, sessionId, localCreateEpochRef, localCreateBindingRef, createSessionWithReceipt],
   );
   return {
     sendViaWs,

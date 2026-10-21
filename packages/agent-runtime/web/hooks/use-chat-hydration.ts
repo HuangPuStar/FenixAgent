@@ -3,7 +3,8 @@
 //
 // 新旧两路都可能在初次打开/切换会话时逐批到达（旧路径 ACP 回放、新路径 DOC_BASE/DOC_UPDATE）。
 // 直接把每批写进 React 会造成「逐条向下填充 + 每批自动滚动」。本 hook 暴露两个状态：
-// - hydrating=true 时保持空展示；骨架 loading 延迟 LOADING_DELAY_MS 出现，快速切换不闪屏；
+// - hydrating=true 时保持空展示；首次挂载骨架延迟 LOADING_DELAY_MS 出现；
+//   已提交过内容的投影换代则首帧直接给中性 loading，避免旧 scope 的空态先露出来；
 // - 基线静默后提交一次完整列表并切换为 live，之后按帧级节流接收实时增量。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
@@ -25,7 +26,7 @@ const NO_ACTIVITY_MS = 1_500;
 const MAX_WAIT_MS = 12_000;
 /** 实时阶段的帧级提交间隔。 */
 const COMMIT_GAP_MS = 16;
-/** 进入 hydrate 后延迟展示骨架：覆盖常见 load_session + settle（约 450ms），快速切换不闪屏。 */
+/** 进入 hydrate 后延迟展示骨架：覆盖常见 load_session + settle（约 450ms），首次挂载不闪屏。 */
 const LOADING_DELAY_MS = 500;
 
 /** 稳定的空数组：hydrate 期间所有渲染共享同一引用，ChatView 的 memo 才能生效。 */
@@ -46,14 +47,27 @@ export interface UseChatHydrationOptions {
   readonly blocked?: boolean;
   /** 新协议已进入不可恢复终态：必须结束骨架，让旧通道内容/空状态与输入区恢复可用。 */
   readonly syncTerminalError?: boolean;
-  /** 本地新建会话：没有历史回放，不得用骨架替换空状态。 */
+  /**
+   * 本次 scope 无需等待回放（replay_complete / 本地新建 / 已有内容）。
+   * 调用方必须只传本次 scope rebind 后的信号；换代首帧的旧快照不得沿用。
+   */
   readonly noReplaySession?: boolean;
+  /**
+   * 本次换代为本地 create_session（不是历史切换）；调用方必须按 scope 绑定，
+   * 只在该次 create 后的第一个换代 scope 上为 true，跨 scope 后失效。
+   * 与 noReplaySession 分开：后者在换代首帧可能因旧快照仍有消息而暂时为 true，
+   * 不能据此判断「不需要骨架」。
+   */
+  readonly localCreate?: boolean;
 }
 
 export interface ChatHydrationState {
   readonly messages: StructuredMessage[];
   readonly hydrating: boolean;
-  /** hydrate 持续超过 LOADING_DELAY_MS 后才为 true；调用方据此决定是否挂骨架 loading。 */
+  /**
+   * 调用方据此决定是否挂骨架 loading：首次挂载超过 LOADING_DELAY_MS 后为 true；
+   * 已提交过内容的投影换代从首帧起为 true，直到门控提交（本地新建会话除外）。
+   */
   readonly loadingVisible?: boolean;
 }
 
@@ -75,6 +89,7 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     blocked = false,
     syncTerminalError = false,
     noReplaySession = false,
+    localCreate = false,
   } = options;
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope 只作为重建合并器的驱动键，合并器函数体不读取它。
   const merger = useMemo(() => createSyncMessageMerger(), [scope]);
@@ -101,9 +116,13 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
   const seenReplayRef = useRef(false);
   /** 基线在途后首次合并：完整基线可能晚于旧历史 5 秒，需按正文全量配对一次。 */
   const baselineMergeRef = useRef(false);
-  /** 骨架 loading 的延迟展示：hydrate 在窗口内完成就完全不出现。按 scope 绑定，换代首帧不继承旧值。 */
+  /** 骨架 loading 的延迟展示：首次挂载在窗口内完成就完全不出现。按 scope 绑定，换代首帧不继承旧值。 */
   const [loading, setLoading] = useState<{ scope: string; visible: boolean }>({ scope, visible: false });
-  const loadingVisible = loading.scope === scope && loading.visible;
+  // display 只由门控提交写入：scope 不一致说明换代尚未提交，旧内容不可信。
+  // 首次挂载（尚未提交过内容）沿用延迟窗口；已提交过内容的换代首帧立即占位，
+  // 否则会先渲染上一个 scope 的空态，再在 500ms 后切成骨架。
+  const scopeChanged = display.scope !== scope;
+  const loadingVisible = scopeChanged ? !display.hydrating && !localCreate : loading.scope === scope && loading.visible;
   const hydratingNow = display.scope === scope ? display.hydrating : true;
 
   useEffect(() => {
@@ -207,7 +226,8 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     gateRef.current?.notify();
   }, [legacy, sync, blocked]);
 
-  if (display.scope !== scope) return { messages: EMPTY_CHAT_MESSAGES, hydrating: true, loadingVisible };
+  // 换代未提交：旧 scope 的 messages 一律不返回，展示态由 loadingVisible 统一驱动。
+  if (scopeChanged) return { messages: EMPTY_CHAT_MESSAGES, hydrating: true, loadingVisible };
   return {
     messages: display.messages,
     hydrating: display.hydrating,
@@ -216,9 +236,9 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
 }
 
 /**
- * 把门控结果投影到旧会话状态：hydrate 期间不展示半成品，只有延迟窗口已过且完全没有内容时
- * 才挂伪 loading；实时时按开关决定是否合并新投影。旧路径（chatSync=0 或明确回退）在非
- * hydrate 阶段保持原对象引用。
+ * 把门控结果投影到旧会话状态：hydrate 期间不展示半成品；首次挂载等延迟窗口、投影换代首帧
+ * 直接挂伪 loading，两者都要求完全没有内容；实时时按开关决定是否合并新投影。旧路径
+ * （chatSync=0 或明确回退）在非 hydrate 阶段保持原对象引用。
  */
 export function applyChatHydration(
   legacy: LegacySessionState,
@@ -231,7 +251,7 @@ export function applyChatHydration(
     readonly syncTerminalError?: boolean;
   },
 ): LegacySessionState {
-  // 延迟窗口内 loadingVisible=false：快速切换不出现骨架；空会话（noReplaySession + 无历史）也不挂。
+  // loadingVisible=false 只覆盖首次挂载的延迟窗口与本地新建；空会话（noReplaySession + 无历史）也不挂。
   const gated =
     hydration.hydrating &&
     hydration.loadingVisible !== false &&
