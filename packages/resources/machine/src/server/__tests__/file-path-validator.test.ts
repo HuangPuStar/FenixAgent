@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertRenameTarget,
   assertSafePath,
   getFileNameByteLength,
   hasPathControlCharacter,
@@ -112,6 +113,29 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
   test("空字符串 → 空串（回退 file.name）", () => {
     // 空串与未提供同语义：回退 file.name
     expect(normalizeUploadRelativePath("")).toBe("");
+  });
+});
+
+describe("assertRenameTarget 移动目标校验", () => {
+  // 移动到自身或自身子目录在后端必然失败，必须前置拒绝为 400，不能被兜底成 503。
+  test("目标为源自身或源目录内部时拒绝", () => {
+    expect(() => assertRenameTarget("docs", "docs/inside")).toThrowError(
+      expect.objectContaining({ message: "目标路径不能是源路径自身或其子目录", statusCode: 400 }),
+    );
+    expect(() => assertRenameTarget("docs", "docs")).toThrowError(expect.objectContaining({ statusCode: 400 }));
+    // 分隔符与尾部斜杠不影响判定
+    expect(() => assertRenameTarget("docs", "docs\\inside\\")).toThrowError(
+      expect.objectContaining({ statusCode: 400 }),
+    );
+    expect(() => assertRenameTarget("docs/", "docs/nested/file.txt")).toThrowError(
+      expect.objectContaining({ statusCode: 400 }),
+    );
+  });
+
+  // 仅前缀相同但不在源目录内部的路径是合法目标，不能被误杀。
+  test("前缀相同但非子目录的路径放行", () => {
+    expect(() => assertRenameTarget("docs", "docs2/inside")).not.toThrow();
+    expect(() => assertRenameTarget("docs", "other/docs")).not.toThrow();
   });
 });
 
