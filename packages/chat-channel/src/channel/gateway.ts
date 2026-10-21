@@ -1,6 +1,3 @@
-import { toSessionConnection } from "./gateway-session-connection";
-// Gateway：YJS 前端 WebSocket 连接生命周期控制面。
-
 import { translateSimpleAction } from "../protocol/translator";
 import type { DocManager } from "../state";
 import { SyncStoreRegistry } from "../sync/runtime/store-registry";
@@ -10,6 +7,7 @@ import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
 import { createGatewayMessageHandler, type GatewayMessageHandler } from "./gateway-message";
 import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } from "./gateway-open-errors";
+import { toSessionConnection } from "./gateway-session-connection";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel } from "./session-channel";
@@ -342,8 +340,7 @@ export class Gateway {
         chatDoc,
         sessionDoc,
       );
-      // 未送达的旧历史不能被当作“已同步”：客户端已收到 yjs:history-incomplete，
-      // 这里保留诊断以便区分“确实没有历史”和“超过单帧上限未恢复”。
+      // 保留未交付历史的诊断，不能把空白投影误判为没有历史。
       if (!initialSync.ok) {
         this.reportError(
           `[YJS-FE] legacy initial history incomplete: wsId=${wsId} docs=${initialSync.failedDocNames.join(",")}`,
@@ -351,7 +348,7 @@ export class Gateway {
         );
       }
     }
-    // connect 成功是 relayReady 的提交点；此前文本 action 始终留在有界 pending queue。
+    if (ws.readyState !== 1 || registry.getClient(wsId) !== entry) return;
     try {
       await shared.handle.send({ type: "connect" } as never);
     } catch (err) {
@@ -365,6 +362,7 @@ export class Gateway {
       ws.close(1011, "relay handshake failed");
       return;
     }
+    if (ws.readyState !== 1 || registry.getClient(wsId) !== entry) return;
     entry.relayReady = true;
     const pending = registry.consumePending(wsId);
     if (pending?.length) await this.flushPending(entry, pending, ws);
@@ -396,6 +394,7 @@ export class Gateway {
   }
   private handleCloseInner(wsId: string): void {
     this.pendingInitialSync.get(wsId)?.resolve();
+    this.pendingInitialSync.delete(wsId);
     const { registry } = this.dependencies;
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);

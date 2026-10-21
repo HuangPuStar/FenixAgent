@@ -348,7 +348,7 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
       log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} instanceUid=${instanceUid}`);
 
       try {
-        await getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
+        const opening = getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
           instanceUid,
           rcsSessionId: expectedRcsSessionId,
           acpSessionId,
@@ -358,6 +358,8 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
           if (ws.readyState === 1)
             await getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload);
         });
+        // 初始同步依赖客户端回传 state-vector；业务 action 仍由 Gateway 的 relayReady 门禁暂存。
+        await opening;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);

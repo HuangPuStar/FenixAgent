@@ -72,7 +72,7 @@ export class InboundMessageQueue {
     return true;
   }
 
-  /** 已完成授权和连接握手后才允许执行缓存消息。 */
+  /** 授权完成后开始分派；握手与业务就绪由下游各自校验，避免握手等待本队列。 */
   start(handling: (payload: Payload) => Promise<void>): void {
     if (this.closed) return;
     this.handling = handling;

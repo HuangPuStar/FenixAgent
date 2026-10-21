@@ -5,11 +5,13 @@ import type { WsConnection } from "./connection-types";
 const YJS_SYNC_TIMEOUT_MS = 500;
 
 export interface PendingInitialSync {
+  readonly generation: string;
   expected: Set<string>;
   received: Set<string>;
   /** 服务端明确无法交付的文档；与 received 一起收敛等待，但不等于同步成功。 */
   failed: Map<string, LegacyFrameDelivery>;
   resolve: () => void;
+  recover?: () => void;
 }
 
 export interface InitialDocSyncResult {
@@ -17,13 +19,14 @@ export interface InitialDocSyncResult {
   readonly failedDocNames: readonly string[];
 }
 
-function rememberFailure(
-  pending: PendingInitialSync | undefined,
-  docName: string,
-  delivery: LegacyFrameDelivery,
-): void {
-  if (delivery.ok || pending === undefined) return;
-  pending.failed.set(docName, delivery);
+function recordDelivery(pending: PendingInitialSync, docName: string, delivery: LegacyFrameDelivery): void {
+  if (delivery.ok) {
+    pending.received.add(docName);
+    pending.failed.delete(docName);
+  } else {
+    pending.received.delete(docName);
+    pending.failed.set(docName, delivery);
+  }
 }
 
 function settlePending(pending: PendingInitialSync | undefined): void {
@@ -37,13 +40,14 @@ export function noteInitialSyncDelivery(
   pendingSyncs: Map<string, PendingInitialSync>,
   wsId: string,
   docName: string,
+  generation: string,
   delivery: LegacyFrameDelivery,
 ): void {
   const pending = pendingSyncs.get(wsId);
-  if (pending === undefined || !pending.expected.has(docName)) return;
-  if (delivery.ok) pending.received.add(docName);
-  else pending.failed.set(docName, delivery);
+  if (pending === undefined || pending.generation !== generation || !pending.expected.has(docName)) return;
+  recordDelivery(pending, docName, delivery);
   settlePending(pending);
+  if (pending.received.size === pending.expected.size && pending.failed.size === 0) pending.recover?.();
 }
 
 function incompletePayload(failed: ReadonlyMap<string, LegacyFrameDelivery>, generation: string): YjsHistoryIncomplete {
@@ -67,21 +71,20 @@ export async function synchronizeInitialDocs(
   sessionDoc: SessionDoc,
 ): Promise<InitialDocSyncResult> {
   const docNames = [`chat:${rcsSessionId}`, `session:${rcsSessionId}`];
-  let pending: PendingInitialSync | undefined;
+  let pending!: PendingInitialSync;
   let syncTimedOut = false;
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
       syncTimedOut = true;
-      pendingSyncs.delete(wsId);
-      resolve();
+      pending.resolve();
     }, YJS_SYNC_TIMEOUT_MS);
     pending = {
+      generation: chatDoc.generation,
       expected: new Set(docNames),
       received: new Set(),
       failed: new Map(),
       resolve: () => {
         clearTimeout(timer);
-        pendingSyncs.delete(wsId);
         resolve();
       },
     };
@@ -91,26 +94,46 @@ export async function synchronizeInitialDocs(
       docs: docNames.map((docName) => ({ docName, generation: chatDoc.generation })),
     });
   });
+  if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return { ok: false, failedDocNames: docNames };
   if (syncTimedOut) {
-    const chatDelivery = broadcaster.sendSnapshot(ws, chatDoc.ydoc, docNames[0], chatDoc.generation);
-    const sessionDelivery = broadcaster.sendSnapshot(ws, sessionDoc.ydoc, docNames[1], sessionDoc.generation);
-    rememberFailure(pending, docNames[0], chatDelivery);
-    rememberFailure(pending, docNames[1], sessionDelivery);
+    for (const [index, doc] of [chatDoc, sessionDoc].entries()) {
+      const docName = docNames[index];
+      if (pending.received.has(docName)) continue;
+      recordDelivery(pending, docName, broadcaster.sendSnapshot(ws, doc.ydoc, docName, doc.generation));
+    }
   }
-  const failed = pending?.failed ?? new Map<string, LegacyFrameDelivery>();
-  if (failed.size === 0) {
+  const complete = () => {
+    if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return false;
     // 显式成功标记：普通 update 夹杂实时广播，客户端不能据此判断缺失历史已恢复。
-    broadcaster.sendToYjsWs(ws, {
-      type: "yjs:sync-complete",
-      docs: docNames,
-      generation: chatDoc.generation,
-    });
-    return { ok: true, failedDocNames: [] };
+    const sent = broadcaster.sendToYjsWs(
+      ws,
+      {
+        type: "yjs:sync-complete",
+        docs: docNames,
+        generation: chatDoc.generation,
+      },
+      true,
+    );
+    if (sent) pendingSyncs.delete(wsId);
+    else ws.close(1013, "initial sync status delivery failed");
+    return sent;
+  };
+  const failed = pending.failed;
+  if (failed.size === 0) {
+    pending.recover = complete;
+    return { ok: complete(), failedDocNames: [] };
   }
+  // 失败记录只随连接释放；同代迟到差量可补齐本轮证明，普通实时 update 不能解除门禁。
+  pending.recover = complete;
   // 数据未交付不是“已同步”：把缺失文档与超限尺寸显式交给客户端，由其展示恢复入口。
-  broadcaster.sendToYjsWs(ws, {
-    type: "yjs:history-incomplete",
-    ...incompletePayload(failed, chatDoc.generation),
-  });
+  const notified = broadcaster.sendToYjsWs(
+    ws,
+    {
+      type: "yjs:history-incomplete",
+      ...incompletePayload(failed, chatDoc.generation),
+    },
+    true,
+  );
+  if (!notified) ws.close(1013, "initial sync status delivery failed");
   return { ok: false, failedDocNames: [...failed.keys()] };
 }

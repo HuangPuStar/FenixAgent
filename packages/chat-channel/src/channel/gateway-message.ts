@@ -53,7 +53,7 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
           : deps.docManager.getSession(entry.rcsSessionId);
       if (!doc || doc.generation !== frame.generation) return;
       const delivery = deps.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
-      noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, delivery);
+      noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, frame.generation, delivery);
       return;
     }
     if (!entry?.relayReady) {
