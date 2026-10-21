@@ -106,7 +106,7 @@ class RelayRpcNamespace {
     }
     const target = rpc ? sessionId(rpc.params) : undefined;
     for (const scope of [...this.listeners.keys()]) {
-      if (!target || scope.sessions.has(target)) this.emit(scope, message);
+      if (!target || scope.acceptsSession(target)) this.emit(scope, message);
     }
   }
 
@@ -149,6 +149,7 @@ class RelayRpcNamespace {
 export class RelayRpcScope {
   readonly pending = new Set<RpcId>();
   readonly sessions = new Set<string>();
+  private subscribedSession: string | null = null;
   private readonly namespace: RelayRpcNamespace;
   constructor(readonly physical: EngineRelayHandle) {
     let namespace = namespaces.get(physical);
@@ -162,6 +163,16 @@ export class RelayRpcScope {
   send(message: EngineRelayMessage): Promise<void> | void {
     return this.namespace.send(this, message);
   }
+  /** Restored server bindings need notification delivery before any targeted RPC is sent. */
+  setSessionSubscription(sessionId: string | null): void {
+    // A confirmed binding retires previous replay targets without invalidating their pending RPC responses.
+    this.sessions.clear();
+    this.subscribedSession = sessionId;
+  }
+  /** Explicit bindings and in-flight protocol targets share the same notification boundary. */
+  acceptsSession(sessionId: string): boolean {
+    return this.subscribedSession === sessionId || this.sessions.has(sessionId);
+  }
   /** All scopes share one physical listener; response ownership is resolved before local fan-out. */
   subscribe(listener: Listener): () => void {
     return this.namespace.subscribe(this, listener);
@@ -170,5 +181,6 @@ export class RelayRpcScope {
   close(): void {
     this.namespace.close(this);
     this.sessions.clear();
+    this.subscribedSession = null;
   }
 }

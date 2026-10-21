@@ -7,7 +7,11 @@ import type {
   RuntimeState,
   RuntimeStopMode,
 } from "./server/services/agent-instance-runtime-coordinator";
-import type { InstanceActivityInfo, SpawnedInstance } from "./server/services/agent-instance-runtime-projection";
+import type {
+  InstanceActivityInfo,
+  InstanceReclaimReason,
+  SpawnedInstance,
+} from "./server/services/agent-instance-runtime-projection";
 import type { AutomaticInstanceSelection } from "./server/services/agent-instance-service";
 import type { ExternalRelayConnectionSnapshot } from "./server/transport/relay/external-relay";
 import type {
@@ -191,8 +195,13 @@ export interface AgentRuntimePort {
 
   /** 停止单个实例（含组织归属校验；幂等，目标状态已达成时返回成功）。 */
   stopInstance(instanceUid: string, organizationId: string): Promise<StopInstanceOutcome>;
-  /** 按捕获的运行代次自动回收；活跃执行或运行换代时跳过，保留后续 ensure 的恢复权。 */
-  reclaimInstance(instanceUid: string, organizationId: string, runtimeGeneration: number): Promise<StopInstanceOutcome>;
+  /** 按运行代次自动回收；默认保护活跃执行，activity-timeout 仅可接管超期定时执行。 */
+  reclaimInstance(
+    instanceUid: string,
+    organizationId: string,
+    runtimeGeneration: number,
+    reason?: InstanceReclaimReason,
+  ): Promise<StopInstanceOutcome>;
   /** 停止实例 runtime，保留实例记录（`mode: "strict"` 下停止失败即抛错）。 */
   stopInstanceRuntime(instance: AgentInstanceRecord, mode?: RuntimeStopMode): Promise<void>;
   /** 用同一实例 uid 重启 runtime（记录不变；默认实例同样支持）。 */

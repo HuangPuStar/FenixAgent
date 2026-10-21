@@ -181,6 +181,7 @@ export class RelayRpcResponse {
         // 跳过注册避免产生无注销点的僵尸监听器；relay 已销毁时后续 session 同步也无接收者。
         if (shared.destroyed || shared.sessionSyncGeneration !== generation) return;
         if (shared.pendingSessionTarget?.rpcId === rpcId) shared.pendingSessionTarget = undefined;
+        shared.handle.setSessionSubscription?.(newSessionId);
         this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
         registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
           entry.acpSessionId = newSessionId;

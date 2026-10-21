@@ -751,7 +751,7 @@ interface ActionError {
 }
 ```
 
-`accepted` 只表示进入有界处理队列，`committed` 才表示业务事实已持久化。客户端在超时后可使用相同 `commandId` 重发，不得换 ID 猜测执行结果。**`commandId` 去重表**（`channel/command-coordinator.ts`，每 `rcsSessionId` 进程内 Map，窗口内跨断线保留）按记录保留：已提交结果从各自完成时刻起保留 10 分钟，到期独立回收，其他命令不续期；已提交命令在窗口内重发返回原 Ack（`duplicate`），不重复调用 Agent；断线时未确认的结果返回 `ACTION.OUTCOME_UNKNOWN`，不再返回 accepted 或盲目重放；旧执行器后来确认成功时记录原结果。明确失败会释放去重记录，允许重试。
+`accepted` 只表示进入有界处理队列，`committed` 才表示业务事实已持久化。客户端在超时后可使用相同 `commandId` 重发，不得换 ID 猜测执行结果。**`commandId` 去重表**（`channel/command-coordinator.ts`，每 `rcsSessionId` 进程内 Map，窗口内跨断线保留）按记录保留：已提交结果从各自完成时刻起保留 10 分钟，到期独立回收，其他命令不续期；已提交命令在窗口内重发返回原 Ack（`duplicate`），不重复调用 Agent；断线时未确认的结果返回 `ACTION.OUTCOME_UNKNOWN`，不再返回 accepted 或盲目重放；旧执行器后来确认成功时记录原结果。未知结果从首次不确定时起固定保留 24 小时，断线或重试不续期；仍在执行的旧执行器不因到期被逐出，退场后才允许清理。明确失败会释放去重记录，允许重试。用户显式放弃保留草稿时结束该次命令意图，之后手动输入相同内容使用新的 commandId；未放弃的未知结果继续使用原 ID。
 
 **转发失败兜底**（`channel/action-forward.ts` `forwardYjsAction`）：Action 到达 SessionChannel 前抛错（含 relay 发送失败）时，回退为脱敏 `AGENT_UNAVAILABLE` 错误（`retryable: true`），诊断上下文只进服务端日志；`relayReady` 前缓冲的消息在连接就绪后重放（`list_sessions` 跳过——连接建立后由 status 触发）。
 
@@ -912,7 +912,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 - `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时默认 5min → `expired`，见 `channel/session-channel.ts`。）
 - 命令准入在异步校验前预留预算：每 `rcsSessionId` 最多 64 条等待项及 1 条执行项，payload 合计 4 MiB，单条 Action payload 为 1 MiB（按 UTF-8 计数）。取消额外保留 2 条、2 KiB，并优先于普通等待项执行；这些容量不能替代 WebSocket 入口的积压预算。
 - 未就绪连接的文本 pending 最多 64 条、1 MiB；取消额外保留 2 条、2 KiB 并优先重放。超限以 1013 关闭该连接；消费、关闭与转为 active 时同步维护字节账。二进制握手 pending 独立限制为 8 条、64 KiB；连接总量仍由 `YJS_MAX_CLIENTS` 限制。
-- 最后一个客户端断开会 abort 旧队列、拒绝未执行项并取消回执等待；重连队列等待旧执行器退场，旧 finally 不得删除新队列。已提交及发送结果不确定的 commandId 不因断线清空：已提交记录各自保留 10 分钟；在途与未知结果不按时间逐出以免重复副作用。普通命令每会话最多 512 条去重记录、进程内最多 256 个会话表（活跃会话也计入）；取消在每会话记录与全局会话表均额外预留 2 个槽位，达到硬限后明确限流。去重检查先于版本前置条件，重放可得到原结果或明确的未知结果。该能力不提供跨进程或永久的恰好一次承诺。
+- 最后一个客户端断开会 abort 旧队列、拒绝未执行项并取消回执等待；重连队列等待旧执行器退场，旧 finally 不得删除新队列。已提交及发送结果不确定的 commandId 不因断线清空：已提交记录各自保留 10 分钟；在途与仍在执行的未知结果不按时间逐出；已退场的未知结果按首次不确定时起的 24 小时期限独立回收。普通命令每会话最多 512 条去重记录、进程内最多 256 个会话表（活跃会话也计入）；取消在每会话记录与全局会话表均额外预留 2 个槽位，达到硬限后明确限流。去重检查先于版本前置条件，重放可得到原结果或明确的未知结果。该能力不提供跨进程或永久的恰好一次承诺。
 - **回放窗口**（`channel/connection-types.ts` `REPLAY_WINDOW_MS`，10s）：`load_session` / `resume_session` 转发时开启，用于承接先于 JSON-RPC result 到达的 Agent 历史回放流（见 §4.2）；窗口外或 Chat Doc 已有内容时保持聚合层拒绝语义。
 - **keep_alive 心跳**（`channel/gateway.ts`）：服务端周期性下发 `keep_alive`，客户端超时未回（页面隐藏等）以 4501 关闭，不在后台自动重连；连接建立失败以 4500 / 4502 / 1011 终态或可重连码关闭（见 §4.1）。
 - Agent 实例按租户与用户并发配额治理；空闲回收必须确保无活动 turn、无待处理权限和无未提交事件（实例级活跃由 `touchInstanceActivity` 观测，见 20 号文档 §7）。

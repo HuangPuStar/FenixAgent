@@ -144,7 +144,12 @@ export function useChatPanelActions({
     setPreservedPrompts((current) => current.filter((item) => item.commandId !== prompt.commandId));
     sendPrompt(prompt.content);
   }, [preservedPrompt, syncDegradedBlocked, sessionId, sendPrompt]);
-  const dismissPreservedPrompt = useCallback(() => setPreservedPrompts((current) => current.slice(1)), []);
+  const dismissPreservedPrompt = useCallback(() => {
+    if (!preservedPrompt) return;
+    const dismissedId = preservedPrompt.commandId;
+    releaseCommandId(dismissedId);
+    setPreservedPrompts((current) => current.filter((prompt) => prompt.commandId !== dismissedId));
+  }, [preservedPrompt, releaseCommandId]);
   const callbacks = useMemo(
     (): ChatPanelCallbacks => ({
       onSendPrompt: sendPrompt,

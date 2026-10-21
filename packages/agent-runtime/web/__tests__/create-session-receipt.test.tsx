@@ -284,6 +284,33 @@ describe("旧目标输入恢复", () => {
     unmount();
   });
 
+  // 明确放弃旧未知输入意味着结束该意图；后续相同文本应有新身份而非永久被旧结果拦截。
+  test("点击放弃未知草稿后相同文本发送获得新命令 ID", () => {
+    const { latest, socket, unmount, container } = connect();
+    setProjectedSession("ses-a");
+    const content = [{ type: "text", text: "继续" }];
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const original = lastPrompt(socket);
+    act(() =>
+      socket.receiveFromServer({
+        type: "action_error",
+        commandId: original.commandId,
+        error: createPublicError("ACTION.OUTCOME_UNKNOWN"),
+      }),
+    );
+    expect(latest.current?.preservedPrompt?.commandId).toBe(original.commandId);
+    const dismiss = container.querySelector("button");
+    expect(dismiss?.textContent).toBe("promptRecoveryDiscard");
+    act(() => dismiss?.click());
+    expect(latest.current?.preservedPrompt).toBeNull();
+    act(() => latest.current?.callbacks.onSendPrompt(content));
+    const current = lastPrompt(socket);
+    expect(current.commandId).not.toBe(original.commandId);
+    expect(current.content).toEqual(content);
+    expect(current.sessionId).toBe("ses-a");
+    unmount();
+  });
+
   // 不确定结果不能显示可盲目重发的恢复动作，也不能释放幂等键后生成新的副作用。
   test("未知结果保留内容和原幂等键且恢复重发被禁止", () => {
     const { latest, socket, unmount, container } = connect();

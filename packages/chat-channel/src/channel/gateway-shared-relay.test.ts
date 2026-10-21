@@ -369,6 +369,7 @@ describe("Gateway shared relay", () => {
     // 才能命中「释放后补注册」的竞态窗口；过早断开会被 handleOpen 中更早的容量检查拦截。
     const sessionStarted = deferred<void>();
     const sessionPending = deferred<{ ydoc: Y.Doc }>();
+    let sessionOpens = 0;
     const lifecycle = createGateway(
       registry,
       broadcaster,
@@ -376,6 +377,8 @@ describe("Gateway shared relay", () => {
       {},
       {
         openSession: () => {
+          // 首次只恢复 relay 的受信订阅；挂起客户端提升后的第二次读取以保持本用例的释放窗口。
+          if (++sessionOpens === 1) return Promise.resolve({ ydoc: new Y.Doc() });
           sessionStarted.resolve();
           return sessionPending.promise;
         },

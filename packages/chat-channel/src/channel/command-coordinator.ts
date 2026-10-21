@@ -26,6 +26,7 @@ import {
 /** 每 rcsSessionId 有界队列默认上限（超出返回 RATE_LIMITED） */
 const DEFAULT_MAX_PENDING_PER_SESSION = 64;
 const DEDUP_RETENTION_MS = 10 * 60_000;
+const UNKNOWN_RETENTION_MS = 24 * 60 * 60_000;
 const MAX_DEDUP_SESSIONS = 256;
 const MAX_DEDUP_RECORDS_PER_SESSION = 512;
 const CANCEL_RESERVE = 2;
@@ -60,7 +61,7 @@ interface QueueItem {
 type DedupRecord =
   | { state: "in_flight"; ack: ActionAck }
   | { state: "committed"; ack: ActionAck; expiresAt: number }
-  | { state: "unknown" };
+  | { state: "unknown"; expiresAt: number; active: boolean };
 
 interface SessionQueue {
   items: QueueItem[];
@@ -75,7 +76,7 @@ interface SessionQueue {
 }
 
 export class CommandCoordinator {
-  /** 每 rcsSessionId 去重表：commandId → 确认结果或不确定状态（10 分钟窗口） */
+  /** 已确认结果保留 10 分钟；未知结果保留 24 小时，尚未退场的执行始终受保护。 */
   private readonly dedup = new Map<string, Map<string, DedupRecord>>();
   /** 每 rcsSessionId 有界串行队列 */
   private readonly queues = new Map<string, SessionQueue>();
@@ -145,7 +146,7 @@ export class CommandCoordinator {
   disposeRcsSession(rcsSessionId: string): void {
     const queue = this.queues.get(rcsSessionId);
     if (!queue) return;
-    if (queue.active) this.getDedupTable(rcsSessionId).set(queue.active.command.commandId, { state: "unknown" });
+    if (queue.active) this.recordUnknown(rcsSessionId, queue.active.command.commandId, true);
     queue.abort.abort();
     for (const item of queue.items.splice(0)) {
       this.clearDedup(rcsSessionId, item.command.commandId);
@@ -228,7 +229,7 @@ export class CommandCoordinator {
       if (!signal.aborted) sinks.sendAck(committed);
     } catch (err) {
       // 断线后无法确定已发送副作用，保留去重记录阻止重连盲目重放。
-      if (signal.aborted) this.getDedupTable(rcsSessionId).set(command.commandId, { state: "unknown" });
+      if (signal.aborted) this.recordUnknown(rcsSessionId, command.commandId, false);
       else this.clearDedup(rcsSessionId, command.commandId);
       if (!signal.aborted) sinks.sendError(this.toActionError(err, command.commandId));
     } finally {
@@ -241,8 +242,9 @@ export class CommandCoordinator {
     for (const [id, table] of this.dedup) {
       if (id !== rcsSessionId && (this.dedup.has(rcsSessionId) || this.dedup.size < MAX_DEDUP_SESSIONS)) continue;
       for (const [commandId, record] of table) {
-        // 未完成与未知副作用没有安全重放证明，不能为了腾容量而将其逐出。
-        if (record.state === "committed" && record.expiresAt <= now) table.delete(commandId);
+        // 活跃执行可能由旧队列持有，不能只查看当前队列就淘汰未知记录。
+        if (record.state === "in_flight" || (record.state === "unknown" && record.active)) continue;
+        if (record.expiresAt <= now) table.delete(commandId);
       }
       if (table.size === 0) this.dedup.delete(id);
     }
@@ -300,6 +302,21 @@ export class CommandCoordinator {
       state: "committed",
       ack,
       expiresAt: (this.dependencies.now?.() ?? Date.now()) + DEDUP_RETENTION_MS,
+    });
+  }
+
+  private recordUnknown(rcsSessionId: string, commandId: string, active: boolean): void {
+    const table = this.getDedupTable(rcsSessionId);
+    const existing = table.get(commandId);
+    if (existing?.state === "unknown") {
+      // 断线重试与执行退场都不续期；保留期限从首次失去结果确认时计算。
+      existing.active = active;
+      return;
+    }
+    table.set(commandId, {
+      state: "unknown",
+      active,
+      expiresAt: (this.dependencies.now?.() ?? Date.now()) + UNKNOWN_RETENTION_MS,
     });
   }
 

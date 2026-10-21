@@ -7,6 +7,7 @@ import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
 import { createGatewayMessageHandler, type GatewayMessageHandler } from "./gateway-message";
 import { mapPermanentSpawnFailure, rejectGatewayOpen, sendGatewayPublicError } from "./gateway-open-errors";
+import { attachGatewayRelay } from "./gateway-relay-binding";
 import { toSessionConnection } from "./gateway-session-connection";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
@@ -173,12 +174,8 @@ export class Gateway {
           nextRpcId: 0,
           replayWindowUntil: null,
         };
-        const fullHandle = handle as ClientConnection["relayHandle"] & {
-          onMessage?: (callback: ReturnType<RelayEventHandler["createMessageHandler"]>) => () => void;
-        };
         try {
-          if (fullHandle.onMessage)
-            shared.unsubscribe = fullHandle.onMessage(this.dependencies.relayEvents.createMessageHandler(shared));
+          await attachGatewayRelay(shared, this.dependencies.docManager, this.dependencies.relayEvents);
         } catch (err) {
           try {
             handle.close(1000, "relay listener setup failed");

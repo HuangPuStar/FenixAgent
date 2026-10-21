@@ -12,6 +12,7 @@ import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { getAgentRuntimeConfig } from "../server/config";
 import {
   canAutomaticallyReclaimInstance,
+  canReclaimInstanceForActivityTimeout,
   getInstance,
   type InstanceActivityInfo,
   reclaimInstance,
@@ -186,7 +187,9 @@ async function reclaimIdleInstance(
   // 导入期间新执行可能已取得租约，回收前必须重新核对策略与活动事实。
   if (
     globalInstanceRegistry.get(snapshot.id) !== supplement ||
-    !canAutomaticallyReclaimInstance(snapshot.id, supplement)
+    !(reason === "inactive"
+      ? canReclaimInstanceForActivityTimeout(snapshot.id, supplement)
+      : canAutomaticallyReclaimInstance(snapshot.id, supplement))
   )
     return;
   const { acpIdleTimeoutSeconds, acpActivityTimeoutSeconds } = getAgentRuntimeConfig();
@@ -199,7 +202,12 @@ async function reclaimIdleInstance(
     return;
   if (generation === undefined) return;
   closeRelayConnectionsForIdleReclaim(snapshot.id);
-  const result = await _deps.reclaimInstance(snapshot.id, supplement.organizationId, generation);
+  const result = await _deps.reclaimInstance(
+    snapshot.id,
+    supplement.organizationId,
+    generation,
+    reason === "inactive" ? "activity-timeout" : "idle",
+  );
   if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
     logger.error(
       `[ACP-IDLE] Failed to stop ${reason} instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
@@ -225,12 +233,10 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
     // Chat interactive 实例的连接和 Agent 进程由用户显式停止或正常连接关闭管理；
     // 不再基于业务静默或 relay 缺失回收，确保长期打开的会话不会被服务端主动断链。
     // 非交互式 scheduled / system 实例继续采用既有 idle/activity 回收策略。
-    if (!canAutomaticallyReclaimInstance(snapshot.id, supplement)) continue;
-
     // activity 回收与 relay 是否存在无关：后台任务长时间无业务消息（卡死、失去响应、
     // relay 状态异常）时，仍按硬超时回收，避免实例因 relay_count 永不归零而失去自动回收出口。
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
-    if (inactiveTooLong) {
+    if (inactiveTooLong && canReclaimInstanceForActivityTimeout(snapshot.id, supplement)) {
       logger.info(
         `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
@@ -244,7 +250,7 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
 
     // 只有无前端 relay 时才按 idle 回收：relay_count > 0 只阻止 idle 回收，
     // 不能阻止 activity 回收（见上方判断）。
-    if (snapshot.relay_count > 0) continue;
+    if (snapshot.relay_count > 0 || !canAutomaticallyReclaimInstance(snapshot.id, supplement)) continue;
 
     const idleSince = Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0);
     if (now - idleSince < idleTimeoutMs) continue;

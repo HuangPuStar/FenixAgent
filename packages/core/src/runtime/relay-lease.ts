@@ -15,6 +15,10 @@ export function createRelayLease(physical: EngineRelayHandle): EngineRelayHandle
       if (released) throw new Error("Relay lease has been released");
       return rpc.send(message);
     },
+    setSessionSubscription(sessionId) {
+      if (released) throw new Error("Relay lease has been released");
+      rpc.setSessionSubscription(sessionId);
+    },
     onMessage: physical.onMessage
       ? (listener) => {
           if (released) throw new Error("Relay lease has been released");

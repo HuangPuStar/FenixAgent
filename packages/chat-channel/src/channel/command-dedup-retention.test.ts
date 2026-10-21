@@ -16,6 +16,42 @@ function sinks() {
   };
 }
 
+const UNKNOWN_WINDOW_MS = 24 * 60 * 60_000;
+
+/** 经真实断线与执行退场生成未知结果，不直接构造内部去重表。 */
+function unknownHarness() {
+  let now = 0;
+  let entered = () => {};
+  const coordinator = new CommandCoordinator({
+    now: () => now,
+    executeCommand: async (input, signal) => {
+      if (!input.payload.uncertain) return {};
+      entered();
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("connection closed")), { once: true });
+      });
+    },
+  });
+  return {
+    coordinator,
+    setNow: (time: number) => {
+      now = time;
+    },
+    async retain(id: string, rcsSessionId = "rcs-retention") {
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const pending = coordinator.submit(
+        { ...command(id, "send_prompt", rcsSessionId), payload: { uncertain: true } },
+        sinks(),
+      );
+      await started;
+      coordinator.disposeRcsSession(rcsSessionId);
+      await pending;
+    },
+  };
+}
+
 describe("命令去重逐条保留与取消额度", () => {
   // 活跃会话持续发送超过窗口时，过期结果逐条回收，不能被最近命令续期锁死。
   test("600 条分散完成命令跨十分钟持续可用", async () => {
@@ -45,7 +81,7 @@ describe("命令去重逐条保留与取消额度", () => {
     expect(executed).toBe(601);
   });
 
-  // 未知结果不能因其他命令活跃或时间流逝被忘记，否则会重复外部副作用。
+  // 未知结果在完整保留窗口内不能因普通命令回收而丢失，否则会重复外部副作用。
   test("未知结果跨窗口与正常命令回收后仍禁止重放", async () => {
     let now = 0;
     let reject!: (error: Error) => void;
@@ -76,7 +112,7 @@ describe("命令去重逐条保留与取消额度", () => {
       now += 2_000;
       await coordinator.submit(command(`fresh-${index}`), sinks());
     }
-    now += 24 * 60 * 60_000;
+    now = 24 * 60 * 60_000 - 1;
     const replay = sinks();
     await coordinator.submit(command("uncertain"), replay);
     expect(replay.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
@@ -144,5 +180,87 @@ describe("命令去重逐条保留与取消额度", () => {
     const full = sinks();
     await coordinator.submit(command("cancel", "cancel", "rcs-control-overflow"), full);
     expect(full.errors[0]?.error.type).toBe("ACTION.RATE_LIMITED");
+  });
+
+  // 未知结果必须逐条到期，旧命令重试不能延长保护窗口，也不能提前删除较新记录。
+  test("未知结果截止时间独立且重试不续期", async () => {
+    const h = unknownHarness();
+    await h.retain("older");
+    h.setNow(60 * 60_000);
+    await h.retain("newer");
+    h.setNow(UNKNOWN_WINDOW_MS - 1);
+    const within = sinks();
+    await h.coordinator.submit(command("older"), within);
+    expect(within.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
+    h.setNow(UNKNOWN_WINDOW_MS);
+    const expired = sinks();
+    await h.coordinator.submit(command("older"), expired);
+    expect(expired.acks.at(-1)?.status).toBe("committed");
+    const retained = sinks();
+    await h.coordinator.submit(command("newer"), retained);
+    expect(retained.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
+  });
+
+  // 全局与单会话预算都必须随已结束未知记录到期恢复，不能要求重启进程才能继续聊天。
+  test.each(["global", "session"] as const)("%s 未知结果满额时限流，到期后恢复容量", async (scope) => {
+    const h = unknownHarness();
+    const limit = scope === "global" ? 256 : 512;
+    for (let index = 0; index < limit; index++) {
+      await h.retain(`uncertain-${index}`, scope === "global" ? `rcs-${index}` : "rcs-retention");
+    }
+    h.setNow(UNKNOWN_WINDOW_MS - 1);
+    const blocked = sinks();
+    const target = scope === "global" ? "rcs-new" : "rcs-retention";
+    await h.coordinator.submit(command("fresh", "list_sessions", target), blocked);
+    expect(blocked.errors[0]?.error.type).toBe("ACTION.RATE_LIMITED");
+    h.setNow(UNKNOWN_WINDOW_MS);
+    const recovered = sinks();
+    await h.coordinator.submit(command("fresh", "list_sessions", target), recovered);
+    expect(recovered.errors).toEqual([]);
+    expect(recovered.acks.at(-1)?.status).toBe("committed");
+  });
+
+  // 超长旧执行可能已离开当前队列索引；直到其退场前都不能按截止时间放行同一命令。
+  test("在途跨窗口及重连换队列后仍保护，退场不续期未知结果", async () => {
+    let now = 0;
+    let entered!: () => void;
+    let reject!: (error: Error) => void;
+    let executions = 0;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const coordinator = new CommandCoordinator({
+      now: () => now,
+      executeCommand: async (input) => {
+        if (input.commandId !== "slow" || !input.payload.uncertain) return {};
+        executions++;
+        entered();
+        return new Promise((_, fail) => {
+          reject = fail;
+        });
+      },
+    });
+    const original = coordinator.submit({ ...command("slow"), payload: { uncertain: true } }, sinks());
+    await started;
+    now = 2 * UNKNOWN_WINDOW_MS;
+    const inFlight = sinks();
+    await coordinator.submit(command("slow"), inFlight);
+    expect(inFlight.acks.at(-1)?.status).toBe("accepted");
+    expect(executions).toBe(1);
+    coordinator.disposeRcsSession("rcs-retention");
+    now += UNKNOWN_WINDOW_MS - 1;
+    coordinator.disposeRcsSession("rcs-retention");
+    const successor = coordinator.submit(command("next"), sinks());
+    now++;
+    const protectedReplay = sinks();
+    await coordinator.submit(command("slow"), protectedReplay);
+    expect(protectedReplay.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
+    expect(executions).toBe(1);
+    reject(new Error("old executor stopped"));
+    await Promise.all([original, successor]);
+    const released = sinks();
+    await coordinator.submit(command("slow"), released);
+    expect(released.errors).toEqual([]);
+    expect(released.acks.at(-1)?.status).toBe("committed");
   });
 });

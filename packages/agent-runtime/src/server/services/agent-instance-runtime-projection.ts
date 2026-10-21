@@ -17,10 +17,15 @@
 // 已在休克疗法中删除，不再恢复。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { error as logError } from "@fenix/logger";
-import { hasActiveAgentExecutions, isAgentExecutionIdleReclaimable } from "../../services/agent-execution-admission";
+import {
+  hasActiveAgentExecutions,
+  hasOnlyConfirmedScheduledExecutions,
+  isAgentExecutionIdleReclaimable,
+} from "../../services/agent-execution-admission";
 import { globalInstanceRegistry } from "../../services/instance-registry";
 import { getOrchestrationController } from "../../services/orchestration-bootstrap";
 import type { InstanceSpawnSource, InstanceSupplement } from "../../types/instance";
+import { getAgentRuntimeConfig } from "../config";
 import { agentInstanceRuntimeCoordinator } from "./agent-instance-service";
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
@@ -41,6 +46,9 @@ export interface SpawnedInstance {
   environmentId?: string;
   sessionId?: string;
 }
+
+/** 自动回收原因：硬超时可以终止挂死的定时执行，普通空闲回收始终尊重执行租约。 */
+export type InstanceReclaimReason = "idle" | "activity-timeout";
 
 /** 对外 `/web/instances/*` API 使用的实例详情结构。 */
 export interface InstanceInfo {
@@ -198,6 +206,11 @@ export function canAutomaticallyReclaimInstance(instanceId: string, supplement: 
   );
 }
 
+/** 活动硬期限允许停止挂死定时执行，不能接管交互执行或正在等待启动的执行。 */
+export function canReclaimInstanceForActivityTimeout(instanceId: string, supplement: InstanceSupplement): boolean {
+  return canAutomaticallyReclaimInstance(instanceId, supplement) || hasOnlyConfirmedScheduledExecutions(instanceId);
+}
+
 /** 将实例与 registry 中的空闲观测状态组装为监控视图。 */
 export function toInstanceActivityInfo(
   instance: SpawnedInstance,
@@ -227,7 +240,8 @@ export function toInstanceActivityInfo(
     idle_kill_eligible: automaticReclaimEnabled && supplement.relayCount === 0 && idleSeconds >= idleTimeoutSeconds,
     inactivity_seconds: inactivitySeconds,
     activity_timeout_seconds: activityTimeoutSeconds,
-    activity_kill_eligible: automaticReclaimEnabled && inactivitySeconds >= activityTimeoutSeconds,
+    activity_kill_eligible:
+      canReclaimInstanceForActivityTimeout(instance.id, supplement) && inactivitySeconds >= activityTimeoutSeconds,
   };
 }
 
@@ -312,27 +326,38 @@ export function stopInstance(id: string, organizationId: string): Promise<{ ok: 
   return stopInstanceProjection(id, organizationId);
 }
 
-/** 自动回收只针对捕获的运行代次，不能清除用户停止意图或停止活动执行。 */
+/** 自动回收只针对捕获的运行代次；仅活动硬超时可接管挂死定时执行，保留用户停止意图。 */
 export function reclaimInstance(
   id: string,
   organizationId: string,
   expectedGeneration: number,
+  reason: InstanceReclaimReason = "idle",
 ): Promise<{ ok: boolean; error?: string }> {
-  return stopInstanceProjection(id, organizationId, expectedGeneration);
+  return stopInstanceProjection(id, organizationId, expectedGeneration, reason);
 }
 
 async function stopInstanceProjection(
   id: string,
   organizationId: string,
   expectedGeneration?: number,
+  reason: InstanceReclaimReason = "idle",
 ): Promise<{ ok: boolean; error?: string }> {
   const sup = registry.get(id);
   if (sup && sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
   const core = getCoreRuntime().getInstance(id);
+  const canReclaim = () => {
+    if (!sup || registry.get(id) !== sup || getCoreRuntime().getInstance(id)?.runtimeGeneration !== expectedGeneration)
+      return false;
+    if (reason === "idle") return !hasActiveAgentExecutions(id);
+    return (
+      canReclaimInstanceForActivityTimeout(id, sup) &&
+      Date.now() - sup.lastActivityAt >= getAgentRuntimeConfig().acpActivityTimeoutSeconds * 1000
+    );
+  };
   if (expectedGeneration !== undefined) {
     // 缺失投影无法确认租户与代次，旧清理不得按稳定 uid 接管后来者。
     if (!sup || core?.runtimeGeneration !== expectedGeneration) return { ok: false, error: "Runtime changed" };
-    if (hasActiveAgentExecutions(id)) return { ok: false, error: "Instance is active" };
+    if (!canReclaim()) return { ok: false, error: "Instance is active" };
   }
   const controller = getOrchestrationController();
   const active = controller.listInstances().some((instance) => instance.instanceId === id);
@@ -343,7 +368,7 @@ async function stopInstanceProjection(
     } else {
       let blocked = false;
       await agentInstanceRuntimeCoordinator.reclaimRuntime({ id }, expectedGeneration, () => {
-        blocked = hasActiveAgentExecutions(id);
+        blocked = !canReclaim();
         return !blocked;
       });
       if (blocked) return { ok: false, error: "Instance is active" };

@@ -81,34 +81,36 @@ export class AgentExecutor implements NodeExecutor {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let retryDelay: number | undefined;
       if (attempt > 0) {
         const baseDelay = retryConfig.delay ?? DEFAULT_RETRY_DELAY_MS;
         const multiplier = retryConfig.backoff === "exponential" ? 2 ** (attempt - 1) : 1;
         const jitter = 0.5 + Math.random() * 0.5;
-        const delay = Math.round(baseDelay * multiplier * jitter);
+        retryDelay = Math.round(baseDelay * multiplier * jitter);
 
         await this.emitEvent(ctx, "node.retrying", node, {
           attempt: attempt + 1,
           max_attempts: maxAttempts,
-          next_delay_ms: delay,
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          const onAbort = (): void => {
-            clearTimeout(retryTimer);
-            signal.removeEventListener("abort", onAbort);
-            reject(signal.reason ?? new DOMException("Request aborted", "AbortError"));
-          };
-          const retryTimer = setTimeout(() => {
-            signal.removeEventListener("abort", onAbort);
-            resolve();
-          }, delay);
-          signal.addEventListener("abort", onAbort, { once: true });
-          if (signal.aborted) onAbort();
+          next_delay_ms: retryDelay,
         });
       }
 
       try {
+        // 等待期间的取消与执行期间共用领域错误分类，不能让裸 AbortError 逃出重试循环。
+        if (retryDelay !== undefined)
+          await new Promise<void>((resolve, reject) => {
+            const onAbort = (): void => {
+              clearTimeout(retryTimer);
+              signal.removeEventListener("abort", onAbort);
+              reject(signal.reason ?? new DOMException("Request aborted", "AbortError"));
+            };
+            const retryTimer = setTimeout(() => {
+              signal.removeEventListener("abort", onAbort);
+              resolve();
+            }, retryDelay);
+            signal.addEventListener("abort", onAbort, { once: true });
+            if (signal.aborted) onAbort();
+          });
         return await this.executeOnce(node, ctx, resolvedPrompt, resolvedAgent, signal);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));

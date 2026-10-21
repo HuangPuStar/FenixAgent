@@ -35,6 +35,89 @@ function wireId(message: EngineRelayMessage): unknown {
   return (message as unknown as { id?: unknown }).id ?? (message.payload as { id?: unknown } | undefined)?.id;
 }
 
+// 服务端恢复的绑定必须先于监听器启用，首批缓冲通知可达且不产生虚假 RPC，替换和释放立即撤销订阅。
+test("trusted session subscription accepts buffered updates and permissions before any targeted request", async () => {
+  const context = await setup();
+  const update = (sessionId: string) => ({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } } },
+  });
+  const permission = {
+    type: "jsonrpc",
+    payload: {
+      jsonrpc: "2.0",
+      id: "permission-original",
+      method: "session/request_permission",
+      params: { sessionId: "ses-bound" },
+    },
+  };
+  const listen = context.physical.onMessage!;
+  context.physical.onMessage = (listener) => {
+    const unsubscribe = listen(listener);
+    listener(update("ses-bound") as unknown as EngineRelayMessage);
+    listener(permission);
+    return unsubscribe;
+  };
+  try {
+    const lease = await context.orchestrator.connectRelay({ instanceId: "instance" });
+    lease.setSessionSubscription!("ses-bound");
+    const received: EngineRelayMessage[] = [];
+    lease.onMessage!((message) => {
+      received.push(message);
+    });
+    expect(received).toEqual([update("ses-bound"), permission]);
+    expect(context.physical.sentMessages).toEqual([]);
+    context.emit(update("ses-other"));
+    expect(received).toHaveLength(2);
+    const response = { type: "jsonrpc", payload: { jsonrpc: "2.0", id: "permission-original", result: {} } };
+    lease.send(response);
+    expect(context.physical.sentMessages).toEqual([response]);
+    lease.setSessionSubscription!("ses-other");
+    context.emit(update("ses-bound"));
+    context.emit(update("ses-other"));
+    expect(received.at(-1)).toEqual(update("ses-other") as unknown as EngineRelayMessage);
+    expect(received).toHaveLength(3);
+    lease.setSessionSubscription!(null);
+    context.emit(update("ses-other"));
+    expect(received).toHaveLength(3);
+    await lease.close();
+    expect(() => lease.setSessionSubscription!("ses-bound")).toThrow("released");
+  } finally {
+    await context.orchestrator.stop("instance");
+  }
+});
+
+// 确认切换撤销历史推断目标的通知，但旧请求仍可按原局部 ID 收到自己的终态回执。
+test("confirmed binding retires inferred notification targets while preserving pending response ownership", async () => {
+  const context = await setup();
+  try {
+    const lease = await context.orchestrator.connectRelay({ instanceId: "instance" });
+    const received: EngineRelayMessage[] = [];
+    lease.onMessage!((message) => {
+      received.push(message);
+    });
+    lease.send(context.request("old-prompt", "ses-old"));
+    const oldId = wireId(context.physical.sentMessages[0]!);
+    lease.setSessionSubscription!("ses-confirmed");
+    const permission = (sessionId: string) => ({
+      jsonrpc: "2.0",
+      id: "permission-original",
+      method: "session/request_permission",
+      params: { sessionId },
+    });
+    context.emit(permission("ses-old"));
+    expect(received).toEqual([]);
+    context.emit(permission("ses-confirmed"));
+    context.emit({ jsonrpc: "2.0", id: oldId, result: { stopReason: "end_turn" } });
+    expect(received).toHaveLength(2);
+    expect(wireId(received[1]!)).toBe("old-prompt");
+    expect(context.physical.sentMessages).toHaveLength(1);
+  } finally {
+    await context.orchestrator.stop("instance");
+  }
+});
+
 // 所有消费者归零后复用原物理连接，旧结果无 sessionId 也不能命中新 lease 复用的局部 RPC 编号。
 test("physical RPC namespace survives zero consumers and drops delayed old results without a session id", async () => {
   for (const wrapped of [false, true]) {

@@ -375,7 +375,7 @@ workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准�
 
 ### 场景 D：停止与回收
 
-用户停止或策略回收先经 Coordinator 仲裁，再调用 `AgentController.stopInstance` → core 停止 → registry 移除 supplement → 实时资源回收。远端无法确认停止时保留 unknown，等待显式重试或机器 clean-slate 确认。手动停止与自动回收的恢复意图相互独立。
+用户停止或策略回收先经 Coordinator 仲裁，再调用 `AgentController.stopInstance` → core 停止 → registry 移除 supplement → 实时资源回收。远端无法确认停止时保留 unknown，等待显式重试或机器 clean-slate 确认。手动停止与自动回收的恢复意图相互独立。默认空闲回收保护全部活跃执行；明确的 `activity-timeout` 原因仅可接管超过活动硬期限且全部执行均为已确认 scheduled 的实例，提交停止前复核运行代次、投影身份和活动时间。交互或等待启动的执行仍受保护，停止失败保留额度，确认实际停止后才释放。
 
 ### 场景 E：Agent Node 断线
 

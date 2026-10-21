@@ -67,6 +67,17 @@ export function hasActiveAgentExecutions(instanceId: string): boolean {
   return false;
 }
 
+/** 硬超时只可接管已进入 runtime 的定时执行；交互执行和等待 ensure 的新执行仍受保护。 */
+export function hasOnlyConfirmedScheduledExecutions(instanceId: string): boolean {
+  let scheduled = false;
+  for (const execution of executions) {
+    if (execution.instanceId !== instanceId) continue;
+    if (execution.source !== "scheduled" || !execution.runtimeConfirmed) return false;
+    scheduled = true;
+  }
+  return scheduled;
+}
+
 /** 程序化 api/workflow 实例可在无执行时回收；交互 chat 沿用其显式生命周期。 */
 export function isAgentExecutionIdleReclaimable(instanceId: string): boolean {
   return (
