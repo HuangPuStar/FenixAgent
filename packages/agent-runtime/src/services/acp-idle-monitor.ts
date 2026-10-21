@@ -14,7 +14,7 @@ import {
   canAutomaticallyReclaimInstance,
   getInstance,
   type InstanceActivityInfo,
-  stopInstance,
+  reclaimInstance,
   toInstanceActivityInfo,
 } from "../server/services/agent-instance-runtime-projection";
 import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-runtime-port";
@@ -28,7 +28,7 @@ let sweepTimer: ReturnType<typeof setInterval> | null = null;
 const _deps = {
   getCoreRuntime,
   getInstance,
-  stopInstance,
+  reclaimInstance,
 };
 const _defaultDeps = { ..._deps };
 
@@ -167,7 +167,7 @@ export async function listInstanceActivitySnapshotsWithUsers(
 }
 
 /** 关闭前端 relay 并停止满足回收条件的实例。 */
-async function reclaimInstance(
+async function reclaimIdleInstance(
   snapshot: InstanceActivityInfo,
   supplement: NonNullable<ReturnType<typeof globalInstanceRegistry.get>>,
   reason: "inactive" | "idle",
@@ -197,9 +197,9 @@ async function reclaimInstance(
       now - Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0) < acpIdleTimeoutSeconds * 1000)
   )
     return;
+  if (generation === undefined) return;
   closeRelayConnectionsForIdleReclaim(snapshot.id);
-
-  const result = await _deps.stopInstance(snapshot.id, supplement.organizationId, true, generation);
+  const result = await _deps.reclaimInstance(snapshot.id, supplement.organizationId, generation);
   if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
     logger.error(
       `[ACP-IDLE] Failed to stop ${reason} instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
@@ -235,7 +235,7 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
         `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
       try {
-        await reclaimInstance(snapshot, supplement, "inactive", now);
+        await reclaimIdleInstance(snapshot, supplement, "inactive", now);
       } catch (err) {
         logger.error(`[ACP-IDLE] reclaimInstance failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
       }
@@ -253,7 +253,7 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
       `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${acpIdleTimeoutSeconds}s`,
     );
     try {
-      await reclaimInstance(snapshot, supplement, "idle", now);
+      await reclaimIdleInstance(snapshot, supplement, "idle", now);
     } catch (err) {
       logger.error(`[ACP-IDLE] reclaimInstance failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
     }

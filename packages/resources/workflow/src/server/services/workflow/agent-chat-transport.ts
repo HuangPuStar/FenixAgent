@@ -28,7 +28,7 @@ import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
+import { acquireInstanceLease, recordSpawnedInstanceRuntime, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");
 
@@ -347,6 +347,8 @@ class AgentChatTransport implements Transport {
     try {
       await waitWithSignal(runtime.ensureInstanceRuntime(instance, options?.signal), options?.signal);
       execution.confirmRuntime();
+      if (created && options?.spawnedInstanceIds?.has(instance.id))
+        recordSpawnedInstanceRuntime(instance.id, runtime.getRuntimeSnapshot(instance.id).runtimeGeneration);
       markAgentExecutionIdleReclaimable(instance.id);
       options?.signal?.throwIfAborted();
       handle = await waitWithSignal(runtime.session.connectRelay(instance.id, ""), options?.signal, (late) =>

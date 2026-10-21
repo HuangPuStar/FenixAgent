@@ -14,6 +14,7 @@ import {
   findRunningInstanceByEnvironment,
   getInstance,
   listInstances as listRuntimeInstances,
+  reclaimInstance,
   stopInstance,
 } from "./server/services/agent-instance-runtime-projection";
 import { agentInstanceService, bindAgentInstanceRuntimeOperations } from "./server/services/agent-instance-service";
@@ -88,6 +89,8 @@ export function createAgentRuntime(): AgentRuntime {
     openAgentSession: (input) => openAgentSession(input),
 
     stopInstance: (instanceUid, organizationId) => stopInstance(instanceUid, organizationId),
+    reclaimInstance: (instanceUid, organizationId, generation) =>
+      reclaimInstance(instanceUid, organizationId, generation),
     stopInstanceRuntime: (instance, mode) => agentInstanceService.stopInstanceRuntime(instance, mode),
     restartInstanceRuntime: (instance) => agentInstanceService.restartInstanceRuntime(instance),
     deleteInstance: (instance) => agentInstanceService.deleteInstance(instance),

@@ -9,6 +9,19 @@
 
 /** 实例租约表：instanceId → 当前持有租约的 workflow run 数 */
 const leases = new Map<string, number>();
+const spawnedRuntimes = new Map<string, number>();
+
+/** 仅首次创建者登记其已确认的运行代次；复用 run 不取得清理权。 */
+export function recordSpawnedInstanceRuntime(instanceId: string, generation: number): void {
+  if (!spawnedRuntimes.has(instanceId)) spawnedRuntimes.set(instanceId, generation);
+}
+
+/** 创建者收尾时一次性领取代次票据；迟到或重复 cleanup 不能接管新 runtime。 */
+export function takeSpawnedInstanceRuntime(instanceId: string): number | undefined {
+  const generation = spawnedRuntimes.get(instanceId);
+  spawnedRuntimes.delete(instanceId);
+  return generation;
+}
 
 /** 解析实例后、await ensure 前同步占用一份租约，保护连接准备窗口。 */
 export function acquireInstanceLease(instanceId: string): void {
@@ -35,4 +48,5 @@ export function hasActiveInstanceLease(instanceId: string): boolean {
 /** 清空全部租约（测试隔离用；生产路径不调用）。 */
 export function clearInstanceLeases(): void {
   leases.clear();
+  spawnedRuntimes.clear();
 }

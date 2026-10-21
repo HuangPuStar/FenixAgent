@@ -101,12 +101,16 @@ export class AgentInstanceRuntimeCoordinator {
   }
 
   /** 自动回收只改变运行事实，不建立用户手动停止意图。 */
-  reclaimRuntime(instance: Pick<AgentInstanceRecord, "id">, generation?: number): Promise<void> {
+  reclaimRuntime(
+    instance: Pick<AgentInstanceRecord, "id">,
+    generation?: number,
+    canReclaim?: () => boolean,
+  ): Promise<void> {
     const entry = this.#entry(instance.id);
     if (generation !== undefined && entry.generation > generation) return Promise.resolve();
     if (generation !== undefined && entry.runtimePresent && entry.generation !== generation) return Promise.resolve();
     if (generation !== undefined && !entry.runtimePresent) entry.generation = Math.max(entry.generation, generation);
-    return this.#run(instance, "reclaim", "strict", undefined, generation);
+    return this.#run(instance, "reclaim", "strict", undefined, generation, canReclaim);
   }
 
   deleteRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
@@ -206,7 +210,7 @@ export class AgentInstanceRuntimeCoordinator {
     reason: string,
   ): void {
     const entry = this.#entries.get(instanceUid);
-    if (!entry || !entry.runtimePresent || entry.generation !== generation) return;
+    if (!entry?.runtimePresent || entry.generation !== generation) return;
     entry.operationId += 1;
     entry.runtimePresent = false;
     entry.abortController?.abort(new Error(reason));
@@ -235,6 +239,7 @@ export class AgentInstanceRuntimeCoordinator {
     mode: RuntimeStopMode,
     waiterSignal?: AbortSignal,
     expectedGeneration?: number,
+    canReclaim?: () => boolean,
   ): Promise<void> {
     if (this.#shuttingDown) return Promise.reject(new Error("Agent runtime coordinator is shutting down"));
     const entry = this.#entry(instance.id);
@@ -254,7 +259,7 @@ export class AgentInstanceRuntimeCoordinator {
       if (entry.operation === operation) return this.#wait(entry.operationPromise, waiterSignal);
       if (PRIORITY[entry.operation] >= PRIORITY[operation]) {
         return this.#wait(entry.operationPromise, waiterSignal).then(() =>
-          this.#run(instance, operation, mode, waiterSignal, expectedGeneration),
+          this.#run(instance, operation, mode, waiterSignal, expectedGeneration, canReclaim),
         );
       }
       previous = entry.operationPromise;
@@ -277,7 +282,15 @@ export class AgentInstanceRuntimeCoordinator {
     entry.deleting = operation === "delete";
     const controller = new AbortController();
     entry.abortController = controller;
-    const promise = this.#execute(instance, operation, mode, operationId, controller.signal, previous).finally(() => {
+    const promise = this.#execute(
+      instance,
+      operation,
+      mode,
+      operationId,
+      controller.signal,
+      previous,
+      canReclaim,
+    ).finally(() => {
       if (entry.operationPromise !== promise) return;
       entry.operation = null;
       entry.operationPromise = null;
@@ -299,12 +312,14 @@ export class AgentInstanceRuntimeCoordinator {
     operationId: number,
     signal: AbortSignal,
     previous: Promise<void> | null,
+    canReclaim?: () => boolean,
   ): Promise<void> {
     const entry = this.#entry(instance.id);
     let startingGeneration: number | undefined;
+    // 等待旧操作期间可能已有新执行绑定；自动回收必须在实际停止前再次确认占用。
+    if (previous) await previous.catch(() => undefined);
+    if (operation === "reclaim" && canReclaim && !canReclaim()) return;
     try {
-      // 高优先级停止必须等旧启动及其补偿结束，不能仅 abort 后宣布 stopped。
-      if (previous) await previous.catch(() => undefined);
       signal.throwIfAborted();
       if (entry.operationId !== operationId) throw new Error("Runtime operation was superseded");
       if (operation !== "ensure") {

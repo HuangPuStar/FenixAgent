@@ -82,8 +82,8 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [
-            { instanceId: idleInstance.id, status: "running" },
-            { instanceId: busyInstance.id, status: "running" },
+            { instanceId: idleInstance.id, status: "running", runtimeGeneration: 1 },
+            { instanceId: busyInstance.id, status: "running", runtimeGeneration: 1 },
           ],
         }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
@@ -123,6 +123,7 @@ describe("acp idle monitor", () => {
             {
               instanceId: trackedInstance.id,
               status: "running",
+              runtimeGeneration: 1,
               createdAt: new Date("2026-06-24T00:00:00Z"),
               errorMessage: null,
               pluginMetadata: {},
@@ -130,6 +131,7 @@ describe("acp idle monitor", () => {
             {
               instanceId: "inst_runtime_only",
               status: "running",
+              runtimeGeneration: 1,
               createdAt: new Date("2026-06-24T00:00:00Z"),
               errorMessage: null,
               pluginMetadata: { port: 9527 },
@@ -186,8 +188,8 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [
-            { instanceId: idleInstance.id, status: "running" },
-            { instanceId: activeInstance.id, status: "running" },
+            { instanceId: idleInstance.id, status: "running", runtimeGeneration: 1 },
+            { instanceId: activeInstance.id, status: "running", runtimeGeneration: 1 },
           ],
         }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
@@ -195,7 +197,7 @@ describe("acp idle monitor", () => {
         if (instanceId === activeInstance.id) return activeInstance;
         return;
       },
-      stopInstance: async (instanceId: string, organizationId: string) => {
+      reclaimInstance: async (instanceId: string, organizationId: string) => {
         stopCalls.push({ instanceId, organizationId });
         return { ok: true as const };
       },
@@ -221,13 +223,13 @@ describe("acp idle monitor", () => {
     setAcpIdleMonitorDeps({
       getCoreRuntime: () =>
         ({
-          listInstances: () => [{ instanceId: staleInstance.id, status: "running" }],
+          listInstances: () => [{ instanceId: staleInstance.id, status: "running", runtimeGeneration: 1 }],
         }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === staleInstance.id) return staleInstance;
         return;
       },
-      stopInstance: async (instanceId: string, organizationId: string) => {
+      reclaimInstance: async (instanceId: string, organizationId: string) => {
         stopCalls.push({ instanceId, organizationId });
         return { ok: true as const };
       },
@@ -253,13 +255,13 @@ describe("acp idle monitor", () => {
     setAcpIdleMonitorDeps({
       getCoreRuntime: () =>
         ({
-          listInstances: () => [{ instanceId: activeInstance.id, status: "running" }],
+          listInstances: () => [{ instanceId: activeInstance.id, status: "running", runtimeGeneration: 1 }],
         }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === activeInstance.id) return activeInstance;
         return;
       },
-      stopInstance: async (instanceId: string, organizationId: string) => {
+      reclaimInstance: async (instanceId: string, organizationId: string) => {
         stopCalls.push({ instanceId, organizationId });
         return { ok: true as const };
       },
@@ -291,8 +293,7 @@ describe("acp idle monitor", () => {
           listInstances: () => [{ instanceId: instance.id, status: "running", runtimeGeneration: 7 }],
         }) as unknown as CoreRuntimeFacade,
       getInstance: () => instance,
-      stopInstance: async (_id, _organizationId, automatic, generation) => {
-        expect(automatic).toBe(true);
+      reclaimInstance: async (_id, _organizationId, generation) => {
         expect(generation).toBe(7);
         stops++;
         return { ok: true };
@@ -349,7 +350,7 @@ describe("acp idle monitor", () => {
           },
         }) as unknown as CoreRuntimeFacade,
       getInstance: () => instance,
-      stopInstance: async () => {
+      reclaimInstance: async () => {
         stops++;
         return { ok: true };
       },

@@ -307,51 +307,51 @@ export function getInstance(id: string, userId?: string): SpawnedInstance | unde
   return toSpawnedInstance(snapshot, sup);
 }
 
-export async function stopInstance(
+/** 用户停止保留显式停止意图，自动调用方必须使用 reclaimInstance。 */
+export function stopInstance(id: string, organizationId: string): Promise<{ ok: boolean; error?: string }> {
+  return stopInstanceProjection(id, organizationId);
+}
+
+/** 自动回收只针对捕获的运行代次，不能清除用户停止意图或停止活动执行。 */
+export function reclaimInstance(
   id: string,
   organizationId: string,
-  automaticReclaim = false,
+  expectedGeneration: number,
+): Promise<{ ok: boolean; error?: string }> {
+  return stopInstanceProjection(id, organizationId, expectedGeneration);
+}
+
+async function stopInstanceProjection(
+  id: string,
+  organizationId: string,
   expectedGeneration?: number,
 ): Promise<{ ok: boolean; error?: string }> {
   const sup = registry.get(id);
-  // 多租户：仅对已知实例做归属校验；无 supplement 的实例（已停止/从未存在）
-  // 无法归属，按幂等语义直接视为目标状态已达成，不泄漏实例存在性信息。
-  if (sup && sup.organizationId !== organizationId) {
-    return { ok: false, error: "Not your instance" };
+  if (sup && sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
+  const core = getCoreRuntime().getInstance(id);
+  if (expectedGeneration !== undefined) {
+    // 缺失投影无法确认租户与代次，旧清理不得按稳定 uid 接管后来者。
+    if (!sup || core?.runtimeGeneration !== expectedGeneration) return { ok: false, error: "Runtime changed" };
+    if (hasActiveAgentExecutions(id)) return { ok: false, error: "Instance is active" };
   }
-
-  // 三侧状态收敛（AE-P2.1）：supplement / controller 活跃表 / core 快照任一存在
-  // 即执行幂等停止。stopInstanceViaController 内部对 controller.stopInstance、
-  // core stopInstance 与 supplement 清理均幂等吞错（orchestration-instance.ts:184-205），
-  // 因此重复 DELETE 与三侧状态分裂残留（如 workflow cleanup 跳过的孤儿 supplement）
-  // 都能安全收敛，不再有前置短路导致"已停止实例二次 DELETE 404"的契约矛盾。
   const controller = getOrchestrationController();
-  const isOrchestrationInstance = controller.listInstances().some((inst) => inst.instanceId === id);
-  const coreHasInstance = getCoreRuntime()
-    .listInstances()
-    .some((s) => s.instanceId === id);
-
-  if (!sup && !isOrchestrationInstance && !coreHasInstance) {
-    // 无墓碑可区分"已停止"与"从未存在"（停止路径会清空三侧状态）：统一按
-    // ensure-stopped 语义返回 "Already stopped"，由 web DELETE 映射 200，
-    // 符合 RFC 7231 幂等 DELETE（目标终态即不存在）。
-    return { ok: false, error: "Already stopped" };
-  }
-
+  const active = controller.listInstances().some((instance) => instance.instanceId === id);
+  if (!sup && !active && !core) return { ok: false, error: "Already stopped" };
   try {
-    if (automaticReclaim) {
-      await agentInstanceRuntimeCoordinator.reclaimRuntime(
-        { id },
-        expectedGeneration ?? getCoreRuntime().getInstance(id)?.runtimeGeneration,
-      );
-    } else {
+    if (expectedGeneration === undefined) {
       await agentInstanceRuntimeCoordinator.stopRuntime({ id }, "strict");
+    } else {
+      let blocked = false;
+      await agentInstanceRuntimeCoordinator.reclaimRuntime({ id }, expectedGeneration, () => {
+        blocked = hasActiveAgentExecutions(id);
+        return !blocked;
+      });
+      if (blocked) return { ok: false, error: "Instance is active" };
     }
     return { ok: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    logError(`[Instance] Failed to stop orchestration instance ${id}:`, err);
-    return { ok: false, error: message };
+  } catch (error) {
+    logError(`[Instance] Failed to stop orchestration instance ${id}:`, error);
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 

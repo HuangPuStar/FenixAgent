@@ -193,6 +193,30 @@ describe("审计生命周期回归", () => {
     expect(coordinator.snapshot(instance.id).state).toBe("running");
   });
 
+  // 排队期间新的执行可能绑定原实例，自动回收必须在停止动作开始前重新核对占用。
+  test("排队回收不会忽略后来绑定的执行占用", async () => {
+    const gate = deferred();
+    let stops = 0;
+    let occupied = false;
+    const coordinator = new AgentInstanceRuntimeCoordinator({
+      async start() {},
+      async stop() {
+        stops++;
+        await gate.promise;
+      },
+    });
+    await coordinator.ensureRuntime(instance);
+    const generation = coordinator.snapshot(instance.id).runtimeGeneration;
+    const stopping = coordinator.stopRuntime(instance, "strict");
+    const reclaiming = coordinator.reclaimRuntime(instance, generation, () => !occupied);
+    occupied = true;
+    gate.resolve();
+    await Promise.all([stopping, reclaiming]);
+    expect(stops).toBe(1);
+    expect(coordinator.snapshot(instance.id).state).toBe("stopped");
+    await expect(coordinator.ensureRuntime(instance)).rejects.toMatchObject({ code: "INSTANCE_STOPPED" });
+  });
+
   // 运行投影已确认不存在时不能继续使用 coordinator 的 running 快捷分支。
   test("已丢失的运行实体在下次 ensure 重新启动", async () => {
     let active = false;

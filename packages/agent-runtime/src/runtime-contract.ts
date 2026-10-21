@@ -191,6 +191,8 @@ export interface AgentRuntimePort {
 
   /** 停止单个实例（含组织归属校验；幂等，目标状态已达成时返回成功）。 */
   stopInstance(instanceUid: string, organizationId: string): Promise<StopInstanceOutcome>;
+  /** 按捕获的运行代次自动回收；活跃执行或运行换代时跳过，保留后续 ensure 的恢复权。 */
+  reclaimInstance(instanceUid: string, organizationId: string, runtimeGeneration: number): Promise<StopInstanceOutcome>;
   /** 停止实例 runtime，保留实例记录（`mode: "strict"` 下停止失败即抛错）。 */
   stopInstanceRuntime(instance: AgentInstanceRecord, mode?: RuntimeStopMode): Promise<void>;
   /** 用同一实例 uid 重启 runtime（记录不变；默认实例同样支持）。 */

@@ -218,7 +218,7 @@ test("workflow cleanup protects pending ensure and releases its lease on failure
     releaseInstanceLease(instance.id);
     expect(hasActiveInstanceLease(instance.id)).toBe(false);
     expect(await cleanupSpawnedInstances(new Set([instance.id]), "org")).toEqual([]);
-    expect(stops).toBe(1);
+    expect(stops).toBe(0);
     resolveEnsure();
   }
 });
