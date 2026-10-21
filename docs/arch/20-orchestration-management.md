@@ -171,7 +171,7 @@ stateDiagram-v2
 1. `instanceUid` 是持久身份；`runtimeGeneration + serverEpoch` 标识一次真实运行实体。`operationId` 只标识当前操作所有权。stop/delete 推进操作身份，不改变尚未停止实体的运行身份，因此停止期间的机器断连仍能关联原实体。
 2. 高优先级 stop/delete 取消旧启动后，等待启动及其按原运行代次执行的补偿结束，再确认当前实体停止。启动桥接在 controller、LaunchSpec、Core 启动与 supplement 注册边界检查取消，本地与远程启动均携带运行身份。补偿失败保留 `unknown` 与原始错误，不返回已停止。
 3. `unknown` 拒绝自动 ensure，允许显式 stop/restart/delete 重新确认。runtime 删除阶段失败释放本次删除门禁；DB 删除失败按 `operationId` 恢复门禁，旧操作不能解除另一轮删除。
-4. 本地死亡和 idle 走 `reclaimRuntime`；回收不建立手动停止意图，后续 ensure 可启动新代。手动 stop 建立的禁止自动启动意图只有显式 restart 成功才解除。running 快捷路径同时核对执行投影，投影已确认不存在时重新启动。
+4. 本地死亡经运行身份回收，idle 与 Workflow 自动收尾经公共 `reclaimInstance(id, organizationId, runtimeGeneration)` 进入 `reclaimRuntime`；回收不建立手动停止意图，后续 ensure 可启动新代。手动 stop 建立的禁止自动启动意图只有显式 restart 成功才解除。running 快捷路径同时核对执行投影，投影已确认不存在时重新启动。
 5. 机器断连事件按实际运行代次标记 `unknown`，clean-slate 只确认对应机器旧 runtime 已全部终止。在途操作持有槽位时延后复位，操作释放后提交 `stopped`。确认终止同时释放该实例尚未结算的执行配额。
 
 ## 4. 双层启动模型与 LaunchSpec
@@ -280,7 +280,7 @@ stateDiagram-v2
 | 停止 / 回收 / 断连 | Instance Service / idle monitor / 机器对账 | Coordinator 按 operation 与 runtime 身份确认状态，消费者不得按 UID 停止共享 runtime |
 
 1. Core 首次建连共享在途操作，并为每次调用发放独立消费租约；租约 close 只移除该消费者监听器。runtime stop 统一关闭物理连接，包括仍在握手和迟到的连接。
-2. Workflow 的 `instance-lease.ts` 在选定持久实例后、await ensure 前同步取得租约，保护连接准备与执行；路由的 `cleanupSpawnedInstances` 仅对本 run 首次创建且无其他 run 租约的实例发起 Coordinator 停止。单节点 dispose 不触发该实例策略。
+2. Workflow 的 `instance-lease.ts` 在选定持久实例后、await ensure 前同步取得租约，保护连接准备与执行；`cleanupSpawnedInstances` 只消费首次创建者在 ensure 成功时登记的运行代次票据，且必须没有其他 run 租约与任何来源的活跃执行，才能自动回收。迟到或重复收尾不能改绑到新代，跳过后交由 idle 策略处理。单节点 dispose 不触发该实例策略。
 3. 活跃执行准入与 relay 计数独立。HTTP、Workflow 和定时任务每次分别 acquire 执行额度；confirmed RPC 终态归还。取消通知、传输失败和 EOF 不证明 Agent 已停止，未知执行保留额度，直到明确 RPC 终态或 Coordinator 确认 runtime 停止。
 4. 会话握手、终态分类、静默超时及取消契约见 [Agent 执行、relay 与取消](./agent-turn-lifecycle.md)。
 
@@ -371,7 +371,7 @@ errorPlugin 成为该路由错误出口的单一入口，且同时满足三条�
 
 ### 场景 C：Workflow 复用与清理
 
-workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 可经 Coordinator 停止本 run 首次创建且没有其他 run 租约的实例。超时或断连返回失败，执行终止未确认时保留执行额度。
+workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后仍需显式 restart。超时或断连返回失败，执行终止未确认时保留执行额度。
 
 ### 场景 D：停止与回收
 
