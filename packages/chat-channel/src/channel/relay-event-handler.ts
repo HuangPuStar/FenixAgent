@@ -153,13 +153,13 @@ export class RelayEventHandler {
       return this.handleStatus(shared, raw);
     }
 
-    // ACP 宿主在 load/resume 响应之后显式通知回放结束（含零历史）：立即收敛窗口，
-    // 不再等 10s 窗口或依赖客户端计时。旧宿主不发该通知时保持原窗口语义。
+    // 显式完成优先于静默计时，零历史也可立即收口。
     if (rpcCheck?.method === "session/replay_complete") {
       this.convergeReplayWindow(shared);
-      this.projection.dispatch(shared, { type: "replay_complete", update: {}, content: null });
       return;
     }
+
+    if (rpcCheck?.method === "session/update") this.projection.scheduleReplayCompletion(shared);
 
     // 第三级：规范化事件帧（acp-link 私有帧 / session/update 通知），在此边界
     // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截

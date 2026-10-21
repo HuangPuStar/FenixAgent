@@ -2,7 +2,7 @@ import type * as Y from "yjs";
 import { type NormalizedEvent, type NormalizedEventType, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
 import type { DocManager } from "../state";
 import { CALLBACK_ENTRY_PREFIX } from "../state/chat-writer";
-import { REPLAY_WINDOW_MS, type SharedRelay } from "./connection-types";
+import { REPLAY_IDLE_MS, REPLAY_WINDOW_MS, type SharedRelay } from "./connection-types";
 import type { RelayEventHandlerDependencies } from "./relay-event-dependencies";
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
@@ -90,10 +90,7 @@ export class RelayProjection {
   constructor(private readonly dependencies: RelayEventHandlerDependencies) {}
   /**
    * 开启回放窗口（load/resume 转发前与 JSON-RPC result 确认时各调用一次，幂等重置）：
-   * 记录截止时间戳，并注册到期定时器——回放流无终态信号（unstable_resumeSession
-   * 只回放 chunk 帧），到期时把窗口内合成/分配的回放 turn 收敛为 completed，
-   * 否则回放 turn 永久卡 running、前端一直显示输出中。期间用户发出新消息时
-   * 聚合层按 turnId 归属拒绝该终态（见 aggregator.applyTurnTerminal），不误伤新 turn。
+   * 首帧前保留最长等待，避免 Agent 迟发历史时提前关闭；更新或成功回执后改等静默窗口。
    */
   openReplayWindow(shared: SharedRelay, options: { resampleSkip?: boolean } = {}): void {
     shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
@@ -128,15 +125,21 @@ export class RelayProjection {
     }, REPLAY_WINDOW_MS);
   }
 
+  /** 仅在已开启的回放窗口内续期静默等待，避免普通实时输出被误判为历史回放。 */
+  scheduleReplayCompletion(shared: SharedRelay): void {
+    if (shared.destroyed || shared.replayWindowUntil === null) return;
+    if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
+    const delay = Math.max(0, Math.min(REPLAY_IDLE_MS, shared.replayWindowUntil - Date.now()));
+    shared.replayWindowTimer = setTimeout(() => this.convergeReplayWindow(shared), delay);
+  }
+
   /**
-   * 回放窗口到期收敛（openReplayWindow 的定时器到点回调，独立成方法供测试直调）：
-   * 关闭窗口并把窗口内合成/分配的回放 turn 收敛为 completed——回放流无终态信号
-   * （unstable_resumeSession 只回放 chunk 帧），不收敛则回放 turn 永久卡 running、
-   * 前端一直显示输出中。用户已发出新消息时聚合层按 turnId 归属拒绝该终态
-   * （aggregator.applyTurnTerminal 的 stale turn 校验），不误伤新 turn。
-   * 幂等：窗口未开启或无回放 turn 时 no-op。
+   * 显式完成、静默或最长等待到期后统一收敛；turnId 校验避免终结后来发起的实时 turn。
    */
   convergeReplayWindow(shared: SharedRelay): void {
+    if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
+    shared.replayWindowTimer = null;
+    if (shared.destroyed || shared.replayWindowUntil === null) return;
     shared.replayWindowUntil = null;
     shared.replaySkipSynthesis = undefined;
     const replayTurnId = shared.replayTurnId;
@@ -149,6 +152,7 @@ export class RelayProjection {
         turnId: replayTurnId,
       });
     }
+    this.dispatch(shared, { type: "replay_complete", update: {}, content: null });
   }
 
   /**
@@ -267,6 +271,7 @@ export class RelayProjection {
     // 旧投影路径已完成；新协议旁路只消费实时事件。回放 turn（turn_replay_*）的历史由旧
     // Chat Doc 提供，禁止灌入新 runtime 的 live ingress（入口只有 pending 预算，且回放工具
     // 事件无可写 turn）。实时 turn 使用真实 turnId，因此回放期间的实时输出仍会正常进入。
+    if (event.type === "replay_complete") return;
     try {
       // 子 Agent / callback 事件自身不带 turnId 时不得借用主 Agent 的活动 turn：
       // 两者已有独立归属键（sourceAgentId / callbackEntryId），借用会把输出混入主回复。

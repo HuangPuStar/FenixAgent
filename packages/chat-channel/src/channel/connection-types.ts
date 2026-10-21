@@ -48,6 +48,9 @@ export interface PendingUserInputRequest {
  */
 export const REPLAY_WINDOW_MS = 10_000;
 
+/** 回放更新的静默窗口；不支持显式完成通知的 Agent 也能及时结束历史加载。 */
+export const REPLAY_IDLE_MS = 200;
+
 /** 最小 WebSocket 连接抽象：与传输框架解耦（Elysia WS / Hono WSContext 适配为同一形状） */
 export interface WsConnection {
   /**
@@ -253,7 +256,7 @@ export interface SharedRelay {
    * 不误伤新 turn。
    */
   replayTurnId?: string | null;
-  /** 回放窗口到期定时器：到期收敛 replayTurnId 对应回放 turn 并重置窗口 */
+  /** 回放结束定时器：首帧前等待最长窗口，更新或成功回执后等待静默窗口。 */
   replayWindowTimer?: ReturnType<typeof setTimeout> | null;
   /**
    * 回放窗口开启瞬间"Chat Doc 是否已有时间线内容"的判定缓存（窗口内固定，不实时

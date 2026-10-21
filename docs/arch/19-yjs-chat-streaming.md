@@ -336,7 +336,7 @@ sequenceDiagram
 - **陈旧窗口不落库**：同步连接的用户消息与 legacy `registerUserMessage` 在写入前复核 active generation；世代已过期则丢弃并让连接换代，不能把新会话的消息静默写进旧 generation。ACP 增量与广播保持每帧零 Redis I/O。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
 - **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
-- **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：新 projection 无时间线内容，load/resume 转发时开启；窗口内 Agent 历史回放由 `relay-event-handler` 合成到新 generation。重连恢复已有时间线时跳过重复合成。
+- **回放窗口**：load/resume 转发时开启，首条更新前保留 `REPLAY_WINDOW_MS`（10s）最长等待；收到当前会话的 `session/update` 后，每条更新重置 `REPLAY_IDLE_MS`（200ms）静默计时，成功回执也启动该计时以覆盖零历史。静默不得超过当前最长等待期限；显式 `session/replay_complete` 可立即结束。收口先提交尾部批次，再将回放 turn 与 `replayState` 标记为完成；重连恢复已有时间线时跳过重复合成。
 - **用户消息会话级写入**：`registerUserMessage` 成功后经 `SessionChannel` 的会话级入口扇出到该 `rcsSessionId` 的全部同步连接；动作 socket 通常没有同步 runtime，不得只写发起连接，也不重新启用 Agent 回显。attach 窗口内入队的消息在首个 HELLO 建立基线后补水；写者按 `entryId + 内容槽` 对已提交记录与新写者本地待提交集合去重，覆盖写者交接、多标签与重复 `turnId`。
 - **未配对用户消息不可退役**：合并器只有在 `turnId + entryId` 或等价稳定身份证明覆盖后才能删除旧用户消息；“sync 存在任意文本”不构成覆盖证明。分页缺段时保留新投影合并正文兜底。
 - **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。
@@ -923,7 +923,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 - 命令准入在异步校验前预留预算：每 `rcsSessionId` 最多 64 条等待项及 1 条执行项，payload 合计 4 MiB，单条 Action payload 为 1 MiB（按 UTF-8 计数）。取消额外保留 2 条、2 KiB，并优先于普通等待项执行；这些容量不能替代 WebSocket 入口的积压预算。
 - 未就绪连接的文本 pending 最多 64 条、1 MiB；取消额外保留 2 条、2 KiB 并优先重放。超限以 1013 关闭该连接；消费、关闭与转为 active 时同步维护字节账。二进制握手 pending 独立限制为 8 条、64 KiB；连接总量仍由 `YJS_MAX_CLIENTS` 限制。
 - 最后一个客户端断开会 abort 旧队列、拒绝未执行项并取消回执等待；重连队列等待旧执行器退场，旧 finally 不得删除新队列。仍在执行的记录不因断线或时间逐出；已退场历史与活动准入分开，按 §7.1 的数量、期限与 epoch 围栏回收。去重检查先于版本前置条件，重放只得到原结果或明确拒绝，不得重新触发旧命令。该能力不提供外部执行终态或跨控制面结果恢复。
-- **回放窗口**（`channel/connection-types.ts` `REPLAY_WINDOW_MS`，10s）：`load_session` / `resume_session` 转发时开启，用于承接先于 JSON-RPC result 到达的 Agent 历史回放流（见 §4.2）；窗口外或 Chat Doc 已有内容时保持聚合层拒绝语义。
+- **回放窗口**：`load_session` / `resume_session` 转发时开启，承接先于 JSON-RPC result 到达的历史回放流（见 §4.2）；当前会话更新或成功回执后静默 200ms 即结束，首帧前最长等待为 10s。旧会话更新与保活帧不续期，结束或 relay 释放时取消计时；窗口外或 Chat Doc 已有内容时保持聚合层拒绝语义。
 - **keep_alive 心跳**（`channel/gateway.ts`）：服务端周期性下发 `keep_alive`，客户端超时未回（页面隐藏等）以 4501 关闭，不在后台自动重连；连接建立失败以 4500 / 4502 / 1011 终态或可重连码关闭（见 §4.1）。
 - Agent 实例按租户与用户并发配额治理；空闲回收必须确保无活动 turn、无待处理权限和无未提交事件（实例级活跃由 `touchInstanceActivity` 观测，见 20 号文档 §7）。
 - 服务关闭时停止接收新 Action，完成或中断在途提交，释放 relay 引用与实例引用，然后关闭连接。
@@ -1042,7 +1042,7 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 7. **至少一次传输 + 幂等命令**替代对网络“恰好一次”的不现实假设。
 8. **不可证明的恢复不自动重放 prompt**，优先避免重复外部副作用。
 9. **共享 relay 引用计数**：同一 `instanceId + userId` 的多标签页共享 relay handle 与入站监听，引用计数归零才释放——实例连接级资源有界，会话切换不重建 relay。
-10. **回放窗口承接历史回放流**：load/resume 转发的 10s 回放窗口（`REPLAY_WINDOW_MS`）让先于 JSON-RPC result 到达的无头 Agent 历史增量可投影为时间线，是刷新恢复的兜底来源；窗口外保持聚合层拒绝语义，不伪造会话连续。
+10. **回放窗口承接历史回放流**：load/resume 转发时先开启最长 10s 窗口，让早于 JSON-RPC result 的历史增量可投影；当前会话更新或成功回执后静默 200ms 收口，显式完成可立即收口。窗口外保持聚合层拒绝语义，不伪造会话连续。
 11. **实例生命周期归编排域**：Chat 域经 `ensureRunning` / `connectAgentRelay` 消费实例，创建与销毁由编排域契约负责（见 20 号文档），Chat 域不直接触碰 spawn/stop。
 12. **待发送队列（steer）的真相在 peri**：RCS 只做校验、翻译、转发与投影，不缓存队列状态；`generation` / `commandId` / `sessionId` 一律服务端权威注入，投递信号 `user_input_delivered` 是 canonical transcript 的唯一写入源（§7.1.1、§8.1）。
 

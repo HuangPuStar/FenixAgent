@@ -172,6 +172,8 @@ export class RelayRpcResponse {
         // 历史恢复的唯一来源），窗口内由 dispatchReplayAware 补全 turn 上下文投影时间线；
         // 窗口到期定时器收敛回放 turn 终态（回放流无终态信号，见 openReplayWindow）
         this.projection.openReplayWindow(shared);
+        // 零历史没有 session/update，成功回执后同样必须结束静默等待。
+        this.projection.scheduleReplayCompletion(shared);
         const sessionDoc = await this.dependencies.docManager.openSession(
           shared.userId,
           shared.agentId,

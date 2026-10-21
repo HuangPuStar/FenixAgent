@@ -4,7 +4,6 @@
 // DocManager 持有 Map、fences、标题状态与配置来源，本类只通过构造参数共享这些对象，
 // 不复制状态；replaceProjection 与 closeAll 使用 DocManager 持有的同一份 fences。
 
-import type { Cluster, Redis } from "ioredis";
 import { getOrCreateActiveGeneration } from "../persist/redis";
 import type { SnapshotPersistConfig } from "../persist/snapshot-config";
 import type { ChatDoc, SessionDoc } from "../types";
@@ -12,7 +11,6 @@ import {
   type DocOpenFenceDeps,
   discardOpenedDoc,
   finalizeOpenedDoc,
-  isClosedForOpen,
   isStaleHydration,
   requireCurrentDoc,
   resolveStaleOpen,
