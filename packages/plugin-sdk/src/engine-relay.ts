@@ -23,6 +23,8 @@ export interface EngineRelayHandle {
   close(code?: number, reason?: string): Promise<void> | void;
   /** 监听 engine 侧推送的实时消息。返回 unsub 函数。 */
   onMessage?(listener: (message: EngineRelayMessage) => void): () => void;
+  /** 消费租约恢复受信服务端绑定并替换既往通知目标；不发送 RPC，不影响在途回执。物理句柄无需实现。 */
+  setSessionSubscription?(sessionId: string | null): void;
   /** relay 连接就绪后的 resolve Promise（WS open / bridge 模块初始化完成）。 */
   ready?: Promise<void>;
 }

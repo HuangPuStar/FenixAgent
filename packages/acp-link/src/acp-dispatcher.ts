@@ -1,4 +1,11 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import { AcpSessionCancellation } from "./acp-session-cancellation.js";
+import { type AcpSessionState, cancelPendingPermissions } from "./acp-session-state.js";
+import { forwardUserInputQueueRequest } from "./acp-user-input-request.js";
+
+export { type AcpSessionState, createAcpSessionState } from "./acp-session-state.js";
+export { forwardUserInputQueueRequest, type UserInputQueueForwardContext } from "./acp-user-input-request.js";
+
 import { extractModelState, extractModeState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
@@ -8,90 +15,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
-import type {
-  AgentCapabilities,
-  ContentBlock,
-  PermissionResponsePayload,
-  PromptCapabilities,
-  SessionModelState,
-} from "./types.js";
-
-// Pending permission request
-interface PendingPermission {
-  resolve: (outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string }) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-export interface AcpSessionState {
-  connection: acp.ClientSideConnection | null;
-  sessionId: string | null;
-  pendingPermissions: Map<string, PendingPermission>;
-  agentCapabilities: AgentCapabilities | null;
-  promptCapabilities: PromptCapabilities | null;
-  modelState: SessionModelState | null;
-  modeState: {
-    availableModes: Array<{ id: string; name: string; description?: string | null }>;
-    currentModeId: string;
-  } | null;
-}
-
-export function createAcpSessionState(): AcpSessionState {
-  return {
-    connection: null,
-    sessionId: null,
-    pendingPermissions: new Map(),
-    agentCapabilities: null,
-    promptCapabilities: null,
-    modelState: null,
-    modeState: null,
-  };
-}
-
-function cancelPendingPermissions(state: AcpSessionState): void {
-  for (const [, pending] of state.pendingPermissions) {
-    clearTimeout(pending.timeout);
-    pending.resolve({ outcome: "cancelled" });
-  }
-  state.pendingPermissions.clear();
-}
-
-/** session/input/*（Peri steer）透传所需的最小上下文。 */
-export interface UserInputQueueForwardContext {
-  connection: acp.ClientSideConnection | null;
-  send: (message: unknown) => void;
-  id: number | string;
-  method: string;
-  params: unknown;
-}
-
-/**
- * 把 session/input/snapshot|enqueue|dispatch|takeback 原样经 SDK extMethod 发往 agent。
- *
- * SDK 没有这四个方法的原语，extMethod 是唯一可用入口。params（含 ACP ses_* 形态的
- * sessionId 与 generation/commandId/inputId）不做字段过滤、ID 换算或补默认值；agent
- * 回来的 JSON-RPC 错误（-32601 未协商、-32602 generation 不符并带 data.rejected）经
- * createForwardedErrorResponse 逐字段回传，不重试、不降级成空成功。
- *
- * client mode（AcpDispatcher.handleRequest）与 server mode（server.ts
- * dispatchIncomingMessage）共用此处，避免两条 relay 路径行为分叉。
- */
-export async function forwardUserInputQueueRequest(context: UserInputQueueForwardContext): Promise<void> {
-  const { connection, send, id, method, params } = context;
-  if (!connection) {
-    send(createErrorResponse(id, -32000, "Not connected to agent"));
-    return;
-  }
-  try {
-    const result = await connection.extMethod(method, (params ?? {}) as Record<string, unknown>);
-    send(createSuccessResponse(id, result));
-  } catch (error) {
-    console.error(
-      "[acp-dispatcher] ✗ user input queue error:",
-      JSON.stringify({ method, id, error: (error as Error).message }),
-    );
-    send(createForwardedErrorResponse(id, error, `${method} failed: ${(error as Error).message}`));
-  }
-}
+import type { ContentBlock, PermissionResponsePayload } from "./types.js";
 
 /**
  * ACP 消息分发器。接收 JSON-RPC 请求，调用 ClientSideConnection SDK，
@@ -116,6 +40,7 @@ export interface AcpDispatcherOptions {
 
 export class AcpDispatcher {
   private workspace: string;
+  private readonly cancellations: AcpSessionCancellation;
   private send: (message: unknown) => void;
   private onControlResponse?: (requestId: string, approved: boolean, extra?: Record<string, unknown>) => void;
   private onPermissionOutcome?: (
@@ -128,6 +53,7 @@ export class AcpDispatcher {
     options: AcpDispatcherOptions,
   ) {
     this.send = options.send;
+    this.cancellations = new AcpSessionCancellation(state, options.send);
     this.workspace = options.workspace ?? process.cwd();
     this.onControlResponse = options.onControlResponse;
     this.onPermissionOutcome = options.onPermissionOutcome;
@@ -151,7 +77,11 @@ export class AcpDispatcher {
     // 处理 JSON-RPC 通知（有 method 但无 id），如 session/update
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id === undefined) {
       console.log("[acp-dispatcher] ← notification:", JSON.stringify(raw).slice(0, 500));
-      this.send({ jsonrpc: "2.0", method: msg.method, params: msg.params });
+      if (msg.method === ACP_METHOD.SESSION_CANCEL) {
+        await this.cancellations.cancel(undefined, msg.params as { sessionId?: string } | undefined);
+      } else {
+        this.send({ jsonrpc: "2.0", method: msg.method, params: msg.params });
+      }
       return;
     }
 
@@ -240,7 +170,7 @@ export class AcpDispatcher {
           await this.handlePrompt(id, params as { content: ContentBlock[]; sessionId?: string });
           break;
         case ACP_METHOD.SESSION_CANCEL:
-          await this.handleCancel(id, params as { sessionId?: string } | undefined);
+          await this.cancellations.cancel(id, params as { sessionId?: string } | undefined);
           break;
         case ACP_METHOD.SESSION_SET_MODEL:
           await this.handleSetSessionModel(id, params as { modelId: string });
@@ -290,6 +220,7 @@ export class AcpDispatcher {
   }
 
   private handleDisconnect(): void {
+    this.cancellations.clear();
     cancelPendingPermissions(this.state);
     this.state.connection = null;
     this.state.sessionId = null;
@@ -338,6 +269,7 @@ export class AcpDispatcher {
       this.send(createErrorResponse(id, -32000, "No active session"));
       return;
     }
+    const complete = this.cancellations.beginPrompt(sessionId);
     try {
       const result = await this.state.connection.prompt({
         sessionId,
@@ -346,6 +278,8 @@ export class AcpDispatcher {
       this.send(createSuccessResponse(id, result));
     } catch (error) {
       this.send(createForwardedErrorResponse(id, error, `Prompt failed: ${(error as Error).message}`));
+    } finally {
+      complete();
     }
   }
 
@@ -357,25 +291,6 @@ export class AcpDispatcher {
     this.state.pendingPermissions.delete(payload.requestId);
     pending.resolve(payload.outcome);
     this.send(createSuccessResponse(id, { acknowledged: true }));
-  }
-
-  /**
-   * 处理 session/cancel。params.sessionId 透传 RPC 中的目标会话（多会话并发下
-   * cancel 必须精确路由到对应 session 的 query）；旧客户端不携带时 fallback
-   * 当前会话（state.sessionId），保持向后兼容。
-   */
-  private async handleCancel(id: number | string, params: { sessionId?: string } = {}): Promise<void> {
-    if (!this.state.connection || !this.state.sessionId) {
-      this.send(createSuccessResponse(id, { cancelled: false }));
-      return;
-    }
-    cancelPendingPermissions(this.state);
-    try {
-      await this.state.connection.cancel({ sessionId: params.sessionId ?? this.state.sessionId });
-      this.send(createSuccessResponse(id, { cancelled: true }));
-    } catch (error) {
-      this.send(createErrorResponse(id, -32603, `Cancel failed: ${(error as Error).message}`));
-    }
   }
 
   private async handleSetSessionModel(id: number | string, params: { modelId: string }): Promise<void> {
