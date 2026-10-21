@@ -98,7 +98,7 @@ describe("relay 与会话频道的内存边界", () => {
   // 原始 JSON-RPC session/update 文本必须写入当前 RCS 的活动 turn，而非 ACP session 标识对应的任意 Doc。
   test("projects raw session/update text only into its bound RCS document", async () => {
     const { manager, registry, handler, sent } = await setupRelay();
-    manager.registerUserMessage("rcs-1", "question");
+    await manager.registerUserMessage("rcs-1", "question");
     registry.addClient("client-1", {
       ws: { readyState: 1, send() {}, close() {} },
       userId: "user-1",
@@ -139,7 +139,7 @@ describe("relay 与会话频道的内存边界", () => {
     const { manager, registry, handler, sent } = await setupRelay();
     await manager.openChat("rcs-2");
     await manager.openSession("user-1", "agent-1", "rcs-2");
-    manager.registerUserMessage("rcs-1", "question");
+    await manager.registerUserMessage("rcs-1", "question");
     registry.addClient("client-1", {
       ws: { readyState: 1, send() {}, close() {} },
       userId: "user-1",

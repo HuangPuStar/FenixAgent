@@ -282,7 +282,7 @@ async function openChat(harness: Harness): Promise<void> {
 async function seedPersistedProjection(harness: Harness, sessionId: string, text: string): Promise<void> {
   const sessionDoc = (await harness.docManager.openSession("user-1", "agent-1", RCS_SESSION_ID)).ydoc;
   await harness.docManager.openChat(RCS_SESSION_ID);
-  harness.docManager.registerUserMessage(RCS_SESSION_ID, text);
+  await harness.docManager.registerUserMessage(RCS_SESSION_ID, text);
   setSessionInfo(sessionDoc, { sessionId, title: "持久化会话", status: "ready" });
 }
 

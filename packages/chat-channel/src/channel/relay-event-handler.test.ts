@@ -346,7 +346,7 @@ describe("RelayEventHandler", () => {
       const { docManager, chatDoc } = await createBoundDocs(rcsSessionId);
       const handler = createRelayEvents(registry, broadcaster, [], { docManager });
       const shared = relayOn(rcsSessionId);
-      const turnId = docManager.registerUserMessage(rcsSessionId, "hello");
+      const turnId = await docManager.registerUserMessage(rcsSessionId, "hello");
       shared.pendingPromptIds = new Set([1]);
       shared.pendingPromptTurns = new Map([[1, turnId]]);
 
@@ -763,7 +763,7 @@ describe("RelayEventHandler replay window", () => {
     expect(logs.some((message) => message.includes("tool_call without writable turn"))).toBe(false);
 
     handler.convergeReplayWindow(shared);
-    docManager.registerUserMessage(shared.rcsSessionId, "实时消息");
+    await docManager.registerUserMessage(shared.rcsSessionId, "实时消息");
     await handle({
       jsonrpc: "2.0",
       method: "session/update",
@@ -837,7 +837,7 @@ describe("RelayEventHandler replay window", () => {
     const broadcaster = new YjsBroadcaster(registry);
     const { docManager, chatDoc } = await createBoundDocs("rcs-1");
     const handler = createRelayEvents(registry, broadcaster, [], { docManager });
-    docManager.registerUserMessage("rcs-1", "上一轮已投影的消息");
+    await docManager.registerUserMessage("rcs-1", "上一轮已投影的消息");
     const shared = relayOn("rcs-1");
     registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
 
@@ -963,7 +963,7 @@ describe("RelayEventHandler replay window", () => {
     registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
     const shared = relayOn("rcs-1");
     shared.replayWindowUntil = future;
-    docManager.registerUserMessage("rcs-1", "实时用户消息");
+    await docManager.registerUserMessage("rcs-1", "实时用户消息");
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -987,7 +987,7 @@ describe("RelayEventHandler replay window", () => {
     registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
     const shared = relayOn("rcs-1");
     shared.replayWindowUntil = future;
-    docManager.registerUserMessage("rcs-1", "实时用户消息");
+    await docManager.registerUserMessage("rcs-1", "实时用户消息");
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -1016,7 +1016,7 @@ describe("RelayEventHandler replay window", () => {
     const shared = relayOn("rcs-1");
     shared.replayWindowUntil = future;
     // 预写时间线内容（模拟重连场景 doc 已有历史与活动 turn）
-    docManager.registerUserMessage("rcs-1", "已有历史消息");
+    await docManager.registerUserMessage("rcs-1", "已有历史消息");
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -1533,7 +1533,7 @@ describe("RelayEventHandler callback routing", () => {
   // turnId=null 的条目，并把它永久留在 streaming）。
   test("drops the live echo that duplicates an existing user entry", async () => {
     const { docManager, chatDoc, onMessage } = await setup();
-    docManager.registerUserMessage("rcs-1", "第一条消息");
+    await docManager.registerUserMessage("rcs-1", "第一条消息");
 
     await onMessage(userEchoFrame("第一条消息"));
 
@@ -1545,7 +1545,7 @@ describe("RelayEventHandler callback routing", () => {
   // 不得因逐字比较漏判而复制出 callback 条目。
   test("drops the live echo after whitespace normalization", async () => {
     const { docManager, chatDoc, onMessage } = await setup();
-    docManager.registerUserMessage("rcs-1", "第一条 消息");
+    await docManager.registerUserMessage("rcs-1", "第一条 消息");
 
     await onMessage(userEchoFrame("\n第一条   消息  \n"));
 
@@ -1557,7 +1557,7 @@ describe("RelayEventHandler callback routing", () => {
   // assistant entry，真实 turn 恒空且 callback 条目永久 streaming）。
   test("routes deltas to the live turn after the echo is dropped", async () => {
     const { docManager, chatDoc, onMessage } = await setup();
-    const turnId = docManager.registerUserMessage("rcs-1", "第一条消息");
+    const turnId = await docManager.registerUserMessage("rcs-1", "第一条消息");
 
     await onMessage(userEchoFrame("第一条消息"));
     await onMessage(agentChunkFrame("回答一"));
@@ -1592,7 +1592,7 @@ describe("RelayEventHandler callback routing", () => {
     const callbackAssistantId = callbackEntryIds(chatDoc)[1]!;
     const statusBefore = getEntry(chatDoc, callbackAssistantId)?.get("status");
 
-    const turnId = docManager.registerUserMessage("rcs-1", "第二条消息");
+    const turnId = await docManager.registerUserMessage("rcs-1", "第二条消息");
     await onMessage(agentChunkFrame("回答二"));
     await waitFlush();
 
@@ -1607,7 +1607,7 @@ describe("RelayEventHandler callback routing", () => {
   test("stale callback terminal does not finish the live turn", async () => {
     const { docManager, chatDoc, onMessage } = await setup();
     await onMessage(userEchoFrame("后台回调消息"));
-    const turnId = docManager.registerUserMessage("rcs-1", "第二条消息");
+    const turnId = await docManager.registerUserMessage("rcs-1", "第二条消息");
 
     await onMessage({ type: "prompt_complete", payload: { stopReason: "end_turn" } } as unknown as RelayMessage);
     await onMessage(agentChunkFrame("回答二"));
@@ -1651,7 +1651,7 @@ describe("RelayEventHandler callback routing", () => {
     expect(shared.callbackAssistantEntryId).toBeTruthy();
 
     // 换代后新一轮：无 turnId 增量落新 turn 的 assistant entry（不被失效绑定吃掉）
-    const turnId = docManager.registerUserMessage("rcs-1", "换代后新消息");
+    const turnId = await docManager.registerUserMessage("rcs-1", "换代后新消息");
     await onMessage(agentChunkFrame("换代后回答"));
     await waitFlush();
     const replacedChatDoc = docManager.getChatYdoc("rcs-1")!;
@@ -1712,7 +1712,7 @@ describe("RelayEventHandler sync turn binding", () => {
   // 子 Agent 增量没有 turnId 时保持无归属，不得绑定主 Agent 的活动 turn。
   test("subagent delta without turnId is not bound to the active turn", async () => {
     const { docManager, forwarded, onMessage } = await setup();
-    const activeTurnId = docManager.registerUserMessage("rcs-1", "主消息");
+    const activeTurnId = await docManager.registerUserMessage("rcs-1", "主消息");
 
     await onMessage(agentChunkFrame("子 Agent 输出", { _meta: { peri: { sourceAgentId: "child_1" } } }));
 
@@ -1725,7 +1725,7 @@ describe("RelayEventHandler sync turn binding", () => {
   // callback 增量已由 callbackEntryId 归属，不得再借用主 Agent 的活动 turn。
   test("callback delta without turnId is not bound to the active turn", async () => {
     const { docManager, forwarded, onMessage } = await setup();
-    docManager.registerUserMessage("rcs-1", "主消息");
+    await docManager.registerUserMessage("rcs-1", "主消息");
 
     await onMessage({
       jsonrpc: "2.0",
@@ -1745,7 +1745,7 @@ describe("RelayEventHandler sync turn binding", () => {
   // 防回归：主 Agent 普通无 turnId 增量仍按活动 turn 绑定。
   test("main-agent delta without turnId still binds the active turn", async () => {
     const { docManager, forwarded, onMessage } = await setup();
-    const activeTurnId = docManager.registerUserMessage("rcs-1", "主消息");
+    const activeTurnId = await docManager.registerUserMessage("rcs-1", "主消息");
 
     await onMessage(agentChunkFrame("主 Agent 回答"));
 

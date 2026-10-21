@@ -114,9 +114,7 @@ describe("DocManager 投影生命周期栅栏（快路径）", () => {
     expect(errors.some(({ context }) => context.includes("active generation revalidation failed"))).toBe(true);
 
     const entriesBefore = getEntryOrder(chat.ydoc).length;
-    const turnId = manager.registerUserMessage(rcsSessionId, "message during outage");
-    // Redis 模式下用户消息写入前会异步复核 active generation；等复核落定后再断言投影。
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const turnId = await manager.registerUserMessage(rcsSessionId, "message during outage");
 
     expect(typeof turnId).toBe("string");
     // user entry + 预置的 assistant pending entry 各一条。
@@ -342,5 +340,44 @@ describe("DocManager 投影生命周期栅栏（快路径）", () => {
       destroyGate.restore();
       await manager.closeAll();
     }
+  });
+
+  // await 返回即代表用户消息已落库：写完成前到达的无 turnId 回显能命中去重，不会生成第二条气泡。
+  test("resolves only after the user entry is visible to echo dedup", async () => {
+    const rcsSessionId = "rcs_fastpath_user_message_dedup";
+    const redis = new ProdRedis();
+    const manager = createManager(() => redis);
+    const chat = await manager.openChat(rcsSessionId);
+    await manager.openSession("user-1", "agent-1", rcsSessionId);
+
+    const turnId = await manager.registerUserMessage(rcsSessionId, "race text");
+
+    expect(getEntriesMap(chat.ydoc).get(`${turnId}:user`)).toBeDefined();
+    expect(manager.hasUserMessageText(rcsSessionId, "race text")).toBe(true);
+    // user entry + assistant pending entry：回显若抢跑会多出 callback_* 气泡。
+    expect(getEntryOrder(chat.ydoc).length).toBe(2);
+    await manager.closeAll();
+  });
+
+  // Redis 复核后的写入抛错必须走 onError（而不是 unhandled rejection），调用方仍拿到 turnId。
+  test("reports asynchronous user message write failures through onError", async () => {
+    const rcsSessionId = "rcs_fastpath_user_message_write_error";
+    const redis = new ProdRedis();
+    const errors: Array<{ context: string; error: unknown }> = [];
+    const manager = createManager(() => redis, {
+      onError: (context, error) => errors.push({ context, error }),
+    });
+    await manager.openChat(rcsSessionId);
+    await manager.openSession("user-1", "agent-1", rcsSessionId);
+    manager.processNormalizedEvent = () => {
+      throw new Error("write failed");
+    };
+
+    const turnId = await manager.registerUserMessage(rcsSessionId, "boom");
+
+    expect(typeof turnId).toBe("string");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.context).toContain("user message write failed");
+    await manager.closeAll();
   });
 });

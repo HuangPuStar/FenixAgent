@@ -417,7 +417,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test.each([null, "ses-saved"])("恢复连接绑定 %s 后 prompt 使用投影会话", async (acpSessionId) => {
     const harness = await createHarness({ acpSessionId, sessionLoaded: false });
     getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).set("sessionId", "ses-saved");
-    harness.manager.registerUserMessage("rcs-1", "已保存的用户消息");
+    await harness.manager.registerUserMessage("rcs-1", "已保存的用户消息");
     await submit(harness, { action: "load_session", commandId: "restore-saved", sessionId: "ses-saved" });
     expect(harness.sent).toEqual([]);
     expect(harness.replacements).toEqual([]);

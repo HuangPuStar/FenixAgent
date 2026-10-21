@@ -103,7 +103,7 @@ test("batches text deltas for one RCS session without losing their order", async
   manager = new DocManager({ acpBatchWindowMs: 5 });
   await manager.openChat("rcs_batch");
   await manager.openSession("user-1", "agent-1", "rcs_batch");
-  const turnId = manager.registerUserMessage("rcs_batch", "question");
+  const turnId = await manager.registerUserMessage("rcs_batch", "question");
 
   manager.processNormalizedEvent("rcs_batch", event("message_delta", { content: { type: "text", text: "first " } }));
   manager.processNormalizedEvent("rcs_batch", event("message_delta", { content: { type: "text", text: "second" } }));
@@ -120,8 +120,8 @@ test("keeps buffered text deltas isolated between RCS sessions", async () => {
     await manager.openChat(rcsSessionId);
     await manager.openSession("user-1", "agent-1", rcsSessionId);
   }
-  const turnA = manager.registerUserMessage("rcs_a", "a");
-  const turnB = manager.registerUserMessage("rcs_b", "b");
+  const turnA = await manager.registerUserMessage("rcs_a", "a");
+  const turnB = await manager.registerUserMessage("rcs_b", "b");
 
   manager.processNormalizedEvent("rcs_a", event("message_delta", { content: { type: "text", text: "private-a" } }));
   manager.processNormalizedEvent("rcs_b", event("message_delta", { content: { type: "text", text: "private-b" } }));
@@ -137,7 +137,7 @@ test("flushes buffered text before applying a terminal state update", async () =
   manager = new DocManager({ acpBatchWindowMs: 1_000 });
   await manager.openChat("rcs_control");
   await manager.openSession("user-1", "agent-1", "rcs_control");
-  const turnId = manager.registerUserMessage("rcs_control", "question");
+  const turnId = await manager.registerUserMessage("rcs_control", "question");
 
   manager.processNormalizedEvent(
     "rcs_control",
@@ -194,7 +194,7 @@ test("notifies permission scheduling from the projected permission state", async
   );
   await manager.openChat("rcs_permission");
   await manager.openSession("user-1", "agent-1", "rcs_permission");
-  manager.registerUserMessage("rcs_permission", "question");
+  await manager.registerUserMessage("rcs_permission", "question");
 
   manager.processNormalizedEvent(
     "rcs_permission",
@@ -214,7 +214,7 @@ test("rejects malformed permission requests without scheduling a timer", async (
   manager.setPermissionRequestedHandler((_rcsSessionId, permission) => notifications.push(permission.permissionId));
   await manager.openChat("rcs_invalid_permission");
   await manager.openSession("user-1", "agent-1", "rcs_invalid_permission");
-  manager.registerUserMessage("rcs_invalid_permission", "question");
+  await manager.registerUserMessage("rcs_invalid_permission", "question");
 
   manager.processNormalizedEvent("rcs_invalid_permission", event("permission_requested", {}));
 
@@ -231,7 +231,7 @@ test("notifies question scheduling for the requesting RCS session", async () => 
   );
   await manager.openChat("rcs_question");
   await manager.openSession("user-1", "agent-1", "rcs_question");
-  manager.registerUserMessage("rcs_question", "question");
+  await manager.registerUserMessage("rcs_question", "question");
 
   manager.processNormalizedEvent(
     "rcs_question",
@@ -247,7 +247,7 @@ test("notifies question scheduling for the requesting RCS session", async () => 
 test("rejects malformed question requests without projecting a pending question", async () => {
   await manager.openChat("rcs_invalid_question");
   await manager.openSession("user-1", "agent-1", "rcs_invalid_question");
-  manager.registerUserMessage("rcs_invalid_question", "question");
+  await manager.registerUserMessage("rcs_invalid_question", "question");
 
   manager.processNormalizedEvent("rcs_invalid_question", event("question_requested", {}));
 
@@ -259,7 +259,7 @@ test("rejects malformed question requests without projecting a pending question"
 test("replaces an RCS projection with a new generation and empty timeline", async () => {
   const chat = await manager.openChat("rcs_generation");
   await manager.openSession("user-1", "agent-1", "rcs_generation");
-  manager.registerUserMessage("rcs_generation", "old message");
+  await manager.registerUserMessage("rcs_generation", "old message");
 
   const replacement = await manager.replaceProjection("rcs_generation", "ses-new");
 
@@ -277,7 +277,7 @@ test("releases every document and cancels pending batches on closeAll", async ()
   await manager.openSession("user-1", "agent-1", "rcs_close_a");
   await manager.openChat("rcs_close_b");
   await manager.openSession("user-1", "agent-1", "rcs_close_b");
-  manager.registerUserMessage("rcs_close_a", "question");
+  await manager.registerUserMessage("rcs_close_a", "question");
   manager.processNormalizedEvent("rcs_close_a", event("message_delta", { content: { type: "text", text: "stale" } }));
 
   await manager.closeAll();
@@ -297,7 +297,7 @@ test("broadcasts updates with RCS-scoped document names", async () => {
   await manager.openSession("user-1", "agent-1", "rcs_broadcast_b");
   broadcasts.length = 0;
 
-  manager.registerUserMessage("rcs_broadcast_a", "private message");
+  await manager.registerUserMessage("rcs_broadcast_a", "private message");
 
   expect(broadcasts).toContain("chat:rcs_broadcast_a");
   expect(broadcasts).not.toContain("chat:rcs_broadcast_b");
@@ -312,7 +312,7 @@ test("detects duplicate user text and ignores non-user or empty text", async () 
   manager = new DocManager({ acpBatchWindowMs: 1_000 });
   await manager.openChat("rcs_echo");
   await manager.openSession("user-1", "agent-1", "rcs_echo");
-  manager.registerUserMessage("rcs_echo", "第一条 消息");
+  await manager.registerUserMessage("rcs_echo", "第一条 消息");
   manager.processNormalizedEvent(
     "rcs_echo",
     event("message_delta", { content: { type: "text", text: "只有助手有这段文本" } }, "turn-1"),

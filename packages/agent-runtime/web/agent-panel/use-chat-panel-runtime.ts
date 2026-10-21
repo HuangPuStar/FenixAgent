@@ -554,7 +554,6 @@ export function useChatPanelRuntime({
     const yjsWs = createYjsWs({
       url: relayUrl,
       onYjsUpdate: (docName, data, generation) => {
-        noteRecoveredDoc(docName);
         try {
           applyDocHubUpdate(rcsSessionKey, docName, generation ?? "", data);
         } catch (err) {
@@ -569,6 +568,11 @@ export function useChatPanelRuntime({
       getYjsGenerations: () => getDocHubGenerations(rcsSessionKey),
       onError: (error) => setClassifiedError(error),
       onHistoryIncomplete: (info) => recordHistoryIncomplete(info),
+      // 只有服务端显式确认本轮初始同步完成才算恢复：实时 update 会在握手期间穿插到达，
+      // 若拿它当证据，缺失文档尚未交付就会提前解除发送门禁。
+      onSyncComplete: (info) => {
+        for (const docName of info.docs) noteRecoveredDoc(docName);
+      },
       onClose: (close) => {
         // 关闭码语义取自策略表（`resolveYjsWsCloseOutcome`，同一份知识，见 yjs-ws.ts）：
         // 终态码（4001 实例回收 / 4002 用户主动停止 / 4004 / 4500 / 4501 / 4502）客户端不会再自动重连，
