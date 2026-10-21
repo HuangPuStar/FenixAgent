@@ -155,7 +155,7 @@ describe("connection-test-helpers 内存连接语义", () => {
     const channel = createSessionChannelStub();
     const relayed: Record<string, unknown>[] = [];
 
-    await channel.handleAction(
+    await channel.handleClientAction(
       {
         sendToRelay: (message) => {
           relayed.push(message);

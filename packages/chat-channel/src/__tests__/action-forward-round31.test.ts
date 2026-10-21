@@ -36,7 +36,7 @@ function createDependencies(
   const reports: Array<[string, unknown]> = [];
   const logs: string[] = [];
   const sessionChannel = {
-    async handleAction(
+    async handleClientAction(
       entry: SessionConnection,
       action: Record<string, unknown>,
       sinks: { sendAck: (ack: ActionAck) => void; sendError: (error: ActionError) => void },
@@ -96,7 +96,7 @@ describe("action-forward 协议、错误隔离与缓冲清理", () => {
     expect(fixture.errors).toEqual([]);
   });
 
-  // commandId 的不同合法形态不得被转发层修改或丢失。
+  // 转发层保持信封原样，由唯一严格入口验证 commandId 结构，不能自行修正旧标识。
   test.each([
     ["空字符串", ""],
     ["短标识", "a"],

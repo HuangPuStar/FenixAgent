@@ -311,6 +311,7 @@
           "SESSION_NOT_FOUND": "The action session was not found.",
           "VERSION_CONFLICT": "The action state version conflicted.",
           "INVALID_STATE": "The action is invalid in the current state.",
+          "OUTCOME_UNKNOWN": "The action outcome is unknown. Resync and verify its result before continuing.",
           "RATE_LIMITED": "Too many actions were submitted.",
           "PAYLOAD_TOO_LARGE": "The action payload is too large.",
           "AGENT_UNAVAILABLE": "The Agent is unavailable for the action.",

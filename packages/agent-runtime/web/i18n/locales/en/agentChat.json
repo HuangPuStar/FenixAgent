@@ -20,5 +20,9 @@
   "historyRecoveryRetrying": "Retrying history sync...",
   "filePicker": {
     "title": "Select File"
-  }
+  },
+  "promptRecoveryUnknown": "The result of this message is unknown. Its text, images and attachments are saved. Check the conversation before sending it again.",
+  "promptRecoverySaved": "This message was not sent. Its text, images and attachments are saved. Confirm the current conversation before retrying.",
+  "promptRecoverySendCurrent": "Send to current conversation",
+  "promptRecoveryDiscard": "Discard saved message"
 }

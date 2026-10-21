@@ -69,11 +69,12 @@ function createConnection(overrides: Partial<SessionConnection> = {}): SessionCo
     rcsSessionId: "rcs-1",
     acpSessionId: "ses-1",
     agentStatusReceived: true,
-    sessionLoaded: false,
+    sessionLoaded: true,
     workspacePath: "/workspace/org-1/user-1/env-1",
     lastClientKeepalive: 0,
     sendToRelay: () => {},
     getNextRpcId: () => ++nextRpcId,
+    awaitSessionMutation: () => ({ completed: Promise.resolve(true), cancel: () => {} }),
     ...overrides,
   };
 }
@@ -303,7 +304,12 @@ describe("cancel flow through CommandCoordinator", () => {
 
     await h.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(h),
     );
     await h.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, createSinks(h));
@@ -330,7 +336,12 @@ describe("cancel flow through CommandCoordinator", () => {
 
     await h.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(h),
     );
     await h.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, createSinks(h));
@@ -351,14 +362,24 @@ describe("cancel flow through CommandCoordinator", () => {
 
     await h.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(h),
     );
     await h.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, createSinks(h));
     // 超时前用户发起新 turn（旧 turn 被终结）
     await h.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-3", content: [{ type: "text", text: "again" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-3",
+        content: [{ type: "text", text: "again" }],
+      },
       createSinks(h),
     );
 
@@ -377,7 +398,12 @@ describe("cancel flow through CommandCoordinator", () => {
 
     await h.channel.handleAction(
       connection,
-      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hi" }] },
+      {
+        sessionId: connection.acpSessionId,
+        action: "send_prompt",
+        commandId: "cmd-1",
+        content: [{ type: "text", text: "hi" }],
+      },
       createSinks(h),
     );
     await h.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, createSinks(h));

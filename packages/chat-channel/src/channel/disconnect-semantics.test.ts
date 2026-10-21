@@ -39,7 +39,6 @@ function createRealStack(options: { ensureRunning?: GatewayDependencies["ensureR
     registerYjsDocListener: broadcaster.registerYjsDocListener.bind(broadcaster),
     reportError: () => {},
     touchInstanceActivity: () => {},
-    terminateLocalDeadInstance: () => {},
   });
   const gateway = createGateway(registry, broadcaster, relayEvents, {
     docManager,

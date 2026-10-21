@@ -53,11 +53,14 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
           : deps.docManager.getSession(entry.rcsSessionId);
       if (!doc || doc.generation !== frame.generation) return;
       const delivery = deps.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
-      noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, delivery);
+      noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, frame.generation, delivery);
       return;
     }
     if (!entry?.relayReady) {
-      deps.registry.bufferPending(wsId, data);
+      if (!deps.registry.bufferPending(wsId, data)) {
+        deps.registry.discardPending(wsId);
+        ws.close(1013, "pending message budget exceeded");
+      }
       return;
     }
     let parsed: Record<string, unknown>;

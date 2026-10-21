@@ -24,6 +24,7 @@ export const PUBLIC_ERROR_TYPES = [
   "ACTION.SESSION_NOT_FOUND",
   "ACTION.VERSION_CONFLICT",
   "ACTION.INVALID_STATE",
+  "ACTION.OUTCOME_UNKNOWN",
   "ACTION.RATE_LIMITED",
   "ACTION.PAYLOAD_TOO_LARGE",
   "ACTION.AGENT_UNAVAILABLE",
@@ -94,6 +95,10 @@ export const PUBLIC_ERROR_MESSAGES: Readonly<Record<PublicErrorType, PublicError
   "ACTION.SESSION_NOT_FOUND": { zh: "操作对应的会话不存在。", en: "The action session was not found." },
   "ACTION.VERSION_CONFLICT": { zh: "操作状态版本冲突。", en: "The action state version conflicted." },
   "ACTION.INVALID_STATE": { zh: "当前状态不允许执行该操作。", en: "The action is invalid in the current state." },
+  "ACTION.OUTCOME_UNKNOWN": {
+    zh: "操作结果尚未确认，请重新同步并核对后再操作。",
+    en: "The action outcome is unknown. Resync and verify its result before continuing.",
+  },
   "ACTION.RATE_LIMITED": { zh: "当前操作请求过多。", en: "Too many actions were submitted." },
   "ACTION.PAYLOAD_TOO_LARGE": { zh: "操作数据过大。", en: "The action payload is too large." },
   "ACTION.AGENT_UNAVAILABLE": { zh: "Agent 当前不可用于该操作。", en: "The Agent is unavailable for the action." },
