@@ -145,7 +145,7 @@ export function registerRemoteNode(
  * 远程 machine 断连后，清理 transport 缓存并更新 node 状态为 offline。
  * 同时收敛该 machineId 下的所有实例记录，使后续 ensureRunning 能重新 launch。
  */
-export function unregisterRemoteNode(machineId: string): void {
+export function unregisterRemoteNode(machineId: string, options?: { runtimeTerminated?: boolean }): void {
   remoteTransports.delete(machineId);
   const runtime = getCoreRuntime();
   const existing = runtime.getNode(machineId);
@@ -154,5 +154,7 @@ export function unregisterRemoteNode(machineId: string): void {
   }
   // 该 machineId 下的实例必须连同实例登记表与空环境计数器一并收敛，否则沙盒销毁等
   // 不经过 ACP handler 的路径（Sandbox → Machine 释放 → 本函数）会永久占用并发额度。
-  getBoundAgentRuntime().cleanupMachineInstances(machineId);
+  // runtimeTerminated 由「机器退役 / 释放沙盒」的确定终止路径传入：此时还要复位持久实例的
+  // 运行态，否则残留的 running/unknown 会挡住下一次启动，沙盒无法按新配置重建。
+  getBoundAgentRuntime().cleanupMachineInstances(machineId, options);
 }

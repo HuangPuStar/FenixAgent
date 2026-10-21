@@ -49,7 +49,7 @@
   "confirmRebuildTitle": "确认重建沙盒？",
   "confirmRebuildDescription": "该操作会重建目标沙盒实例，可能导致当前运行状态短暂中断。",
   "confirmResourceUpdateTitle": "确认修改沙盒资源？",
-  "confirmResourceUpdateDescription": "保存后会销毁旧 Provider 资源，将实例置为 stopped 并清空外部沙盒 ID，之后需要手动执行重建。",
+  "confirmResourceUpdateDescription": "保存后会销毁旧 Provider 资源，将实例置为 stopped 并清空外部沙盒 ID，下次进入智能体时会按新配置自动重建。",
   "confirmDeleteTitle": "确认删除？",
   "confirmDeleteDescription": "确定要删除“{{name}}”吗？此操作不可撤销。",
   "instanceId": "实例 ID",

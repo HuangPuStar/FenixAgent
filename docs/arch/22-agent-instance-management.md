@@ -246,6 +246,16 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 - 该复位不覆盖：`stop`/`delete` 操作失败产生的 `unknown`、shutdown 排空产生的 `unknown`（二者不带机器归属，不参与复位、保持 `unknown`，仍须先完成 clean-slate/reconcile；`unknown` gate 仍只放行 `stop`，见 :227-228）；机器不重连时按上文第 7 条保持 `unknown`。
 - shutdown 中同样不参与复位：`handleMachineCleanSlate` 与延后补做都带 `!this.#shuttingDown` 守卫（:123、:264），原因见 :262-263 注释——进程退出中不得把 shutdown drain 留下的未确认 runtime 伪装成 `stopped`。delete 被断连 fence 后 `deleting` 残留属相邻缺口，本次不修。
 
+### 沙盒销毁/机器退役的确定终止（2026-10-21）
+
+`MachineHostPort.unregisterCoreRuntimeNode` 只被「机器退役 / 释放沙盒」调用，是**确定终止**而非暂时断连：Provider 资源已销毁，旧 Agent 进程不可能回连。该路径经 `unregisterRemoteNode(machineId, { runtimeTerminated: true })` 调用 `AgentInstanceRuntimeCoordinator.handleRuntimeTerminated`，把相关条目直接复位为 `stopped`：
+
+- 按 `instanceUids`（core runtime 与编排域收敛时收集到的实体）匹配，覆盖释放先于断连事件到达的情形；
+- 按 `machineId` 匹配条目已记录的断连归属，覆盖断连事件先于释放到达、条目已进入 `unknown` 的情形；
+- ACP 断连 / 重连路径不设置该标记，`unknown` 仍只能由 Machine clean-slate 复位。
+
+未做这一步时，沙盒配置变更销毁资源后条目会停留在 `running` 或 `unknown`：前者让下一次 `ensure` 直接返回（沙盒永远不重建），后者让 `ensure`/`restart` 被 `unknown` gate 拒绝（实例启动 500）。
+
 ## 10. 安全、故障与观测
 
 - `instanceUid` 只是资源定位符，不是授权凭据；每次操作必须从 DB 恢复 owner、Environment 和组织上下文后重新授权。

@@ -202,6 +202,11 @@ export class AgentInstanceService {
     return this.coordinator.handleMachineCleanSlate(machineId);
   }
 
+  /** 平台确认终止机器 runtime（沙盒销毁/机器退役）后复位相关条目;返回被复位的实例 uid。 */
+  handleRuntimeTerminated(input: { machineId?: string; instanceUids?: readonly string[] }): string[] {
+    return this.coordinator.handleRuntimeTerminated(input);
+  }
+
   shutdownRuntimes(): Promise<void> {
     return this.coordinator.shutdown();
   }

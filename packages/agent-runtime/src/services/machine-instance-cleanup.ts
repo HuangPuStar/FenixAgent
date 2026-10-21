@@ -14,10 +14,12 @@
 
 import { log } from "@fenix/logger";
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
-import { agentInstanceRuntimeCoordinator } from "../server/services/agent-instance-service";
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
+import { agentInstanceRuntimeCoordinator, agentInstanceService } from "../server/services/agent-instance-service";
 import { getBoundCoreRuntime } from "../server/services/core-runtime-port";
+import { tryGetRelayLifecyclePort } from "../server/transport/relay/lifecycle-port";
 import { globalInstanceRegistry } from "./instance-registry";
-import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
+import { removeOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
 
 /**
  * 删除指定机器在 Core runtime 上的实例，并收敛其登记表与编排域状态（`AgentRuntimePort.cleanupMachineInstances`
@@ -27,10 +29,14 @@ import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine
  * （`cleanupOrchestrationInstancesForMachine`，本函数无条件调用）负责，两者互补、都幂等。
  *
  * @param machineId 目标机器 ID（内部标识，非用户输入）
+ * @param options.runtimeTerminated 机器上的 runtime 已被平台确定终止（销毁 Provider 沙盒、机器退役），
+ *   而不是暂时断连。此时持久实例的运行态条目一并复位为 `stopped`；断连路径不得设置，否则会把
+ *   「可能仍在运行的远端进程」误判为可重新启动。
  * @returns 实际从 Core runtime 删除的实例数
  */
-export function convergeMachineInstances(machineId: string): number {
+export function convergeMachineInstances(machineId: string, options: { runtimeTerminated?: boolean } = {}): number {
   const runtime = getBoundCoreRuntime();
+  const removedInstanceIds: string[] = [];
   let removed = 0;
 
   for (const instance of runtime.listInstances()) {
@@ -44,11 +50,27 @@ export function convergeMachineInstances(machineId: string): number {
     }
     runtime.deleteInstance(instance.instanceId);
     globalInstanceRegistry.unregisterAndDeleteCounter(instance.instanceId);
+    removedInstanceIds.push(instance.instanceId);
     removed += 1;
     log(`[machine-instance-cleanup] Deleted instance ${instance.instanceId} on machine ${machineId}`);
   }
 
-  cleanupOrchestrationInstancesForMachine(machineId);
+  const orchestrationInstanceIds = removeOrchestrationInstancesForMachine(machineId);
+
+  if (options.runtimeTerminated) {
+    const instanceUids = [...removedInstanceIds, ...orchestrationInstanceIds];
+    // 沙盒 Provider 资源已被销毁、机器退役：旧进程不可能回连，运行态条目必须直接复位为
+    // stopped。否则残留的 running/unknown 会挡住下一次 enter/restart，沙盒永远不按新配置重建。
+    agentInstanceService.handleRuntimeTerminated({ machineId, instanceUids });
+    // 释放先于断连事件到达时，ACP handler 的清理收集不到实例 ID，前端 relay 连接会挂在已死
+    // 的 runtime 上；按同一「机器不可用」语义关闭，前端重进时重新建连。
+    const relayPort = tryGetRelayLifecyclePort();
+    if (relayPort) {
+      for (const instanceId of instanceUids) {
+        relayPort.closeClientsByInstance(instanceId, WEBSOCKET_CODES.MACHINE_UNAVAILABLE.code, "machine unavailable");
+      }
+    }
+  }
 
   return removed;
 }
