@@ -4,6 +4,7 @@
 //（形参已放宽为 `unknown`，`RelayEvent` 可直接传入，无需在调用点补 cast）。
 import { extractJsonRpc } from "@fenix/chat-channel";
 import type { OpenAIChatCompletionResponse } from "../schemas/openai-chat.schema";
+import { classifyAgentTurnEvent, iterateWithSignal } from "./agent-turn-events";
 
 // ── ACP 事件类型 ──
 
@@ -71,11 +72,10 @@ function extractUpdateFromRelayEvent(ev: RelayEvent): SessionUpdateEvent | null 
 }
 
 function extractCompletionFromRelayEvent(ev: RelayEvent): string | null {
-  const rpc = extractJsonRpc(ev);
-  if (!rpc) return null;
-  const result = rpc.result as Record<string, unknown> | undefined;
-  if (result?.stopReason) return result.stopReason as string;
-  return null;
+  const terminal = classifyAgentTurnEvent(ev);
+  if (!terminal) return null;
+  if (terminal.outcome !== "succeeded") throw new Error(`Agent turn ${terminal.outcome}`);
+  return terminal.stopReason ?? null;
 }
 
 // ── 消息收集器 ──
@@ -113,7 +113,7 @@ function findStopReason(events: RelayEvent[]): string {
     const reason = extractCompletionFromRelayEvent(events[i]);
     if (reason) return reason;
   }
-  return "end_turn";
+  throw new Error("Agent stream ended without confirmed completion");
 }
 
 // ── 公开 API ──
@@ -127,6 +127,7 @@ function generateChatId(): string {
  * 将 relay 事件流映射为非流式 OpenAI Chat Completion 响应。
  */
 export function mapToNonStreamingResponse(events: RelayEvent[], agentId: string): OpenAIChatCompletionResponse {
+  for (const event of events) extractCompletionFromRelayEvent(event);
   const collected = collectMessages(events);
   const stopReason = findStopReason(events);
   const reasoningContent = collected.reasoningParts.join("");
@@ -169,8 +170,8 @@ export async function* mapToSSEChunks(
   const created = Math.floor(Date.now() / 1000);
   let finished = false;
 
-  for await (const ev of eventsIterable) {
-    if (signal?.aborted) break;
+  for await (const ev of iterateWithSignal(eventsIterable, signal)) {
+    signal?.throwIfAborted();
     if (finished) break;
 
     // 检测会话结束
@@ -212,17 +213,7 @@ export async function* mapToSSEChunks(
     })}\n\n`;
   }
 
-  // 兜底：如果流结束但没发 stopReason
-  if (!finished) {
-    yield `data: ${JSON.stringify({
-      id: chatId,
-      object: "chat.completion.chunk",
-      created,
-      model: agentId,
-      choices: [{ index: 0, delta: {}, finish_reason: "end_turn" }],
-    })}\n\n`;
-    yield "data: [DONE]\n\n";
-  }
+  if (!finished) throw new Error("Agent stream ended without confirmed completion");
 }
 
 /** 构建 OpenAI 兼容错误数据 */

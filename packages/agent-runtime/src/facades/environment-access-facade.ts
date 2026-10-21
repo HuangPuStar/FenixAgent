@@ -63,6 +63,15 @@ export interface EnvironmentAccessFacadeApi {
   resolveSessionEnvironment(environmentId: string, organizationId: string): Promise<SessionEnvironmentResolution>;
 }
 
+/** 运行实例入口共用的严格环境归属规则；组织和用户必须同时匹配。 */
+export function isOwnedEnvironment(
+  environment: Pick<EnvironmentRecord, "organizationId" | "userId">,
+  organizationId: string | null,
+  userId: string,
+): boolean {
+  return Boolean(organizationId) && environment.organizationId === organizationId && environment.userId === userId;
+}
+
 class EnvironmentAccessFacade implements EnvironmentAccessFacadeApi {
   async listAcpEnvironments(organizationId: string | null, userId: string): Promise<EnvironmentRecord[]> {
     const environments = await environmentRepo.listByOrganizationId(organizationId ?? userId);
@@ -76,7 +85,7 @@ class EnvironmentAccessFacade implements EnvironmentAccessFacadeApi {
   ): Promise<EnvironmentRecord | undefined> {
     if (!organizationId) return;
     const environment = await environmentRepo.getById(environmentId);
-    if (!environment || environment.organizationId !== organizationId || environment.userId !== userId) {
+    if (!environment || !isOwnedEnvironment(environment, organizationId, userId)) {
       return;
     }
     return environment;

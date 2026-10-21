@@ -43,6 +43,7 @@ function registerSupplement(instanceId: string, environmentId: string): void {
     userId: "user-1",
     organizationId: "org-1",
     instanceName: instanceId,
+    spawnSource: "interactive",
     relayCount: 0,
     lastActivityAt: Date.now(),
     lastRelayDetachedAt: null,

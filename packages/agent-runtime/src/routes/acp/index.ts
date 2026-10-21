@@ -14,6 +14,7 @@ import { getAgentRuntimeConfig } from "../../server/config";
 import { getChatChannelController } from "../../server/services/chat-channel-bootstrap";
 import { getFileWsPort } from "../../server/services/file-ws-port";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../server/transport/acp-ws-handler";
+import { InboundMessageQueue } from "../../server/transport/inbound-message-queue";
 import {
   handleExternalRelayClose,
   handleExternalRelayMessage,
@@ -272,14 +273,8 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
     },
   });
 
-  /**
-   * 同一 WebSocket 的入站消息串行链。
-   *
-   * binary 与 text 帧由 uWS 并发投递：首个同步帧尚在 attach（等待新建 SessionConnection）时，
-   * 紧随其后的 send_prompt 可能读到尚未写入的 `entry.syncConnection`，用户消息因此不进新投影。
-   * 按连接串行化后，后续帧一定看到前一帧完成后的连接状态。
-   */
-  const yjsMessageTails = new WeakMap<object, Promise<void>>();
+  // Elysia 每次事件都会新建 WS 包装对象，只有连接 data 的身份跨回调保持稳定。
+  const yjsMessages = new WeakMap<object, InboundMessageQueue>();
 
   /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
   const withYjsWs: AnyElysia = declareAcpWsRoute(withFileWs, "/yjs/:agentId", {
@@ -294,6 +289,16 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
       const yjsWsId = `yjs_${uuid().replace(/-/g, "")}`;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       (ws.data as any).__yjsWsId = yjsWsId;
+
+      const queue = new InboundMessageQueue(
+        "unauthenticated",
+        () => {
+          log("[YJS-WS] inbound message budget exceeded", { yjsWsId });
+          adaptWs(ws).close(1008, "inbound queue limit");
+        },
+        (error) => logError("[YJS-WS] message handler failed", error),
+      );
+      yjsMessages.set(ws.data, queue);
 
       let authResult: RequestAuthResult | null = null;
       try {
@@ -339,15 +344,23 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
         return;
       }
 
+      if (!queue.bindOwner(`${authResult.authContext?.organizationId}:${userId}`) || ws.readyState !== 1) return;
+
       log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} instanceUid=${instanceUid}`);
 
       try {
-        await getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
+        const opening = getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
           instanceUid,
           rcsSessionId: expectedRcsSessionId,
           acpSessionId,
           syncOnly,
         });
+        queue.start(async (payload) => {
+          if (ws.readyState === 1)
+            await getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload);
+        });
+        // 初始同步依赖客户端回传 state-vector；业务 action 仍由 Gateway 的 relayReady 门禁暂存。
+        await opening;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);
@@ -377,23 +390,12 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
                 : data instanceof ArrayBuffer
                   ? new Uint8Array(data)
                   : JSON.stringify(data);
-        // 同一连接的 binary/text 帧必须按到达顺序处理；前一条失败不阻塞后续帧。
-        const previous = yjsMessageTails.get(ws) ?? Promise.resolve();
-        const current = previous
-          .catch(() => {})
-          .then(() => getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload))
-          // 兜底：Gateway.handleMessage 已隔离错误；这里再吞掉极端情况下的拒绝，避免 WS 事件循环出现未处理 Promise。
-          .catch((error) => logError("[YJS-WS] message handler failed", error));
-        yjsMessageTails.set(ws, current);
-        void current.finally(() => {
-          // 只清自己的链尾：期间若又排入新帧，tails 已指向新 Promise，不能误删。
-          if (yjsMessageTails.get(ws) === current) yjsMessageTails.delete(ws);
-        });
+        yjsMessages.get(ws.data)?.enqueue(payload);
       }
     },
     close(ws) {
-      // 关闭后不再保留串行链，避免 WeakMap 之外的引用延迟连接回收。
-      yjsMessageTails.delete(ws);
+      yjsMessages.get(ws.data)?.close();
+      yjsMessages.delete(ws.data);
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {

@@ -17,6 +17,8 @@ export interface InstanceSupplement {
   organizationId: string;
   /** 实例创建来源，用于并发分类与审计。 */
   spawnSource: InstanceSpawnSource;
+  /** 程序化持久实例在无活跃执行时可回收，与首次启动来源无关。 */
+  executionIdleReclaimable?: boolean;
   /**
    * 触发本次实例启动的关联 ID（§7）：HTTP 触发取自请求上下文，独立调度 / 机器回传入口自建。
    *

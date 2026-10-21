@@ -41,6 +41,8 @@ class MemoryTurn implements PromptTurn {
     this.released += 1;
   }
 
+  async cancel(): Promise<void> {}
+
   dispose(): Promise<void> {
     return Promise.resolve();
   }
@@ -242,16 +244,17 @@ describe("round57 AgentChatTransport 内存链路", () => {
     });
   });
 
-  // 事件流无 completion 即结束时，已有内容仍是可用的正常响应。
-  test("事件流自然结束返回已收集输出", async () => {
+  // 没有明确终态的 EOF 必须失败，同时保留已有输出供诊断。
+  test("事件流自然结束未确认成功则返回失败并保留输出", async () => {
     const { session } = adapter([message({ sessionUpdate: "agent_message_chunk", content: { text: "收尾文本" } })]);
 
-    await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({ exit_code: 0, stdout: "收尾文本" });
+    await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({ exit_code: 1, stdout: "收尾文本" });
   });
 
   // AbortSignal 必须取消挂起执行，并释放此前由 connect 占用的租约。
   test("取消执行拒绝 AbortError 并释放租约", async () => {
     const turn: PromptTurn = {
+      cancel: async () => {},
       prompt: () => {},
       events: async function* () {
         await new Promise(() => {});

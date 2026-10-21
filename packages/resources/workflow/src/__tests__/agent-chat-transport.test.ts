@@ -1,19 +1,3 @@
-/**
- * AgentChatSessionAdapter 测试 — 验证 execute() 的超时兜底、relay_closed 处理
- * 与 idle/activity 观测埋点（C-P1.3 / C-P1.4）。
- *
- * 背景（C-P1.3）：execute() 超时兜底原先只置 settled 标志不 settle Promise，
- * relay_closed 消息被 extractJsonRpc 判空后 continue 跳过，两种场景都会导致
- * workflow 节点永久挂起。本测试用 FakeTurn 直接驱动事件流，验证修复后的
- * 有界失败（NODE_TIMEOUT）与明确失败（relay_closed → exit_code=1）。
- *
- * 背景（C-P1.4）：Workflow 路径全程不产生 idle/activity 观测信号（relayCount 恒 0、
- * 无 touchInstanceActivity 埋点），长任务被 idle/activity 回收误杀。修复在
- * agent-chat-transport 埋点：connect attach、execute settle 出口 detach、
- * iterateEvents 逐条 touch。本测试通过 globalInstanceRegistry 直连 supplement
- * 断言埋点效果（不 mock 模块）。
- */
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   type AgentSession as ChatAgentSession,
@@ -21,8 +5,11 @@ import {
   type PromptTurn,
 } from "@fenix/agent-runtime/runtime";
 // 真实 turn 构造与实例登记表属测试 seam（1.4 W6b）；实例能力（relay attach 埋点）经运行 port 触发。
-import { createPromptTurn, globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import {
+  createPromptTurn,
+  globalInstanceRegistry,
+  releaseAgentSessionTurns,
+} from "@fenix/agent-runtime/server/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
 import { AgentChatSessionAdapter } from "../server/services/workflow/agent-chat-transport";
@@ -79,6 +66,8 @@ class FakeTurn implements PromptTurn {
   }
 
   /** PromptTurn 接口要求；本测试不验证 dispose 语义 */
+  async cancel(): Promise<void> {}
+
   dispose(): Promise<void> {
     return Promise.resolve();
   }
@@ -287,7 +276,7 @@ describe("AgentChatSessionAdapter", () => {
     turn.end();
 
     const result = await promise;
-    expect(result.exit_code).toBe(0);
+    expect(result.exit_code).toBe(1);
     // 消息处理时 touch 必然晚于 IDLE_SINCE_BASELINE，埋点生效则断言通过
     expect(globalInstanceRegistry.get("inst-test")?.lastActivityAt).toBeGreaterThan(IDLE_SINCE_BASELINE);
   });
@@ -353,7 +342,7 @@ describe("AgentChatSessionAdapter", () => {
   // C-P1.4：无 jsonrpc 无 type 的异常消息不中断 execute。其会被保守计为业务活跃
   //（shouldCountInstanceActivity 对未知 type 计数，与 yjs-frontend 路径一致），
   // 但不会破坏事件流解析
-  test("异常消息（{}）→ execute 正常结束", async () => {
+  test("异常消息后流结束 → execute 返回失败", async () => {
     const turn = new FakeTurn();
     const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
 
@@ -362,7 +351,7 @@ describe("AgentChatSessionAdapter", () => {
     turn.end();
 
     const result = await promise;
-    expect(result.exit_code).toBe(0);
+    expect(result.exit_code).toBe(1);
   });
 
   // C-P2.3：turn.release 必须注销 createPromptTurn 注册的 relay listener，
@@ -499,54 +488,8 @@ describe("AgentChatSessionAdapter", () => {
   });
 });
 
-// C-P2.4：workflow run 中 relay_closed（进程崩溃）必须把死亡信号交给 agent-runtime 的本地实例清理入口，
-// 否则死实例状态恒 running、被 ensureRunning 无限复用且持续占并发额度。
-//
-// 覆盖边界（为什么用注入的清理入口替身而不是宿主 stub）：清理实现（core 快照校验 → controller.stopInstance
-// → core stopInstance → supplement 清理）属 agent-runtime，由它的 local-instance-death-cleanup.test.ts
-// 覆盖 9 个用例；而它读的 core runtime 仍是宿主模块，包内用例既不能 import 宿主模块、也无法经
-// CoreRuntimePort 注入（迁移前的做法是宿主 preload 的 stubCoreBootstrap，正是静态条件 1 要切断的依赖）。
-// 本包拥有的是**调用点**，故此处只断言「relay_closed 到达 → 清理入口被调用一次且携带死亡实例 id」。
-describe("AgentChatSessionAdapter relay death cleanup", () => {
-  /** 交给适配器的清理入口替身记录（调用点证据）。 */
-  const cleanupCalls: string[] = [];
-
-  beforeEach(() => {
-    cleanupCalls.length = 0;
-  });
-
-  afterEach(() => {
-    resetAllStubs();
-  });
-
-  // workflow run 进行中收到 relay_closed：死亡信号必须送达清理入口；
-  // 失败结果（exit_code=1）与清理互不阻塞
-  test("workflow run 中 relay_closed 到达 → 调用清理入口并携带死亡实例", async () => {
-    const turn = new FakeTurn();
-    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000, (instanceId) => {
-      cleanupCalls.push(instanceId);
-    });
-
-    const promise = adapter.execute({ prompt: "x" });
-    turn.push({ type: "relay_closed", payload: { code: "relay_disconnected" } });
-
-    const result = await promise;
-    expect(result.exit_code).toBe(1);
-    expect(cleanupCalls).toEqual(["inst-test"]);
-  });
-
-  // 主动关闭路径（dispose 先注销 listener）不得触发死亡清理：
-  // 钉住"relay_closed 送达监听器即意外断连"的判定边界（C-P2.4）
-  test("run 正常结束（无 relay_closed）→ 不触发清理", async () => {
-    const turn = new FakeTurn();
-    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000, (instanceId) => {
-      cleanupCalls.push(instanceId);
-    });
-
-    const promise = adapter.execute({ prompt: "x" });
-    turn.push({ jsonrpc: "2.0", result: { stopReason: "end_turn" } } as unknown as EngineRelayMessage);
-
-    await promise;
-    expect(cleanupCalls).toEqual([]);
-  });
+afterEach(() => {
+  releaseAgentSessionTurns("inst-test");
+  globalInstanceRegistry.clear();
+  clearInstanceLeases();
 });

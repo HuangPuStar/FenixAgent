@@ -42,6 +42,7 @@ describe("openai response mapper protocol boundaries", () => {
           method: "session/update",
           params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "raw" } } },
         } as RelayEvent,
+        completion("end_turn"),
       ],
       "agent-1",
     );
@@ -51,7 +52,10 @@ describe("openai response mapper protocol boundaries", () => {
 
   // 非 JSON-RPC 事件不能污染模型输出。
   test("ignores events without a JSON-RPC envelope", () => {
-    const result = mapToNonStreamingResponse([{ type: "status", payload: { status: "ready" } }], "agent-1");
+    const result = mapToNonStreamingResponse(
+      [{ type: "status", payload: { status: "ready" } }, completion("end_turn")],
+      "agent-1",
+    );
 
     expect(result.choices[0].message.content).toBe("");
     expect(result.choices[0].finish_reason).toBe("end_turn");
@@ -60,7 +64,10 @@ describe("openai response mapper protocol boundaries", () => {
   // 非 session/update 的 RPC 方法不是文本事件，必须忽略。
   test("ignores unrelated JSON-RPC methods", () => {
     const result = mapToNonStreamingResponse(
-      [{ type: "session_data", payload: { jsonrpc: "2.0", method: "session/list", params: { update: {} } } }],
+      [
+        { type: "session_data", payload: { jsonrpc: "2.0", method: "session/list", params: { update: {} } } },
+        completion("end_turn"),
+      ],
       "agent-1",
     );
 
@@ -70,7 +77,10 @@ describe("openai response mapper protocol boundaries", () => {
   // 缺少 update 对象时不得抛出或生成空 chunk。
   test("ignores session updates without an update payload", () => {
     const result = mapToNonStreamingResponse(
-      [{ type: "session_data", payload: { jsonrpc: "2.0", method: "session/update", params: {} } }],
+      [
+        { type: "session_data", payload: { jsonrpc: "2.0", method: "session/update", params: {} } },
+        completion("end_turn"),
+      ],
       "agent-1",
     );
 
@@ -79,21 +89,30 @@ describe("openai response mapper protocol boundaries", () => {
 
   // 未知 sessionUpdate 只作为 reasoning 分类且空文本不应进入响应。
   test("ignores unknown updates without renderable text", () => {
-    const result = mapToNonStreamingResponse([update({ sessionUpdate: "future_event" })], "agent-1");
+    const result = mapToNonStreamingResponse(
+      [update({ sessionUpdate: "future_event" }), completion("end_turn")],
+      "agent-1",
+    );
 
     expect(result.choices[0].message.reasoning_content).toBeUndefined();
   });
 
   // 没有 content 的文本更新不应生成字符串 "undefined"。
   test("ignores text updates that have no text content", () => {
-    const result = mapToNonStreamingResponse([update({ sessionUpdate: "agent_message_chunk" })], "agent-1");
+    const result = mapToNonStreamingResponse(
+      [update({ sessionUpdate: "agent_message_chunk" }), completion("end_turn")],
+      "agent-1",
+    );
 
     expect(result.choices[0].message.content).toBe("");
   });
 
   // 未命名工具调用仍需保持协议可解析的默认名称。
   test("uses an unknown name for unnamed tool calls", () => {
-    const result = mapToNonStreamingResponse([update({ sessionUpdate: "tool_call" })], "agent-1");
+    const result = mapToNonStreamingResponse(
+      [update({ sessionUpdate: "tool_call" }), completion("end_turn")],
+      "agent-1",
+    );
 
     expect(result.choices[0].message.content).toBe('<tool_call name="unknown" />\n');
   });
@@ -121,7 +140,10 @@ describe("openai response mapper protocol boundaries", () => {
 
   // 未命名工具结果同样应保留稳定的默认名称。
   test("uses an unknown name for unnamed tool updates", () => {
-    const result = mapToNonStreamingResponse([update({ sessionUpdate: "tool_call_update" })], "agent-1");
+    const result = mapToNonStreamingResponse(
+      [update({ sessionUpdate: "tool_call_update" }), completion("end_turn")],
+      "agent-1",
+    );
 
     expect(result.choices[0].message.content).toBe('<tool_result name="unknown" />\n');
   });
@@ -129,7 +151,7 @@ describe("openai response mapper protocol boundaries", () => {
   // 计划条目应保留默认状态，避免前端把缺失状态理解为完成。
   test("renders plan entries with a pending default status", () => {
     const result = mapToNonStreamingResponse(
-      [update({ sessionUpdate: "plan", entries: [{ content: "review" }] })],
+      [update({ sessionUpdate: "plan", entries: [{ content: "review" }] }), completion("end_turn")],
       "agent-1",
     );
 
@@ -138,7 +160,7 @@ describe("openai response mapper protocol boundaries", () => {
 
   // 完成原因从尾部逆向获取，后续原因优先代表最终回合状态。
   test("uses the last available completion reason", () => {
-    const result = mapToNonStreamingResponse([completion("tool_use"), completion("max_tokens")], "agent-1");
+    const result = mapToNonStreamingResponse([completion("end_turn"), completion("max_tokens")], "agent-1");
 
     expect(result.choices[0].finish_reason).toBe("max_tokens");
   });
@@ -147,7 +169,10 @@ describe("openai response mapper protocol boundaries", () => {
   test("streams content updates as content deltas", async () => {
     const chunks = await collect(
       mapToSSEChunks(
-        events([update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } })]),
+        events([
+          update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } }),
+          completion("end_turn"),
+        ]),
         "agent-1",
       ),
     );
@@ -160,7 +185,10 @@ describe("openai response mapper protocol boundaries", () => {
   test("streams thought updates as reasoning deltas", async () => {
     const chunks = await collect(
       mapToSSEChunks(
-        events([update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "think" } })]),
+        events([
+          update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "think" } }),
+          completion("end_turn"),
+        ]),
         "agent-1",
       ),
     );
@@ -200,34 +228,25 @@ describe("openai response mapper protocol boundaries", () => {
     expect(chunks.join("")).not.toContain("late");
   });
 
-  // 正常迭代结束时补充 end_turn，确保客户端资源能够释放。
-  test("adds a fallback completion when the event source ends", async () => {
-    const chunks = await collect(mapToSSEChunks(events([]), "agent-1"));
-    const payload = parseChunk(chunks[0]);
-
-    expect((payload.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("end_turn");
-    expect(chunks[1]).toBe("data: [DONE]\n\n");
+  // 缺失 Agent 明确终态的 EOF 必须失败，不能伪造完成帧。
+  test("rejects an event source ending without confirmed completion", async () => {
+    await expect(collect(mapToSSEChunks(events([]), "agent-1"))).rejects.toThrow("without confirmed completion");
   });
 
-  // 取消信号应停止消费后续 relay 消息，并走兜底结束帧释放客户端。
-  test("stops on an aborted signal and emits fallback completion", async () => {
+  // 取消必须中断迭代并保留取消语义，不能输出成功终态。
+  test("rejects an aborted stream without emitting fallback success", async () => {
     const controller = new AbortController();
     controller.abort();
-    const chunks = await collect(
-      mapToSSEChunks(
-        events([update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hidden" } })]),
-        "agent-1",
-        controller.signal,
-      ),
-    );
-
-    expect(chunks.join("")).not.toContain("hidden");
-    expect(chunks).toHaveLength(2);
+    await expect(collect(mapToSSEChunks(events([]), "agent-1", controller.signal))).rejects.toMatchObject({
+      name: "AbortError",
+    });
   });
 
   // 空文本更新不应产生数据帧，只保留流结束所需的两个帧。
   test("does not emit a data chunk for an empty text update", async () => {
-    const chunks = await collect(mapToSSEChunks(events([update({ sessionUpdate: "agent_message_chunk" })]), "agent-1"));
+    const chunks = await collect(
+      mapToSSEChunks(events([update({ sessionUpdate: "agent_message_chunk" }), completion("end_turn")]), "agent-1"),
+    );
 
     expect(chunks).toHaveLength(2);
   });

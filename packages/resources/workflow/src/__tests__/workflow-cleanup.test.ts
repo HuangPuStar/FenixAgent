@@ -1,29 +1,11 @@
-/**
- * cleanupSpawnedInstances 测试（C-P1.1）。
- *
- * 背景：原 cleanupSpawnedEnvironments 按 envId 停掉环境内全部运行实例，误杀并发
- * run 与其他来源（用户交互）实例；修复后按 instanceId 精确停止本次 run spawn 的
- * 实例（agent-chat-transport 在 ensureRunning 返回 status === "spawned" 时记录
- * instance.id）。
- *
- * 注入方式（禁 mock.module，复用既有 seam）：
- *   - globalInstanceRegistry 为真实单例，beforeEach 清空、用例内注册 supplement；
- *   - services/instance 模块保持真实（stopInstance 的组织归属校验 / controller
- *     活跃表校验 / 幂等语义正是本测试的断言对象）；
- *   - getOrchestrationController 为模块级绑定且无注入 seam，此处使用真实单例
- *     （AgentController 纯内存、构造不查 DB）；stopInstance 的"成功停止"链路
- *     （controller.stopInstance + core stopInstance + supplement 清理）已由
- *     orchestration-instance-rollback.test.ts 与 web DELETE 路由测试
- *     （instances-delete-idempotent.test.ts）覆盖，本测试聚焦 cleanup 的编排语义
- *     （幂等 / 隔离 / 失败不中断）。
- *   - stopInstance 自 AE-P2.1 起读取 core runtime 的 listInstances() 做三侧收敛，端口未绑定
- *     （`getBoundCoreRuntime()` 抛错）会让 stopInstance 整体失败、supplement 残留，故此处必须
- *     经 `bindStubCoreRuntime` 注入空 listInstances 的假 facade；同 org 但活跃表无记录的
- *     实例会被幂等收敛清理（不再返回 "Instance not found" 保留 supplement）。
- */
+/** Workflow 自动收尾保持租约与组织隔离；缺少运行代次证明时保守跳过。 */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
+import {
+  bindAgentInstanceRuntimeOperations,
+  globalInstanceRegistry,
+  resetAgentInstanceRuntimeOperations,
+} from "@fenix/agent-runtime/server/testing";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { cleanupSpawnedInstances } from "../server/services/workflow";
@@ -40,6 +22,7 @@ const ORG_2 = "org-2";
 /** core facade：listInstances 恒为空（无 core 快照），stopInstance 静默成功，供三侧收敛检查。 */
 const fakeFacade = {
   listInstances: () => [],
+  getInstance: () => null,
   stopInstance: async () => {},
 } as unknown as CoreRuntimeFacade;
 
@@ -62,6 +45,16 @@ describe("cleanupSpawnedInstances", () => {
     clearInstanceLeases();
     resetAllStubs();
     bindStubCoreRuntime(fakeFacade);
+    bindAgentInstanceRuntimeOperations({
+      async spawnInstance() {
+        throw new Error("cleanup must not start a runtime");
+      },
+      hasActiveInstance: () => false,
+      async stopInstance(instanceId) {
+        await fakeFacade.stopInstance(instanceId);
+        globalInstanceRegistry.unregister(instanceId);
+      },
+    });
   });
 
   afterEach(() => {
@@ -69,6 +62,7 @@ describe("cleanupSpawnedInstances", () => {
     clearInstanceLeases();
     resetAllStubs();
     restoreCoreRuntimePort();
+    resetAgentInstanceRuntimeOperations();
   });
 
   // 幂等：不存在的 instanceId 被 stopInstance 以 ok:false 静默跳过，cleanup 重复执行无害
@@ -95,19 +89,15 @@ describe("cleanupSpawnedInstances", () => {
     ).resolves.toEqual([[], []]);
   });
 
-  // 混合集合：不存在 / 跨 org / 同 org 但编排域活跃表无记录 三类实例混在同一个
-  // cleanup 中：不存在实例与跨 org 实例被 stopInstance 以 ok:false 静默跳过，
-  // 同 org 无痕实例被幂等收敛清理（AE-P2.1 语义），单个失败不中断整体
-  test("混合实例集合：跨组织实例保留、同组织无痕实例被收敛清理", async () => {
+  // 自动回收必须持有确认的运行代次，不能仅凭孤儿 supplement 接管未知运行实体。
+  test("混合实例集合缺少运行代次证明时保留投影", async () => {
     registerRunningInstance("inst_A", "env-1", ORG_1);
     registerRunningInstance("inst_B", "env-2", ORG_2);
 
     await cleanupSpawnedInstances(new Set(["inst_missing", "inst_A", "inst_B"]), ORG_2);
 
-    // inst_A 跨 org 拦截保留；inst_B 同 org 但真实 controller 活跃表为空（模拟实例
-    // 已被回收的竞态）→ stopInstance 幂等收敛停止并清理 supplement（不再保留）
     expect(globalInstanceRegistry.get("inst_A")).toBeDefined();
-    expect(globalInstanceRegistry.get("inst_B")).toBeUndefined();
+    expect(globalInstanceRegistry.get("inst_B")).toBeDefined();
   });
 
   // C-P1.1-R：实例仍被其他 run 持有租约时，cleanup 跳过停止并返回 skipped 列表，

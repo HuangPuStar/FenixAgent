@@ -13,6 +13,8 @@
  */
 
 import { log } from "@fenix/logger";
+import { SERVER_EPOCH } from "@fenix/remote-runtime";
+import { agentInstanceRuntimeCoordinator } from "../server/services/agent-instance-service";
 import { getBoundCoreRuntime } from "../server/services/core-runtime-port";
 import { globalInstanceRegistry } from "./instance-registry";
 import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
@@ -33,6 +35,13 @@ export function convergeMachineInstances(machineId: string): number {
 
   for (const instance of runtime.listInstances()) {
     if (instance.nodeId !== machineId) continue;
+    if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
+      agentInstanceRuntimeCoordinator.handleRuntimeDisconnect(
+        instance.instanceId,
+        instance.runtimeGeneration,
+        machineId,
+      );
+    }
     runtime.deleteInstance(instance.instanceId);
     globalInstanceRegistry.unregisterAndDeleteCounter(instance.instanceId);
     removed += 1;

@@ -9,12 +9,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { AgentInstanceRuntimeCoordinator } from "../server/services/agent-instance-runtime-coordinator";
 import { stubCoreRuntimeFacade } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
   stopInstancesForEnvironments,
+  stopInstanceViaController,
 } from "../services/orchestration-instance";
 import type { InstanceSupplement } from "../types/instance";
 
@@ -88,7 +90,12 @@ describe("stopInstancesForEnvironments", () => {
     resetAllStubs();
     resetOrchestrationInstanceDeps();
     stubCoreRuntimeFacade(fakeFacade);
+    const coordinator = new AgentInstanceRuntimeCoordinator({
+      async start() {},
+      stop: (instanceId) => stopInstanceViaController(instanceId, "strict"),
+    });
     setOrchestrationInstanceDeps({
+      stopRuntime: (instanceId) => coordinator.stopRuntime({ id: instanceId }, "strict"),
       getOrchestrationController: () => fakeController as AgentController,
       closeRelayConnectionsForStoppedInstance: async (instanceId) => {
         relayCloseCalls.push(instanceId);
@@ -160,8 +167,8 @@ describe("stopInstancesForEnvironments", () => {
     await expect(cleanup).resolves.toEqual(expect.arrayContaining(["inst-env-1", "inst-env-2"]));
   });
 
-  // 停止任一底层步骤失败仍须继续清理并注销 supplement，避免删除流程留下可复用的脏实例。
-  test("停止和后续资源回收报错时仍收敛注册表并继续处理其他实例", async () => {
+  // 实体停止未确认必须保留诊断投影并阻止环境删除，其余实例仍正常停止。
+  test("停止失败保留注册表并阻止环境删除，其他实例仍可回收", async () => {
     globalInstanceRegistry.register("inst-failing", makeSupplement(ENV_1, ORG_1));
     globalInstanceRegistry.register("inst-healthy", makeSupplement(ENV_1, ORG_1));
     controllerStopFailure = "inst-failing";
@@ -177,13 +184,14 @@ describe("stopInstancesForEnvironments", () => {
       },
     });
 
-    await expect(stopInstancesForEnvironments([ENV_1], { organizationId: ORG_1 })).resolves.toEqual(
-      expect.arrayContaining(["inst-failing", "inst-healthy"]),
+    await expect(stopInstancesForEnvironments([ENV_1], { organizationId: ORG_1 })).rejects.toThrow(
+      "stop could not be confirmed",
     );
 
-    expect(globalInstanceRegistry.size).toBe(0);
+    expect(globalInstanceRegistry.size).toBe(1);
+    expect(globalInstanceRegistry.get("inst-failing")).toBeDefined();
     expect(coreStopCalls.sort()).toEqual(["inst-failing", "inst-healthy"]);
-    expect(relayCloseCalls.sort()).toEqual(["inst-failing", "inst-healthy"]);
-    expect(reclaimCalls.sort()).toEqual(["inst-failing", "inst-healthy"]);
+    expect(relayCloseCalls).toEqual(["inst-healthy"]);
+    expect(reclaimCalls).toEqual(["inst-healthy"]);
   });
 });

@@ -10,9 +10,14 @@
  */
 
 import {
+  acquireAgentExecution,
   type AgentSession as ChatAgentSession,
+  classifyAgentTurnEvent,
   getBoundAgentRuntime,
+  iterateWithSignal,
+  markAgentExecutionIdleReclaimable,
   type PromptTurn,
+  waitWithSignal,
 } from "@fenix/agent-runtime/runtime";
 // 按组织列环境候选改经运行 port 的只读观测面（1.4 W6b）：本包不再直取环境仓储，
 // 环境域的数据访问留在 agent-runtime 内，这里只消费它的只读投影。
@@ -23,7 +28,7 @@ import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
+import { acquireInstanceLease, recordSpawnedInstanceRuntime, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");
 
@@ -60,19 +65,6 @@ export class AgentChatSessionAdapter implements AgentSession {
     chatSession: ChatAgentSession,
     /** 执行超时兜底时长（毫秒）；测试注入小值，生产使用 DEFAULT_EXECUTE_TIMEOUT_MS */
     private readonly timeoutMs: number = DEFAULT_EXECUTE_TIMEOUT_MS,
-    /**
-     * relay 意外关闭时交死亡信号的入口（默认即 agent-runtime 的 `terminateLocalDeadInstance`）。
-     *
-     * 可注入的理由与边界：清理的实现在 agent-runtime，而它读的 core runtime 仍是宿主模块
-     * （`@server/services/core-bootstrap`，agent-runtime 待迁 CoreRuntimePort），包内用例既不能 import
-     * 宿主模块、也无法经端口注入它。本包只拥有**调用点**（relay_closed → 交死亡信号），因此把这一个
-     * 协作者收成构造参数：用例可断言「调用一次且携带死亡实例 id」，清理语义（core 快照校验、controller
-     * 与 core 双侧停止）由 owner 的 `packages/agent-runtime/src/__tests__/local-instance-death-cleanup.test.ts`
-     * 覆盖。待 agent-runtime 提供 `/server/testing` 的死亡清理替身后，本参数与用例的注入都应删除、改回
-     * 模块级调用（已登记为 openIssue）。
-     */
-    private readonly terminateDeadInstance: (instanceId: string) => void | Promise<void> = (instanceId) =>
-      getBoundAgentRuntime().terminateLocalDeadInstance(instanceId),
   ) {
     this.turn = turn;
     this.instanceId = chatSession.instanceId;
@@ -83,67 +75,33 @@ export class AgentChatSessionAdapter implements AgentSession {
     const chunks: string[] = [];
     const collectedMessages: AgentMessage[] = [];
 
-    // 发送 prompt
-    this.turn.prompt([{ type: "text", text: request.prompt }]);
-    logger.debug(`Sent prompt: promptLength=${request.prompt.length}`);
+    const timeout = new AbortController();
+    const timeoutTimer = setTimeout(
+      () => timeout.abort(new WorkflowError("Agent execute timed out", WorkflowErrorCode.NODE_TIMEOUT)),
+      this.timeoutMs,
+    );
+    const signal = request.signal ? AbortSignal.any([request.signal, timeout.signal]) : timeout.signal;
+    const onAbort = (): void => {
+      void this.turn.cancel().catch((error) => logger.error("Agent cancellation delivery failed", { error }));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      signal.throwIfAborted();
+      this.turn.prompt([{ type: "text", text: request.prompt }]);
+      return await this.iterateEvents(startTime, chunks, collectedMessages, signal);
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      clearTimeout(timeoutTimer);
+      this.releaseExecution();
+    }
+  }
 
-    let settled = false;
-    let abortCleanup: (() => void) | null = null;
-
-    return new Promise<AgentResponse>((resolve, reject) => {
-      // 执行超时兜底：节点 timeout 配置大于 timeoutMs（如 1200s）时，保证 execute 仍有界失败。
-      // 必须 reject 而非静默置位——否则 Promise 永不 settle，且 settled 会吞掉后续节点 abort
-      //（唯一可用的退出路径被禁用，节点永久挂起）。NODE_TIMEOUT 由 engine 侧不重试。
-      const timeoutTimer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        // run 结束释放 relay 引用计数，恢复 idle 观察窗口；detach 在实例已
-        // stop（supplement 已 unregister）后执行是 no-op，天然幂等
-        getBoundAgentRuntime().markInstanceRelayDetached(this.instanceId);
-        // 租约配对归还（与 connect 的 acquire 配对）：execute settle 即本次 run
-        // 不再使用实例，cleanup 的租约守卫放行停止
-        releaseInstanceLease(this.instanceId);
-        abortCleanup?.();
-        logger.error(`Agent execute timed out: timeoutMs=${this.timeoutMs}`);
-        reject(new WorkflowError("Agent execute timed out", WorkflowErrorCode.NODE_TIMEOUT));
-      }, this.timeoutMs);
-      if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
-
-      // Abort signal 支持
-      if (request.signal) {
-        const onAbort = (): void => {
-          if (settled) return;
-          settled = true;
-          getBoundAgentRuntime().markInstanceRelayDetached(this.instanceId);
-          releaseInstanceLease(this.instanceId);
-          clearTimeout(timeoutTimer);
-          reject(new DOMException("Request aborted", "AbortError"));
-        };
-        request.signal.addEventListener("abort", onAbort, { once: true });
-        abortCleanup = () => request.signal?.removeEventListener("abort", onAbort);
-      }
-
-      // 异步迭代 PromptTurn 事件流
-      this.iterateEvents(startTime, chunks, collectedMessages)
-        .then((result) => {
-          if (settled) return;
-          settled = true;
-          getBoundAgentRuntime().markInstanceRelayDetached(this.instanceId);
-          releaseInstanceLease(this.instanceId);
-          clearTimeout(timeoutTimer);
-          abortCleanup?.();
-          resolve(result);
-        })
-        .catch((err) => {
-          if (settled) return;
-          settled = true;
-          getBoundAgentRuntime().markInstanceRelayDetached(this.instanceId);
-          releaseInstanceLease(this.instanceId);
-          clearTimeout(timeoutTimer);
-          abortCleanup?.();
-          reject(err);
-        });
-    });
+  private executionReleased = false;
+  private releaseExecution(): void {
+    if (this.executionReleased) return;
+    this.executionReleased = true;
+    getBoundAgentRuntime().markInstanceRelayDetached(this.instanceId);
+    releaseInstanceLease(this.instanceId);
   }
 
   /**
@@ -153,8 +111,9 @@ export class AgentChatSessionAdapter implements AgentSession {
     startTime: number,
     chunks: string[],
     collectedMessages: AgentMessage[],
+    signal: AbortSignal,
   ): Promise<AgentResponse> {
-    for await (const msg of this.turn.events()) {
+    for await (const msg of iterateWithSignal(this.turn.events(), signal)) {
       // 每条 relay 消息都计入业务活跃，防止长任务被 activity 硬超时误杀；
       // 保活消息由 shouldCountInstanceActivity 内部过滤（acp-idle-monitor），
       // 卡死实例仍会在 activity 硬超时后被回收，保留兜底语义
@@ -172,14 +131,8 @@ export class AgentChatSessionAdapter implements AgentSession {
         };
       }
 
-      // 传输层 relay 关闭（实例被 idle 回收 / 手动停止 / 机器断连）：relay 不会再推送任何
-      // 消息，不识别会导致事件流永久挂起。与 type==="error" 同模式返回 exit_code=1 失败，
-      // 由 engine 按 NODE_FAILED 走节点重试（relay 瞬断时可自愈）。
+      // Runtime death is fenced and reconciled by the relay connection factory.
       if (asAny.type === "relay_closed") {
-        // 本地实例 relay 意外关闭：触发实例级清理（C-P2.4）。实例可能被本轮 run 之外
-        // 的进程复用，清理只移除死亡实例本身，不影响同节点其他健康实例；主动关闭
-        // 路径（dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
-        void this.terminateDeadInstance(this.instanceId);
         const payload = asAny.payload as Record<string, unknown> | undefined;
         const code = typeof payload?.code === "string" ? payload.code : "relay_disconnected";
         const existing = chunks.join("");
@@ -227,10 +180,10 @@ export class AgentChatSessionAdapter implements AgentSession {
           };
         }
 
-        const stopReason = (result.stopReason as string) ?? "end_turn";
+        const terminal = classifyAgentTurnEvent(msg);
         const usage = result.usage as { totalTokens?: number; inputTokens?: number; outputTokens?: number } | undefined;
 
-        if (stopReason === "error") {
+        if (terminal?.outcome !== "succeeded") {
           const existing = chunks.join("");
           return {
             stdout: existing || "Agent returned error stop reason",
@@ -260,7 +213,7 @@ export class AgentChatSessionAdapter implements AgentSession {
     logger.warn("PromptTurn events stream ended without JSON-RPC response");
     return {
       stdout: chunks.join(""),
-      exit_code: 0,
+      exit_code: 1,
       latency_ms: Date.now() - startTime,
       messages: collectedMessages,
     };
@@ -308,9 +261,11 @@ export class AgentChatSessionAdapter implements AgentSession {
    * cleanup 管理，与 execute 内 markInstanceRelayDetached 的引用计数释放正交。
    * engine 在每次 execute 后调用，防止同实例复用场景下 N 次 run 累积 N 个死 listener。
    */
-  dispose(): Promise<void> {
+  async dispose(): Promise<void> {
+    this.releaseExecution();
+    await this.turn.cancel();
     this.turn.release();
-    return Promise.resolve();
+    await this.turn.dispose();
   }
 }
 
@@ -329,7 +284,26 @@ class AgentChatTransport implements Transport {
 
   async connect(
     envName: string,
-    options?: { cwd?: string; spawnedInstanceIds?: Set<string>; userId?: string },
+    options?: { cwd?: string; spawnedInstanceIds?: Set<string>; userId?: string; signal?: AbortSignal },
+  ): Promise<AgentSession> {
+    options?.signal?.throwIfAborted();
+    const execution = acquireAgentExecution({
+      userId: options?.userId ?? "",
+      source: "scheduled",
+      signal: options?.signal,
+    });
+    try {
+      return await this.connectAdmitted(envName, options, execution);
+    } catch (error) {
+      execution.release();
+      throw error;
+    }
+  }
+
+  private async connectAdmitted(
+    envName: string,
+    options: { cwd?: string; spawnedInstanceIds?: Set<string>; userId?: string; signal?: AbortSignal } | undefined,
+    execution: ReturnType<typeof acquireAgentExecution>,
   ): Promise<AgentSession> {
     logger.debug(`connect start: envName=${envName}`);
 
@@ -338,9 +312,11 @@ class AgentChatTransport implements Transport {
     // 本包直读会让同一张表出现第二份查询实现（§1 条件 8）。
     // 该仓储当前没有 name 维度的单行查询，这里在组织范围内取回后按 name 过滤；把查询收敛回单行的
     // `findByName(organizationId, name)` 需要 agent-runtime 侧新增仓储方法，已登记为跨包待办。
-    const envCandidates = await getBoundAgentRuntime().observe.listEnvironmentRecordsByOrganization(
-      this.organizationId,
+    const envCandidates = await waitWithSignal(
+      getBoundAgentRuntime().observe.listEnvironmentRecordsByOrganization(this.organizationId),
+      options?.signal,
     );
+    options?.signal?.throwIfAborted();
     const envRow = envCandidates.find((candidate) => candidate.name === envName);
 
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
@@ -354,54 +330,63 @@ class AgentChatTransport implements Transport {
       throw new Error("INSTANCE_NOT_FOUND");
     }
     const runtime = getBoundAgentRuntime();
-    const { instance, created } = await runtime.findOrCreateWorkflowInstanceWithStatus(envRow.id, ownerUserId);
+    const { instance, created } = await waitWithSignal(
+      runtime.findOrCreateWorkflowInstanceWithStatus(envRow.id, ownerUserId),
+      options?.signal,
+    );
     if (created) options?.spawnedInstanceIds?.add(instance.id);
-    await runtime.ensureInstanceRuntime(instance);
+    options?.signal?.throwIfAborted();
+    execution.attach(instance.id);
+    // 选定实例即开始占用，ensure 的等待窗口也不能被创建者 run 的 cleanup 停止。
     acquireInstanceLease(instance.id);
-
-    // 3. 连接 relay
-    let handle: EngineRelayHandle;
+    let handedOff = false;
+    let relayAttached = false;
+    let handle: EngineRelayHandle | undefined;
+    let chatSession: ChatAgentSession | undefined;
+    let turn: PromptTurn | undefined;
     try {
-      handle = await runtime.session.connectRelay(instance.id, "");
-    } catch (err) {
-      // connect 失败：租约配对上方的 acquire 立即归还，实例重新获得清理出口
-      //（否则残留租约条目使 cleanup 永远跳过，实例失去停止路径）
-      releaseInstanceLease(instance.id);
-      throw err;
-    }
-    logger.debug(`connect relay ready: envName=${envName} instanceId=${instance.id}`);
-
-    // run 期间实例视为"前台使用"：relayCount>0 阻止 idle 回收（acp-idle-monitor），
-    // activity 硬超时由 execute 内 touchInstanceActivity 维持
-    runtime.markInstanceRelayAttached(instance.id);
-
-    // 4. 创建 chat AgentSession（不传 stopInstance，实例由 workflow cleanup 统一管理）
-    const chatSession = runtime.session.createAgentSession({
-      relayHandle: handle,
-      instanceId: instance.id,
-      // 不传 stopInstance：ensureRunning 的实例不随单次执行销毁
-    });
-
-    // 5. 创建 ACP session + PromptTurn
-    // startPromptTurn 失败（session/new、session/load 的 rpc error）必须配对释放
-    // attach 的引用计数，否则 relayCount 残留，实例失去 idle 回收出口，只能等
-    // activity 硬超时兜底
-    let turn: PromptTurn;
-    try {
+      await waitWithSignal(runtime.ensureInstanceRuntime(instance, options?.signal), options?.signal);
+      execution.confirmRuntime();
+      if (created && options?.spawnedInstanceIds?.has(instance.id))
+        recordSpawnedInstanceRuntime(instance.id, runtime.getRuntimeSnapshot(instance.id).runtimeGeneration);
+      markAgentExecutionIdleReclaimable(instance.id);
+      options?.signal?.throwIfAborted();
+      handle = await waitWithSignal(runtime.session.connectRelay(instance.id, ""), options?.signal, (late) =>
+        late.close(),
+      );
+      runtime.markInstanceRelayAttached(instance.id);
+      relayAttached = true;
+      chatSession = runtime.session.createAgentSession({ relayHandle: handle, instanceId: instance.id });
       ({ turn } = await runtime.session.startPromptTurn({
         session: chatSession,
+        signal: options?.signal,
+        onExecutionFinished: () => execution.release(),
         prepareNewSession: () => runtime.refreshInstanceEnvironment(instance.id, envRow.id, ownerUserId),
       }));
-    } catch (err) {
-      runtime.markInstanceRelayDetached(instance.id);
-      // 租约配对归还（与 acquire 配对）：session/new、session/load 失败时本次
-      // connect 不再持有实例，实例重新获得清理出口
-      releaseInstanceLease(instance.id);
-      throw err;
+      execution.confirmRuntime();
+      const adapter = new AgentChatSessionAdapter(turn, chatSession);
+      handedOff = true;
+      logger.info(`connect done: envName=${envName} instanceId=${instance.id}`);
+      return adapter;
+    } catch (error) {
+      if (turn) {
+        await turn
+          .dispose()
+          .catch((cleanupError) => logger.error("Failed to release failed workflow turn", { error: cleanupError }));
+      }
+      try {
+        if (chatSession) await chatSession.dispose();
+        else await handle?.close();
+      } catch (cleanupError) {
+        logger.error("Failed to release failed workflow connection", { error: cleanupError });
+      }
+      throw error;
+    } finally {
+      if (!handedOff) {
+        if (relayAttached) runtime.markInstanceRelayDetached(instance.id);
+        releaseInstanceLease(instance.id);
+      }
     }
-    logger.info(`connect done: envName=${envName} instanceId=${instance.id}`);
-
-    return new AgentChatSessionAdapter(turn, chatSession);
   }
 
   isReady(): boolean {

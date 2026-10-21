@@ -3,12 +3,12 @@
 // 仅新建检查配额）、桥接注入的 authorizeEnvironment 多租户隔离语义。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { WsConnection } from "../../types/ws-types";
 import {
   getChatChannelController,
   resetChatChannelBootstrap,
   setChatChannelBootstrapDeps,
 } from "../services/chat-channel-bootstrap";
-import type { WsConnection } from "../transport/ws-types";
 
 type MockWs = WsConnection & {
   messages: string[];

@@ -78,6 +78,10 @@ export { globalInstanceRegistry } from "../services/instance-registry";
 export { createExecutionNodeResolver, resetOrchestrationBootstrap } from "../services/orchestration-bootstrap";
 export { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
 export { EventBus, getAllEventBuses, removeEventBus } from "../transport/event-bus";
+export {
+  bindAgentInstanceRuntimeOperations,
+  resetAgentInstanceRuntimeOperations,
+} from "./services/agent-instance-service";
 export { getBoundCoreRuntimePort, resetCoreRuntimePortForTest } from "./services/core-runtime-port";
 export { handleAcpWsClose, handleAcpWsOpen, listAcpConnections } from "./transport/acp-ws-handler";
 export {
@@ -403,3 +407,5 @@ registerStubResetter(resetAgentLaunchSpecPort);
 registerStubResetter(resetEnvironmentRepoStubForTest);
 registerStubResetter(resetCoreRuntimeFacadeStub);
 registerStubResetter(resetMachineRegistryPortStub);
+
+export { releaseAgentSessionTurns } from "../services/agent-session-admission";

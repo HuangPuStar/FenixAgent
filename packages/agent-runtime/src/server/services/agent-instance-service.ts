@@ -1,5 +1,8 @@
 import { AppError } from "@fenix/platform-sdk";
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
+import { markAgentExecutionIdleReclaimable, releaseAgentExecutions } from "../../services/agent-execution-admission";
+import { releaseAgentSessionTurns } from "../../services/agent-session-admission";
+import { globalInstanceRegistry } from "../../services/instance-registry";
 import { createAgentInstanceUid, isAgentInstanceUid } from "../instance/agent-instance-id";
 import type { AgentInstanceRecord, IAgentInstanceRepo, InstanceCreationSource } from "../repositories/agent-instance";
 import { agentInstanceRepo } from "../repositories/agent-instance";
@@ -19,7 +22,7 @@ export interface AgentInstanceRuntimeOperations {
     environmentId: string,
     userId: string,
     source: "interactive" | "scheduled",
-    options: { instanceUid: string; runtimeGeneration: number; serverEpoch: string },
+    options: { instanceUid: string; runtimeGeneration: number; serverEpoch: string; signal?: AbortSignal },
   ): Promise<unknown>;
   stopInstance(instanceUid: string, mode: "strict"): Promise<unknown>;
   hasActiveInstance(instanceUid: string): boolean;
@@ -53,6 +56,10 @@ const SELECTION: Record<
 };
 
 const runtimeAdapter: RuntimeAdapter = {
+  onStopped(instanceUid) {
+    releaseAgentExecutions(instanceUid);
+    releaseAgentSessionTurns(instanceUid);
+  },
   async start(instance, generation, signal) {
     signal.throwIfAborted();
     const source = instance.creationSource === "workflow" ? "scheduled" : "interactive";
@@ -60,7 +67,24 @@ const runtimeAdapter: RuntimeAdapter = {
       instanceUid: instance.id,
       runtimeGeneration: generation,
       serverEpoch: SERVER_EPOCH,
+      signal,
     });
+    // Background lifetime belongs to the persistent instance, including starts whose waiters cancelled.
+    if (instance.creationSource === "api" || instance.creationSource === "workflow") {
+      markAgentExecutionIdleReclaimable(instance.id);
+    }
+  },
+  getRuntimeGeneration(instanceUid) {
+    return getCoreRuntime().getInstance(instanceUid)?.runtimeGeneration;
+  },
+  isRuntimeReady(instanceUid, generation) {
+    const current = getCoreRuntime().getInstance(instanceUid);
+    return (
+      current?.status === "running" &&
+      current.serverEpoch === SERVER_EPOCH &&
+      current.runtimeGeneration !== undefined &&
+      (generation === undefined || current.runtimeGeneration === generation)
+    );
   },
   hasActiveRuntime(instanceUid) {
     const coreInstance = getCoreRuntime().getInstance(instanceUid);
@@ -79,6 +103,9 @@ const runtimeAdapter: RuntimeAdapter = {
     if (!current) {
       if (getAgentInstanceRuntimeOperations().hasActiveInstance(instanceUid)) {
         throw new Error("Agent runtime entry is missing; stop cannot be confirmed");
+      }
+      if (globalInstanceRegistry.has(instanceUid)) {
+        await getAgentInstanceRuntimeOperations().stopInstance(instanceUid, "strict");
       }
       return;
     }
@@ -183,6 +210,11 @@ export class AgentInstanceService {
     await this.coordinator.ensureRuntime(instance, signal);
   }
 
+  /** 自动回收保留实例持久身份，后续任务可重新启动。 */
+  async reclaimInstanceRuntime(instance: AgentInstanceRecord): Promise<void> {
+    await this.coordinator.reclaimRuntime(instance);
+  }
+
   async stopInstanceRuntime(instance: AgentInstanceRecord, mode: RuntimeStopMode = "strict"): Promise<void> {
     await this.coordinator.stopRuntime(instance, mode);
   }
@@ -210,12 +242,12 @@ export class AgentInstanceService {
     if (instance.isDefault)
       throw new AppError("Default Agent Instance cannot be deleted", "DEFAULT_INSTANCE_DELETE_DENIED", 409);
     await this.coordinator.deleteRuntime(instance);
-    const deleteGeneration = this.coordinator.snapshot(instance.id).runtimeGeneration;
+    const deleteOperationId = this.coordinator.snapshot(instance.id).operationId;
     try {
       const deleted = await this.repository.deleteById(instance.id);
       if (!deleted) throw this.#notFound();
     } catch (error) {
-      this.coordinator.recoverDelete(instance.id, deleteGeneration);
+      this.coordinator.recoverDelete(instance.id, deleteOperationId);
       throw error;
     }
   }
