@@ -71,8 +71,8 @@ interface MkdirResponse {
   path: string;
 }
 
-/** Chat 用户文件固定写入的 workspace 相对目录。 */
-const CHAT_UPLOAD_DIRECTORY = "user";
+/** 「我的文件」作用域在 workspace 内的相对目录。 */
+const USER_UPLOAD_DIRECTORY = "user";
 
 /** 目录上传按批发送，避免多文件 multipart / 远程 base64 WS 帧无界增长。 */
 export const MAX_UPLOAD_BATCH_SIZE_BYTES = 20 * 1024 * 1024;
@@ -251,12 +251,12 @@ export async function revalidateWorkspaceTree(id: string, etag?: string | null):
 
 /** 将文件名转换为 Chat 用户文件区域中的 workspace 相对路径。 */
 export function getChatUploadPath(fileName: string): string {
-  return `${CHAT_UPLOAD_DIRECTORY}/${fileName}`;
+  return `${USER_UPLOAD_DIRECTORY}/${fileName}`;
 }
 
 /** Chat 三类上传入口的唯一 API：目标目录固定为 workspace 的 user/ 用户文件区域。 */
 export function uploadChatFiles(environmentId: string, files: File[]): Promise<FileUploadResponse> {
-  return uploadFiles(environmentId, files, { targetDir: CHAT_UPLOAD_DIRECTORY });
+  return uploadFiles(environmentId, files, { targetDir: USER_UPLOAD_DIRECTORY });
 }
 
 /** 批量删除响应 */

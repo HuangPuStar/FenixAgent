@@ -66,6 +66,8 @@ export interface FileTreeViewProps {
   /** 当前整次上传的字节进度，保存阶段仍等待服务端确认。 */
   uploadProgress?: number;
   uploadSaving?: boolean;
+  /** 进度条归属分区：树容器按上传落点换算后传入，未提供时按工作区展示。 */
+  uploadSection?: "workspace" | "user";
   dragOver: boolean;
   searchQuery: string;
   /** 归一化（去空白 / 小写）后的搜索词；非空时走搜索结果分支。 */
@@ -122,11 +124,6 @@ export function FileTreeView(props: FileTreeViewProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const canMutate = props.canMutate ?? true;
 
-  const createAtSelected = (kind: "file" | "folder") => {
-    const parent = "user";
-    kind === "file" ? props.onNewFile(parent) : props.onNewFolder(parent);
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-text-secondary">
       <div className="flex min-h-9.5 shrink-0 items-center justify-between ps-2.5 pe-1.5 text-sm text-text-primary [font-weight:650]">
@@ -142,33 +139,6 @@ export function FileTreeView(props: FileTreeViewProps) {
           >
             <RefreshCw className={cn("size-3.5", props.loading && "animate-spin")} aria-hidden />
           </button>
-          <button
-            type="button"
-            className={PANEL_ACTION_CLASS}
-            onClick={() => createAtSelected("folder")}
-            disabled={!canMutate}
-            title={t("fileTree.contextMenu.newFolder")}
-          >
-            <FolderPlus className="size-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={PANEL_ACTION_CLASS}
-            onClick={() => props.onUploadClick()}
-            disabled={props.uploading || !canMutate}
-            title={t("fileTree.upload")}
-          >
-            <Upload className="size-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={PANEL_ACTION_CLASS}
-            onClick={() => props.onFolderUploadClick()}
-            disabled={props.uploading || !canMutate}
-            title={t("fileTree.uploadFolder")}
-          >
-            <FolderInput className="size-3.5" aria-hidden />
-          </button>
           {props.headerActions}
           <input ref={props.fileInputRef} type="file" multiple hidden onChange={props.onFileInputChange} />
           <input
@@ -183,18 +153,6 @@ export function FileTreeView(props: FileTreeViewProps) {
           />
         </div>
       </div>
-
-      {props.uploading && (
-        <div className="mx-2 mb-2 space-y-1.5" aria-busy="true">
-          <div className="flex items-center gap-1.5 text-xs text-text-muted" role="status" aria-live="polite">
-            {props.uploadSaving && <Spinner size="xs" />}
-            {props.uploadSaving
-              ? t("fileTree.uploadSaving")
-              : t("fileTree.uploadProgress", { percent: props.uploadProgress ?? 0 })}
-          </div>
-          <Progress value={props.uploadProgress ?? 0} aria-label={t("fileTree.upload")} className="h-1" />
-        </div>
-      )}
 
       <label className="file-tree-search mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)]">
         <Search className="size-3.25" aria-hidden />
@@ -288,13 +246,95 @@ export function FileTreeView(props: FileTreeViewProps) {
   );
 }
 
+/** 分区标题栏动作按钮：三个入口都只操作本分区根目录，落点由 `targetDir` 固定。 */
+const SECTION_ACTION_CLASS =
+  "file-tree-section-action-button inline-grid size-6.5 shrink-0 place-items-center rounded-sm text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:-outline-offset-2 disabled:opacity-[0.45]";
+
+function SectionActions(props: {
+  targetDir: string;
+  uploading: boolean;
+  canMutate: boolean;
+  onNewFolder: (parentPath: string) => void;
+  onUploadClick: (targetDir?: string) => void;
+  onFolderUploadClick: (targetDir?: string) => void;
+}) {
+  const { t } = useTranslation(UI_COMPONENTS_NS);
+
+  return (
+    <div data-slot="file-tree-section-actions" className="ml-auto flex items-center gap-px">
+      <button
+        type="button"
+        data-slot="file-tree-section-new-folder"
+        className={SECTION_ACTION_CLASS}
+        onClick={() => props.onNewFolder(props.targetDir)}
+        disabled={!props.canMutate}
+        title={t("fileTree.contextMenu.newFolder")}
+        aria-label={t("fileTree.contextMenu.newFolder")}
+      >
+        <FolderPlus className="size-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        data-slot="file-tree-section-upload"
+        className={SECTION_ACTION_CLASS}
+        onClick={() => props.onUploadClick(props.targetDir)}
+        disabled={props.uploading || !props.canMutate}
+        title={t("fileTree.upload")}
+        aria-label={t("fileTree.upload")}
+      >
+        <Upload className="size-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        data-slot="file-tree-section-upload-folder"
+        className={SECTION_ACTION_CLASS}
+        onClick={() => props.onFolderUploadClick(props.targetDir)}
+        disabled={props.uploading || !props.canMutate}
+        title={t("fileTree.uploadFolder")}
+        aria-label={t("fileTree.uploadFolder")}
+      >
+        <FolderInput className="size-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function UploadStatus({ percent, saving }: { percent?: number; saving?: boolean }) {
+  const { t } = useTranslation(UI_COMPONENTS_NS);
+
+  return (
+    <div className="mx-2 mb-2 space-y-1.5" aria-busy="true">
+      <div className="flex items-center gap-1.5 text-xs text-text-muted" role="status" aria-live="polite">
+        {saving && <Spinner size="xs" />}
+        {saving ? t("fileTree.uploadSaving") : t("fileTree.uploadProgress", { percent: percent ?? 0 })}
+      </div>
+      <Progress value={percent ?? 0} aria-label={t("fileTree.upload")} className="h-1" />
+    </div>
+  );
+}
+
 function FileTreeSections(props: FileTreeViewProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
+  const canMutate = props.canMutate ?? true;
+  const uploadSection = props.uploadSection ?? "workspace";
+  const sectionActions = {
+    uploading: props.uploading,
+    canMutate,
+    onNewFolder: props.onNewFolder,
+    onUploadClick: props.onUploadClick,
+    onFolderUploadClick: props.onFolderUploadClick,
+  };
 
   return (
     <div data-slot="file-tree-sections-layout" className="file-tree-sections-grid grid min-h-0 flex-1 overflow-hidden">
       <section data-upload-target="" className="flex h-full min-h-0 flex-col">
-        <div className={cn(SECTION_HEADING_CLASS, "text-text-secondary")}>{t("fileTree.workspace")}</div>
+        <div className={cn(SECTION_HEADING_CLASS, "pe-2.5 text-text-secondary")}>
+          <span>{t("fileTree.workspace")}</span>
+          <SectionActions targetDir="" {...sectionActions} />
+        </div>
+        {props.uploading && uploadSection === "workspace" && (
+          <UploadStatus percent={props.uploadProgress} saving={props.uploadSaving} />
+        )}
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {props.showTree && props.workspaceHasNodes ? (
             <FileTreeArborist
@@ -319,18 +359,11 @@ function FileTreeSections(props: FileTreeViewProps) {
       <section data-upload-target="user" className="flex h-full min-h-0 flex-col border-t border-border-subtle">
         <div className={cn(SECTION_HEADING_CLASS, "pe-2.5 text-text-primary")}>
           <span>{t("fileTree.user")}</span>
-          <button
-            type="button"
-            data-slot="file-tree-section-upload"
-            className="file-tree-section-upload-button ml-auto inline-grid size-6.5 shrink-0 place-items-center rounded-sm text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:-outline-offset-2 disabled:opacity-[0.45]"
-            title={t("fileTree.upload")}
-            aria-label={t("fileTree.upload")}
-            onClick={() => props.onUploadClick("user")}
-            disabled={props.uploading || !(props.canMutate ?? true)}
-          >
-            <Upload className="size-4" aria-hidden />
-          </button>
+          <SectionActions targetDir="user" {...sectionActions} />
         </div>
+        {props.uploading && uploadSection === "user" && (
+          <UploadStatus percent={props.uploadProgress} saving={props.uploadSaving} />
+        )}
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {props.showTree && props.userHasNodes ? (
             <FileTreeArborist

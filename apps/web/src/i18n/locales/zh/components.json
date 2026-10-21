@@ -30,9 +30,7 @@
     "emptyHint": "通过上方按钮或拖拽文件到此处上传",
     "userEmptyState": "暂无文件",
     "retry": "重试",
-    "staleBanner": "文件服务暂时不可用，正在自动重连",
-    "dropToUpload": "释放文件以上传",
-    "uploadTo": "上传到: {{path}}"
+    "staleBanner": "文件服务暂时不可用，正在自动重连"
   },
   "tree": {
     "showMore": "+{{count}} 更多",

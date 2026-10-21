@@ -277,7 +277,7 @@ export interface AgentRuntimePort {
    * `hasActiveInstance` 误判存活），因此合并为一个方法：调用方拿不到中间态，也就没机会漏配对。
    * 沙盒释放等不经 ACP handler 的路径同样走这里（E-P0.1）。
    */
-  cleanupMachineInstances(machineId: string): number;
+  cleanupMachineInstances(machineId: string, options?: { runtimeTerminated?: boolean }): number;
   /** 回收确认已死亡的本地实例（异步；不阻塞调用方消息循环）。 */
   terminateLocalDeadInstance(
     instanceId: string,

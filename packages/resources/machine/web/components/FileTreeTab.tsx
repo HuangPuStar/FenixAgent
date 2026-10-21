@@ -11,16 +11,7 @@ import { FileTreeView } from "@fenix/ui-components/components/file-tree-view";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import {
-  forwardRef,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "../api/fs";
@@ -51,6 +42,13 @@ export function isValidFileTreeMovePath(value: string) {
   const trimmed = value.trim();
   return !!trimmed && !trimmed.includes("\0");
 }
+
+/** 上传落点所在分区：`user` 作用域（`user` 或 `user/**`）归「我的文件」，其余归工作区。 */
+export function resolveUploadSection(targetDir: string): "workspace" | "user" {
+  const normalized = targetDir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  return normalized === "user" || normalized.startsWith("user/") ? "user" : "workspace";
+}
+
 interface FileTreeTabProps {
   envId: string | null;
   onPreviewFile: (path: string) => void;
@@ -59,15 +57,8 @@ interface FileTreeTabProps {
   headerActions?: ReactNode;
 }
 
-export interface FileTreeTabHandle {
-  uploadFiles: ReturnType<typeof useFileUploads>["uploadFiles"];
-}
-
 /** 文件树容器：编排下载、上传、重试与文件变更订阅，视图由公共组件承载。 */
-export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(function FileTreeTab(
-  { envId, onPreviewFile, onReferenceFile, headerActions },
-  ref,
-) {
+export function FileTreeTab({ envId, onPreviewFile, onReferenceFile, headerActions }: FileTreeTabProps) {
   const { t } = useTranslation(MACHINE_NS);
   const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const treeDataRef = useRef<ParsedFileNode[]>([]);
@@ -126,7 +117,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     folderInputRef,
     uploading,
     uploadProgress,
-    uploadFiles,
     uploadDroppedFiles,
     handleFileInputChange,
     handleFolderInputChange,
@@ -137,8 +127,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     onUploaded: refreshTree,
     onError: handleUploadError,
   });
-
-  useImperativeHandle(ref, () => ({ uploadFiles }), [uploadFiles]);
 
   // 重命名 / 移动 / 新建目录 / 新建文件共用的收尾：关掉输入弹窗并重取树。
   // 四处逐字相同（此前各写一份 `() => { setInputDialog(null); refreshTree(); }`），只有失败分支不同。
@@ -417,8 +405,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
     if (inputDialog.kind === "rename") runRename(inputDialog.path, value);
     else if (inputDialog.kind === "move") runMove(inputDialog.path, value);
-    else if (inputDialog.kind === "newFile") runNewFile(`${inputDialog.path}/${value}`);
-    else runMkdir(`${inputDialog.path}/${value}`);
+    else {
+      // 分区工具条以空父目录表示工作区根；拼成 `/name` 会被服务端当作绝对路径拒绝。
+      const path = inputDialog.path ? `${inputDialog.path}/${value}` : value;
+      if (inputDialog.kind === "newFile") runNewFile(path);
+      else runMkdir(path);
+    }
   }, [inputDialog, runMkdir, runMove, runNewFile, runRename, dialogErrorText]);
 
   const dialogKind = inputDialog?.kind;
@@ -436,6 +428,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         uploading={uploading}
         uploadProgress={uploadProgress?.percent}
         uploadSaving={uploadProgress?.saving}
+        uploadSection={uploadProgress ? resolveUploadSection(uploadProgress.targetDir) : undefined}
         dragOver={dragOver}
         searchQuery={searchQuery}
         normalizedSearch={normalizedSearch}
@@ -496,4 +489,4 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       />
     </>
   );
-});
+}

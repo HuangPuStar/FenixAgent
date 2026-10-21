@@ -49,7 +49,7 @@
   "confirmRebuildTitle": "Rebuild sandbox?",
   "confirmRebuildDescription": "This rebuild may briefly interrupt the target sandbox instance.",
   "confirmResourceUpdateTitle": "Update sandbox resources?",
-  "confirmResourceUpdateDescription": "Saving will destroy the old Provider resource, set the instance to stopped, and clear its external sandbox ID. You must rebuild it manually afterward.",
+  "confirmResourceUpdateDescription": "Saving destroys the old Provider resource, sets the instance to stopped, and clears its external sandbox ID. The sandbox is recreated with the new configuration the next time the agent starts.",
   "confirmDeleteTitle": "Confirm deletion",
   "confirmDeleteDescription": "Are you sure you want to delete “{{name}}”? This action cannot be undone.",
   "instanceId": "Instance ID",

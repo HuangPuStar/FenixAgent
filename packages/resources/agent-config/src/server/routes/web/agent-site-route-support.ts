@@ -5,6 +5,7 @@ import {
   type SiteAppFailureReason,
 } from "../../facades/agent-site-app-facade";
 import type { AgentSiteApp } from "../../schemas/agent-site.schema";
+import { AgentSitesError } from "../../services/agent-sites";
 
 /**
  * `/web/agent-sites` 的协议层公共设施：DTO 映射与错误映射。
@@ -131,14 +132,32 @@ function messageOfSiteFailure(
 type StatusWriter = (code: number, body: WebErr) => WebErr;
 
 /**
+ * 上游 agent-sites 的拒绝 → `/web` 错误体。
+ *
+ * 上游文案是用户唯一能拿到的具体原因（例如「应用数量已达上限」），必须原样透出；统一压成 500 会让
+ * 用户无从处理。4xx 描述的是本次请求，状态码原样透传；401/403 是 RCS 与 agent-sites 之间的 master
+ * key 凭据问题、并非当前用户会话失效，与 5xx 一样按网关失败映射为 502，避免前端把上游鉴权失败当成
+ * 用户被登出。
+ */
+function toUpstreamFailure(error: AgentSitesError): { readonly status: number; readonly body: WebErr } {
+  const clientRejection = error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 403;
+  return {
+    status: clientRejection ? error.status : 502,
+    body: buildError("upstream_error", error.message || `Agent Sites 请求失败（${error.status}）`),
+  };
+}
+
+/**
  * 失败语义 → 状态码与错误体。
  *
- * 未识别的错误原样上抛（500）：存储故障、上游故障与装配错误不得被伪装成协议错误。
+ * 未识别的错误原样上抛（500）：存储故障、装配错误不得被伪装成协议错误；上游拒绝单独映射见
+ * {@link toUpstreamFailure}，其文案必须保留。
  */
 export function toSiteFailure(
   error: unknown,
   messages: Partial<Record<SiteAppFailureReason, string>> = {},
 ): { readonly status: number; readonly body: WebErr } {
+  if (error instanceof AgentSitesError) return toUpstreamFailure(error);
   if (!(error instanceof SiteAppActionError)) throw error;
   const reason = error.reason;
   return {
@@ -160,6 +179,10 @@ export async function runSiteAction<T>(
   try {
     return await run();
   } catch (error) {
+    // 上游拒绝映射成 /web 响应后不再进入宿主错误处理器，诊断日志在这里补齐。
+    if (error instanceof AgentSitesError) {
+      console.warn(`[agent-sites] 上游请求失败 status=${error.status}: ${error.message}`);
+    }
     const failure = toSiteFailure(error, messages);
     return status(failure.status, failure.body);
   }

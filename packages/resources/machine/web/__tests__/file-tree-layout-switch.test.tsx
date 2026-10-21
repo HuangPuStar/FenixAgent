@@ -126,7 +126,6 @@ function renderWorkspace(): { container: HTMLElement; root: Root } {
       <I18nextProvider i18n={i18n}>
         <ArtifactsFilesWorkspace
           envId={null}
-          fileTreeRef={{ current: null }}
           openFiles={[]}
           activeFile={null}
           changedFiles={[]}

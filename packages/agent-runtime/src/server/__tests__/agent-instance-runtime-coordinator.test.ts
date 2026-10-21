@@ -138,6 +138,106 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     expect(coordinator.snapshot(instance.id).state).toBe("running");
   });
 
+  // VER-REVIEW-017：销毁 Provider 沙盒后，残留的 running 条目会让下一次 ensure 直接返回，
+  // 沙盒永远不会按新配置重建；确定终止必须复位为 stopped 并允许重新启动。
+  test("runtime terminated with its machine releases a running entry for the next ensure", async () => {
+    let active = false;
+    let starts = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+        active = true;
+      },
+      async stop() {
+        active = false;
+      },
+      hasActiveRuntime() {
+        return active;
+      },
+      async stopActiveRuntime() {
+        active = false;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    await coordinator.ensureRuntime(instance);
+    expect(starts).toBe(1);
+
+    // 平台销毁 Provider 沙盒：core runtime 实例已被收敛，旧进程不可能回连。
+    active = false;
+    expect(coordinator.handleRuntimeTerminated({ machineId: "mach_sandbox_1", instanceUids: [instance.id] })).toEqual([
+      instance.id,
+    ]);
+    expect(coordinator.snapshot(instance.id).state).toBe("stopped");
+
+    await coordinator.ensureRuntime(instance);
+    expect(starts).toBe(2);
+    expect(coordinator.snapshot(instance.id).state).toBe("running");
+  });
+
+  // 断连事件先于沙盒释放到达时条目是 unknown，且 unknown 禁止 ensure；确定终止必须按
+  // machineId 解除它，否则用户重新进入智能体只会看到启动失败。
+  test("runtime termination resolves the unknown left by the machine disconnect", async () => {
+    let active = false;
+    let starts = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+        active = true;
+      },
+      async stop() {
+        active = false;
+      },
+      hasActiveRuntime() {
+        return active;
+      },
+      async stopActiveRuntime() {
+        active = false;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    await coordinator.ensureRuntime(instance);
+    const generation = coordinator.snapshot(instance.id).runtimeGeneration;
+
+    active = false;
+    coordinator.handleRuntimeDisconnect(instance.id, generation, "mach_sandbox_1");
+    expect(coordinator.snapshot(instance.id).state).toBe("unknown");
+    await expect(coordinator.ensureRuntime(instance)).rejects.toThrow("unknown");
+
+    expect(coordinator.handleRuntimeTerminated({ machineId: "mach_sandbox_1" })).toEqual([instance.id]);
+    await coordinator.ensureRuntime(instance);
+    expect(starts).toBe(2);
+  });
+
+  // 实例重启按钮在沙盒被销毁后必须能启动新 runtime：条目复位为 stopped 后 restart 不再被
+  // unknown gate 拒绝。
+  test("restart after runtime termination starts a fresh runtime", async () => {
+    let active = false;
+    let starts = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+        active = true;
+      },
+      async stop() {
+        active = false;
+      },
+      hasActiveRuntime() {
+        return active;
+      },
+      async stopActiveRuntime() {
+        active = false;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    await coordinator.ensureRuntime(instance);
+    active = false;
+    coordinator.handleRuntimeTerminated({ instanceUids: [instance.id] });
+
+    await coordinator.restartRuntime(instance);
+    expect(starts).toBe(2);
+    expect(coordinator.snapshot(instance.id).state).toBe("running");
+  });
+
   // waiter 自身取消不得取消共享启动，否则会影响同 uid 的其他调用者。
   test("waiter cancellation does not cancel shared ensure", async () => {
     let release: (() => void) | undefined;

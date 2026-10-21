@@ -16,7 +16,11 @@ import { createLogger } from "@fenix/logger";
 import { AppError, ValidationError } from "@fenix/platform-sdk";
 import { BusyError } from "../transport/file-ws-requests";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
-import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";
+import {
+  assertSafePath as assertPathSafe,
+  assertRenameTarget,
+  normalizeUploadRelativePath,
+} from "./file-path-validator";
 import {
   type AgentFileScope,
   type FileErrorType,
@@ -173,6 +177,7 @@ class AgentFileServiceImpl implements AgentFileService {
     const validate = () => {
       assertSafePath(oldPath);
       assertSafePath(newPath);
+      assertRenameTarget(oldPath, newPath);
     };
     return this.run((b) => b.rename(this.scope.environmentId, oldPath, newPath, this.writeOptions(options)), validate);
   }

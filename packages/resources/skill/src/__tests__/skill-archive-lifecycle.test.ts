@@ -24,7 +24,11 @@ const targetDir = `${root}/${organizationId}`;
 const backupDir = "/tmp/backup";
 
 function makeFile(name: string): UploadSkillFile {
-  return { skillName: name, relativePath: "SKILL.md", content: `---\nname: ${name}\n---\nBody` };
+  return {
+    skillName: name,
+    relativePath: "SKILL.md",
+    content: new TextEncoder().encode(`---\nname: ${name}\n---\nBody`),
+  };
 }
 
 /** 装入文件系统替身：纯函数（名称校验、分组、冲突规划）用真实实现，磁盘操作全部替换。 */

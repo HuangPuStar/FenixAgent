@@ -15,7 +15,7 @@ const organizationId = "org-1";
 const targetDir = `${root}/${organizationId}`;
 
 function makeFile(name: string, content = `---\nname: ${name}\ndescription: ${name} desc\n---\nBody`): UploadSkillFile {
-  return { skillName: name, relativePath: "SKILL.md", content };
+  return { skillName: name, relativePath: "SKILL.md", content: new TextEncoder().encode(content) };
 }
 
 function conflictOf(name: string): ImportSkillsConflict {
@@ -55,11 +55,15 @@ function installFs() {
       names.map((name) => ({
         name,
         enabled: true,
-        description:
-          writtenByName
-            .get(name)?.[0]
-            ?.content.match(/description:\s*([^\n]+)/)?.[1]
-            ?.trim() ?? "",
+        description: (() => {
+          const content = writtenByName.get(name)?.[0]?.content;
+          return content
+            ? (new TextDecoder()
+                .decode(content)
+                .match(/description:\s*([^\n]+)/)?.[1]
+                ?.trim() ?? "")
+            : "";
+        })(),
         path: `${dir}/${name}/SKILL.md`,
       })),
     ),

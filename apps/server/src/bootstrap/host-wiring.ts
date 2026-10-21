@@ -104,7 +104,9 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
     resolveWorkspacePath: resolveWorkspacePathFromEnv,
     // Core runtime 单例归宿主（`./services/core-bootstrap`），此处只暴露「按 machineId 查节点」的窄视图。
     getCoreRuntimeNode: (machineId) => getCoreRuntime().getNode(machineId),
-    unregisterCoreRuntimeNode: unregisterRemoteNode,
+    // 该端口只服务于「机器退役 / 释放沙盒」这类确定终止（见 MachineHostPort 注释），与 ACP 断连
+    // 路径不同：sandbox 已销毁时旧 Agent 进程不可能回连，实例运行态必须直接复位为 stopped。
+    unregisterCoreRuntimeNode: (machineId) => unregisterRemoteNode(machineId, { runtimeTerminated: true }),
     findMachineConnectionById,
     triggerMachineCleanupByMachineId,
   });

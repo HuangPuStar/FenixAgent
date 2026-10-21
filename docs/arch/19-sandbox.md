@@ -365,7 +365,9 @@ Provider 返回资源已就绪，不代表 FenixAgent 已经可以使用该沙�
 
 ### 5.5 显式删除与重建
 
-修改资源池或 Instance 的沙盒配置时，变更只写入数据库，不直接修改正在运行的 Provider 沙盒。需要让配置对已有 Instance 生效时，调用 rebuild；rebuild 按资源池当前默认配置和 Instance 的 `resource_overrides` 重新生成 `resolved_config`，只有快照发生变化的 Instance 才销毁旧 Provider 资源，并在下次进入 Agent 时按新快照创建。
+修改资源池配置只写入数据库，不直接修改正在运行的 Provider 沙盒；需要让资源池默认值作用到存量 Instance 时调用 rebuild。rebuild 按资源池当前默认配置和 Instance 的 `resource_overrides` 重新生成 `resolved_config`，只有快照发生变化的 Instance 才销毁旧 Provider 资源。
+
+修改单个 Instance 的资源覆盖值时，保存会立即重算 `resolved_config`；快照变化则销毁旧 Provider 资源、清空外部沙盒 ID 并置为 `stopped`。因此不需要再对同一 Instance 执行 rebuild（重建时快照已一致，不会产生待处理项）。两种路径下的沙盒都由**下一次进入 Agent** 按最新快照重新创建；销毁同时意味着该机器上的 Agent runtime 被平台确定终止，持久实例的运行态必须复位为 `stopped`，否则下一次启动会被残留的运行态挡住（见 `22-agent-instance-management.md` §9）。
 
 delete 用于删除目标沙盒配置，日常较少使用。它销毁 Provider 资源并物理删除 `sandbox_instance` 记录，下次进入 Agent 时按资源池默认配置创建新的 Instance。rebuild 和 delete 都不清理宿主机上的用户工作区、OpenCode 配置或会话数据。
 

@@ -122,4 +122,16 @@ describe("知识库创建表单请求契约", () => {
       pipelineId: null,
     });
   });
+
+  // 内置解析未选分块方法时必须在请求前拦截，不能把后端的英文参数错误暴露给用户。
+  test("内置解析未选择 chunkMethod 时不发创建请求", async () => {
+    act(() => {
+      currentCatalog().setFormName("Missing Chunk");
+      currentCatalog().setFormEmbeddingModel("text-embedding-v2@provider");
+    });
+    act(() => currentCatalog().submitForm());
+    await flushRequests();
+
+    expect(createdBodies).toEqual([]);
+  });
 });

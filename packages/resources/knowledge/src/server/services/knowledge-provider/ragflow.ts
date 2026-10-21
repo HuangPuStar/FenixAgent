@@ -225,7 +225,13 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       datasetBody.pipeline_id = input.pipelineId.trim();
     }
     if (input.chunkMethod?.trim()) {
-      datasetBody.chunk_method = input.chunkMethod.trim();
+      const chunkMethod = input.chunkMethod.trim();
+      datasetBody.chunk_method = chunkMethod;
+      if (chunkMethod === "email") {
+        // RAGFlow v0.26.0 的 Email 分块器直接取 parser_config["chunk_token_num"]，而该类型没有
+        // 服务端默认值，缺键会让解析任务抛 KeyError；这里补上其内置兜底值，其他分块保持默认。
+        datasetBody.parser_config = { chunk_token_num: 512 };
+      }
     }
 
     const payload = await this.request<RagFlowResponse<{ id: string; name: string }>>(

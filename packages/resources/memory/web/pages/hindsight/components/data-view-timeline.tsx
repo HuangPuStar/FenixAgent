@@ -143,9 +143,9 @@ export function DataViewTimeline({ _data, filteredRows, onMemoryClick }: DataVie
   };
 
   return (
-    <div className="px-4">
+    <div className="flex h-full min-h-0 flex-col px-4">
       {/* 控制栏 */}
-      <div className="flex items-center justify-between mb-3 gap-4">
+      <div className="flex shrink-0 items-center justify-between mb-3 gap-4">
         <div className="text-xs text-muted-foreground">
           {t("dataView.timelineMemoriesCount", { count: sortedItems.length })}
           {itemsWithoutDates.length > 0 &&
@@ -226,7 +226,7 @@ export function DataViewTimeline({ _data, filteredRows, onMemoryClick }: DataVie
       </div>
 
       {/* 时间线条目 */}
-      <div className="relative max-h-137.5 overflow-y-auto pr-2">
+      <div className="relative min-h-0 flex-1 overflow-y-auto pr-2">
         <div className="absolute left-15 top-0 bottom-0 w-0.5 bg-border" />
         {timelineGroups.map((group, groupIdx) => (
           <div key={group.key} id={`timeline-group-${groupIdx}`} className="mb-4">

@@ -144,6 +144,33 @@ export class AgentInstanceRuntimeCoordinator {
   }
 
   /**
+   * 平台已确认终止该机器上的 runtime（销毁 Provider 沙盒、退役机器）后，把相关条目复位为
+   * `stopped`，使下一次 ensure/restart 能以原 instanceUid 重新启动。
+   *
+   * 与 `handleRuntimeDisconnect` 的区别是事实已经确定：沙盒资源已被销毁，旧进程不可能再回连。
+   * `machineId` 覆盖断连事件先于释放到达的条目（此时条目已记录机器归属），`instanceUids`
+   * 覆盖释放先于断连到达的条目（此时归属尚未写入）。
+   */
+  handleRuntimeTerminated(input: { machineId?: string; instanceUids?: readonly string[] }): string[] {
+    if (this.#shuttingDown) return [];
+    const instanceUids = new Set(input.instanceUids ?? []);
+    const resolved: string[] = [];
+    for (const [instanceUid, entry] of this.#entries) {
+      const ownedByMachine = input.machineId !== undefined && entry.machineId === input.machineId;
+      if (!ownedByMachine && !instanceUids.has(instanceUid)) continue;
+      // 与死亡事件同一处理：推进世代 fence 掉迟到的启动结果，在飞操作由补偿停止收尾。
+      entry.generation += 1;
+      entry.abortController?.abort(new Error("Runtime terminated with its machine"));
+      entry.state = "stopped";
+      entry.machineId = null;
+      entry.pendingCleanSlate = false;
+      entry.lastFailure = null;
+      resolved.push(instanceUid);
+    }
+    return resolved;
+  }
+
+  /**
    * 机器确认 clean slate(其旧 runtime 已全部终止)后,解除该机器断连造成的 unknown。
    * 只复位「归属该机器 + unknown + 无在飞操作」的条目;条目仍被操作独占时置延后标记,
    * 待操作释放槽位后再复位。其他来源的 unknown(操作失败、shutdown 排空)不参与。

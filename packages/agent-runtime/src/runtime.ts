@@ -122,7 +122,7 @@ export function createAgentRuntime(): AgentRuntime {
     resolveExistingSessionId: (sessionId) => resolveExistingSessionId(sessionId),
     updateSessionStatus: (sessionId, status) => updateSessionStatus(sessionId, status),
 
-    cleanupMachineInstances: (machineId) => convergeMachineInstances(machineId),
+    cleanupMachineInstances: (machineId, options) => convergeMachineInstances(machineId, options),
     terminateLocalDeadInstance: (instanceId, identity) => terminateLocalDeadInstance(instanceId, identity),
     startIdleMonitor: () => startAcpIdleMonitor(),
     stopIdleMonitor: () => stopAcpIdleMonitor(),

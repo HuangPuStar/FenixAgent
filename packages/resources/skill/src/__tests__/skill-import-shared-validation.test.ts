@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function makeFile(skillName: string, relativePath = "SKILL.md"): UploadSkillFile {
-  return { skillName, relativePath, content: "Body" };
+  return { skillName, relativePath, content: new TextEncoder().encode("Body") };
 }
 
 describe("上传校验", () => {

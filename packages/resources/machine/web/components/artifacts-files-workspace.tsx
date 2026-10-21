@@ -1,17 +1,16 @@
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
-import { type RefObject, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { buildPreviewSourceUrl, readPreviewSource } from "../api/fs";
 import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
 import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
 import { FileTabsBar } from "./FileTabsBar";
-import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";
+import { FileTreeTab } from "./FileTreeTab";
 import { FileTreeLayoutToggle } from "./file-tree-layout-toggle";
 import { FileTreeWorkbench } from "./file-tree-workbench";
 
 interface ArtifactsFilesWorkspaceProps {
   envId: string | null;
-  fileTreeRef: RefObject<FileTreeTabHandle | null>;
   openFiles: string[];
   activeFile: string | null;
   changedFiles: ChangedFile[];
@@ -47,7 +46,6 @@ function readFileTreeWidth(): number {
  */
 export function ArtifactsFilesWorkspace({
   envId,
-  fileTreeRef,
   openFiles,
   activeFile,
   changedFiles,
@@ -90,7 +88,6 @@ export function ArtifactsFilesWorkspace({
       onToggleTree={toggleTree}
       tree={
         <FileTreeTab
-          ref={fileTreeRef}
           envId={envId}
           onPreviewFile={onOpenFile}
           onReferenceFile={onReferenceFile}

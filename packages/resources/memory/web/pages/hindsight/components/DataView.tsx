@@ -311,7 +311,7 @@ export function DataView({
 
           {/* ── Timeline 视图 ── */}
           {!compactMode && viewMode === "timeline" && (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <DataViewTimeline _data={data} filteredRows={tableRows} onMemoryClick={(id) => setModalMemoryId(id)} />
             </div>
           )}

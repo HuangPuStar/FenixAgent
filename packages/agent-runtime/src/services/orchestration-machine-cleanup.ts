@@ -62,6 +62,11 @@ export function resetOrchestrationMachineCleanupDeps(): void {
  * @returns 实际清理的实例数
  */
 export function cleanupOrchestrationInstancesForMachine(machineId: string): number {
+  return removeOrchestrationInstancesForMachine(machineId).length;
+}
+
+/** 同 {@link cleanupOrchestrationInstancesForMachine}，但返回被移除的实例 uid（供上报运行态终止的调用方使用）。 */
+export function removeOrchestrationInstancesForMachine(machineId: string): string[] {
   const removedInstanceIds = _deps.getOrchestrationController().stopInstancesByMachineId(machineId);
   if (removedInstanceIds.length > 0) {
     // machineId 属内部机器标识（非用户输入），日志记录不违反脱敏约束
@@ -76,5 +81,5 @@ export function cleanupOrchestrationInstancesForMachine(machineId: string): numb
         logError(`[orchestration-machine-cleanup] yjs doc reclaim failed for instance ${instanceId}`, err),
       );
   }
-  return removedInstanceIds.length;
+  return removedInstanceIds;
 }

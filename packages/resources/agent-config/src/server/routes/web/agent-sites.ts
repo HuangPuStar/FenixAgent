@@ -133,12 +133,16 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
         body: CreateAgentSiteAppRequestSchema,
         response: {
           200: AgentSiteAppDetailResponseSchema,
+          400: WebErrSchema,
           401: WebErrSchema,
+          409: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],
           summary: "创建 agent site app",
-          description: "在 agent-sites 创建远程 app + 申请 token + 写 RCS DB。type=custom 时不创建 PocketBase。",
+          description:
+            "在 agent-sites 创建远程 app + 申请 token + 写 RCS DB。type=custom 时不创建 PocketBase。上游拒绝时原样透出其状态码与文案（如数量上限 409）。",
         },
       },
     )
@@ -200,6 +204,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
           401: WebErrSchema,
           403: WebErrSchema,
           404: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],
@@ -232,6 +237,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
           401: WebErrSchema,
           403: WebErrSchema,
           404: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],
@@ -269,6 +275,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
           401: WebErrSchema,
           403: WebErrSchema,
           404: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],
@@ -303,6 +310,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
           401: WebErrSchema,
           403: WebErrSchema,
           404: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],
@@ -350,6 +358,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
           401: WebErrSchema,
           403: WebErrSchema,
           404: WebErrSchema,
+          502: WebErrSchema,
         },
         detail: {
           tags: ["Agent Sites"],

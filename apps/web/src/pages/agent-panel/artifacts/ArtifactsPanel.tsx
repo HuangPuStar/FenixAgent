@@ -6,7 +6,7 @@ import { TracePanel } from "@fenix/resource-trace/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
 import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
-import { Globe, Plus, Upload } from "lucide-react";
+import { Globe, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
@@ -142,12 +142,6 @@ function ArtifactsPanelView({
     normalizedChangedFiles,
     handleCloseFile,
     handleReferenceFile,
-    isDragging,
-    handleDragEnter,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    fileTreeRef,
   } = useArtifactsFiles({ envId, changedFiles, isFilesMode, onEnterFilesMode: enterFilesMode });
 
   // agent 切换：回到 Files 模式（站点列表、选中态与角标各由对应 hook 复位）
@@ -168,13 +162,7 @@ function ArtifactsPanelView({
   );
 
   return (
-    <div
-      className="artifacts-workspace relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-1"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className="artifacts-workspace relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-1">
       {/* 一级 tab：显示哪些、什么顺序由 `availableModes`（`modulesConfig` 推出的白名单）决定，显示的
           tab 永远可点；未绑定 site 时点 Sites 会进入空状态，提示用户去 Agent 配置里绑定 */}
       <TopModeTabs
@@ -203,7 +191,6 @@ function ArtifactsPanelView({
       {isFilesMode ? (
         <ArtifactsFilesWorkspace
           envId={envId}
-          fileTreeRef={fileTreeRef}
           openFiles={openFiles}
           activeFile={activeFile}
           changedFiles={normalizedChangedFiles}
@@ -259,15 +246,6 @@ function ArtifactsPanelView({
             </div>
           )}
         </>
-      )}
-
-      {/* 拖拽上传遮罩：拖入文件时覆盖整个面板 */}
-      {isDragging && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm">
-          <Upload className="h-10 w-10 mb-3 text-brand" />
-          <p className="text-sm font-medium text-text-primary mb-1">{t("fileTree.dropToUpload")}</p>
-          <p className="text-xs text-text-muted">{t("fileTree.uploadTo", { path: "user/" })}</p>
-        </div>
       )}
 
       <ArtifactsDialogs

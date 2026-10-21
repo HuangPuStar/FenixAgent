@@ -52,6 +52,18 @@ describe("文件操作冲突保护", () => {
     expect(await fs.read("source/item.txt", "text")).toMatchObject({ content: "source" });
   });
 
+  // 移动到自身子目录属非法路径：必须在执行面前返回 400 明确原因，不能被底层 EINVAL
+  // 兜底成 503「文件服务不可用」并诱导用户重试。
+  test("移动到自身子目录返回 400 validation_error", async () => {
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await fs.write("note-folder/note.txt", "note");
+    await expect(fs.rename("note-folder", "note-folder/inside")).rejects.toMatchObject({
+      type: "validation_error",
+      statusCode: 400,
+    });
+    expect(await fs.read("note-folder/note.txt", "text")).toMatchObject({ content: "note" });
+  });
+
   // 目录占位在rename前被并发填入内容时返回409，清理不得递归删除新增内容。
   test("目录占位被填入内容后保留双方", async () => {
     const fs = await machineFileFacade.open(ACTOR, ENV_ID);

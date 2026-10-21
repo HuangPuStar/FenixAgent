@@ -44,6 +44,23 @@ export function assertSafePath(path: string): void {
   }
 }
 
+/** 归一化用于比较的 workspace 相对路径：统一分隔符并去掉尾部斜杠。 */
+function normalizeForPathCompare(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+/** 校验重命名/移动目标：目标不能是源自身，也不能位于源目录内部。
+ * 这类目标在所有后端上都会失败（本地 EINVAL、远程对应错误），若留给兜底映射会变成
+ * 503「文件服务不可用」并诱导用户重试，因此必须在派发前按非法路径返回 400。 */
+export function assertRenameTarget(oldPath: string, newPath: string): void {
+  const source = normalizeForPathCompare(oldPath);
+  const target = normalizeForPathCompare(newPath);
+  if (!source || !target) return;
+  if (target === source || target.startsWith(`${source}/`)) {
+    throw new ValidationError("目标路径不能是源路径自身或其子目录");
+  }
+}
+
 /** 规范化并校验 upload 的 relativePath（D16 逃逸修复）：返回 null=非法（调用方必须
  * 整批拒绝）；""=未提供（回退 file.name）；正/反斜杠均视为分隔符，防御 Windows
  * 客户端路径。relativePath 相对 dir 解析，作用域由 dir 参数控制，此处不做作用域检查。

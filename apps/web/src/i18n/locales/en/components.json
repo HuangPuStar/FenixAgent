@@ -30,9 +30,7 @@
     "emptyHint": "Use the toolbar or drag files here to upload",
     "userEmptyState": "No files",
     "retry": "Retry",
-    "staleBanner": "File service temporarily unavailable, reconnecting...",
-    "dropToUpload": "Drop files to upload",
-    "uploadTo": "Upload to: {{path}}"
+    "staleBanner": "File service temporarily unavailable, reconnecting..."
   },
   "tree": {
     "showMore": "+{{count}} more",

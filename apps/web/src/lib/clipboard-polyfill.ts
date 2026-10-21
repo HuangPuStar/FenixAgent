@@ -43,6 +43,36 @@ function execCopy(text: string): Promise<void> {
 }
 
 /**
+ * 非安全上下文的 `ClipboardItem` 最小实现。
+ *
+ * `ClipboardItem` 与 `navigator.clipboard` 一样只在安全上下文暴露；streamdown 表格复制会先
+ * `new ClipboardItem(...)` 再交给 `navigator.clipboard.write`，缺少这个全局时构造阶段就抛
+ * `ReferenceError` 并被其内部吞掉，只补 `write` 仍会静默失败。
+ */
+class ClipboardItemPolyfill implements ClipboardItem {
+  readonly presentationStyle = "unspecified" as const;
+  readonly types: readonly string[];
+
+  constructor(
+    private readonly items: Record<string, string | Blob | PromiseLike<string | Blob>>,
+    _options?: ClipboardItemOptions,
+  ) {
+    this.types = Object.keys(items);
+  }
+
+  async getType(type: string): Promise<Blob> {
+    const value = this.items[type];
+    if (value === undefined) throw new Error(`ClipboardItem does not contain type: ${type}`);
+    const resolved = await value;
+    return typeof resolved === "string" ? new Blob([resolved], { type }) : resolved;
+  }
+
+  static supports(type: string): boolean {
+    return type === "text/plain" || type === "text/html";
+  }
+}
+
+/**
  * 从 ClipboardItem 数组中提取 text/plain 内容并通过 execCommand 复制。
  * streamdown 表格复制创建 { text/plain + text/html } 的 ClipboardItem，
  * 降级方案只复制 text/plain（文本内容），忽略 HTML 富文本。
@@ -89,6 +119,8 @@ function installPolyfill(): void {
       configurable: true,
       enumerable: true,
     });
+    const scope = globalThis as unknown as { ClipboardItem?: unknown };
+    if (scope.ClipboardItem === undefined) scope.ClipboardItem = ClipboardItemPolyfill;
     console.debug("[clipboard-polyfill] installed — execCommand fallback active");
   } catch {
     // navigator.clipboard 已存在且不可覆写（部分浏览器的 HTTPS 场景），

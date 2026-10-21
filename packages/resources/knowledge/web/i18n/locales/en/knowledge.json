@@ -100,7 +100,8 @@
   "validation": {
     "nameRequired": "Name is required",
     "embeddingModelRequired": "Please select an embedding model",
-    "embeddingModelFormat": "Embedding model format error: please select from the dropdown (format: <model>@<instance>@<provider>)"
+    "embeddingModelFormat": "Embedding model format error: please select from the dropdown (format: <model>@<instance>@<provider>)",
+    "chunkMethodRequired": "Please select a chunking method"
   },
   "toast": {
     "updated": "Knowledge base updated",
