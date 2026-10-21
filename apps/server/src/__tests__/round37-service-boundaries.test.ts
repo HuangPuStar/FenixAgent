@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { getAcpEventBus, getEventBus, removeAcpEventBus, removeEventBus } from "@fenix/agent-runtime/server";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { waitForMachineConnection } from "@fenix/resource-machine/server";
@@ -55,26 +55,27 @@ describe("机器连接轮询边界", () => {
   }
 
   for (const timeoutMs of [0, -1, -100, 1, 2, 5, 10, 20, 50, 100] as const) {
+    // 用可控时钟验证剩余预算，避免毫秒级调度抖动改变等待次数。
     test(`机器连接超时 ${timeoutMs}ms 时按剩余时间截断等待`, async () => {
-      let waits = 0;
+      let now = 10_000;
+      const clock = spyOn(Date, "now").mockImplementation(() => now);
       const delays: number[] = [];
-      await expect(
-        waitForMachineConnection(
-          `mach-timeout-${timeoutMs}`,
-          timeoutMs,
-          async () => false,
-          async (delayMs) => {
-            waits += 1;
-            delays.push(delayMs);
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
-          },
-        ),
-      ).rejects.toThrow("connection timed out");
-      if (timeoutMs <= 0) {
-        expect(waits).toBe(0);
-      } else {
-        expect(waits).toBe(1);
-        expect(delays[0]).toBeLessThanOrEqual(timeoutMs);
+
+      try {
+        await expect(
+          waitForMachineConnection(
+            `mach-timeout-${timeoutMs}`,
+            timeoutMs,
+            async () => false,
+            async (delayMs) => {
+              delays.push(delayMs);
+              now += delayMs;
+            },
+          ),
+        ).rejects.toThrow("connection timed out");
+        expect(delays).toEqual(timeoutMs <= 0 ? [] : [timeoutMs]);
+      } finally {
+        clock.mockRestore();
       }
     });
   }

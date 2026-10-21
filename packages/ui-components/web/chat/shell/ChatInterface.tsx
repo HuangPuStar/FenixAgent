@@ -36,7 +36,7 @@ import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
 import { UserInputQueuePanel } from "../panels/user-input-queue-panel";
-import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry, TokenUsage } from "../types";
+import type { StructuredMessage, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import { useChatMessageWindow } from "../view/chat-render-window";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
