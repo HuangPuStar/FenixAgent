@@ -38,8 +38,13 @@ export interface TraceReadInput {
   readonly traceId: string;
 }
 
-/** observation 摘要字段组：与上游 `fields` 参数同义（core/basic 恒在，故不列出）。 */
-export const OBSERVATION_SUMMARY_FIELDS = "time,model,usage,prompt,metrics,metadata";
+/**
+ * observation 摘要字段组：与上游 v2 `fields` 参数同义。
+ *
+ * 只有 `core` 恒在；`basic` 必须显式请求，否则 `name` 等字段在响应里整体缺失（不是 null），调用链会退化成
+ * 「工具 / 未命名」。`io` 只在详情阶段请求。
+ */
+export const OBSERVATION_SUMMARY_FIELDS = "basic,time,model,usage,prompt,metrics,metadata";
 /** observation 详情字段组：在摘要之上补 IO（面板点开节点才取，避免列表阶段搬运工具输出）。 */
 export const OBSERVATION_DETAIL_FIELDS = `${OBSERVATION_SUMMARY_FIELDS},io`;
 

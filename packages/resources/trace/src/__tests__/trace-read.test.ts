@@ -179,6 +179,21 @@ describe("listTraceObservations", () => {
     expect(fake.calls.listObservations[0]?.fields).not.toContain("io");
   });
 
+  // 业务意图：工具名属于上游 `basic` 字段组；显式 `fields` 会取代默认的 core+basic，漏掉 basic 时 `name` 在
+  // 响应里整体缺失，列表只能显示「工具」、详情显示「未命名」。
+  test("列表与详情请求都包含 basic 字段组以取回名称", async () => {
+    const fake = createFakeClient();
+    const service = createTraceReadService(createPorts(fake));
+
+    await service.listTraceObservations({ rcsSessionId: "rcs_1", traceId: "trace-1", limit: 50 });
+    await service.getTraceObservation({ rcsSessionId: "rcs_1", traceId: "trace-1", observationId: "obs-1" });
+
+    expect(fake.calls.listObservations).toHaveLength(2);
+    for (const params of fake.calls.listObservations) {
+      expect(params.fields.split(",")).toContain("basic");
+    }
+  });
+
   // 业务意图：缺渲染必需字段（`type`）的行无法定位节点，列表按「跳过该行」处理——一个畸形节点不该让整张图
   // 取不回来。
   test("缺必需字段的 observation 行被跳过", async () => {
