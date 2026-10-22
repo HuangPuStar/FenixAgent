@@ -39,7 +39,6 @@ describe("SDK 生命周期", () => {
     expect(parseTelemetryConfig({ OTEL_EXPORTER_OTLP_ENDPOINT: "" }).enabled).toBe(false);
     expect(parseTelemetryConfig({ OTEL_EXPORTER_OTLP_ENDPOINT: "   " }).enabled).toBe(false);
     expect(parseTelemetryConfig({ OTEL_SDK_DISABLED: "true", OTEL_EXPORTER_OTLP_ENDPOINT: "" }).enabled).toBe(false);
-    expect(parseTelemetryConfig({ OTEL_BROWSER_COLLECTOR_ENDPOINT: "" }).urls.logs).toBeUndefined();
   });
 
   // 所有 OTEL_* 空白字符串统一回退默认值，不能把采样率静默变成 0 或清空允许列表。
@@ -71,7 +70,6 @@ describe("SDK 生命周期", () => {
       ["OTEL_TRACES_SAMPLER", (config) => config.env.OTEL_TRACES_SAMPLER, "parentbased_traceidratio"],
       ["OTEL_TRACES_SAMPLER_ARG", (config) => config.env.OTEL_TRACES_SAMPLER_ARG, 0.1],
       ["OTEL_NODE_ENABLED_INSTRUMENTATIONS", (config) => config.instrumentations, ["pg", "ioredis", "pino"]],
-      ["OTEL_BROWSER_COLLECTOR_ENDPOINT", (config) => config.urls.logs, undefined],
     ];
     for (const [key, read, expected] of cases) {
       for (const value of ["", "   "]) {

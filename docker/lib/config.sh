@@ -56,27 +56,116 @@ required_var_hint() {
     printf '%s' "${hit%\}}"
 }
 
+# 提取 compose 的 env_file 条目，每行输出 "<required>\t<path>"。
+# 支持现有两种写法：`- .env` 与 `- path: .env` + `required: false`；required 缺省为 true。
+# Compose 默认要求每个 env_file 存在，required: false 才允许缺失；只校验必填插值键会漏掉整份文件缺失。
+compose_env_file_entries() {
+    local compose="$1" line rest trimmed item child_indent key_indent
+    local -a lines=()
+    local path required
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lines+=("${line%$'\r'}")
+    done <"$compose"
+    local i=0 total=${#lines[@]}
+    while ((i < total)); do
+        line="${lines[i]}"
+        i=$((i + 1))
+        [[ "$line" =~ ^([[:space:]]*)env_file:[[:space:]]*(.*)$ ]] || continue
+        key_indent=${#BASH_REMATCH[1]}
+        rest="${BASH_REMATCH[2]}"
+        if [[ -n "$rest" && "$rest" != \#* ]]; then
+            # 单值写法：env_file: .env（去掉行尾注释与引号）
+            rest="${rest%%[[:space:]]#*}"
+            rest="${rest#"${rest%%[![:space:]]*}"}"
+            rest="${rest%"${rest##*[![:space:]]}"}"
+            printf 'true\t%s\n' "$rest"
+            continue
+        fi
+        path=""
+        required="true"
+        while ((i < total)); do
+            line="${lines[i]}"
+            trimmed="${line#"${line%%[![:space:]]*}"}"
+            if [[ -z "$trimmed" || "$trimmed" == \#* ]]; then
+                i=$((i + 1))
+                continue
+            fi
+            child_indent=$((${#line} - ${#trimmed}))
+            ((child_indent > key_indent)) || break
+            i=$((i + 1))
+            if [[ "$trimmed" == -* ]]; then
+                [[ -z "$path" ]] || printf '%s\t%s\n' "$required" "$path"
+                item="${trimmed#-}"
+                item="${item#"${item%%[![:space:]]*}"}"
+                path=""
+                required="true"
+                if [[ "$item" =~ ^path:[[:space:]]*(.+)$ ]]; then
+                    path="${BASH_REMATCH[1]}"
+                elif [[ "$item" != required:* && -n "$item" ]]; then
+                    path="$item"
+                fi
+            elif [[ "$trimmed" =~ ^path:[[:space:]]*(.+)$ ]]; then
+                path="${BASH_REMATCH[1]}"
+            elif [[ "$trimmed" =~ ^required:[[:space:]]*(true|false)$ ]]; then
+                required="${BASH_REMATCH[1]}"
+            fi
+        done
+        [[ -z "$path" ]] || printf '%s\t%s\n' "$required" "$path"
+    done
+}
+
+# 输出缺失且必需的 env_file 路径（按编排里声明的写法），每行一个。
+missing_env_files() {
+    local compose="$1" env_dir="$2" required path file
+    while IFS=$'\t' read -r required path; do
+        [[ "$required" == "false" ]] && continue
+        path="${path#\"}"
+        path="${path%\"}"
+        path="${path#\'}"
+        path="${path%\'}"
+        path="${path#./}"
+        [[ -n "$path" ]] || continue
+        file="$path"
+        [[ "$file" == /* ]] || file="$env_dir/$path"
+        [[ -f "$file" ]] || printf '%s\n' "$path"
+    done < <(compose_env_file_entries "$compose")
+}
+
 # 校验单个 compose 文件的必填项：先看 shell 环境（脚本已导出主服务 env 与 deploy.env），再看该项目的 .env。
 # 为什么不用 `docker compose config` 代劳：它一次只报第一个缺失键，而首次部署需要一次看全。
 check_compose_requirements() {
-    local label="$1" compose="$2" env_dir="$3" var value hint where
+    local label="$1" compose="$2" env_dir="$3" var value hint where env_missing env_file env_where
     local vars missing=""
     vars="$(collect_required_vars "$compose")"
-    [[ -n "$vars" ]] || return 0
-    for var in $vars; do
-        [[ -n "${!var:-}" ]] && continue
-        value="$(env_file_value "$env_dir/.env" "$var" || true)"
-        [[ -n "$value" ]] && continue
-        MISSING_REQUIRED=$((MISSING_REQUIRED + 1))
-        if [[ "$env_dir" == "$SCRIPT_DIR/main" ]]; then
-            where="docker/main/.env"
-        else
-            where="docker/${env_dir#"$SCRIPT_DIR"/}/.env（该依赖自己的配置；与主服务同值的键若已在主服务 env 中，脚本启动前已带入环境，不会报到这里）"
-        fi
-        missing="${missing}    - ${var} → 填在 ${where}"$'\n'
-        hint="$(required_var_hint "$compose" "$var")"
-        [[ -n "$hint" ]] && missing="${missing}      说明：${hint}"$'\n'
-    done
+    # 必填值可能来自 deploy.env，但 Compose 仍会在启动时读取各项目的 env_file；文件缺失必须单独报。
+    env_missing="$(missing_env_files "$compose" "$env_dir")"
+    if [[ -n "$env_missing" ]]; then
+        while IFS= read -r env_file; do
+            if [[ "$env_file" == /* ]]; then
+                env_where="$env_file"
+            else
+                env_where="${env_dir#"$REPO_ROOT"/}/$env_file"
+            fi
+            MISSING_REQUIRED=$((MISSING_REQUIRED + 1))
+            missing="${missing}    - env_file ${env_where} → 文件不存在（Compose 默认要求存在；不需要时在编排写 required: false）"$'\n'
+        done <<<"$env_missing"
+    fi
+    if [[ -n "$vars" ]]; then
+        for var in $vars; do
+            [[ -n "${!var:-}" ]] && continue
+            value="$(env_file_value "$env_dir/.env" "$var" || true)"
+            [[ -n "$value" ]] && continue
+            MISSING_REQUIRED=$((MISSING_REQUIRED + 1))
+            if [[ "$env_dir" == "$SCRIPT_DIR/main" ]]; then
+                where="docker/main/.env"
+            else
+                where="docker/${env_dir#"$SCRIPT_DIR"/}/.env（该依赖自己的配置；与主服务同值的键若已在主服务 env 中，脚本启动前已带入环境，不会报到这里）"
+            fi
+            missing="${missing}    - ${var} → 填在 ${where}"$'\n'
+            hint="$(required_var_hint "$compose" "$var")"
+            [[ -n "$hint" ]] && missing="${missing}      说明：${hint}"$'\n'
+        done
+    fi
     [[ -n "$missing" ]] || return 0
     REQUIRED_REPORT="${REQUIRED_REPORT}[deploy] ${label}："$'\n'"${missing}"
 }
@@ -129,6 +218,12 @@ validate_required_env() {
     MISSING_REQUIRED=0
     REQUIRED_REPORT=""
     check_compose_requirements "主服务 docker/main/docker-compose.yml" "$TOP_COMPOSE" "$SCRIPT_DIR/main"
+    # 镜像 tag 必须显式提供：compose 的缺省值只服务 down / ps 等不启动容器的命令，
+    # 否则发布审查里的旧 tag 会被静默部署（up / deploy 会拉错镜像）。
+    if [[ -z "${RCS_IMAGE_TAG:-}" ]]; then
+        MISSING_REQUIRED=$((MISSING_REQUIRED + 1))
+        REQUIRED_REPORT="${REQUIRED_REPORT}[deploy] 主服务镜像 tag："$'\n'"    - RCS_IMAGE_TAG → 填在 docker/main/.env（CI 产出的 sha-<commit>；compose 缺省值只用于 down/ps）"$'\n'
+    fi
     for name in $(discover_deps); do
         feature_enabled "$name" || continue
         apply_dep_runtime_env "$name"

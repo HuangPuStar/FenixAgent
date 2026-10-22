@@ -32,7 +32,6 @@ export const telemetryEnvSchema = z.object({
   OTEL_TRACES_SAMPLER: blankAsUnset(z.literal("parentbased_traceidratio").default("parentbased_traceidratio")),
   OTEL_TRACES_SAMPLER_ARG: blankAsUnset(z.coerce.number().min(0).max(1).default(0.1)),
   OTEL_NODE_ENABLED_INSTRUMENTATIONS: blankAsUnset(z.string().default("pg,ioredis,pino")),
-  OTEL_BROWSER_COLLECTOR_ENDPOINT: optionalEndpoint,
 });
 
 /** 已校验且不包含业务连接信息的 SDK 配置。 */

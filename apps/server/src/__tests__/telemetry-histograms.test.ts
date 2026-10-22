@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-// 自定义 Histogram 必须使用秒/字节/毫秒/CLS 各自显式桶，默认 [0,5,10] 会丢失亚秒与体积分辨率。
+// 自定义 Histogram 必须使用秒/字节显式桶，默认 [0,5,10] 会丢失亚秒与体积分辨率。
 test("自定义 Histogram 的桶边界与落桶计数正确", async () => {
   const script = `
     import assert from 'node:assert/strict';
@@ -21,13 +21,6 @@ test("自定义 Histogram 的桶边界与落桶计数正确", async () => {
     assert.equal(agent.AGENT_SECONDS_HISTOGRAM_BUCKETS.at(-1), 3600);
     agent.beginAgentRun('bucket-probe', 1);
     agent.finishAgentRun('bucket-probe', 'success', 1);
-    const web = await import('./packages/web-runtime/web/telemetry/buckets');
-    assert.equal(web.WEB_SECONDS_HISTOGRAM_BUCKETS.at(-1), 3600);
-    const vital = web.createWebPerformanceInstruments(metrics.getMeter('web-bucket-probe'));
-    vital.lcp.record(1200); vital.inp.record(250); vital.cls.record(0.2);
-    const events = await import('./packages/web-runtime/web/telemetry/events');
-    events.activateBrowserTelemetry();
-    events.recordBrowserEvent('history_ready', 900);
     const data = (await reader.collect()).resourceMetrics.scopeMetrics.flatMap(s=>s.metrics);
     const byName = name => data.find(m=>m.descriptor.name===name);
     const bucket = (name, expected, value) => {
@@ -46,10 +39,6 @@ test("自定义 Histogram 的桶边界与落桶计数正确", async () => {
     assert.equal(agentRun.value.count, 1);
     assert.equal(agentRun.value.buckets.counts.reduce((sum, count) => sum + count, 0), 1);
     assert.deepEqual(byName('fenix.agent.start.duration').dataPoints[0].value.buckets.boundaries, agent.AGENT_SECONDS_HISTOGRAM_BUCKETS);
-    bucket('fenix.web.lcp', web.WEB_LCP_MILLISECONDS_BUCKETS, 1200);
-    bucket('fenix.web.inp', web.WEB_INP_MILLISECONDS_BUCKETS, 250);
-    bucket('fenix.web.cls', web.WEB_CLS_BUCKETS, 0.2);
-    bucket('fenix.web.history.duration', web.WEB_SECONDS_HISTOGRAM_BUCKETS, 0.9);
     await provider.shutdown();
   `;
   const proc = Bun.spawn([process.execPath, "-e", script], {

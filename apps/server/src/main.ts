@@ -16,7 +16,7 @@ import { wireHostRuntime } from "./bootstrap/host-wiring";
 import { API_SLOT, APP_SLOT, takeRouteContributions, WEB_CONFIG_SLOT, WEB_SLOT } from "./bootstrap/route-contributions";
 import { applyEnv, config } from "./config";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import { authenticateRequest, authPlugin } from "./plugins/auth";
+import { authPlugin } from "./plugins/auth";
 import { bodyLimitPlugin } from "./plugins/body-limit";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
@@ -25,7 +25,6 @@ import { ctrlStaticPlugin } from "./plugins/static";
 import { createApiApp } from "./routes/api";
 import { createWebApp } from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
-import { createOtelProxy, inspectPublicOrigin } from "./telemetry/browser-proxy";
 
 /**
  * 服务入口：只保留「进程边界」相关的四件事——读 env、建 app、listen、接信号。
@@ -39,17 +38,6 @@ const startedAt = new Date().toISOString();
 
 const { profile, env, assemblyModules } = await resolveAssemblyEnv();
 applyEnv(env);
-
-const browserOrigin = inspectPublicOrigin(config.baseUrl);
-if (env.OTEL_BROWSER_COLLECTOR_ENDPOINT && browserOrigin.issue) {
-  const reason =
-    browserOrigin.issue === "missing"
-      ? "未配置"
-      : browserOrigin.issue === "localhost"
-        ? "为 localhost"
-        : "不是无凭据的 HTTP(S) origin";
-  startupLog.warn(`浏览器遥测已启用，但 RCS_BASE_URL ${reason}；/otel 将拒绝全部请求`);
-}
 
 // 装配期接线 + 启动序（两者都必须在 app 构造前完成：`app-route` 贡献是在装配时登记、在下方
 // `takeRouteContributions()` 处被消费的）。
@@ -68,17 +56,8 @@ const app = new Elysia({
           serviceName: env.OTEL_SERVICE_NAME,
           recordBody: false,
           headersToSpanAttributes: { request: [], response: [] },
-          checkIfShouldTrace: (request) => !new URL(request.url).pathname.startsWith("/otel/"),
         })
       : new Elysia(),
-  )
-  .use(
-    createOtelProxy({
-      endpoint: env.OTEL_BROWSER_COLLECTOR_ENDPOINT,
-      publicBaseUrl: config.baseUrl,
-      requireConfiguredOrigin: true,
-      authenticate: async (request) => (await authenticateRequest(request))?.user.id ?? null,
-    }),
   )
   .use(corsPlugin)
   .use(createExternalOpenApiPlugin(config.version))

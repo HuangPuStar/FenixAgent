@@ -80,7 +80,7 @@ export function logResponse({
 }) {
   const status = resolveResponseStatus(set.status, responseValue ?? response);
   const pathname = new URL(request.url).pathname;
-  if (pathname === "/health" || pathname.startsWith("/otel/")) return;
+  if (pathname === "/health") return;
   const fields = { method: request.method, status, requestId: requestIds.get(request) };
   if (status >= 500) logger.error("HTTP 响应", fields);
   else if (status >= 400) logger.warn("HTTP 响应", fields);

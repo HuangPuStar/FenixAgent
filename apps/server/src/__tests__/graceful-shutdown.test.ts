@@ -19,14 +19,20 @@ describe("宿主关闭控制器", () => {
         calls.push("telemetry");
       },
       graceMs: 50,
-      logger: silentLogger,
+      logger: {
+        info: (message) => {
+          if (message === "宿主资源清理结束") calls.push("cleanup-log");
+        },
+        warn() {},
+        error() {},
+      },
       exit: (code) => {
         calls.push("exit");
         codes.push(code);
       },
     });
     await shutdown("SIGTERM");
-    expect(calls).toEqual(["stop", "host", "telemetry", "exit"]);
+    expect(calls).toEqual(["stop", "host", "cleanup-log", "telemetry", "exit"]);
     expect(codes).toEqual([0]);
   });
 
@@ -83,9 +89,9 @@ describe("宿主关闭控制器", () => {
     expect({ hostCalls, telemetryCalls, codes }).toEqual({ hostCalls: 1, telemetryCalls: 1, codes: [1] });
   });
 
-  // 宿主清理失败后仍刷新遥测并退出非 0。
+  // 宿主清理失败后仍先写最后一条日志、再刷新遥测，并退出非 0。
   test("宿主清理失败仍刷新遥测并退出 1", async () => {
-    let telemetryCalls = 0;
+    const calls: string[] = [];
     const codes: number[] = [];
     const shutdown = createGracefulShutdown({
       stop: async () => {},
@@ -93,14 +99,42 @@ describe("宿主关闭控制器", () => {
         throw new Error("host failed");
       },
       shutdownTelemetry: async () => {
-        telemetryCalls++;
+        calls.push("telemetry");
       },
       graceMs: 50,
-      logger: silentLogger,
+      logger: {
+        info: (message) => {
+          if (message === "宿主资源清理结束") calls.push("cleanup-log");
+        },
+        warn() {},
+        error() {},
+      },
       exit: (code) => codes.push(code),
     });
     await shutdown("SIGTERM");
-    expect({ telemetryCalls, codes }).toEqual({ telemetryCalls: 1, codes: [1] });
+    expect({ calls, codes }).toEqual({ calls: ["cleanup-log", "telemetry"], codes: [1] });
+  });
+
+  // 遥测刷新失败仍会执行显式退出，并用退出码 1 暴露失败。
+  test("遥测刷新失败退出 1", async () => {
+    const codes: number[] = [];
+    const errors: string[] = [];
+    const shutdown = createGracefulShutdown({
+      stop: async () => {},
+      shutdownHost: async () => {},
+      shutdownTelemetry: async () => {
+        throw new Error("telemetry failed");
+      },
+      graceMs: 50,
+      logger: {
+        info() {},
+        warn() {},
+        error: (message) => errors.push(message),
+      },
+      exit: (code) => codes.push(code),
+    });
+    await shutdown("SIGTERM");
+    expect({ codes, errors }).toEqual({ codes: [1], errors: ["遥测刷新失败"] });
   });
 
   // 并发/重复信号共享同一关闭流程，stop 和 exit 都只执行一次。

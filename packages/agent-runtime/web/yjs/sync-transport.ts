@@ -4,7 +4,6 @@ import {
   type SyncClientTransport,
   type SyncClientTransportOptions,
 } from "@fenix/chat-channel/sync-client";
-import { recordBrowserEvent } from "@fenix/web-runtime/telemetry/events";
 import type {
   SyncChatConnectionState,
   SyncChatSession,
@@ -480,8 +479,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     current.onopen = () => {
       if (socket !== current || disposed) return;
       connecting = false;
-      // 首次连接不是重连；只有退避后的成功连接才计入恢复事件。
-      if (reconnectAttempt > 0) recordBrowserEvent("reconnect");
       transport = createSyncClientTransport({
         send: sendBytes,
         now: options.now ?? Date.now,

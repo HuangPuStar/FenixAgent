@@ -8,7 +8,7 @@
 #   ./docker/deploy.sh validate            只校验必填项（与 up / deploy 启动前的检查同一套）
 #   ./docker/deploy.sh up                  启动整个环境：主服务 + 基础服务 + deploy.env 中启用的依赖
 #   ./docker/deploy.sh deploy              发布：拉镜像 → DDL 迁移 → 数据迁移 → 启动
-#   ./docker/deploy.sh down [--purge-data --yes]  逆序停止（依赖 → 主服务）；--purge-data 删除数据目录，需 --yes 确认
+#   ./docker/deploy.sh down [--purge-data --yes]  先停应用并排空，再停普通依赖，最后停观测依赖并清理网络
 #   ./docker/deploy.sh ps                  查看主服务与已启用依赖的状态
 #   ./docker/deploy.sh logs <rcs|目录名> [--follow]
 #   ./docker/deploy.sh config              干跑：只打印将执行的命令，不启动任何容器
@@ -22,7 +22,8 @@
 #       LITELLM_MASTER_KEY 与主服务的 RCS_MODEL_GATEWAY_ADMIN_KEY）取到同一个值。
 #       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL 不在 compose 的 ${VAR:?} 扫描面上：本脚本在
 #       init / up / deploy 时按主机名生成并固化它（validate 与 config 干跑只读；见 docker-topology.md §9）。
-# 镜像：一律固定版本、写在各 compose 文件里；本脚本不做任何镜像变量插值。
+# 镜像：第三方镜像固定版本、写在各 compose 文件里；主服务 rcs 的 tag 由 docker/main/.env 的
+#       RCS_IMAGE_TAG 显式提供（CI 产出的 sha-<commit>），up / deploy 前校验必填，脚本不推导版本。
 #
 # 主服务编排固定为 docker/main/docker-compose.yml（生产形态：不声明 build、只用发布镜像）。
 # 仓库根 docker-compose.yml 是 dev 形态（带 build，本地构建）——不归本脚本管；两者同项目名
@@ -48,6 +49,12 @@ DRY_RUN=0
 # （见 docker/main/docker-compose.yml）。这套名字必须与 scripts/lib/env-example-spec.ts 的
 # MAIN_FEATURE_SWITCHES 一致（生成器测试逐项比对）
 MAIN_OPTIONAL_FEATURES="REDIS"
+# 观测依赖的停止顺序，按数据流反向：应用 → Collector → OO。必须显式写死：
+# discover_deps 的目录遍历按字典序，openobserve 会排在 otel-collector 之前，先停 OO 会让 Collector 的队列无处可送。
+OBSERVABILITY_DRAIN_DEP="otel-collector"
+OBSERVABILITY_STOP_ORDER="$OBSERVABILITY_DRAIN_DEP openobserve"
+# 启动顺序与停止顺序相反：先 OO（Collector 的出口）再 Collector，最后才起 rcs，首批遥测就有接收端。
+OBSERVABILITY_START_ORDER="openobserve $OBSERVABILITY_DRAIN_DEP"
 # 不参与依赖发现的目录（与 scripts/generate-env-example.ts 的 DEPLOY_EXCLUDED_DIRS 同一规则）：
 # main 是主服务编排本身（compose_top 直接操作，不是依赖单元）。
 EXCLUDED_DIRS="main"
@@ -108,6 +115,27 @@ load_env_file() {
 # 目录名 → 开关变量名：sandbox-peri → FENIX_FEATURE_SANDBOX_PERI
 feature_var() {
     printf 'FENIX_FEATURE_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
+}
+
+# 观测依赖必须最后停，且内部顺序由 OBSERVABILITY_STOP_ORDER 固定。两套 Compose 保持独立，不引入 depends_on。
+is_observability_dep() {
+    case " $OBSERVABILITY_STOP_ORDER " in
+        *" $1 "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# 应用容器 stop 后仍保留（到最终 down 才删除）：用退出码区分有界关闭与超时强杀。
+# 137 = 宽限期结束后的 SIGKILL，说明最后日志/Span 可能没来得及 flush；只告警，不能让 down 失败。
+warn_if_rcs_stop_unclean() {
+    local container_id="$1" code
+    [[ -n "$container_id" ]] || return 0
+    code="$(docker inspect -f '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+    case "$code" in
+        0 | "") ;;
+        137) warn "rcs 在 stop_grace_period 内未退出（137/SIGKILL）：退出日志与最后一批 Span 可能丢失，检查关闭耗时与 OTEL endpoint" ;;
+        *) warn "rcs 退出码 ${code}：关闭阶段存在失败，检查 rcs 日志中的「停止接收请求失败/宿主清理失败/遥测刷新失败」" ;;
+    esac
 }
 
 # 扫描依赖目录：docker/*/docker-compose.yml（排除 EXCLUDED_DIRS）；新增依赖零脚本改动。
@@ -210,11 +238,13 @@ export_file_list() {
 # 导出交付面：生产部署不在仓库工作区里跑——编排与脚本都受版本控制，下一次 `git pull` 会就地改写它们，
 # 而配置面与数据还停在旧结构上，容器重建时故障现场很难归因。交付面拷到仓库外，由那份副本启动。
 cmd_export() {
-    local target="${1:-}" file dest copied=0 same=0 dirty drifted=""
+    local target="${1:-}" file dest copied=0 same=0 skipped=0 dirty drifted="" deleted
     [[ -n "$target" && "$target" != -* ]] ||
         die "用法：./docker/deploy.sh export <目标目录>（把受版本控制的 docker/ 拷到该目录下）"
     git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 ||
         die "导出交付面需要 git：清单取自版本控制，而 $REPO_ROOT 不是 git 工作区"
+    # 区别「工作区里有意的未提交删除」与「文件缺失」：只有前者可以跳过，后者说明工作区不完整。
+    deleted="$(git -C "$REPO_ROOT" ls-files --deleted -- docker)"
 
     # 先规范化路径再判是否落在仓库内：顺序不能反，否则「拒绝导出」会先在仓库里留下一个空目录。
     # 目标目录自身可能还不存在，因此靠它已存在的父目录解析（尾斜杠先归一，basename 才取对）。
@@ -235,6 +265,15 @@ cmd_export() {
 
     while IFS= read -r file; do
         dest="$target/$file"
+        # 未提交删除仍会出现在 git ls-files；导出的是当前工作区，跳过它并计入 skipped。
+        if [[ ! -e "$REPO_ROOT/$file" && ! -L "$REPO_ROOT/$file" ]]; then
+            if grep -Fxq "$file" <<<"$deleted"; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+            # 不是未提交删除却读不到文件：继续下去会产出缺文件的交付面，必须在导出时暴露。
+            die "受版本控制的文件在工作区缺失：${file}（git 未标记为删除，交付面会不完整；请恢复文件或检查工作区）"
+        fi
         mkdir -p "$(dirname "$dest")"
         if [[ ! -e "$dest" ]]; then
             cp "$REPO_ROOT/$file" "$dest"
@@ -248,7 +287,7 @@ cmd_export() {
     done < <(export_file_list)
 
     log "交付面已导出：$target/docker（来源 $(git -C "$REPO_ROOT" rev-parse --short HEAD)）"
-    log "  新增 $copied 个文件，内容一致跳过 $same 个；排除目录：${EXPORT_EXCLUDED_DIRS// /、}"
+    log "  新增 $copied 个文件，内容一致跳过 $same 个，工作区已删除跳过 $skipped 个；排除目录：${EXPORT_EXCLUDED_DIRS// /、}"
     if [[ -n "$drifted" ]]; then
         warn "以下文件已存在且内容不同，均未覆盖——请 diff 后手工决定是否替换："
         while IFS= read -r file; do
@@ -376,16 +415,29 @@ cmd_up() {
         prepare_data_dirs
     fi
 
+    # 依赖项目以 external 方式接入 fenix-server，首次启动必须先由主项目创建网络。
+    # 只起 postgres（rcs 的依赖），不提前起 rcs：观测依赖要赶在应用之前就绪。
+    log "启动基础服务 postgres（创建 fenix-server 网络）"
+    compose_top up -d postgres
+
+    for name in $OBSERVABILITY_START_ORDER; do
+        feature_enabled "$name" || continue
+        apply_dep_runtime_env "$name"
+        log "启动观测依赖：$name"
+        compose_dep "$name" up -d
+    done
+
     log "启动主服务项目：主服务 + 基础服务"
     # shellcheck disable=SC2086  # profiles 为空时不传参数，为空格分隔的固定值
     compose_top $profiles up -d
 
     for name in $(discover_deps); do
-        if feature_enabled "$name"; then
-            apply_dep_runtime_env "$name"
-            log "启动依赖：$name"
-            compose_dep "$name" up -d
-        fi
+        feature_enabled "$name" || continue
+        # 观测依赖已在主服务之前启动，避免重复 up。
+        is_observability_dep "$name" && continue
+        apply_dep_runtime_env "$name"
+        log "启动依赖：$name"
+        compose_dep "$name" up -d
     done
 
     log "启动完成，当前状态："
@@ -394,7 +446,7 @@ cmd_up() {
 
 cmd_deploy() {
     validate_required_env || die "启动前校验未通过：见上面的必填项清单"
-    log "1/4 拉取主服务镜像（固定版本见 docker/main 编排的 image 行）"
+    log "1/4 拉取主服务镜像（tag 由 docker/main/.env 的 RCS_IMAGE_TAG 指定）"
     compose_top pull rcs
 
     log "2/4 DDL 迁移（镜像内 migrate.js，先于应用进程）"
@@ -443,7 +495,7 @@ purge_data_dirs() {
 }
 
 cmd_down() {
-    local order="" name purge=0 confirmed=0 arg
+    local order="" observability_order="" name purge=0 confirmed=0 arg
     for arg in "$@"; do
         case "$arg" in
             --purge-data) purge=1 ;;
@@ -453,20 +505,48 @@ cmd_down() {
     done
 
     for name in $(discover_deps); do
-        if feature_enabled "$name"; then
-            order="$name $order" # 逆序累积：先停后加的依赖
-        fi
+        feature_enabled "$name" || continue
+        # 观测依赖不参与这里的逆序累积：它们的顺序由 OBSERVABILITY_STOP_ORDER 显式给出。
+        is_observability_dep "$name" && continue
+        order="$name $order" # 逆序累积：先停后加的依赖
     done
+    for name in $OBSERVABILITY_STOP_ORDER; do
+        feature_enabled "$name" || continue
+        observability_order="$observability_order $name"
+    done
+
+    # 应用先停止并排空；此时 Collector/OO 仍可用，退出日志与 Span 可完成最后一次 flush。
+    log "停止主服务应用（保留观测依赖）"
+    local rcs_container=""
+    if [[ "$DRY_RUN" != "1" ]]; then
+        rcs_container="$(compose_top ps -q rcs || true)"
+    fi
+    # shellcheck disable=SC2086  # profile 参数是空格分隔的固定值
+    compose_top --profile redis stop rcs
+    warn_if_rcs_stop_unclean "$rcs_container"
 
     for name in $order; do
         log "停止依赖：$name"
         compose_dep "$name" down
     done
 
-    log "停止主服务项目"
+    if [[ -n "$observability_order" ]]; then
+        # 等待窗口只服务 Collector 的 batch 导出；只启用 OO 时没有可等的采集端，直接停。
+        if [[ " $observability_order " == *" $OBSERVABILITY_DRAIN_DEP "* ]]; then
+            # Collector 自己的 stop 宽限期会继续冲刷出口队列，最后才停 OO；持久队列已落盘。
+            log "应用已排空，等待观测出口排空 5s 后停止观测依赖"
+            sleep 5
+        fi
+        for name in $observability_order; do
+            log "停止观测依赖：$name"
+            compose_dep "$name" down
+        done
+    fi
+
+    log "停止主服务项目并清理网络"
     # 一律带上全部 profile：`down` 的语义是「停掉这个项目」，而 profile 门控的服务（redis）在开关已关闭时
     # 不会随裸 `down` 停掉，会留下来占用 fenix-server 网络（网络删不掉、名字仍被解析）。带全 profile
-    # 让 down 与 up 可停的集合一致。
+    # 让 down 与 up 可停的集合一致。网络只能在观测依赖停止后删除。
     # shellcheck disable=SC2086  # profile 参数是空格分隔的固定值
     compose_top --profile redis down
 

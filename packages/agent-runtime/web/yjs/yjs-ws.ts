@@ -13,7 +13,6 @@ import {
   type YjsWsState,
 } from "@fenix/chat-channel";
 import { readActiveOrgId } from "@fenix/web-runtime/lib/active-org";
-import { recordBrowserEvent } from "@fenix/web-runtime/telemetry/events";
 
 /** Re-export 类型，保持上游调用方无需改动 */
 export type { YjsWsState };
@@ -132,14 +131,9 @@ export function createBrowserSyncSocket(url: string): SyncBrowserSocket {
     onclose: null,
     onerror: null,
   };
-  ws.onopen = () => {
-    socket.onopen?.();
-  };
+  ws.onopen = () => socket.onopen?.();
   ws.onmessage = (event) => socket.onmessage?.(event.data);
-  ws.onclose = (event) => {
-    recordBrowserEvent("disconnect");
-    socket.onclose?.(event.code, event.reason, event.wasClean);
-  };
+  ws.onclose = (event) => socket.onclose?.(event.code, event.reason, event.wasClean);
   ws.onerror = () => socket.onerror?.();
   return socket;
 }

@@ -3,7 +3,10 @@
 
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
-FROM oven/bun:1.4.2 AS base
+# 与 CI（.github/actions/setup/action.yml）固定同一版本：1.4.3 修掉 1.4.2 的
+# `bun test --isolate` 崩溃（oven-sh/bun#44599），且 oven/bun:1.4.3 提供 linux/amd64 与 linux/arm64。
+# 升级时同步本文件四处 FROM 与 CI pin，避免测试组合与发布组合分叉。
+FROM oven/bun:1.4.3 AS base
 WORKDIR /app
 
 FROM base AS deps
@@ -18,9 +21,6 @@ RUN bun install --frozen-lockfile
 
 FROM deps AS build
 ARG GIT_COMMIT_SHA=unknown
-ARG VITE_OTEL_ENABLED=false
-ENV VITE_OTEL_ENABLED=${VITE_OTEL_ENABLED}
-ENV VITE_BUILD_VERSION=${GIT_COMMIT_SHA}
 COPY tsconfig.json tsconfig.base.json ./
 # deps 阶段只带了 package.json，构建（web bundle 与 server bundle）需要完整源码。
 # 本层与紧随其后的 RUN 同源失效，不额外损失缓存。
@@ -41,7 +41,7 @@ FROM deps AS migrate-build
 COPY scripts/migrate.ts ./scripts/migrate.ts
 RUN bun build scripts/migrate.ts --target=bun --outdir /tmp/migrate-bundle
 
-FROM oven/bun:1.4.2 AS migrate
+FROM oven/bun:1.4.3 AS migrate
 WORKDIR /app
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
@@ -64,14 +64,14 @@ COPY apps/web/fenix.module.ts ./apps/web/fenix.module.ts
 COPY packages ./packages
 RUN bun build db/data-migration-runner.ts --target=bun --outdir /tmp/data-migrate-bundle
 
-FROM oven/bun:1.4.2 AS data-migrate
+FROM oven/bun:1.4.3 AS data-migrate
 WORKDIR /app
 COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./
 CMD ["bun", "data-migration-runner.js"]
 
 ############### production image ###############
 
-FROM oven/bun:1.4.2 AS runtime
+FROM oven/bun:1.4.3 AS runtime
 WORKDIR /app
 
 COPY --from=uv /uv /uvx /usr/local/bin/

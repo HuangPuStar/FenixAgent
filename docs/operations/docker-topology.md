@@ -7,7 +7,8 @@
 >
 > **状态：阶段 1、2、4 已完成；阶段 3 已跑通「启动 → down」，整机 prod 的迁移/健康自检待复跑**。已建：主服务编排——
 > dev 形态是仓库根 `docker-compose.yml`、生产形态是 `docker/main/docker-compose.yml`（2026-10-08 拆分：dev 带 `build:`，
-> 生产不构建、只用发布镜像、数据自包含；同 `name: fenix` + `fenix-server` + 固定版本镜像，基础服务 `postgres` /
+> 生产不构建、只用发布镜像、数据自包含；同 `name: fenix` + `fenix-server` + 固定版本镜像（主服务 tag 由生产 env
+> 的 `RCS_IMAGE_TAG` 提供），基础服务 `postgres` /
 > `redis` 由两份文件各自就地内联，没有 `docker/common/` 一类共享编排）、
 > `docker/deploy.sh` + `docker/lib/config.sh`
 > （含 `init` 与启动前必填项校验）、`docker/deploy.env.example`；`docker/` 下各依赖目录（含 `sandbox-opencode/`、
@@ -53,7 +54,7 @@
 | --- | --- |
 | 编排归属 | 主服务与基础服务的编排分两份：**dev** = 仓库根 `docker-compose.yml`（带 `build:`，本地构建）；**生产** = `docker/main/docker-compose.yml`（无 `build:`，只用发布镜像）。`docker/<name>/` 是依赖目录，一个目录一个依赖 |
 | dev / prod 分离 | 两份文件同项目名 `fenix`、同网络 `fenix-server`，**二选一运行**；生产入口是 `./docker/deploy.sh`（操作 docker/main 那份），dev 用根文件的裸 `docker compose` 命令 |
-| 镜像 | 固定版本、写在 compose 文件里，不用环境变量插值；发布时同步更新两份编排的 `rcs` `image` 行（§4.2） |
+| 镜像 | 第三方依赖固定版本、写在 compose；主服务 `rcs` 的 tag 由生产 env 的 `RCS_IMAGE_TAG` 显式提供（CI `sha-<commit>`），dev 根编排固定 `main` 滚动 tag；发布只更新生产 tag（§4.2） |
 | 网络 | 两层：依赖各自的**项目内网络** + 唯一的**主服务网络 `fenix-server`**（只让必要服务接入，§3） |
 | 基础服务 | `postgres`（必需）+ `redis`（`FENIX_FEATURE_REDIS`）：**内联在主服务编排里**，dev 与生产各一份（数据落各自目录），不再有 `docker/common/`；其余依赖（MySQL / 对象存储等）由**每个组件自带实例**、互不影响（§5） |
 | feature 开关 | 配置文件 `docker/deploy.env` 驱动；一个开关对应一个依赖目录（即“sub 插件 docker”），另有主服务编排里的可选服务开关（只有 `REDIS`） |
@@ -72,7 +73,7 @@
   │
   └─ ./docker/deploy.sh up
        ├─ 主服务项目：docker compose -f docker/main/docker-compose.yml [--profile redis] up -d
-       │    ├─ rcs                    主服务（生产：发布镜像的固定版本；dev 形态用仓库根 docker-compose.yml + build）
+       │    ├─ rcs                    主服务（生产：发布 tag 来自 .env 的 RCS_IMAGE_TAG；dev 用仓库根 docker-compose.yml + build）
        │    ├─ postgres（必需）、redis（--profile redis）   基础服务，随本文件启动、数据落本目录 data/
        │    └─ 网络 fenix-server       主服务层，唯一共享网络（§3）
        └─ 对每个启用的依赖：
@@ -122,7 +123,7 @@
 
 - 必须接入 ②：`rcs`；主服务自带的两个基础服务 `postgres` / `redis`（它们的服务名是 `fenix-server` 上的跨项目 DNS 名）；
   依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、
-  平台观测入口 `otel-collector`（应用与浏览器同源代理的 OTLP 接收）和 `openobserve`（Collector 的存储出口，应用不直连）、
+  平台观测入口 `otel-collector`（应用 OTLP 接收）和 `openobserve`（Collector 的存储出口，应用不直连）、
   观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、
   Workflow 的 `coze-web`（唯一出口；Workflow 的其余服务——`coze-server` / `milvus` / `redis` / `elasticsearch` 与它自带的
   `mysql` / `rustfs`、以及所有一次性初始化服务——都只在项目默认网络内）；sandbox 节点与 opensandbox 管理面。
@@ -142,7 +143,7 @@
    这套分层实践（只有出口 `coze-web` 显式接入共享网络，其余服务留在项目默认网络），本体系把它上升为所有依赖的通用契约。
 3. 依赖项目里**只有显式声明 `networks` 的服务**进入 ②（以 `external: true` 引用）；未声明的服务自动留在 ①。
 4. 接入 ② 的服务名是跨项目 DNS 名，必须**全局唯一**（契约见 §6）。
-5. ② 由主服务项目定义并创建；依赖项目只引用，因此**依赖启动前主服务必须已启动**（顺序不变量，见 §9）。
+5. ② 由主服务项目定义并创建；依赖项目只引用。`up` 先起主项目的 `postgres` 创建网络，再起依赖（观测依赖可在 rcs 前启动，见 §9）。
 6. 需要宿主直连的入口（调试端口、管理 UI）用端口发布表达，不通过网络表达。
 7. **同名歧义**：一个容器同时挂在 ① 与 ② 上时，若两边都有同名服务，Docker 的容器 DNS 没有优先级约定（两个网络各自的
    记录都会被返回，取哪条取决于返回顺序）。所以：**`fenix-server` 上的保留名只有 `postgres` 与 `redis`**
@@ -181,12 +182,14 @@ services:
   redis:         # profiles: ["redis"]；数据落 ./data/redis
     networks: [fenix-server]
   rcs:
-    image: ghcr.io/huangpustar/fenixagent:sha-da5eb54   # 固定版本；发布时更新本行（dev 与生产两份同步）
+    image: ghcr.io/huangpustar/fenixagent:${RCS_IMAGE_TAG:-sha-17b2f2b}   # 生产 tag 来自 .env；发布只更新这里
     networks: [fenix-server]
     # …… 见 §4.3
 ```
 
-- `name` 与 `image` 同属「写死在文件里、不做插值」的一类：交付面目录名、环境变量都不应改变数据身份。
+- `name` 仍是写死的项目身份；`image` 的仓库固定，只有主服务 tag 由 `RCS_IMAGE_TAG` 显式提供
+  （CI 产出的 `sha-<commit>`）。tag 必须是发布配置里的显式值，`deploy.sh` 的 `up` / `deploy` 缺它即失败；
+  缺省值只用于 `down` / `ps` 等不启动容器的命令，避免旧 tag 被静默部署。
 - 基础服务与 `rcs` 同属本项目：`depends_on: postgres: { condition: service_healthy }` 直接可用。
 - **本文件（与 dev 根文件）不 `include` 任何文件**：基础服务内联在其中，主服务编排自身不引用任何依赖目录，
   因此在没装任何依赖的机器上 `docker compose -f <主服务编排> config` 也能跑通。这条约束决定了
@@ -203,10 +206,11 @@ services:
 | --- | --- | --- |
 | dev（容器） | `docker compose up -d --build`（仓库根文件） | 本地构建，tag 为 dev `image` 行的值 |
 | dev（源码） | `docker compose up -d postgres` + `bun run dev` | 只起基础服务 |
-| prod | `./docker/deploy.sh deploy` | `docker/main/` `image` 行写死的固定版本（`pull` 拉取，不构建） |
+| prod | `./docker/deploy.sh deploy` | `docker/main/.env` 的 `RCS_IMAGE_TAG`（CI 产出的固定 `sha-<commit>`，`pull` 拉取，不构建） |
 
-- **镜像固定版本**：`image:` 一律写死 tag（包括第三方依赖镜像），不使用环境变量插值、不使用 `latest`；
-  发布新版本 = 更新这两行（进版本控制、可审计、可回滚），部署环境不参与版本决策。
+- **镜像版本**：第三方依赖镜像固定写死 tag（不使用 `latest`）；主服务 `rcs` 的 tag 是发布 pin，由
+  `docker/main/.env` 的 `RCS_IMAGE_TAG` 显式提供，部署环境不能留空（`validate` / `up` / `deploy` 会拦）。
+  dev 根编排固定 `ghcr.io/huangpustar/fenixagent:main` 滚动 tag，发布只更新生产 `.env`，**不再同步改 dev 行**。
 - prod 交付面不含 Dockerfile 与源码，镜像必须先 `pull`；`build:` 段只在 dev 的根文件里。
 - 手动操作生产编排时，插值来源是**它自己目录下的 `.env`**（`docker/main/.env`，模板 `docker/main/.env.example`，
   由 `./docker/deploy.sh init` 落成）：compose 的项目目录就是 `docker/main/`，因此下面这条命令在任意工作目录下
@@ -442,7 +446,8 @@ FENIX_FEATURE_REDIS=false
 - **未知开关是错误**：脚本发现 `FENIX_FEATURE_*` 没有对应目录或保留名时直接报错退出，防止拼写错误静默失效。
 - 默认全部关闭；`postgres` 恒启动，`redis` 是主服务编排里唯一带 profile 的可选服务（`FENIX_FEATURE_REDIS`）。
   开关只负责「起哪些服务」，**不做目录之间的自动联动**（理由见 §6 末）。
-- **镜像键不在这里**：版本固定写在各 compose 的 `image:` 行（§4.2）；`docker/deploy.env` 里出现镜像键即视为设计漂移。
+- **镜像键不在这里**：第三方镜像版本固定写在各 compose 的 `image:` 行，主服务 tag 是主服务 env 的
+  `RCS_IMAGE_TAG`（§4.2）；`docker/deploy.env` 里出现镜像键即视为设计漂移。
   登记例外是**版本键**（§6 规则 10）：`image:` 行可用 `${<NAME>_VERSION:-<缺省 tag>}`，该键写进**依赖自己的** `.env`，仍不进本文件。
 - 密钥**不进** `docker/deploy.env`（它进版本控制，模板为 `docker/deploy.env.example`）；密钥只进主服务 env
   （`docker/main/.env`，dev 是仓库根 `.env`）。
@@ -563,9 +568,9 @@ TZ=Asia/Shanghai
 | `./docker/deploy.sh init` | 初始化配置：把各 `.env.example` 落成 `.env`（已存在一律跳过、不覆盖），生成缺失的部署期身份键（见下），随后报告还缺哪些必填项 |
 | `./docker/deploy.sh export <目标目录>` | 导出交付面：把受版本控制的 `docker/` 拷到该目录下（排除 `dev/`、`compose-explorer/`；不含本机 `.env` 与 `data/`；已存在文件一律不覆盖，内容不同只逐条列出）。生产不在仓库工作区里跑，理由与目标机后续步骤见 [`deployment.md`](./deployment.md) §2.4 |
 | `./docker/deploy.sh validate` | 只跑启动前的必填项校验（与 `up` / `deploy` 同一套，可反复自检） |
-| `./docker/deploy.sh up`（默认） | 启动前校验 → 起主服务项目（创建 `fenix-server`）→ 按开关逐个起依赖 → 汇总状态 |
+| `./docker/deploy.sh up`（默认） | 启动前校验 → 起主项目 `postgres`（创建 `fenix-server`）→ 按开关先起 `openobserve`、`otel-collector` → 起主服务 → 按开关逐个起普通依赖 → 汇总状态 |
 | `./docker/deploy.sh deploy` | 发布顺序（§10）：校验 → 拉镜像 → DDL 迁移 → 数据迁移 → `up` |
-| `./docker/deploy.sh down [--purge-data --yes]` | 逆序停（依赖 → 主服务）；主服务一律带 `--profile redis` 停，避免开关已关时 `redis` 残留；`--purge-data` 删除数据目录，只列清单、加 `--yes` 才真删 |
+| `./docker/deploy.sh down [--purge-data --yes]` | 先 `stop rcs` 并等待有界关闭排空；再逆序停普通依赖；随后等 5s 停 `otel-collector`（冲刷出口队列）、再停 `openobserve`；最后 `down` 主项目并清理 `fenix-server`。主服务一律带 `--profile redis` 停，避免开关已关时 `redis` 残留；`--purge-data` 删除数据目录，只列清单、加 `--yes` 才真删 |
 | `./docker/deploy.sh ps` / `./docker/deploy.sh logs [name]` | 状态与日志 |
 | `./docker/deploy.sh config` | dry-run：打印将执行的完整命令（审计与排障）；必填项未填只告警、不拦 |
 
@@ -587,6 +592,10 @@ worktree / submodule 的 `.git` 是文件而非目录、脚本也可能落在仓
 - **真相来源是 compose 的 `${VAR:?说明}`**，脚本不另维护一份必填清单：扫主服务编排（`docker/main/docker-compose.yml`，
   基础服务 `postgres` / `redis` 内联其中，随它一并校验）与**已启用**依赖的 compose，逐项确认有值；
   `up` / `deploy` 在动任何容器前先跑这道闸。
+- **同时检查 `env_file` 文件存在性**：值写在 `deploy.env` / shell 里不代表 Compose 能读到该项目的 env 文件；
+  `env_file` 缺失（未声明 `required: false`）会在 validate 阶段点名文件，而不是等到 `docker compose config`。
+- **`RCS_IMAGE_TAG` 即使有 compose 缺省值也必须显式提供**：缺省值只服务 `down` / `ps`，`validate` / `up` / `deploy`
+  缺它即失败，防止旧 tag 被静默部署。
 - **模块声明键不在这个扫描面上**：`${VAR:?}` 只覆盖编排插值键，而模块 `envDefinitions` 声明的必填键由 rcs **启动期**
   校验（`apps/server/src/env-loader.ts`）——缺失的后果是容器起不来，而不是启动前被拦下。当前没有像这样的必填声明键。
 - **`WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` 的部署期生成保留**（2026-10-16 起它与另两枚能力键在声明侧都是可选，
@@ -615,15 +624,16 @@ worktree / submodule 的 `.git` 是文件而非目录、脚本也可能落在仓
 4. 主服务编排（`docker/main/docker-compose.yml`，含内联的基础服务）存在；
 5. 未知 `FENIX_FEATURE_*` 报错。
 
-顺序不变量：**任何依赖项目启动前主服务项目必须已启动**（`fenix-server` 由主服务项目创建，依赖以 `external: true` 引用）。
+顺序不变量：**任何依赖项目启动前 `fenix-server` 必须已存在**（由主项目 `postgres` 创建，依赖以 `external: true` 引用）。
+`openobserve` / `otel-collector` 可在 rcs 之前启动；普通依赖仍在 rcs 之后。
 
 ## 10. 发布与升级
 
 发布顺序沿用[升级](./upgrade.md) §1（**DDL 迁移 → 数据迁移 → 新版本应用进程**），执行入口从 `bun run release --deploy`
 改为 `./docker/deploy.sh deploy`：
 
-1. `docker compose pull rcs` —— 拉取 `docker/main/` 编排 `image:` 行写死的目标版本（发布前先把该行改成新 tag 并提交，
-   仓库根 dev 编排的同一行同步更新）；
+1. `docker compose pull rcs` —— 拉取 `docker/main/.env` 的 `RCS_IMAGE_TAG` 指定的目标版本（发布前先把 CI 产出的
+   `sha-<commit>` 写入该 `.env`；dev 根编排的 `:main` 滚动 tag 不动）；
 2. DDL：`docker compose run --rm rcs bun migrate.js`（复用主服务项目的环境、网络与挂载定义）；
 3. 数据：`docker compose run --rm rcs bun data-migration-runner.js`（**必须与应用相同的挂载**）。独立数据迁移入口是
    较新版本才随镜像发布的：更早的发布镜像没有该文件（数据迁移由应用启动时自行执行），`deploy.sh` 检测不到入口会
@@ -637,14 +647,15 @@ worktree / submodule 的 `.git` 是文件而非目录、脚本也可能落在仓
 
 - GHCR 发布（`.github/workflows/docker-publish.yml`，main 与 `v*` tag）；
 - 离线交付（`docker/build-image.sh` 产出 tar，目标机 `docker load`）；
-- dev 本地构建（仓库根编排的 `build:` 段；`--build` 构建出的镜像占用同一个 tag，之后走生产入口时
-  `deploy.sh` 会先 `pull` 覆盖回发布镜像）。
+- dev 本地构建（仓库根编排的 `build:` 段；tag 是 dev 的 `:main`，与生产 `RCS_IMAGE_TAG` 的 `sha-<commit>` 不同，
+  不会互相覆盖）。
 
-**升级与回滚都改同一行**：把 `docker/main/docker-compose.yml` 的 `rcs` `image:` 改成目标 tag（进版本控制、经评审合入；
-仓库根 dev 编排的同一行同步更新）→ `./docker/deploy.sh export <目标目录>` 把交付面同步到目标机（已存在文件不覆盖，
-diff 核对后手工替换）→ 在交付面的 `docker/` 里 `./deploy.sh deploy`。直接改目标机上的
-这份文件也能跑，但它会让「本机实际版本」脱离仓库记录，只在应急回滚时使用，并要求事后把同一 tag 回写仓库；
-核对本机实际版本用 `./docker/deploy.sh ps`（镜像 tag/digest 可见）。
+**升级与回滚都改生产 tag**：确认 CI 已产出目标提交的 `sha-<commit>` 镜像后，在 `docker/main/.env` 设置
+`RCS_IMAGE_TAG=sha-<commit>`（dev 根编排的 `:main` 滚动 tag 不动）→ `./docker/deploy.sh export <目标目录>` 把交付面
+同步到目标机（已存在文件不覆盖，diff 核对后手工替换）→ 在交付面的 `docker/` 里 `./deploy.sh deploy`。
+`validate` / `up` / `deploy` 缺 `RCS_IMAGE_TAG` 会失败，compose 的缺省 tag 只用于 `down` / `ps` 等不启动容器的命令。
+直接改目标机上的 `.env` 也能跑，但它会让「本机实际版本」脱离交付记录，只在应急回滚时使用，并要求事后把同一 tag
+回写交付面；核对本机实际版本用 `./docker/deploy.sh ps`（镜像 tag/digest 可见）。
 
 依赖的升级独立于主服务：改对应目录的镜像 tag 后单独 `up -d` 即可；主服务重启不会顺带升级依赖。
 
@@ -788,7 +799,7 @@ docker compose up -d
 - 容器名：旧 prod 用固定 `container_name: fenix-ver` / `fenix-postgres-ver`；主服务不再设 `container_name`
   （名称由项目名 + 服务名生成），需要稳定名字的依赖目录统一 `fenix-<name>` 前缀。
 - 发布链：`.github/workflows/docker-publish.yml`（推送 GHCR 的 tag 规则）与 `docker/build-image.sh`（离线 tar）
-  需在「固定 tag 写进两份编排的 `image:` 行」后复核，确认 tag 命名与文档写法一致。
+  需在「CI 产出 `sha-<commit>`、生产 `.env` 写入同名 `RCS_IMAGE_TAG`」后复核，确认 tag 命名与文档写法一致。
 - 环境变量模板：`scripts/generate-env-example.ts` 从声明面同批产出根 `.env.example`、
   `docker/main/.env.example` 与 `docker/deploy.env.example`；主服务自带基础服务的凭据键（`POSTGRES_PASSWORD`）
   已补进两份应用面模板，各依赖自带实例的凭据（`LITELLM_DB_PASSWORD`、`RAGFLOW_*` / `WORKFLOW_*`）只在各目录自己的模板里。
@@ -819,12 +830,14 @@ docker compose up -d
 2. 网络只有两层（§3）；共享网络名唯一 `fenix-server`；接入它的服务名必须全局唯一，辅助服务不得接入。
    dev 形态的组件子编排（`docker/dev/`）不受本条约束：它们不是依赖目录，与主服务同属一个项目，
    全部服务同处 `fenix-server`。
-3. 依赖目录以独立项目启动，禁止与主服务 `-f` 叠加；依赖启动前主服务必须已启动（网络存在性由主服务保证）。
+3. 依赖目录以独立项目启动，禁止与主服务 `-f` 叠加；依赖启动前 `fenix-server` 必须已存在（由主项目创建：
+   `deploy.sh up` 先起 `postgres` 建网，`openobserve` / `otel-collector` 可在 rcs 之前启动）。
 4. feature 开关与依赖目录一一对应；未知开关报错。
 5. 发布顺序 DDL → 数据 → 应用，任何路径不得颠倒；数据迁移不写进容器启动命令。
 6. 密钥只进 `.env`：不进 `docker/deploy.env`、不进 compose 文件、不进 git。
-7. **版本与身份写死在文件里**：镜像 tag 写在各 compose 的 `image:` 行（含第三方依赖镜像，不得用 `latest`），
-   项目名写死主服务编排的 `name:`；两者都不做环境变量插值，部署环境不参与版本与身份决策。
+7. **版本与身份**：第三方依赖镜像 tag 写在各 compose 的 `image:` 行（不得用 `latest`）并固定；主服务 tag 是
+   发布 pin，由生产 `.env` 的 `RCS_IMAGE_TAG` 显式提供（缺省值只服务 `down` / `ps`）。项目名写死主服务编排的
+   `name:`，不做环境变量插值。身份不随部署环境变化；主服务版本由部署方显式指定，但缺失即拒绝 `up` / `deploy`。
 8. **数据一律 bind 挂载**：相对 compose 文件写成 `./data/...`，禁止命名卷与匿名卷——数据必须留在交付面内，
    能整体打包/搬迁/备份，并在 `ls` 里看得出归属。代价见 §14。唯一例外是 `docker/sandbox-peri/` 的工作区
    （多绑一条仓库根 `workspaces/`，见 §6.5 与 §14.17）。
@@ -861,7 +874,7 @@ docker compose up -d
 2. **`dependencyServices` 字段保留**（与「模块 manifest 只保留能力声明」的字面表述有出入）：它仍被应用启动期的
    校验与探活消费（`module-manifest.ts` / `host-startup.ts`），退役的是生成部署产物的链路。若要求彻底删字段，
    需同时移除应用侧消费，属独立变更。
-3. **依赖目录用「独立项目」而非 `-f` 叠加**：规避多文件叠加时相对路径基准漂移的坑；代价是 `down` 需要脚本逆序遍历。
+3. **依赖目录用「独立项目」而非 `-f` 叠加**：规避多文件叠加时相对路径基准漂移的坑；代价是普通依赖的 `down` 需要脚本逆序遍历（观测依赖按应用 → Collector → OO 的数据流顺序停）。
 4. **配置文件用 `KEY=VALUE`（`docker/deploy.env`）而非 YAML/JSON**：目标机零解析依赖，与 Compose 插值同源；
    脚本刻意不用 `source` 读取，避免 `$` / 反引号被展开改写密钥。
 5. **对象存储用 RustFS、不用 MinIO**：RustFS 是团队现网实现，两者协议与端口重合，并存只会让「用哪套」变成
@@ -874,8 +887,10 @@ docker compose up -d
 7. **env 规范**（§8）：每个依赖目录自带 `.env.example`，文件内按「必需 → 可调 → 默认」三段排序；键按所有者在
    主服务 env 与各目录 `.env` 之间分工（§8 规则 3），「两侧必须同值」的键靠 `docker/deploy.sh` 把主服务 env
    导出为 shell 环境保持一致，于是「随主服务启动」与「独立部署」两条路径取值都一致。
-8. **镜像固定版本写进文件、不经环境变量**（取代本文件早期版本的 `FENIX_RCS_IMAGE` 设计）：部署环境不参与版本
-   决策，`git` 里看到的就是要跑的版本。代价是升级/回滚要在目标机更新这份 compose（或重新交付），见 §10。
+8. **第三方镜像固定版本写进文件；主服务 tag 是显式发布 pin**（2026-10 调整，取代早期 `FENIX_RCS_IMAGE` 自动推导）：
+   `RCS_IMAGE_TAG` 只接受 CI 产出的 `sha-<commit>`，由 `docker/main/.env` 显式写入，`up` / `deploy` 缺它即失败；
+   compose 缺省值只服务 `down` / `ps` 等不启动容器的命令。这样既保留「发布版本可审计」，又避免旧 tag 被静默部署。
+   代价是升级/回滚要更新交付面的 `.env`（或重新交付），见 §10。
 9. **脚本放 `docker/` 内**（而非仓库根）：它靠同级目录发现依赖，放在一起才能整体交付；自定位使其可从任意目录调用。
 10. **项目名写死 `name: fenix`**：容器名前缀与项目归属随之固定，不随交付目录名漂移。
 11. **数据一律 bind 到 compose 同级的 `./data/`**（不用命名卷）：交付面自包含——`tar` 走一份目录就等于带走全部数据，

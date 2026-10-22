@@ -47,6 +47,8 @@ export interface EnvTemplate {
    */
   readonly surface?: "deploy";
   readonly overrides?: Readonly<Record<string, string>>;
+  /** 场景默认值覆盖：只改变模板展示的默认值，键声明与校验仍以代码为准。 */
+  readonly defaultOverrides?: Readonly<Record<string, string>>;
   readonly undeclared?: readonly UndeclaredKey[];
 }
 
@@ -86,14 +88,12 @@ export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: str
   OTEL_TRACES_SAMPLER: { description: "父级一致比例采样。" },
   OTEL_TRACES_SAMPLER_ARG: { description: "链路采样率；不影响指标计数。" },
   OTEL_NODE_ENABLED_INSTRUMENTATIONS: { description: "自动插件允许列表 pg,ioredis,pino。" },
-  OTEL_BROWSER_COLLECTOR_ENDPOINT: { description: "独立浏览器 receiver 基址（4319）；不配置时同源代理关闭。" },
   NODE_ENV: { description: "运行环境标识。" },
   RCS_HOST: { description: "HTTP 监听地址。" },
   RCS_PORT: { description: "HTTP 监听端口。" },
   RCS_CORS_ORIGIN: { description: "允许的跨域来源；`*` 或逗号分隔列表。" },
   RCS_BASE_URL: {
-    description:
-      "服务公开基址；TLS 在反向代理终止时必须设为浏览器看到的单个 HTTPS origin，`/otel` 以此校验 Origin；启用浏览器遥测时为空、非法或 localhost 会告警并拒绝全部 /otel 请求。日志、spawn 的 acp-link 与 better-auth 也使用它。",
+    description: "服务公开基址；日志、spawn 的 acp-link 与 better-auth 的回退基址。",
   },
   RCS_VERSION: { description: "版本号；由构建或镜像注入。" },
   RCS_APPLICATION_ROOT: { description: "应用根目录的绝对路径；用于定位 bundle 之外的静态资源。" },
@@ -179,7 +179,9 @@ export const DEPLOY_INTERPOLATION_KEYS: readonly string[] = [
   "RCS_API_KEYS",
   "RCS_BASE_URL",
   "RCS_DISABLE_SCHEDULER",
+  "RCS_IMAGE_TAG",
   "RCS_SECRET_ENCRYPTION_KEY",
+  "OTEL_RESOURCE_ATTRIBUTES",
   "REGISTRY_SECRET",
 ];
 
@@ -207,15 +209,19 @@ export const MAIN_FEATURE_SWITCHES: readonly { readonly name: string; readonly d
  * （`docker/sandbox-*` 各自的 `.env` 与编排）。口径与 `apps/server/src/env.ts` 对 `RCS_CCB_COMMAND` 的既有
  * 处理一致：容器侧部署配置不进宿主 env 声明面，也不进主服务 env 模板。
  */
-const APP_UNDECLARED: readonly UndeclaredKey[] = [
-  ...LOGGER_UNDECLARED,
-  ...BASE_SERVICE_UNDECLARED,
+const APP_UNDECLARED: readonly UndeclaredKey[] = [...LOGGER_UNDECLARED, ...BASE_SERVICE_UNDECLARED];
+
+/**
+ * 主服务生产模板额外列出的编排键：`RCS_IMAGE_TAG` 只被 docker/main 编排消费，不是应用环境变量，
+ * 但它是 `up` / `deploy` 的必填发布 pin；写进生产模板，`init` 后部署方能看到并取消注释。
+ */
+const MAIN_UNDECLARED: readonly UndeclaredKey[] = [
+  ...APP_UNDECLARED,
   {
-    key: "VITE_OTEL_ENABLED",
-    description: "浏览器标准观测构建开关；仅 true 开启，不含凭据。",
-    consumer: "apps/web/src/main.tsx",
+    key: "RCS_IMAGE_TAG",
+    description: "生产主服务镜像 tag；CI 产出 sha-<commit> 后填入，up / deploy 前缺失会校验失败。",
+    consumer: "docker/main/docker-compose.yml",
   },
-  { key: "VITE_BUILD_VERSION", description: "浏览器构建版本或提交 SHA。", consumer: "apps/web/src/main.tsx" },
 ];
 
 export const ENV_TEMPLATES: readonly EnvTemplate[] = [
@@ -237,8 +243,7 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       DATABASE_URL:
         "本地开发可用 `docker compose up -d postgres` 起的实例（库/用户/口令见仓库根 docker-compose.yml）；本模板不写连接串样例。",
       RCS_API_KEYS: "未设置时用本地兜底值（公开值，只够本地跑起来）；生产必须是长随机值，且不得提交。",
-      RCS_BASE_URL:
-        "本地开发通常填 http://localhost:3000；浏览器遥测默认关闭，若启用则须改用非 localhost 的公开地址，否则 /otel fail-closed。",
+      RCS_BASE_URL: "本地开发通常填 http://localhost:3000。",
       RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
     },
     undeclared: APP_UNDECLARED,
@@ -262,14 +267,19 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
         "容器部署时由编排的 `environment` 显式给出（`postgres://rcs:…@postgres:5432/rcs`，优先级高于本文件），本键只在绕过容器直跑源码时才需要。",
       RCS_API_KEYS:
         "生产必须是长随机值（`openssl rand -hex 32`）——编排的缺省值是公开的本地兜底值，不得带进生产；空串按校验失败处理，且不得提交。",
-      RCS_BASE_URL:
-        "填部署方可达的单个 HTTPS origin（如 https://agent.example.com）：影响生成的回链与 skill 下载链接，并作为 /otel Origin 信任基准；localhost 不可用于启用浏览器遥测的生产部署。",
+      RCS_BASE_URL: "填部署方可达的对外地址（如 https://agent.example.com）：影响生成的回链与 skill 下载链接。",
+      OTEL_RESOURCE_ATTRIBUTES:
+        "主服务编排在容器环境显式注入 production；staging 等环境必须显式覆盖 deployment.environment.name，不能沿用 development。" +
+        "绕过编排直接跑源码时按代码默认 development。",
       RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL:
         "docker 部署由 `./docker/deploy.sh` 在 init / up / deploy 时按主机名生成并固化（写入本文件、之后不再改动）；" +
         "独立部署须自行填部署方可控的邮箱，并登记为保留账号（见 docker/workflow/README.md §5）。",
     },
-    undeclared: APP_UNDECLARED,
+    defaultOverrides: {
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=fenix,deployment.environment.name=production",
+    },
+    undeclared: MAIN_UNDECLARED,
   },
   {
     path: "docker/deploy.env.example",
@@ -284,7 +294,7 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       "写进主服务 env（生产 docker/main/.env、dev 仓库根 .env），本文件不列。",
       "",
       "键行一律是注释行：不写就等于用脚本与 compose 的缺省行为（未列出的依赖不启动），要改再取消注释。",
-      "镜像版本不在这里：所有镜像固定版本、写在各自 compose 文件里（主服务 rcs 的 image 行随发布更新，dev 与生产两份编排同步）。",
+      "镜像版本不在这里：第三方镜像固定写在各自 compose；主服务 rcs 的 tag 由 docker/main/.env 的 RCS_IMAGE_TAG 显式提供（CI 产出的 sha-<commit>）。",
       "权威文档：docs/operations/docker-topology.md（§7 配置、§8 env 规范）。",
     ],
   },

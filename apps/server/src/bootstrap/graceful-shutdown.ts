@@ -36,13 +36,14 @@ export function createGracefulShutdown(options: {
       exitCode = 1;
       options.logger.error("宿主清理失败", error);
     }
+    // 必须在关闭遥测 Provider 之前写出最后一条业务日志，否则不会进入本次 flush。
+    options.logger.info("宿主资源清理结束");
     try {
       await options.shutdownTelemetry();
     } catch (error) {
       exitCode = 1;
       options.logger.error("遥测刷新失败", error);
     }
-    options.logger.info("宿主资源清理结束");
     options.exit(exitCode);
   };
   return (signal) => {

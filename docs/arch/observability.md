@@ -25,17 +25,11 @@
 5. `fenix.sync.*` Gauge 只读取活跃 runtime 的 `transportDiagnostics()`；关闭/dispose 解除引用。ACK 使用已有 track 时钟；失败仅事件时 add；快照复用 CAS 耗时/编码长度；恢复完成以提交并可读取代次为准。
 6. Agent 运行按代次幂等结算，活跃测量结束即删除。引擎只允许内置类别及 other/unknown，实例 ID 不作指标标签。
 7. PG 插件提供 connection count/pending 与 operation duration。锁定版本不提供 max，宿主仅补 `db.client.connection.max`，不重复连接计数。
-8. 所有自定义 Histogram 必须声明显式桶：秒级使用 5ms–3600s 边界，快照字节使用 1KiB–256MiB 边界，浏览器 LCP/INP 使用毫秒、CLS 使用无单位边界。禁止依赖默认 `[0,5,10,…]`，否则亚秒与体积尾部全部落入首桶或 `+Inf`。
+8. 所有自定义 Histogram 必须声明显式桶：秒级使用 5ms–3600s 边界，快照字节使用 1KiB–256MiB 边界。禁止依赖默认 `[0,5,10,…]`，否则亚秒与体积尾部全部落入首桶或 `+Inf`。
 
-## 4. 浏览器信任边界
+## 4. 前端边界
 
-1. `@fenix/web-runtime/telemetry` 是浏览器 SDK 单例，默认关闭。构建显式设置 `VITE_OTEL_ENABLED=true`；只有同源业务 API 传播 trace context，排除 `/otel/` 自身与第三方 URL。
-2. 浏览器使用同源 `/otel/v1/{logs,metrics,traces}`，服务端复用认证，要求同 Origin、protobuf、无压缩；实际流式体积上限 1MiB，单用户 60/min、单用户最多 2 个在飞请求、全局 6000/min、8 并发、4096 用户槽位。上游仅为部署指定的 4319 receiver。
-3. TLS 在反向代理终止时，Bun 看到的请求 URL 是内部 HTTP；`/otel` 必须以宿主 `RCS_BASE_URL` 的 origin 为信任基准。启用浏览器遥测时该值必须是单个、合法的非 localhost HTTP(S) origin；缺失、非法或 localhost 会在启动期告警并 fail-closed（拒绝全部 `/otel` 请求）。绝不依据客户端可伪造的 `X-Forwarded-*` 重建。缺失或跨站 Origin 一律 403。
-4. `/otel` 认证面与普通 `/web`、`/api` 相同：better-auth session cookie → Environment Secret → API Key。浏览器正常只带同源 session；API Key/Environment Secret 是服务端与受控客户端的备用凭据，不表示浏览器可持有长期采集凭据。
-5. Collector 独立浏览器 pipeline 重置 Resource/Scope，强制 `fenix-web`、`source=browser`；指标名称和维度允许列表，删除 Span 内容/事件和日志正文。浏览器自报身份不作为租户授权或 OO 组织路由依据。
-6. 错误去重限频，初版仅有限错误类型，不采原始错误正文。页面类别只允许 chat/login/console；LCP/INP/CLS 分指标并使用 ms 或单位 1；无访客实例 Resource。页面关闭刷新尽力而为。
-7. 服务端看板必须限定服务端来源；运维观测不是租户自助查询，后续开放查询必须新增服务端授权过滤。
+前端观测不在本次范围：不引入浏览器 SDK、同源浏览器上报代理、浏览器 Collector receiver/pipeline，也不下发浏览器采集凭据。后续若重启该能力，必须重新设计认证、Origin 信任、限流与资源身份隔离。
 
 ## 5. 部署边界
 

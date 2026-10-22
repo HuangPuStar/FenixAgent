@@ -5,9 +5,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./telemetry": "./web/telemetry/index.ts",
-    "./telemetry/events": "./web/telemetry/events.ts",
-    "./telemetry/buckets": "./web/telemetry/buckets.ts",
     "./api/request": {
       "types": "./web/api/request.ts",
       "default": "./web/api/request.ts"
@@ -85,22 +82,6 @@
     "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false"
   },
   "dependencies": {
-    "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/api-logs": "0.218.0",
-    "@opentelemetry/context-zone": "2.7.1",
-    "@opentelemetry/core": "2.7.1",
-    "@opentelemetry/exporter-trace-otlp-proto": "0.218.0",
-    "@opentelemetry/exporter-logs-otlp-proto": "0.218.0",
-    "@opentelemetry/exporter-metrics-otlp-proto": "0.218.0",
-    "@opentelemetry/instrumentation": "0.218.0",
-    "@opentelemetry/instrumentation-fetch": "0.218.0",
-    "@opentelemetry/instrumentation-xml-http-request": "0.218.0",
-    "@opentelemetry/resources": "2.7.1",
-    "@opentelemetry/sdk-logs": "0.218.0",
-    "@opentelemetry/sdk-metrics": "2.7.1",
-    "@opentelemetry/sdk-trace-base": "2.7.1",
-    "@opentelemetry/sdk-trace-web": "2.7.1",
-    "web-vitals": "5.1.0",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "i18next": "^26.2.0",
