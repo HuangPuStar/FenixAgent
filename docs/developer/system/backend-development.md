@@ -381,7 +381,7 @@ DDL 迁移与数据迁移必须分离：结构变更走 `drizzle/`，存量数�
 - URL 表达资源，动作用 HTTP 方法表达；非 CRUD 动作用动作后缀，如 `POST /web/agent-configs/:id/publish`，且始终经资源 Facade 进入服务层与 port。
 - 路径参数只放资源标识与层级（`:id`、`:sessionId`）；筛选、分页、排序、开关放 query。
 - 分页统一 `page` / `pageSize`，排序统一 `sortBy` / `sortOrder`，布尔筛选使用语义化命名（`includeDisabled`、`withMembers`）。
-- `GET` 只查询、不带 body；创建与触发动作 `POST`，更新 `PUT`，删除 `DELETE`。
+- `GET` 只查询、不带 body；创建与触发动作 `POST`，完整替换 `PUT`，部分更新 `PATCH`，删除 `DELETE`。AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 单资源更新使用 `PATCH`；已有接口的方法变更须评估调用方与兼容性，不为形式统一改坏契约。
 
 ### 7.4 Elysia + OpenAPI 标准写法
 
