@@ -1,6 +1,9 @@
 import KeyvRedis from "@keyv/redis";
+import { metrics } from "@opentelemetry/api";
 import Redis, { type Cluster } from "ioredis";
-import Keyv from "keyv";
+import Keyv, { KeyvHooks } from "keyv";
+
+const cacheRequests = metrics.getMeter("fenix-server").createCounter("fenix.cache.requests");
 
 /**
  * 缓存模块 — 基于 Keyv，自动选择存储后端：
@@ -102,6 +105,13 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
     _backend = "memory";
   }
 
+  const backend = _backend;
+  kv.hooks.addHandler(KeyvHooks.POST_GET, (data: { value?: unknown }) => {
+    cacheRequests.add(1, { cache: backend, result: data.value === undefined ? "miss" : "hit" });
+  });
+  kv.on("error", () => {
+    cacheRequests.add(1, { cache: backend, result: "error" });
+  });
   instances.set(namespace, kv);
   return kv;
 }

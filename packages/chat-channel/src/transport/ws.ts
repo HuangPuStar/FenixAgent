@@ -326,7 +326,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           return;
         }
       } catch {
-        console.warn("[yjs-ws] failed to parse msg:", data.slice(0, 100));
+        console.warn("[yjs-ws] failed to parse msg", { bytes: data.length });
       }
     };
 

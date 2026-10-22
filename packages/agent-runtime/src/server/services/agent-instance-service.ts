@@ -56,6 +56,9 @@ const SELECTION: Record<
 };
 
 const runtimeAdapter: RuntimeAdapter = {
+  getEngineType(instanceUid) {
+    return getCoreRuntime().getInstance(instanceUid)?.engineType;
+  },
   onStopped(instanceUid) {
     releaseAgentExecutions(instanceUid);
     releaseAgentSessionTurns(instanceUid);

@@ -35,6 +35,7 @@ import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { Writable } from "node:stream";
 import pino from "pino";
 import pretty from "pino-pretty";
+import { sanitizeLogText, sanitizeLogValue } from "./sanitize";
 import { LOG_SOURCE_PREFIXES, readLogDir } from "./sources";
 
 // 已知日志源的只读枚举与控制台读取面（`LOG_DIR` 的解析、命名规则、白名单）。
@@ -184,8 +185,14 @@ function buildPinoInstance() {
   const options = {
     level: logLevel,
     timestamp: pino.stdTimeFunctions.isoTime,
+    hooks: {
+      logMethod(args, method) {
+        const safeArgs = args.map((arg) => sanitizeLogValue(arg));
+        method.apply(this, safeArgs as Parameters<typeof method>);
+      },
+    },
     formatters: {
-      level: (label: string) => ({ level: label }),
+      level: (label: string, number: number) => ({ level: number, levelLabel: label }),
       bindings: () => ({}),
     },
   } satisfies Parameters<typeof pino>[0];
@@ -260,19 +267,23 @@ function argsToMsg(args: unknown[]): [string, Record<string, unknown>?] {
       strings.push(a);
     } else if (a instanceof Error) {
       // pino 的 err 序列化会自动输出 message + stack
-      if (strings.length === 0) strings.push(a.message);
+      if (strings.length === 0) {
+        const safe = sanitizeLogValue(a) as { message: string };
+        strings.push(safe.message);
+      }
       extras.err = a;
       hasExtra = true;
     } else if (a !== undefined && a !== null) {
-      try {
-        strings.push(typeof a === "object" ? JSON.stringify(a) : String(a));
-      } catch {
+      if (typeof a === "object" && !Array.isArray(a)) {
+        Object.assign(extras, a);
+        hasExtra = true;
+      } else {
         strings.push(String(a));
       }
     }
   }
 
-  const msg = strings.join(" ");
+  const msg = sanitizeLogText(strings.join(" "), 8192);
   return hasExtra ? [msg, extras] : [msg];
 }
 
@@ -287,9 +298,9 @@ export function createLogger(module: string): Logger {
     timestamp: new Date().toISOString(),
     level,
     module,
-    message,
+    message: sanitizeLogText(message, 8192),
     ...getAlsContext(),
-    ...extra,
+    ...(sanitizeLogValue(extra ?? {}) as Record<string, unknown>),
   });
 
   return {

@@ -3,7 +3,7 @@
 
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
-FROM oven/bun:1 AS base
+FROM oven/bun:1.4.2 AS base
 WORKDIR /app
 
 FROM base AS deps
@@ -18,6 +18,9 @@ RUN bun install --frozen-lockfile
 
 FROM deps AS build
 ARG GIT_COMMIT_SHA=unknown
+ARG VITE_OTEL_ENABLED=false
+ENV VITE_OTEL_ENABLED=${VITE_OTEL_ENABLED}
+ENV VITE_BUILD_VERSION=${GIT_COMMIT_SHA}
 COPY tsconfig.json tsconfig.base.json ./
 # deps 阶段只带了 package.json，构建（web bundle 与 server bundle）需要完整源码。
 # 本层与紧随其后的 RUN 同源失效，不额外损失缓存。
@@ -29,7 +32,7 @@ COPY apps/web ./apps/web
 COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
-RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outdir dist --entry-naming index.js \
+RUN bun build apps/server/src/entry.ts --target=bun --splitting --packages=external --external '@fenix/logger' --external '@fenix/logger/*' --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
@@ -38,7 +41,7 @@ FROM deps AS migrate-build
 COPY scripts/migrate.ts ./scripts/migrate.ts
 RUN bun build scripts/migrate.ts --target=bun --outdir /tmp/migrate-bundle
 
-FROM oven/bun:1 AS migrate
+FROM oven/bun:1.4.2 AS migrate
 WORKDIR /app
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
@@ -61,14 +64,14 @@ COPY apps/web/fenix.module.ts ./apps/web/fenix.module.ts
 COPY packages ./packages
 RUN bun build db/data-migration-runner.ts --target=bun --outdir /tmp/data-migrate-bundle
 
-FROM oven/bun:1 AS data-migrate
+FROM oven/bun:1.4.2 AS data-migrate
 WORKDIR /app
 COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./
 CMD ["bun", "data-migration-runner.js"]
 
 ############### production image ###############
 
-FROM oven/bun:1 AS runtime
+FROM oven/bun:1.4.2 AS runtime
 WORKDIR /app
 
 COPY --from=uv /uv /uvx /usr/local/bin/
@@ -123,6 +126,13 @@ RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
+# 外置依赖保留社区 hook 可见的原始模块；workspace 链接与宿主入口使用同一份安装结果。
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/server ./apps/server
+COPY --from=build /app/apps/generated ./apps/generated
+COPY --from=deps /app/package.json ./package.json
+COPY --from=build /app/tsconfig.json /app/tsconfig.base.json ./
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./

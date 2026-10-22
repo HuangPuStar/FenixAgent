@@ -9,6 +9,8 @@
 // 超时是兜底：某个 base/ACK 丢失时不能让展示层永久停在 hydrating。transport 的
 // base 超时与展示层 maxWait 相互独立。
 
+import { recordBrowserEvent } from "@fenix/web-runtime/telemetry/events";
+
 /** 基线等待上限（兜底）：base/ACK 丢失或延迟时按「已尽力送达」解除。 */
 export const SYNC_BASE_TIMEOUT_MS = 5_000;
 
@@ -48,9 +50,11 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
   let timer: ReturnType<typeof setTimeout> | null = null;
   let done = false;
   let hydrating = false;
+  let startedAt = 0;
 
   function setHydrating(next: boolean): void {
     if (hydrating === next) return;
+    if (next) startedAt = performance.now();
     hydrating = next;
     options.onHydratingChange(next);
   }
@@ -65,7 +69,8 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
     deliveryDoc = new Map();
   }
 
-  function finish(): void {
+  function finish(success = true): void {
+    if (hydrating) recordBrowserEvent(success ? "history_ready" : "history_failure", performance.now() - startedAt);
     cancelTimer();
     pendingDocs.clear();
     clearDeliveries();
@@ -78,7 +83,7 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
     timer = setTimeout(() => {
       timer = null;
       // 超时按「基线已尽力送达」处理：展示层还有 maxWait 兜底，宁可显示已有内容。
-      finish();
+      finish(false);
     }, timeoutMs);
   }
 

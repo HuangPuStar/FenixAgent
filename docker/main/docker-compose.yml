@@ -103,8 +103,9 @@ services:
             # OPENAI_API_KEY:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
-            # 服务公开基址：影响生成的回链与 skill 下载链接（见 .env.example 同名键说明）。
-            RCS_BASE_URL: ${RCS_BASE_URL:-http://localhost:3000}
+            # 公开基址必须显式配置；反代终止 TLS 时要写浏览器看到的 HTTPS origin。
+            # 留空时 /otel 在启用浏览器遥测后会 fail-closed，不用 localhost 伪装生产地址。
+            RCS_BASE_URL: ${RCS_BASE_URL:-}
             # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：生产必须用本目录 .env 换成
             # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
             RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}

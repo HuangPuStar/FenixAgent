@@ -1,0 +1,273 @@
+{
+  "version": 2,
+  "dashboardId": "fenix-infrastructure",
+  "title": "Fenix 主机与容器",
+  "description": "目标 OO v1.1.2，指标映射需 A24 实测确认",
+  "role": "",
+  "owner": "",
+  "created": "2026-10-22T00:00:00.000Z",
+  "panels": [
+    {
+      "id": "Panel_infrastructure_0",
+      "type": "line",
+      "title": "主机 CPU",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum by(host_id)(rate(system_cpu_time{deployment_environment_name=~\"$environment\",service_name=~\"$service\",state!=\"idle\"}[5m]))",
+          "customQuery": true,
+          "fields": {
+            "stream": "system_cpu_time",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6,
+        "i": 0
+      }
+    },
+    {
+      "id": "Panel_infrastructure_1",
+      "type": "line",
+      "title": "主机内存",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum by(host_id,state)(system_memory_usage{deployment_environment_name=~\"$environment\",service_name=~\"$service\"})",
+          "customQuery": true,
+          "fields": {
+            "stream": "system_memory_usage",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6,
+        "i": 1
+      }
+    },
+    {
+      "id": "Panel_infrastructure_2",
+      "type": "line",
+      "title": "磁盘剩余",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "system_filesystem_usage{deployment_environment_name=~\"$environment\",service_name=~\"$service\",state=\"free\"}",
+          "customQuery": true,
+          "fields": {
+            "stream": "system_filesystem_usage",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 6,
+        "i": 2
+      }
+    },
+    {
+      "id": "Panel_infrastructure_3",
+      "type": "line",
+      "title": "容器内存",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "container_memory_usage_total{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}",
+          "customQuery": true,
+          "fields": {
+            "stream": "container_memory_usage_total",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 6,
+        "i": 3
+      }
+    },
+    {
+      "id": "Panel_infrastructure_4",
+      "type": "line",
+      "title": "PG 后端",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "postgresql_backends{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}",
+          "customQuery": true,
+          "fields": {
+            "stream": "postgresql_backends",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "w": 6,
+        "h": 6,
+        "i": 4
+      }
+    },
+    {
+      "id": "Panel_infrastructure_5",
+      "type": "line",
+      "title": "Redis 内存",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "redis_memory_used{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}",
+          "customQuery": true,
+          "fields": {
+            "stream": "redis_memory_used",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "{service_name}"
+          }
+        }
+      ],
+      "layout": {
+        "x": 6,
+        "y": 12,
+        "w": 6,
+        "h": 6,
+        "i": 5
+      }
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "环境",
+        "type": "custom",
+        "value": "production",
+        "options": [
+          {
+            "label": "production",
+            "value": "production"
+          },
+          {
+            "label": "staging",
+            "value": "staging"
+          },
+          {
+            "label": "development",
+            "value": "development"
+          }
+        ]
+      },
+      {
+        "name": "service",
+        "label": "服务",
+        "type": "custom",
+        "value": "fenix-host|fenix-container|fenix-postgresql|fenix-redis",
+        "options": [
+          {
+            "label": "fenix-host",
+            "value": "fenix-host"
+          },
+          {
+            "label": "fenix-container",
+            "value": "fenix-container"
+          },
+          {
+            "label": "fenix-postgresql",
+            "value": "fenix-postgresql"
+          },
+          {
+            "label": "fenix-redis",
+            "value": "fenix-redis"
+          }
+        ]
+      }
+    ]
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

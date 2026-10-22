@@ -2,6 +2,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "@fenix/chat-channel/server";
+import { metrics } from "@opentelemetry/api";
+import { MeterProvider, MetricReader } from "@opentelemetry/sdk-metrics";
 import * as Y from "yjs";
 import type { SyncChatProjection } from "../yjs/sync-doc-hub";
 import type { SyncChatConnectionState, SyncChatSessionOptions } from "../yjs/sync-transport";
@@ -207,5 +209,39 @@ describe("同步会话 1012 换代重连", () => {
     expect(visibleText(harness.projections.at(-1))).toBe("two");
 
     harness.session.dispose();
+  });
+
+  // 首次连接不是重连；只有退避后的成功连接才产生一次恢复事件。
+  test("首次连接不计 reconnect", async () => {
+    class Reader extends MetricReader {
+      protected async onForceFlush() {}
+      protected async onShutdown() {}
+    }
+    const reader = new Reader();
+    const provider = new MeterProvider({ readers: [reader] });
+    metrics.setGlobalMeterProvider(provider);
+    const { activateBrowserTelemetry } = await import("@fenix/web-runtime/telemetry/events");
+    activateBrowserTelemetry();
+    try {
+      const harness = createHarness();
+      harness.first.open();
+      await flush();
+      harness.first.closeFromServer(1012, "projection replaced");
+      harness.scheduled[0]?.();
+      const second = FakeSocket.instances[1];
+      if (second === undefined) throw new Error("reconnect socket was not created");
+      second.open();
+      await flush();
+
+      const data = (await reader.collect()).resourceMetrics.scopeMetrics.flatMap((scope) => scope.metrics);
+      const reconnect = data
+        .find((metric) => metric.descriptor.name === "fenix.web.events")
+        ?.dataPoints.find((point) => point.attributes.event === "reconnect");
+      expect(reconnect?.value).toBe(1);
+      harness.session.dispose();
+    } finally {
+      await provider.shutdown();
+      metrics.disable();
+    }
   });
 });

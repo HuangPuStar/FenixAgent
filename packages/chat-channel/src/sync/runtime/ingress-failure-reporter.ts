@@ -2,6 +2,7 @@
 // live ingress 失败的计数与有界日志：容量/协议错误可能在每个事件上重复出现，
 // 逐条 ERROR 会淹没日志；这里按时间窗只输出摘要，计数始终累加供观测。
 
+import { syncFailures } from "../metrics";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 
 export interface IngressFailureDiagnostics {
@@ -30,6 +31,7 @@ export function createIngressFailureReporter(input: {
     report(error: unknown): void {
       total += 1;
       lastCode = error instanceof SyncProtocolError ? error.code : null;
+      syncFailures.add(1, { stage: "ingress", code: lastCode ?? "UNKNOWN" });
       const now = input.now();
       if (lastLogAt !== 0 && now - lastLogAt < intervalMs) return;
       lastLogAt = now;

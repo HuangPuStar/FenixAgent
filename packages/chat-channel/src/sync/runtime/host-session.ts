@@ -16,6 +16,7 @@ import { encodeSyncFrame, MAX_CONTROL_FRAME_BYTES, parseSyncFrame } from "../pro
 import { assertIdentifier, type SyncScope, scopeKey } from "../protocol/identity";
 import { MemoryProjectionStore } from "../store/memory-store";
 import type { ProjectionStore } from "../store/types";
+import { commitHostHistory } from "./commit-host-history";
 import { resolveSyncRuntimeConfig, type SyncRuntimeConfigOverrides } from "./config";
 import type { SyncFrameTransport } from "./egress";
 import { ensureBaselineGeneration } from "./host-baseline";
@@ -100,7 +101,6 @@ export interface SyncHostSession {
 }
 
 const DEFAULT_TICK_INTERVAL_MS = 100;
-const HISTORY_LEASE_TTL_MS = 30_000;
 const USER_CONTENT_SLOT = "text";
 const TEXT_CONTENT_TYPE = "text/plain";
 const SEMANTIC_CONTENT_SLOT = "semantic";
@@ -217,20 +217,9 @@ export async function createSyncHostSession(input: {
     acpSessionId: string,
     records: readonly SyncHistoryRecord[],
   ): Promise<{ generation: string; pointerRevision: number; contentDocIds: readonly string[] }> => {
-    await runtime.history.begin({ scope, acpSessionId, owner, leaseTtlMs: HISTORY_LEASE_TTL_MS });
-    for (const record of records) {
-      await runtime.history.accept(record.value, record.meta);
-    }
-    await runtime.history.receivingComplete();
-    await runtime.history.buildAndCommit();
-    const result = await runtime.history.finalize();
+    const result = await commitHostHistory({ runtime, store, scope, owner, acpSessionId, records });
     cachedGeneration = result.generation;
-    const generation = await store.readGeneration(key, result.generation);
-    return {
-      generation: result.generation,
-      pointerRevision: result.pointerRevision,
-      contentDocIds: generation?.entryRefs.contentDocIds ?? [],
-    };
+    return result;
   };
 
   /**

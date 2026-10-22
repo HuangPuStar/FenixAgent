@@ -1,5 +1,6 @@
 import { AppError } from "@fenix/platform-sdk";
 import type { AgentInstanceRecord } from "../repositories/agent-instance";
+import { agentRunDisconnected, agentRunReady, beginAgentRun, finishAgentRun } from "./agent-metrics";
 
 export type RuntimeStopMode = "strict" | "best-effort";
 export type RuntimeLifecycleOperation = "ensure" | "restart" | "stop" | "delete" | "reclaim";
@@ -17,6 +18,8 @@ export interface RuntimeSnapshot {
 }
 
 export interface RuntimeAdapter {
+  /** 仅用于低基数观测，不参与实例路由。 */
+  getEngineType?(instanceUid: string): string | undefined;
   /** 已确认终止后释放依赖该运行实体的执行配额。 */
   onStopped?(instanceUid: string): void;
   start(instance: AgentInstanceRecord, generation: number, signal: AbortSignal): Promise<void>;
@@ -161,6 +164,7 @@ export class AgentInstanceRuntimeCoordinator {
       // 与死亡事件同一处理：推进世代 fence 掉迟到的启动结果，在飞操作由补偿停止收尾。
       entry.generation += 1;
       entry.abortController?.abort(new Error("Runtime terminated with its machine"));
+      finishAgentRun(instanceUid, "cancelled");
       entry.state = "stopped";
       entry.machineId = null;
       entry.pendingCleanSlate = false;
@@ -239,6 +243,9 @@ export class AgentInstanceRuntimeCoordinator {
     const entry = this.#entries.get(instanceUid);
     if (!entry?.runtimePresent || entry.generation !== generation) return;
     entry.operationId += 1;
+    if (state === "stopped")
+      finishAgentRun(instanceUid, entry.state === "stopping" ? "success" : "failure", generation);
+    if (state === "unknown") agentRunDisconnected(instanceUid);
     entry.runtimePresent = false;
     entry.abortController?.abort(new Error(reason));
     entry.state = state;
@@ -252,6 +259,7 @@ export class AgentInstanceRuntimeCoordinator {
   /** 已确认无残留 runtime 时解除 unknown；实体已不存在，旧通知不再有提交权。 */
   #resolveUnknown(instanceUid: string, entry: RuntimeEntry): void {
     entry.operationId += 1;
+    finishAgentRun(instanceUid, "cancelled");
     entry.runtimePresent = false;
     entry.state = "stopped";
     entry.machineId = null;
@@ -377,13 +385,17 @@ export class AgentInstanceRuntimeCoordinator {
       entry.runtimePresent = true;
       entry.state = "starting";
       if (!("environmentId" in instance)) throw new Error("Runtime start requires a persistent instance record");
+      beginAgentRun(instance.id, startingGeneration);
       await this.adapter.start(instance, startingGeneration, signal);
       signal.throwIfAborted();
       if (entry.operationId !== operationId) throw new Error("Runtime start confirmation was superseded");
       entry.state = "running";
+      agentRunReady(instance.id, this.adapter.getEngineType?.(instance.id));
       if (operation === "restart") entry.manuallyStopped = false;
       entry.lastFailure = null;
     } catch (error) {
+      if (startingGeneration !== undefined)
+        finishAgentRun(instance.id, signal.aborted ? "cancelled" : "failure", startingGeneration);
       let failure = error;
       if (startingGeneration !== undefined) {
         try {
@@ -417,6 +429,7 @@ export class AgentInstanceRuntimeCoordinator {
     } else {
       await this.adapter.stop(instanceUid, entry.generation, signal);
     }
+    finishAgentRun(instanceUid, "success");
     entry.runtimePresent = false;
     this.adapter.onStopped?.(instanceUid);
   }

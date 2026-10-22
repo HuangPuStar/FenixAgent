@@ -122,6 +122,7 @@
 
 - 必须接入 ②：`rcs`；主服务自带的两个基础服务 `postgres` / `redis`（它们的服务名是 `fenix-server` 上的跨项目 DNS 名）；
   依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、
+  平台观测入口 `otel-collector`（应用与浏览器同源代理的 OTLP 接收）和 `openobserve`（Collector 的存储出口，应用不直连）、
   观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、
   Workflow 的 `coze-web`（唯一出口；Workflow 的其余服务——`coze-server` / `milvus` / `redis` / `elasticsearch` 与它自带的
   `mysql` / `rustfs`、以及所有一次性初始化服务——都只在项目默认网络内）；sandbox 节点与 opensandbox 管理面。
@@ -382,6 +383,8 @@ Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init
 | `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL`；MySQL（`ragflow-mysql`）、Valkey 与对象存储（`ragflow-rustfs`）**都是本栈自带**，不依赖别的目录，也没有对应开关（§5） |
 | `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*`；库是栈内的 `litellm-postgres`（本栈自带，库与角色由镜像首启建好） |
 | `HINDSIGHT` | `docker/hindsight/` | memory：长期记忆 | `HINDSIGHT_MCP_URL`、`DASHSCOPE_API_KEY` |
+| `OTEL_COLLECTOR` | `docker/otel-collector/` | 平台标准观测采集与有界持久队列 | `OO_OTLP_ENDPOINT` / `OO_AUTH_HEADER` / 真实主机身份；不自动启用 OO |
+| `OPENOBSERVE` | `docker/openobserve/` | 日志、指标、链路存储 | 管理初始化信息；采集凭据只给 Collector |
 | `PERI_FUSE` | `docker/peri-fuse/` | agent-config：Agent 观测透传（Trace 上报；主服务不访问本服务） | `LANGFUSE_BASE_URL` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` |
 | `NPM_REGISTRY` | `docker/npm-registry/` | plugin-market：元数据源 | `PLUGIN_MARKET_REGISTRY_*` |
 | `AGENT_SITES` | `docker/agent-sites/` | agent-config：站点部署 | `AGENT_SITES_MASTER_KEY` 等 |

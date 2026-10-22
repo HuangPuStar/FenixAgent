@@ -11,6 +11,14 @@ import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
 // 必须在任何业务模块之前执行，确保浏览器兼容补丁与品牌配置在 React 渲染前生效。
+if (import.meta.env.VITE_OTEL_ENABLED === "true") {
+  try {
+    const { initializeBrowserTelemetry } = await import("@fenix/web-runtime/telemetry");
+    initializeBrowserTelemetry({ enabled: true, version: import.meta.env.VITE_BUILD_VERSION ?? "unknown" });
+  } catch {
+    console.warn("浏览器观测初始化失败，页面继续启动");
+  }
+}
 installPolyfill();
 installRandomUUIDPolyfill();
 installStreamdownTablePatch();

@@ -78,6 +78,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.9.0",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",

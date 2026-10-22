@@ -1,0 +1,17 @@
+receivers:
+  docker_stats:
+    endpoint: ${env:DOCKER_MONITOR_ENDPOINT}
+    collection_interval: 15s
+    timeout: 5s
+processors:
+  resource/docker:
+    attributes:
+      - {key: service.name, value: fenix-container, action: upsert}
+      - {key: host.id, value: "${env:HOST_ID}", action: upsert}
+      - {key: deployment.environment.name, value: "${env:DEPLOYMENT_ENVIRONMENT}", action: upsert}
+service:
+  pipelines:
+    metrics/docker:
+      receivers: [docker_stats]
+      processors: [memory_limiter, resource/docker, batch]
+      exporters: [otlp_http/oo_metrics]

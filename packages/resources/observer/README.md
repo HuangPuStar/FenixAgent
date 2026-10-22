@@ -63,7 +63,7 @@ const apiSystemLogs = createApiSystemLogsRoutes({ systemApiGuardPlugin: systemAp
 
 ## 已知项
 
-- **日志投影的残留风险（§7 口径已满足，内容风险仍在上游）**：投影层按形状脱敏 token / Cookie / 密码 / 连接串，并丢弃白名单之外的字段，因此「凭据以结构化字段或键值形态出现」的泄漏已封闭。但**截断后的 prompt 正文与 Agent 响应**是以自由文本写进 `message` 的（`packages/agent-runtime/src/routes/web/control.ts` 的事件体 `JSON.stringify(b).slice(0, 200)`、`packages/acp-link/src/server.ts` 的 `promptText.slice(0, 200)` 与 `JSON.stringify(result).slice(0, 500)`），与普通诊断文本同形，投影层区分不了——它们仍会出现在检索结果与导出里。修法在上游（记长度、摘要或结构化标记），归规范 §11「日志内容脱敏」优化项；本包不再补一层猜测性正则：猜测同时带来漏报（换个写法就绕过）与误伤（正常诊断被抹掉），把「看起来做了脱敏」当成已解决反而更危险。
+- **日志投影的残余风险**：投影层按形状脱敏 token / Cookie / 密码 / 连接串，并丢弃白名单之外的字段，因此「凭据以结构化字段或键值形态出现」的泄漏已封闭。上游写入侧的正文拼接已从 `agent-runtime` 的会话事件日志与 `acp-link` 的 prompt/result 日志移除，但投影层不做语义 DLP：任何新代码把用户正文、prompt 或 Agent 响应写进自由文本，仍会与普通诊断同形出现。修法必须在上游（记长度、摘要或结构化标记）；本包不再补猜测性正则，避免漏报与误伤并存。
 - **`/download` 端点路径保留、语义改变（2026-09-24）**：路径是 `/api/*` 对外合同的一部分，改路径会同时打断 `apps/server/src/__tests__/route-contributions.test.ts` 的路由清单与既有调用方，因此只改输入（`sourceId`）与响应（投影后的 JSON Lines，`application/x-ndjson` + `Content-Disposition: …projected.jsonl` + `no-store`）。导出不再有 `Content-Length`（投影后长度与文件不同），失败语义与检索一致（400 / 404 / 413 / 500），三档错误都不回显输入——回显会变成路径探测的信道。
 - **`web/index.ts` 导出面大于今天的消费面**：4 个展示组件暂无包外消费方（见「web 面与 i18n」），保留理由是与 §1.6 WebShell 装配同批判定；若 §1.6 不需要，连同 README 说明一并删除，避免「顺手导出」变成事实上的公共契约。
 - **observer 域视图工具寄居 sandbox 包**：`mergeFlatRows` / `machineReverseIndex` / `integrityRows` / `name` / `groupYjsSessions` / `sessionTabCounts` / `chatRelayPayload` / 时间格式化与 `FlatRow` / `IntegrityRow` / `YjsSessionGroup` 类型的 owner 应是本包；今天本包 7 个 web 文件经 `@fenix/resource-sandbox/web` 消费。收敛（移到本包 `web/**` 并让 sandbox 改指）归 W4——两个包在 W2 是并行切片，移动会同时改双方的公开面。

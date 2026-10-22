@@ -127,9 +127,7 @@ export function createWebControlRoutes(deps: AgentRuntimeAuthDependencies) {
 
     const b = body as { type?: string; [key: string]: unknown };
     const eventType = b.type || "user";
-    log(
-      `[RC-DEBUG] web -> server: POST /web/sessions/${sessionId}/events type=${eventType} content=${JSON.stringify(b).slice(0, 200)}`,
-    );
+    log(`[RC-DEBUG] web -> server: POST /web/sessions/${sessionId}/events type=${eventType}`);
     const event = publishSessionEvent(sessionId, eventType, b, "outbound");
     log(
       `[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${getEventBus(sessionId).subscriberCount()}`,
