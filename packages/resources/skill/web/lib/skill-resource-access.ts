@@ -41,13 +41,10 @@ export function getSkillKey(skill: SkillResourceLike) {
   return skill.name;
 }
 
-/**
- * 详情读取使用的查找键，语义与 {@link getSkillKey} 相同。
- *
- * 独立命名是为了标明调用点意图：`/web/config/skills/:name` 的 `name` 参数同时承载技能名与跨组织资源键。
- */
+/** 资源管理操作使用数据库 ID，缺失时拒绝名称回退。 */
 export function getSkillLookupKey(skill: SkillResourceLike) {
-  return getSkillKey(skill);
+  if (!skill.id) throw new Error("Skill resource ID is required");
+  return skill.id;
 }
 
 /**

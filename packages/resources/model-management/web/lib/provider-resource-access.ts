@@ -9,12 +9,12 @@ import type { ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtim
  * 越权展示来源）。
  */
 export interface ProviderResourceLike {
-  /** Provider 资源 UUID（`/web` 视图的 `providerId`）。 */
-  providerId?: string;
-  /** Provider 配置名（组织内唯一）；跨组织键无法推导时作为退化键。 */
+  /** Provider 数据库资源 ID。 */
   id: string;
-  /** 展示名；为空时展示配置名。 */
+  /** 配置名称。 */
   name?: string;
+  /** 展示名；为空时展示配置名。 */
+  displayName?: string;
   scope?: ResourceScopeView;
   access?: { actions?: ResourceAccessActions };
 }
@@ -29,27 +29,21 @@ export interface ModelProviderResourceLike {
   access?: { actions?: ResourceAccessActions };
 }
 
-/**
- * Provider 的跨组织稳定键。
- *
- * 新授权视图不再提供 `resourceAccess.resourceKey`，因此按 `${scope.organizationId}/${providerId}` 自行
- * 推导：二者缺一都无法保证跨组织唯一，此时退回配置名（同一组织内唯一）。
- */
+/** Provider 的稳定身份，直接使用数据库 ID。 */
 export function getProviderKey(provider: ProviderResourceLike) {
-  const organizationId = provider.scope?.organizationId;
-  if (organizationId && provider.providerId) return `${organizationId}/${provider.providerId}`;
   return provider.id;
 }
 
-/** 模型所属 Provider 的跨组织稳定键，语义与 {@link getProviderKey} 相同。 */
+/** 模型选项保留既有资源键格式，避免改变默认模型偏好存储。 */
 export function getModelProviderKey(model: ModelProviderResourceLike) {
-  return getProviderKey({ providerId: model.providerId, id: model.provider, scope: model.scope });
+  const organizationId = model.scope?.organizationId;
+  return organizationId && model.providerId ? `${organizationId}/${model.providerId}` : model.provider;
 }
 
 /** 展示名：展示名为空时退回配置名，避免出现无名条目。 */
 export function getProviderDisplayName(provider: ProviderResourceLike) {
-  const displayName = provider.name ?? "";
-  return displayName === "" ? provider.id : displayName;
+  const displayName = provider.displayName ?? "";
+  return displayName === "" ? (provider.name ?? "") : displayName;
 }
 
 /** 是否可写；`update` 动作缺失时保守视为不可写。 */

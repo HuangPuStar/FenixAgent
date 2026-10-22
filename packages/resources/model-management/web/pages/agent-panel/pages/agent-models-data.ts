@@ -69,8 +69,8 @@ function buildLimitPayload(limit: ModelLimitDraft, original: unknown): Record<st
  */
 function buildModelPayload(draft: ModelDraft, original: ProviderModel | null): Record<string, unknown> {
   const payload: Record<string, unknown> = {
-    modelId: draft.id.trim(),
-    name: draft.name.trim() || draft.id.trim(),
+    modelId: draft.modelId.trim(),
+    name: draft.name.trim() || draft.modelId.trim(),
     modalities: { input: draft.inputModalities, output: draft.outputModalities },
   };
   if (original === null || draft.limit.edited) payload.limit = buildLimitPayload(draft.limit, original?.limit);
@@ -145,15 +145,18 @@ export function useAgentModelsData() {
 
   const saveProvider = useRequest(
     async (draft: ProviderDraft, editing: ProviderInfo | null) => {
-      const providerId = editing ? getProviderKey(editing) : draft.id.trim();
+      const configName = draft.configName.trim();
       const payload: Record<string, unknown> = { protocol: draft.protocol };
       // API Key 的语义与显示名 / Base URL 不同：输入框恒空是回显约定（详情只回 `keyHint` 掩码），空值提交
       // 会把用户的密钥清掉，所以这里保持"空 = 不提交该键"。
       if (draft.apiKey.trim()) payload.apiKey = draft.apiKey;
       // 显示名与 Base URL 走字段级 dirty：未触碰 → 缺省键（后端不改该列）；触碰后为空 → `null`（清空）。
       if (draft.baseURL.edited) payload.baseURL = providerFieldValue(draft.baseURL.value);
-      if (draft.displayName.edited) payload.name = providerFieldValue(draft.displayName.value);
-      await unwrap(providerApi.set(providerId, payload));
+      if (draft.displayName.edited) payload.displayName = providerFieldValue(draft.displayName.value);
+      const saved = await unwrap(
+        editing ? providerApi.update(editing.id, payload) : providerApi.create(configName, payload),
+      );
+      const providerId = saved.id;
       const addResults = await Promise.allSettled(
         draft.selectedModels.map((modelId) => unwrap(providerApi.addModel(providerId, { modelId, name: modelId }))),
       );
@@ -195,7 +198,7 @@ export function useAgentModelsData() {
     (provider: ProviderInfo, value: boolean) => {
       // 公开受众只对具备 `update` 动作的主体开放；缺失动作时前端直接拒绝，不发必然 403 的请求。
       if (!canManageProviderSharing(provider)) throw new Error(t("errors.sharingUnavailable"));
-      return unwrap(providerApi.set(getProviderKey(provider), buildProviderPublicReadablePayload(value)));
+      return unwrap(providerApi.update(getProviderKey(provider), buildProviderPublicReadablePayload(value)));
     },
     {
       manual: true,
@@ -262,7 +265,7 @@ export function useAgentModelsData() {
       return {
         providerKey,
         models: result.models,
-        addedIds: new Set(existing.map((model) => model.id)),
+        addedIds: new Set(existing.map((model) => model.modelId)),
       } satisfies DiscoveryState;
     },
     {

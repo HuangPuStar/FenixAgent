@@ -38,6 +38,14 @@ function jsonRequest(path: string, method: string, body: Record<string, unknown>
 }
 
 describe("round40 MCP 配置路由", () => {
+  // 列表中的资源 ID 必须能直接读取详情，即使名称重复也不会走名称解析。
+  test("REST 详情返回指定资源 ID", async () => {
+    installMcpModuleStub({ facade: { getById: async (_actor, id) => authorizedServer({ id }) } });
+    const response = await request("/config/mcp/11111111-1111-4111-8111-111111111111");
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.id).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
   beforeEach(() => {
     resetAllStubs();
     resetMcpModuleStub();
@@ -155,7 +163,7 @@ describe("round40 MCP 配置路由", () => {
     let received: string | undefined;
     installMcpModuleStub({
       facade: {
-        get: async (_actor, nameOrKey) => {
+        getById: async (_actor, nameOrKey) => {
           received = nameOrKey;
           return authorizedServer({ actions: ["read", "update"] });
         },
@@ -163,10 +171,11 @@ describe("round40 MCP 配置路由", () => {
       identity: { listOrganizationNames: async () => new Map([["org-1", "Current Team"]]) },
     });
 
-    const body = (await readJson(await request("/config/mcp?name=demo"))) as { data: Record<string, unknown> };
+    const body = (await readJson(await request("/config/mcp/demo"))) as { data: Record<string, unknown> };
 
     expect(received).toBe("demo");
     expect(body.data).toEqual({
+      id: "mcp-1",
       name: "demo",
       config: { type: "remote", url: "https://mcp.example.test" },
       scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
@@ -180,24 +189,24 @@ describe("round40 MCP 配置路由", () => {
     let received: string | undefined;
     installMcpModuleStub({
       facade: {
-        get: async (_actor, nameOrKey) => {
+        getById: async (_actor, nameOrKey) => {
           received = nameOrKey;
           return authorizedServer({ name: "shared", organizationId: "org-source", visibility: "public" });
         },
       },
     });
 
-    const response = await request("/config/mcp?name=org-source/mcp-1");
+    const response = await request("/config/mcp/mcp-1");
 
     expect(response.status).toBe(200);
-    expect(received).toBe("org-source/mcp-1");
+    expect(received).toBe("mcp-1");
   });
 
   // 不可见与不存在都表现为 404，不区分两者以免资源名成为跨组织探测面。
   test("详情不存在返回 404", async () => {
-    installMcpModuleStub({ facade: { get: async () => undefined } });
+    installMcpModuleStub({ facade: { getById: async () => undefined } });
 
-    const response = await request("/config/mcp?name=missing");
+    const response = await request("/config/mcp/missing");
 
     expect(response.status).toBe(404);
     expect(await readJson(response)).toEqual({
@@ -249,7 +258,7 @@ describe("round40 MCP 配置路由", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await readJson(response)).toEqual({ success: true, data: { name: "demo" } });
+    expect(await readJson(response)).toEqual({ success: true, data: { id: "mcp-1", name: "demo" } });
     expect(received).toEqual({
       name: "demo",
       type: "remote",
@@ -304,15 +313,11 @@ describe("round40 MCP 配置路由", () => {
 
   // 更新缺少 name 查询参数必须在协议层拒绝：没有定位符就无法确定要改哪个资源。
   test("更新缺少名称返回 400", async () => {
-    installMcpModuleStub({ facade: { update: async () => "demo" } });
+    installMcpModuleStub({ facade: { updateById: async () => "demo" } });
 
-    const response = await jsonRequest("/config/mcp", "PUT", { config: { type: "remote", url: "https://x.test" } });
+    const response = await jsonRequest("/config/mcp", "PATCH", { config: { type: "remote", url: "https://x.test" } });
 
-    expect(response.status).toBe(400);
-    expect(await readJson(response)).toEqual({
-      success: false,
-      error: { code: "VALIDATION_ERROR", message: "缺少 'name' 查询参数" },
-    });
+    expect(response.status).toBe(404);
   });
 
   // 更新把 config 与显式 publicReadable 分开传给 Facade：公开开关不进连接配置。
@@ -320,14 +325,14 @@ describe("round40 MCP 配置路由", () => {
     let received: { nameOrKey: string; config: unknown; options: unknown } | undefined;
     installMcpModuleStub({
       facade: {
-        update: async (_actor, nameOrKey, config, options) => {
+        updateById: async (_actor, nameOrKey, config, options) => {
           received = { nameOrKey, config, options };
           return nameOrKey;
         },
       },
     });
 
-    const response = await jsonRequest("/config/mcp?name=demo", "PUT", {
+    const response = await jsonRequest("/config/mcp/demo", "PATCH", {
       config: { type: "remote", url: "https://new.example.test", publicReadable: false },
     });
 
@@ -343,13 +348,13 @@ describe("round40 MCP 配置路由", () => {
   test("更新不存在资源返回 404", async () => {
     installMcpModuleStub({
       facade: {
-        update: async () => {
+        updateById: async () => {
           throw new NotFoundError("MCP server 'missing' not found");
         },
       },
     });
 
-    const response = await jsonRequest("/config/mcp?name=missing", "PUT", {
+    const response = await jsonRequest("/config/mcp/missing", "PATCH", {
       config: { type: "remote", url: "https://new.example.test" },
     });
 
@@ -362,13 +367,13 @@ describe("round40 MCP 配置路由", () => {
     let removed: string | undefined;
     installMcpModuleStub({
       facade: {
-        remove: async (_actor, nameOrKey) => {
+        removeById: async (_actor, nameOrKey) => {
           removed = nameOrKey;
         },
       },
     });
 
-    const response = await request("/config/mcp?name=demo", { method: "DELETE" });
+    const response = await request("/config/mcp/demo", { method: "DELETE" });
 
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({ success: true, data: null });
@@ -379,13 +384,13 @@ describe("round40 MCP 配置路由", () => {
   test("删除外部资源返回 403", async () => {
     installMcpModuleStub({
       facade: {
-        remove: async () => {
+        removeById: async () => {
           throw new ForbiddenError("当前主体无权执行资源动作");
         },
       },
     });
 
-    const response = await request("/config/mcp?name=shared", { method: "DELETE" });
+    const response = await request("/config/mcp/shared", { method: "DELETE" });
 
     expect(response.status).toBe(403);
     expect(await readJson(response)).toMatchObject({ success: false, error: { code: "FORBIDDEN" } });
@@ -396,15 +401,15 @@ describe("round40 MCP 配置路由", () => {
     let enabled = false;
     installMcpModuleStub({
       facade: {
-        getWritable: async () => authorizedServer({ config: { enabled: false } }),
-        setEnabled: async () => {
+        getWritableById: async () => authorizedServer({ config: { enabled: false } }),
+        setEnabledById: async () => {
           enabled = true;
           return "demo";
         },
       },
     });
 
-    const response = await request("/config/mcp/actions/enable?name=demo", { method: "POST" });
+    const response = await jsonRequest("/config/mcp/demo", "PATCH", { enabled: true });
 
     expect(response.status).toBe(400);
     expect(await readJson(response)).toEqual({
@@ -419,16 +424,16 @@ describe("round40 MCP 配置路由", () => {
     const calls: boolean[] = [];
     installMcpModuleStub({
       facade: {
-        getWritable: async () => authorizedServer(),
-        setEnabled: async (_actor, _nameOrKey, enabled) => {
+        getWritableById: async () => authorizedServer(),
+        setEnabledById: async (_actor, _nameOrKey, enabled) => {
           calls.push(enabled);
           return "demo";
         },
       },
     });
 
-    const enabledBody = await readJson(await request("/config/mcp/actions/enable?name=demo", { method: "POST" }));
-    const disabledBody = await readJson(await request("/config/mcp/actions/disable?name=demo", { method: "POST" }));
+    const enabledBody = await readJson(await jsonRequest("/config/mcp/demo", "PATCH", { enabled: true }));
+    const disabledBody = await readJson(await jsonRequest("/config/mcp/demo", "PATCH", { enabled: false }));
 
     expect(calls).toEqual([true, false]);
     expect(enabledBody).toEqual({ success: true, data: { name: "demo", enabled: true } });
@@ -440,10 +445,13 @@ describe("round40 MCP 配置路由", () => {
     const denied = async () => {
       throw new ForbiddenError("当前主体无权执行资源动作");
     };
-    installMcpModuleStub({ facade: { getWritable: denied, setEnabled: denied } });
+    installMcpModuleStub({ facade: { getWritableById: denied, setEnabledById: denied } });
 
     for (const action of ["enable", "disable", "test"]) {
-      const response = await request(`/config/mcp/actions/${action}?name=shared`, { method: "POST" });
+      const response =
+        action === "test"
+          ? await request("/config/mcp/shared/test", { method: "POST" })
+          : await jsonRequest("/config/mcp/shared", "PATCH", { enabled: action === "enable" });
 
       expect(response.status).toBe(403);
       expect(await readJson(response)).toMatchObject({ success: false, error: { code: "FORBIDDEN" } });
@@ -454,7 +462,7 @@ describe("round40 MCP 配置路由", () => {
   test("工具清单返回资源自身名称", async () => {
     installMcpModuleStub({
       facade: {
-        listTools: async () => ({
+        listToolsById: async () => ({
           name: "shared",
           tools: [
             {
@@ -471,7 +479,7 @@ describe("round40 MCP 配置路由", () => {
       },
     });
 
-    const body = await readJson(await request("/config/mcp/actions/tools?name=org-source/mcp-1"));
+    const body = await readJson(await request("/config/mcp/mcp-1/tools"));
 
     expect(body).toEqual({
       success: true,

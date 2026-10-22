@@ -1,5 +1,5 @@
 import type { ActorContext, IdentityDirectory, WebErrSchema } from "@fenix/platform-sdk";
-import { AppError, ConflictError, ForbiddenError, ValidationError } from "@fenix/platform-sdk";
+import { AppError, ConflictError, ValidationError } from "@fenix/platform-sdk";
 import type * as z from "zod/v4";
 import type { AuthorizedAgentConfig } from "../../../facades/agent-config-facade";
 import type { UserAgentPreferencesPort } from "../../../ports/user-agent-preferences";
@@ -223,7 +223,7 @@ async function handleList(actor: ActorContext, preferences: UserAgentPreferences
 /** 读取单个 agent 详情，保留原接口返回结构以兼容现有前端状态。 */
 async function handleGet(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
   const { facade, identity, associations } = getAgentConfigModule();
-  const agent = await facade.get(actor, nameOrKey);
+  const agent = await facade.getById(actor, nameOrKey);
   if (!agent) return buildWebErrorBody("NOT_FOUND", `Agent '${nameOrKey}' not found`);
 
   const [skillIds, mcpIds, siteAppIds, knowledgeBindings, knowledge, enableMemory, organizationName] =
@@ -288,7 +288,7 @@ async function handleSet(
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
   const { facade, associations, authoring } = getAgentConfigModule();
-  const agent = await facade.update(actor, nameOrKey, toAgentConfigWriteData(data), { publicReadable });
+  const agent = await facade.updateById(actor, nameOrKey, toAgentConfigWriteData(data), { publicReadable });
   if (enableMemory !== undefined) {
     await associations.setMemoryEnabled(agent.id, enableMemory);
   }
@@ -358,17 +358,14 @@ async function resolveAgentOrganizationName(organizationId: string | undefined):
 
 /** 重启该 Agent 绑定 Environment 下的持久 Instance runtime，Instance 记录保持不变。 */
 async function handleRestart(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
-  const result = await getAgentConfigModule().facade.restartInstances(actor, nameOrKey);
+  const result = await getAgentConfigModule().facade.restartInstancesById(actor, nameOrKey);
   return { success: true, data: { ...result } };
 }
 
 /** 删除 agent，内置 agent 永远不可删除。 */
 async function handleDelete(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
-  if (isBuiltInAgent(nameOrKey)) {
-    throw new ForbiddenError(`Cannot delete built-in agent '${nameOrKey}'`);
-  }
   // 不可见（404）与可见但无 `delete` 动作（403）都由 Facade 抛出宿主错误类。
-  await getAgentConfigModule().facade.remove(actor, nameOrKey);
+  await getAgentConfigModule().facade.removeById(actor, nameOrKey);
   return { success: true, data: null };
 }
 

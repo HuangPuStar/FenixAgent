@@ -299,6 +299,8 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
         const targets = resolveTarget(ref.file, ref.specifier);
         if (targets.includes(ref.file)) return false;
         if (targets.includes(sharedTypesFile)) return false;
+        // 同目录 handler 不是第二个路由入口，允许协议声明复用。
+        if (targets.includes(join(routesDir, "web/config/mcp-route-support.ts"))) return false;
         return targets.some((target) => target.startsWith(`${routesDir}/`));
       });
     expect(offenders.map(describeRef)).toEqual([]);

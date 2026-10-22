@@ -29,6 +29,7 @@ import {
   getProviderKey as getProviderCatalogKey,
   getProviderIconModelId,
   getProviderResourceBadgeKey,
+  providerMatchesQuery,
   providerMatchesScope,
   supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
@@ -37,9 +38,9 @@ const ACTIVE_ORG_ID = "org-current";
 
 /** 本组织 Provider：具备 update 动作，可写且可管理公开受众。 */
 const internalProvider: ProviderInfo = {
-  providerId: "provider-internal",
-  id: "openai",
-  name: "OpenAI",
+  id: "provider-internal",
+  name: "openai",
+  displayName: "OpenAI",
   kind: "direct",
   gatewayType: null,
   protocol: "openai",
@@ -52,9 +53,9 @@ const internalProvider: ProviderInfo = {
 
 /** 跨组织 Provider：只有 read 动作，界面必须完全只读。 */
 const externalProvider: ProviderInfo = {
-  providerId: "provider-external",
-  id: "openai",
-  name: "OpenAI Shared",
+  id: "provider-external",
+  name: "openai",
+  displayName: "OpenAI Shared",
   kind: "direct",
   gatewayType: null,
   protocol: "openai",
@@ -108,17 +109,17 @@ const sharedMcpView = {
 describe("provider model resource access flow", () => {
   // 同名 Provider 用归属范围与 providerId 生成的资源键区分，不会互相覆盖。
   test("uses scope organization id and provider id as the provider key", () => {
-    expect(getProviderKey(internalProvider)).toBe("org-current/provider-internal");
-    expect(getProviderKey(externalProvider)).toBe("org-source/provider-external");
+    expect(getProviderKey(internalProvider)).toBe("provider-internal");
+    expect(getProviderKey(externalProvider)).toBe("provider-external");
     // 列表消费点与授权子模块共用同一份键推导，避免两处漂移。
-    expect(getProviderCatalogKey(externalProvider)).toBe("org-source/provider-external");
+    expect(getProviderCatalogKey(externalProvider)).toBe("provider-external");
   });
 
   // 展示名取配置的展示名，缺失或为空时退回配置名，不得展示空名称。
   test("falls back to the provider config name when display name is missing", () => {
     expect(getProviderDisplayName(internalProvider)).toBe("OpenAI");
-    expect(getProviderDisplayName({ ...internalProvider, name: "" })).toBe("openai");
-    expect(getProviderDisplayName({ id: "legacy-provider" })).toBe("legacy-provider");
+    expect(getProviderDisplayName({ ...internalProvider, displayName: "" })).toBe("openai");
+    expect(getProviderDisplayName({ id: "legacy-row", name: "legacy-provider" })).toBe("legacy-provider");
   });
 
   // 跨组织资源按 scope.organizationId 与当前组织比对判定，缺任一侧都按本组织处理。
@@ -195,10 +196,27 @@ describe("provider model resource access flow", () => {
   test("uses a configured model id for the provider brand icon", () => {
     expect(
       getProviderIconModelId({ ...internalProvider, id: "admin@example.com" }, [
-        { id: "gpt-5.2", name: "GPT-5.2", modalities: null, limit: null, cost: null },
+        { id: "model-row", modelId: "gpt-5.2", name: "GPT-5.2", modalities: null, limit: null, cost: null },
       ]),
     ).toBe("gpt-5.2");
-    expect(getProviderIconModelId({ ...internalProvider, id: "custom-provider" }, [])).toBe("custom-provider");
+    expect(getProviderIconModelId({ ...internalProvider, name: "custom-provider" }, [])).toBe("custom-provider");
+  });
+
+  // 搜索业务字段不受平台 ID 变化影响，展示名与上游代码都应可命中。
+  test("searches provider display name and upstream model code", () => {
+    const models = [
+      {
+        id: "model-row",
+        modelId: "upstream-special",
+        name: "Display Model",
+        modalities: null,
+        limit: null,
+        cost: null,
+      },
+    ];
+    expect(providerMatchesQuery(internalProvider, models, "OpenAI")).toBe(true);
+    expect(providerMatchesQuery(internalProvider, models, "UPSTREAM-special")).toBe(true);
+    expect(providerMatchesQuery(internalProvider, models, "absent")).toBe(false);
   });
 
   // 思考能力必须读取真实 options.thinking.enabled，不能根据模型名称推测。

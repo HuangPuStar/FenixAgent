@@ -205,6 +205,33 @@ describe("Provider 仓储下推", () => {
     expect((listInputs[0] as { limit?: number }).limit).toBe(1);
   });
 
+  // Web 创建通过唯一键 DO NOTHING 原子拒绝重复值，避免并发覆盖已有密钥。
+  test("严格创建冲突不修改已有 Provider", async () => {
+    let untouched = true;
+    installDbStub({
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({ returning: async () => [] }),
+          onConflictDoUpdate: () => {
+            untouched = false;
+            throw new Error("must not upsert");
+          },
+        }),
+      }),
+    });
+    const { query } = createRecordingQuery();
+    const result = await createProviderRepository(query).create({
+      name: "demo",
+      data: { apiKey: "replacement" },
+      organizationId: "org-1",
+      ownerUserId: "user-1",
+      visibility: "private",
+      rejectConflict: true,
+    });
+    expect(result).toBeUndefined();
+    expect(untouched).toBe(true);
+  });
+
   // 冲突分支只更新可写列：重复创建不得改主、不得重置公开受众，否则一次保存就会让资源漂移。
   test("create 的冲突更新不写归属列", async () => {
     let conflictSet: Record<string, unknown> | undefined;

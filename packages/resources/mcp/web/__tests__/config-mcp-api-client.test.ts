@@ -78,8 +78,8 @@ describe("MCP SDK module", () => {
     const url = call[0] as string;
     const init = call[1] as RequestInit;
     expect(init.method).toBe("GET");
-    expect(url).toContain("/web/config/mcp?");
-    expect(url).toContain("name=test-server");
+    expect(url).toContain("/web/config/mcp/");
+    expect(url).toContain("/mcp/test-server");
   });
 
   // 测试创建 MCP 服务器正常返回
@@ -117,8 +117,8 @@ describe("MCP SDK module", () => {
     const url = call[0] as string;
     const init = call[1] as RequestInit;
     const body = JSON.parse(init.body as string);
-    expect(init.method).toBe("PUT");
-    expect(url).toContain("name=my-local");
+    expect(init.method).toBe("PATCH");
+    expect(url).toContain("/mcp/my-local");
     expect(body.config.command).toEqual(["npx", "updated"]);
   });
 
@@ -131,7 +131,7 @@ describe("MCP SDK module", () => {
     const url = call[0] as string;
     const init = call[1] as RequestInit;
     expect(init.method).toBe("DELETE");
-    expect(url).toContain("name=test-srv");
+    expect(url).toContain("/mcp/test-srv");
   });
 
   // 测试启用 MCP 服务器正常返回

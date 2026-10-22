@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { ActorContext, MemberRole } from "@fenix/platform-sdk";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
@@ -112,6 +112,100 @@ function installFacade(facade: Partial<ReturnType<typeof createStubProviderFacad
 }
 
 describe("Provider 配置 Web 路由", () => {
+  // 新增模型返回持久化 ID，即使并发导致回读列表变化也不能把上游代码当 ID。
+  test("新增模型响应返回独立的平台 ID", async () => {
+    installFacade({
+      getWritable: async () => providerDetail(),
+      addModel: async () => ({ id: "new-model-row", modelId: "new-upstream", provider: providerDetail() }),
+    });
+    const response = await json("/config/providers/provider-1/models", "POST", { modelId: "new-upstream" });
+    expect(response.status).toBe(200);
+    expect((await readJson(response)).data).toEqual({ id: "new-model-row", modelId: "new-upstream" });
+  });
+
+  // 删除使用子行 ID，返回上游代码供展示；两者不可互换。
+  test("模型删除按父子 ID 定位", async () => {
+    const removeModel = mock(async () => ({
+      id: "model-row-1",
+      modelId: "gpt-4o",
+      provider: providerDetail({ models: [] }),
+    }));
+    installFacade({ getWritable: async () => providerDetail(), removeModel });
+    const response = await json("/config/providers/provider-1/models/model-row-1", "DELETE");
+    expect(response.status).toBe(200);
+    expect(removeModel.mock.calls[0]?.slice(1)).toEqual([
+      { by: "resourceId", value: "provider-1" },
+      { by: "id", value: "model-row-1" },
+    ]);
+    expect((await readJson(response)).data).toEqual({ id: "model-row-1", modelId: "gpt-4o" });
+  });
+
+  // HTTP 错误的诊断数据必须经过真实响应序列化保留，供前端展示上游状态。
+  test("Provider 探测保留顶层诊断数据", async () => {
+    installFacade({ getForProbe: async () => providerDetail() });
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("upstream unavailable", { status: 503 }),
+    );
+    try {
+      const response = await json("/config/providers/provider-1/fetch-models", "POST");
+      expect(response.status).toBe(500);
+      expect((await readJson(response)).data).toMatchObject({ status: 503, protocol: "openai" });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  // 已存模型测试由 ID 解析上游代码，不能把平台 ID 发给上游。
+  test("模型探测按 ID 授权并发送上游代码", async () => {
+    const getForProbe = mock(async () => providerDetail());
+    installFacade({ getForProbe });
+    let payload: unknown;
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return Response.json({ choices: [{ message: { content: "ok" } }] });
+    });
+    try {
+      const response = await json("/config/providers/provider-1/models/model-row-1/test", "POST");
+      expect(response.status).toBe(200);
+      expect(getForProbe.mock.calls[0]?.[1]).toEqual({ by: "resourceId", value: "provider-1" });
+      expect(payload).toMatchObject({ model: "gpt-4o" });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  // 已保存配置即使传入完整临时凭据，也必须校验对应资源的探测权限。
+  test("只读 Provider 的内联探测仍返回 403", async () => {
+    installFacade({
+      getForProbe: async () => {
+        throw new ForbiddenError("read only");
+      },
+    });
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      const response = await json("/config/providers/provider-1/fetch-models", "POST", {
+        apiKey: "inline",
+        baseURL: "https://example.test",
+      });
+      expect(response.status).toBe(403);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+  // 平台模型行 ID 与上游代码不同，详情必须完整返回两者。
+  test("REST 详情提供 Provider 与 Model 的真实资源 ID", async () => {
+    installFacade({ getById: async () => providerDetail() });
+    const response = await request("/config/providers/provider-1");
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toMatchObject({
+      id: "provider-1",
+      name: "demo",
+      displayName: "Demo",
+      models: [{ id: "model-row-1", modelId: "gpt-4o" }],
+    });
+  });
+
   beforeEach(() => {
     resetAllStubs();
     resetModelManagementModuleForTesting();
@@ -134,9 +228,11 @@ describe("Provider 配置 Web 路由", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     const [item] = body.data.providers;
-    expect(item.providerId).toBe("provider-1");
-    expect(item.id).toBe("demo");
-    expect(item.name).toBe("Demo");
+    expect(item.id).toBe("provider-1");
+    expect(item).not.toHaveProperty("providerId");
+    expect(item.id).toBe("provider-1");
+    expect(item.name).toBe("demo");
+    expect(item.displayName).toBe("Demo");
     expect(item.modelCount).toBe(2);
     expect(item.scope).toEqual({ organizationId: "org-1", ownerUserId: "user-1", visibility: "private" });
     expect(item.access).toEqual({ actions: ["read", "update", "delete"] });
@@ -146,23 +242,31 @@ describe("Provider 配置 Web 路由", () => {
 
   // 详情按名称定位，子模型只暴露展示字段：继承来的 Provider 权限不再逐行重复一份。
   test("详情按名称返回子模型投影", async () => {
-    installFacade({ get: async () => providerDetail() });
+    installFacade({ getById: async () => providerDetail() });
 
-    const response = await request("/config/providers?name=demo");
+    const response = await request("/config/providers/demo");
     const body = await readJson(response);
 
     expect(response.status).toBe(200);
-    expect(body.data.id).toBe("demo");
+    expect(body.data.id).toBe("provider-1");
     expect(body.data.models).toEqual([
-      { id: "gpt-4o", name: "GPT-4o", modalities: null, limit: null, cost: null, options: null },
+      {
+        id: "model-row-1",
+        modelId: "gpt-4o",
+        name: "GPT-4o",
+        modalities: null,
+        limit: null,
+        cost: null,
+        options: null,
+      },
     ]);
   });
 
   // Facade 的 undefined 是"授权后不可见"，协议层必须映射为 404 而不是 500 或空对象。
   test("不可见的详情返回 404", async () => {
-    installFacade({ get: async () => undefined });
+    installFacade({ getById: async () => undefined });
 
-    const response = await request("/config/providers?name=missing");
+    const response = await request("/config/providers/missing");
     const body = await readJson(response);
 
     expect(response.status).toBe(404);
@@ -172,13 +276,10 @@ describe("Provider 配置 Web 路由", () => {
   // 缺 name 属于协议层校验：必须在进入应用层之前返回 400，不得让 Facade 收到空名称。
   test("写路径缺少 name 返回 400", async () => {
     const save = mock(async () => providerDetail());
-    installFacade({ save });
+    installFacade({ saveById: save });
 
-    const response = await json("/config/providers", "PUT", { protocol: "openai" });
-    const body = await readJson(response);
-
-    expect(response.status).toBe(400);
-    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const response = await json("/config/providers", "PATCH", { protocol: "openai" });
+    expect(response.status).toBe(404);
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -186,15 +287,15 @@ describe("Provider 配置 Web 路由", () => {
   test("保存拆分顶层字段与 extraOptions", async () => {
     const calls: unknown[] = [];
     installFacade({
-      get: async () => providerDetail(),
-      save: async (...args) => {
+      getById: async () => providerDetail(),
+      saveById: async (...args) => {
         calls.push(args);
         return providerDetail();
       },
     });
 
-    const response = await json("/config/providers?name=demo", "PUT", {
-      name: "Renamed",
+    const response = await json("/config/providers/demo", "PATCH", {
+      displayName: "Renamed",
       protocol: "anthropic",
       baseURL: "https://upstream.test/v2",
       apiKey: "sk-inline",
@@ -231,8 +332,8 @@ describe("Provider 配置 Web 路由", () => {
     const added: unknown[] = [];
     const updated: unknown[] = [];
     installFacade({
-      get: async () => providerDetail(),
-      save: async () => providerDetail(),
+      getById: async () => providerDetail(),
+      saveById: async () => providerDetail(),
       addModel: async (...args) => {
         added.push(args);
         return { modelId: "claude-3" };
@@ -243,27 +344,27 @@ describe("Provider 配置 Web 路由", () => {
       },
     });
 
-    const response = await json("/config/providers?name=demo", "PUT", {
+    const response = await json("/config/providers/demo", "PATCH", {
       models: { "gpt-4o": { name: "GPT-4o 更新" }, "claude-3": { name: "Claude" } },
     });
 
     expect(response.status).toBe(200);
     expect(updated).toHaveLength(1);
     expect(added).toHaveLength(1);
-    expect((updated[0] as [unknown, unknown, { value: string }])[2]).toEqual({ by: "modelId", value: "gpt-4o" });
+    expect((updated[0] as [unknown, unknown, { value: string }])[2]).toEqual({ by: "id", value: "model-row-1" });
     expect((added[0] as [unknown, unknown, string])[2]).toBe("claude-3");
   });
 
   // 只读共享 Provider 的写入由 Facade 拒绝，路由把它映射为 403 而不是 500。
   test("保存只读共享 Provider 返回 403", async () => {
     installFacade({
-      get: async () => providerDetail(),
-      save: async () => {
+      getById: async () => providerDetail(),
+      saveById: async () => {
         throw new ForbiddenError("只读共享资源");
       },
     });
 
-    const response = await json("/config/providers?name=org-source%2Fshared", "PUT", { protocol: "openai" });
+    const response = await json("/config/providers/shared", "PATCH", { protocol: "openai" });
     const body = await readJson(response);
 
     expect(response.status).toBe(403);
@@ -273,7 +374,7 @@ describe("Provider 配置 Web 路由", () => {
   // 删除成功返回 data: null；Facade 抛 NotFoundError 时映射为 404。
   test("删除成功返回空数据，不可见时返回 404", async () => {
     installFacade({ remove: async () => undefined });
-    const ok = await json("/config/providers?name=demo", "DELETE");
+    const ok = await json("/config/providers/demo", "DELETE");
     expect(ok.status).toBe(200);
     expect((await readJson(ok)).data).toBeNull();
 
@@ -282,7 +383,7 @@ describe("Provider 配置 Web 路由", () => {
         throw new NotFoundError("Provider 'demo' not found");
       },
     });
-    const missing = await json("/config/providers?name=demo", "DELETE");
+    const missing = await json("/config/providers/demo", "DELETE");
     expect(missing.status).toBe(404);
     expect((await readJson(missing)).error.code).toBe("NOT_FOUND");
   });
@@ -292,11 +393,11 @@ describe("Provider 配置 Web 路由", () => {
     const addModel = mock(async () => ({ modelId: "gpt-4o" }));
     installFacade({ getWritable: async () => providerDetail(), addModel });
 
-    const missing = await json("/config/providers/actions/models?name=demo", "POST", {});
+    const missing = await json("/config/providers/demo/models", "POST", {});
     expect(missing.status).toBe(400);
     expect((await readJson(missing)).error.code).toBe("VALIDATION_ERROR");
 
-    const duplicated = await json("/config/providers/actions/models?name=demo", "POST", { modelId: "gpt-4o" });
+    const duplicated = await json("/config/providers/demo/models", "POST", { modelId: "gpt-4o" });
     expect(duplicated.status).toBe(400);
     expect((await readJson(duplicated)).error.code).toBe("VALIDATION_ERROR");
     expect(addModel).not.toHaveBeenCalled();
@@ -306,11 +407,11 @@ describe("Provider 配置 Web 路由", () => {
   test("更新未知模型返回 404，删除未知模型返回 404", async () => {
     installFacade({ getWritable: async () => providerDetail() });
 
-    const updated = await json("/config/providers/actions/models/nope?name=demo", "PUT", {});
+    const updated = await json("/config/providers/demo/models/nope", "PATCH", {});
     expect(updated.status).toBe(404);
     expect((await readJson(updated)).error.code).toBe("NOT_FOUND");
 
-    const removed = await json("/config/providers/actions/models/nope?name=demo", "DELETE");
+    const removed = await json("/config/providers/demo/models/nope", "DELETE");
     expect(removed.status).toBe(404);
     expect((await readJson(removed)).error.code).toBe("NOT_FOUND");
   });
@@ -325,7 +426,7 @@ describe("Provider 配置 Web 路由", () => {
       addModel,
     });
 
-    const response = await json("/config/providers/actions/models?name=demo", "POST", { modelId: "gpt-4o" });
+    const response = await json("/config/providers/demo/models", "POST", { modelId: "gpt-4o" });
 
     expect(response.status).toBe(403);
     expect((await readJson(response)).error.code).toBe("FORBIDDEN");
@@ -335,11 +436,11 @@ describe("Provider 配置 Web 路由", () => {
   // 连通性探测读取走 getForProbe（要求 update 动作），不可探测时返回 404，不向上游发起请求。
   test("测试模型时不可探测返回 404，未登记模型返回 404", async () => {
     installFacade({ getForProbe: async () => undefined });
-    const untouchable = await json("/config/providers/actions/test-model?name=demo", "POST", { modelId: "gpt-4o" });
+    const untouchable = await json("/config/providers/demo/models/nope/test", "POST", { modelId: "gpt-4o" });
     expect(untouchable.status).toBe(404);
 
     installFacade({ getForProbe: async () => providerDetail() });
-    const unknownModel = await json("/config/providers/actions/test-model?name=demo", "POST", { modelId: "nope" });
+    const unknownModel = await json("/config/providers/demo/models/nope/test", "POST", { modelId: "nope" });
     expect(unknownModel.status).toBe(404);
     expect((await readJson(unknownModel)).error.code).toBe("NOT_FOUND");
   });
@@ -349,10 +450,9 @@ describe("Provider 配置 Web 路由", () => {
     const getForProbe = mock(async () => providerDetail());
     installFacade({ getForProbe });
 
-    const response = await json("/config/providers/actions/test-model?name=demo", "POST", {});
+    const response = await json("/config/providers/demo/models/test", "POST", {});
 
-    expect(response.status).toBe(400);
-    expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
+    expect(response.status).toBe(404);
     expect(getForProbe).not.toHaveBeenCalled();
   });
 
@@ -362,7 +462,7 @@ describe("Provider 配置 Web 路由", () => {
     installFacade({ getForProbe });
 
     // 只断言分支选择：真实探测会发出站请求，这里让它在连接阶段失败即可，不改变被测行为。
-    const response = await json("/config/providers/actions/fetch-models?name=demo", "POST", {
+    const response = await json("/config/providers/probe-models", "POST", {
       apiKey: "sk-inline",
       protocol: "openai",
       baseURL: "http://127.0.0.1:1",

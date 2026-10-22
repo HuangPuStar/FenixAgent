@@ -383,7 +383,7 @@ describe("AgentSkillsPage 写入反馈", () => {
     expect(submit).toBeDefined();
     await click(submit as HTMLButtonElement);
 
-    expect(methods).toContain("PUT");
+    expect(methods).toContain("PATCH");
     expect(toastSuccessCalls).toContain(TEXT.toast.skillUpdated);
     expect(listCalls).toBe(listCallsBeforeSave + 1);
   });

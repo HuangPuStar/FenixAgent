@@ -53,13 +53,13 @@ describe("agent resource access frontend flow", () => {
     const internal = { id: "agc-internal", name: "shared-agent", ...internalFields };
     const external = { id: "agc-external", name: "shared-agent", ...externalFields };
 
-    expect(getAgentConfigLookupKey(internal)).toBe("org-current/agc-internal");
-    expect(getAgentConfigLookupKey(external)).toBe("org-source/agc-external");
+    expect(getAgentConfigLookupKey(internal)).toBe("agc-internal");
+    expect(getAgentConfigLookupKey(external)).toBe("agc-external");
   });
 
   // 归属组织缺失（个人资源）时退回资源名，保证请求仍能定位到资源。
   test("缺失归属范围时查找键退回资源名", () => {
-    expect(getAgentConfigLookupKey({ id: "agc-solo", name: "shared-agent" })).toBe("shared-agent");
+    expect(getAgentConfigLookupKey({ id: "agc-solo", name: "shared-agent" })).toBe("agc-solo");
   });
 
   // 展示名以归属组织限定（与 mcp / skill 同名资源保持一致），后端省略 organizationName 时退回裸资源名。
@@ -101,8 +101,8 @@ describe("agent resource access frontend flow", () => {
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     expect(call[0]).toContain("/web/config/agents");
-    expect(call[0]).toContain("name=shared-agent");
-    expect(call[1].method).toBe("PUT");
+    expect(call[0]).toContain("/agents/shared-agent");
+    expect(call[1].method).toBe("PATCH");
     const body = JSON.parse(call[1].body);
     // 新 agentApi.set 将 data 包装为 { data: {...} } 发送
     expect(body).toEqual({

@@ -11,7 +11,7 @@ import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
 import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog } from "./agent-models-dialogs";
 import type { ModelDialogTarget, ProviderDialogTarget } from "./agent-models-types";
-import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agent-models-utils";
+import { getProviderKey, type ProviderScope, providerMatchesQuery, providerMatchesScope } from "./agent-models-utils";
 import "./AgentModelsPage.css";
 import "./agent-models-dialogs.css";
 import { MODELS_NS } from "../../../i18n/namespace";
@@ -56,10 +56,7 @@ export function AgentModelsPage() {
       if (!providerMatchesScope(provider, scope, activeOrganizationId)) return false;
       if (!keyword) return true;
       const models = modelsByProvider[getProviderKey(provider)] ?? [];
-      return [provider.id, provider.name, provider.protocol, ...models.flatMap((model) => [model.id, model.name])]
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword);
+      return providerMatchesQuery(provider, models, keyword);
     });
   }, [activeOrganizationId, modelsByProvider, providers, query, scope]);
 
@@ -130,7 +127,7 @@ export function AgentModelsPage() {
         onViewGatewayUsage={(provider) =>
           void navigate({
             to: "/agent/model-gateway-usage/$providerId",
-            params: { providerId: provider.providerId },
+            params: { providerId: provider.id },
           })
         }
         onRetry={data.catalog.refresh}
@@ -138,7 +135,6 @@ export function AgentModelsPage() {
       <ProviderEditorDialog
         key={providerDialogKey}
         target={providerDialog}
-        providers={providers}
         saving={data.saveProvider.loading}
         onClose={() => setProviderDialog(null)}
         onSave={data.saveProvider.runAsync}

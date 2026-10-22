@@ -241,7 +241,7 @@ function ProviderIndex({
                   <ModelIcon modelId={iconModelId} size={16} />
                 </AgentCatalogIndexIcon>
                 <AgentCatalogIndexCopy
-                  title={provider.name || provider.id}
+                  title={provider.displayName || provider.name}
                   // 副标题在 238px 列里会被截断，全文仍由 `title` 提供；共享组件的 `<small>` 没有属性插槽，
                   // 所以把它落在内层的 span 上（对外行为与迁移前的 `<small title>` 一致）。
                   subtitle={
@@ -274,7 +274,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   const writable = canWriteProvider(provider);
   const external = isExternalProvider(provider, props.activeOrganizationId);
   const publiclyReadable = isPublicProvider(provider);
-  const color = getProviderColor(provider.id);
+  const color = getProviderColor(provider.name);
   const header = (
     <div style={{ "--provider-color": color } as CSSProperties}>
       <AgentMasterDetailHeader className="models-provider-detail__header flex min-h-20 items-center justify-between gap-4.5 px-5 py-3.5">
@@ -286,7 +286,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             {/* 两行结构（2026-10-09）：第 1 行 main 是服务商名称，第 2 行 sub 合并原「协议 / 网关 / provider id」
                 与「归属组织 + 模型数 + 公开徽标」两行——三行头部比技能库 / MCP 的两行头多一层，观感不齐。
                 合并行的字号由容器给（`text-3xs`，即原 `text-9` 就近取到的标准档），子元素只留各自配色。 */}
-            <h2 className="text-lg leading-tight">{provider.name || provider.id}</h2>
+            <h2 className="text-lg leading-tight">{provider.displayName || provider.name}</h2>
             <div className="models-provider-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-3xs">
               <span className="font-bold uppercase text-blue-600 tracking-4">
                 {t(`protocolOptions.${provider.protocol}`)}
@@ -294,7 +294,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
               {provider.kind === "gateway" && (
                 <span className="font-bold uppercase text-blue-600 tracking-4">{t("gateway.tag")}</span>
               )}
-              <code className="text-slate-400">{provider.id}</code>
+              <code className="text-slate-400">{provider.name}</code>
               <small className="text-slate-400">
                 {external ? t("scope.shared") : t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
@@ -465,11 +465,11 @@ function ModelRow({
     <div className="models-model-row grid min-h-13.5 items-center gap-2.5 hover:bg-slate-50 px-2 py-1.5">
       <div className="models-model-summary flex min-w-0 items-center gap-2.25">
         <span className="models-model-icon grid size-7 shrink-0 grow-0 basis-7 place-items-center rounded-md [--ant-color-text-description:currentColor]">
-          <ModelIcon modelId={model.id} size={17} />
+          <ModelIcon modelId={model.modelId} size={17} />
         </span>
         <span className="models-model-identity flex min-w-0 flex-col">
-          <strong className="text-xs truncate">{model.name || model.id}</strong>
-          <code className="mt-0.5 truncate text-3xs text-slate-400">{model.id}</code>
+          <strong className="text-xs truncate">{model.name || model.modelId}</strong>
+          <code className="mt-0.5 truncate text-3xs text-slate-400">{model.modelId}</code>
           {/* 失败原因在列表里直接可见（单行截断 + 徽标 title 给出全文），不是只藏在 tooltip 里。 */}
           {test?.status === "error" && test.detail && (
             <small className="models-model-test-detail truncate mt-0.5 text-3xs text-red-500">{test.detail}</small>

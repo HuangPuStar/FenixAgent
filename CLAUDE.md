@@ -123,7 +123,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 - 新接口默认补齐 OpenAPI 的 `detail`、`params`、`query`、`headers`、`body` 和 `response`。
 - 协议 DTO、领域对象、数据库记录和前端 ViewModel 在边界处独立转换；前端类型必须对应后端真实返回，禁止增加“幻影字段”。
 - 前端 URL 统一使用 `/web/*`，不得新增历史 `/v1`、`/v2` 前缀。
-- `POST /web/config/:module` 保持既有 action 风格；同一路由文件可能混用 RESTful 与 action 风格，修改前必须核对实际协议，不得擅自统一。
+- AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 管理接口使用 REST：集合 GET/POST，单资源 `/:id` GET/PATCH/DELETE；重启、探测等操作使用资源子路径 POST。ID 为数据库资源 ID，名称不参与已有资源定位；默认 Agent/模型偏好接口保留原契约。
 
 ### 前端边界与体验
 
