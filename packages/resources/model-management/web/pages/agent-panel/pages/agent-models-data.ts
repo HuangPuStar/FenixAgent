@@ -171,14 +171,14 @@ export function useAgentModelsData() {
         refreshDomain("providers");
         dispatchConfigChange("models");
       },
-      onError: (error) => {
+      onError: (error, [draft]) => {
         // Provider 与模型由现有 API 分步写入；失败后立即重读服务端真相，避免 UI 假装整批回滚。
         refreshDomain("providers");
         dispatchConfigChange("models");
         const message = errorMessage(error, t("unknownError"));
         toast.error(
           error instanceof ApiError && error.code === "ALREADY_EXISTS"
-            ? t("saveProvider.duplicateName", { name: "" })
+            ? t("saveProvider.duplicateName", { name: draft.configName.trim() })
             : t("saveProvider.errorGeneric", { message }),
         );
       },

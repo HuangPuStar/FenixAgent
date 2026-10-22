@@ -133,14 +133,14 @@ export function AgentModelsPage() {
         onRetry={data.catalog.refresh}
       />
       <ProviderEditorDialog
-        key={providerDialogKey}
+        key={`provider:${providerDialogKey}`}
         target={providerDialog}
         saving={data.saveProvider.loading}
         onClose={() => setProviderDialog(null)}
         onSave={data.saveProvider.runAsync}
       />
       <ModelEditorDialog
-        key={modelDialogKey}
+        key={`model:${modelDialogKey}`}
         target={modelDialog}
         saving={data.saveModel.loading}
         onClose={() => setModelDialog(null)}
