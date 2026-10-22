@@ -1,9 +1,9 @@
 # OpenObserve 独立部署
 
-1. 本目录为 `openobserve` 唯一同机生产编排，不与主服务叠加 `-f`，也不引用其他工程的卷或 `depends_on`。
+1. 本目录为 `openobserve` 唯一生产编排，不与主服务叠加 `-f`，也不引用其他工程的卷或 `depends_on`。
 2. 同机由主服务创建 `fenix-server`，仅 `openobserve` 服务加入；Collector 经 `openobserve:5080` 访问，应用只连接 Collector。
 3. 复制本目录 `.env.example` 为 `.env`，填写管理员初始化信息；数据预先创建于 `./data`，确认目标镜像运行用户有读写权限。真实配置不进 Git。
-4. 宿主端口仅回环 5080；跨机由既有入口提供 HTTPS。独立机器用 `deploy/openobserve/` 完整编排，仅项目默认网络。
+4. 宿主端口仅回环 5080；跨机由既有入口提供 HTTPS。跨机部署时整目录拷贝，目标机需先创建同名外部网络 `docker network create fenix-server`。
 
 ```bash
 docker compose config --quiet
@@ -15,7 +15,7 @@ docker compose up -d
 
 1. 在目标 OO 组织的数据接入页面创建独立采集凭据，仅给 Collector 配置；不要分发 root 管理密码。
 2. OTLP 入口基址为 `/api/<组织>`，不加尾部 `/`；日志 exporter 指定 `fenix_logs`，Trace/Metric 用标准 OTLP 路由。
-3. `assets/` 保存四类看板、告警及指标映射。同机交付与 `deploy/openobserve/assets/` 保持同内容；独立机器只使用后者的自包含副本。先用确定性样本验证实际映射，再导入；不能把候选映射当作已验证事实。
+3. `assets/` 随本目录交付，保存四类看板、告警及指标映射。先用确定性样本验证实际映射，再导入；不能把候选映射当作已验证事实。
 4. 初始保留建议：日志 14 天、Trace 7 天、指标 30 天；由存储容量、合规与实际流量校准。
 
 ## 升级、备份与回滚

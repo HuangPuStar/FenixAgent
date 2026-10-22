@@ -19,7 +19,7 @@
 8. `/otel` 复用普通认证链：session cookie、Environment Secret、API Key。浏览器只依赖同源 session cookie；Environment Secret/API Key 是受控服务端调用方的备用入口，不是下发给浏览器的采集凭据。
 9. 代理当前还有一个全局在飞上限（8）与单用户在飞上限（2）。全局 8 个慢批次可能造成短暂 429；若业务浏览器流量增大，优先按 `browser-proxy.ts` 常量与入口速率调整，并同步压测 Collector 4319，不要只调大单值。
 10. 浏览器镜像构建时传 `VITE_OTEL_ENABLED=true` 与版本。它是构建配置，不是仅重启容器即可改变的服务端运行变量。未开启则页面不安装 SDK。
-11. 独立机器用 `deploy/openobserve/`、`deploy/otel-collector/` 完整交付，默认网络，无 `fenix-server`。跨机使用受控 HTTPS，Docker 服务名不能跨主机。`deploy/openobserve/assets/` 与 `docker/openobserve/assets/` 同内容，独立交付不依赖主仓目录。
+11. 部署资产统一位于 `docker/openobserve/`、`docker/otel-collector/`，各自自包含编排、配置和 `assets/`。跨机部署时整目录拷贝，目标机先创建同名外部网络 `docker network create fenix-server`；跨机使用受控 HTTPS，Docker 服务名不能跨主机。
 
 ## 3. 数据语义验收
 

@@ -38,4 +38,4 @@ PG/Redis 无 TLS 的本机开发环境只能在审查网络隔离后显式修改
 2. 升级前用目标版本校验完全相同的配置集合，记录镜像 digest，执行三信号、直方图和带积压重启验收。
 3. 保留 receiver/exporter ID、`./data`、挂载路径及 offset；修改它们可能造成回读或遗漏。
 4. 回滚恢复已验证镜像与配置，并核查持久状态兼容；不要删除 `./data`。完整流程见 [运维手册](../../docs/operations/observability.md)。
-5. 独立机器使用自包含交付文件 `deploy/otel-collector/`，不假设 `fenix-server` 存在。
+5. 本目录自包含全部编排、配置与凭据模板，跨机部署时整目录拷贝即可；目标机需先创建同名外部网络 `docker network create fenix-server`，否则 Compose 会因网络缺失失败。

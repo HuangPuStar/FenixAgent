@@ -39,4 +39,4 @@
 
 ## 5. 部署边界
 
-Collector/OpenObserve 独立工程、固定镜像、本目录 `.env` 和 `./data`；同机共享 `fenix-server`，独立机器交付只使用项目默认网络。无跨工程 `depends_on`，观测后端不是业务启动依赖。详见 [运维手册](../operations/observability.md)。
+Collector/OpenObserve 独立工程、固定镜像、本目录 `.env` 和 `./data`；同机共享 `fenix-server`，跨机部署时在目标机创建同名外部网络。部署资产只在 `docker/` 下维护一份。无跨工程 `depends_on`，观测后端不是业务启动依赖。详见 [运维手册](../operations/observability.md)。
