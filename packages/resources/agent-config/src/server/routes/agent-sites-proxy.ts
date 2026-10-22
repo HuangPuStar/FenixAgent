@@ -61,7 +61,9 @@ function checkVisibility(target: PublishTarget, identity: SiteRequestIdentity | 
 
 /**
  * 核心代理逻辑：校验 appId、检查发布范围、转发到 agent-sites。
- * 返回 undefined 表示当前路由不处理（留给其他路由）。
+ *
+ * 所有分支都必须返回明确响应：Elysia 会把 `undefined` 序列化为空 200，未配置或 app 不存在
+ * 会被误判成访问成功。
  *
  * 认证走注入的 `authenticateRequest`（宿主的认证解析必须与 `/web` 守卫同一份实例，且这里要区分
  * 「未登录」与「已登录但无权限」并分别重定向，不能改用 `sessionAuth` 宏让守卫短路请求）。
@@ -73,11 +75,20 @@ async function doProxy(
   request: Request,
   set: { status: number; headers: Record<string, string> },
 ) {
-  if (!APP_ID_RE.test(appId)) return;
-  if (!isAgentSitesConfigured()) return;
+  if (!APP_ID_RE.test(appId)) {
+    set.status = 404;
+    return "Not Found";
+  }
+  if (!isAgentSitesConfigured()) {
+    set.status = 503;
+    return "Agent Sites 未配置";
+  }
 
   const target = await getAgentConfigModule().siteFacade.findPublishTarget(appId);
-  if (!target) return;
+  if (!target) {
+    set.status = 404;
+    return "App 不存在";
+  }
 
   let identity: SiteRequestIdentity | null = null;
   if (target.visibility !== "public") {
@@ -171,7 +182,7 @@ export function createAgentSitesProxyRoutes(deps: AgentSitesProxyRouteDependenci
 /**
  * 兼容层：兜底根路径 /app-xxx/* 访问。
  * 部署站点内部使用绝对路径（如 /app-e1895c18/api/...）时，由本路由拦截并转发。
- * 必须注册在所有其他具体路由之后，作为最后兜底。非 /app- 前缀的路径直接 return 不做处理。
+ * 必须注册在所有其他具体路由之后，作为最后兜底。非 /app- 前缀的路径返回 404。
  *
  * 与 {@link createAgentSitesProxyRoutes} 共用同一份依赖与发布面缓存：两者只是挂载点不同的同一条代理链路。
  */
@@ -183,7 +194,11 @@ export function createAgentSitesCompatRoutes(deps: AgentSitesProxyRouteDependenc
     async ({ request, set }) => {
       const url = new URL(request.url);
       const parsed = parseAppPath(url.pathname);
-      if (!parsed) return; // 非 app- 路径，留给 Elysia 最终 404
+      if (!parsed) {
+        // 不能 return undefined：Elysia 会生成空 200，误报为上传/访问成功。
+        set.status = 404;
+        return "Not Found";
+      }
       return doProxy(
         deps,
         parsed.appId,
