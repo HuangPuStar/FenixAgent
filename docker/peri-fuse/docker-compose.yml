@@ -12,16 +12,16 @@
 # 自身不访问、无转接层。
 # 宿主端口默认只绑回环：管理员浏览器看控制台、宿主上的本地源码运行（bun run dev）连 localhost。
 #
-# 镜像版本：缺省值写在下行的插值里（上游 release tag 0.5.0），部署方可用本目录 .env 的 PERIFUSE_VERSION
+# 镜像版本：缺省值写在下行的插值里（上游 release tag 1.1.0），部署方可用本目录 .env 的 PERIFUSE_VERSION
 # 覆盖——这是「镜像 tag 写死、不做环境变量插值」契约的**登记例外**（缺省仍在版本控制里，git 里看到的
 # 就是要跑的版本；部署环境只在显式钉版本时参与，见 README「升级」与 docker-topology.md §6.10）。
-# GHCR 上另有 `latest` / `main` / 提交短哈希 tag——核对 2026-10-10，`latest` 指向比 0.5.0 新的提交构建，
+# GHCR 上另有 `latest` / `main` / 提交短哈希 tag——核对 2026-10-20，`latest` 指向 1.1.0 构建，
 # 要跟主线就把缺省值换成对应提交 tag。
 
 services:
 
     peri-fuse:
-        image: ghcr.io/konghayao/peri-fuse:${PERIFUSE_VERSION:-0.5.0}
+        image: ghcr.io/konghayao/peri-fuse:${PERIFUSE_VERSION:-1.1.0}
         container_name: fenix-peri-fuse
         restart: unless-stopped
         networks:
@@ -42,6 +42,10 @@ services:
             # API key 哈希盐（密钥）：留空则首次启动自动生成并持久化到容器内 /app/data/.salt。
             # 键名加前缀，避免与宿主机上无关的 SALT 同名碰撞（契约 §8.4 的同一考虑）。
             SALT: ${PERIFUSE_SALT:-}
+            # 观测数据治理：新写入的 input/output 压缩（读路径兼容历史未压缩数据）。
+            PERIFUSE_IO_COMPRESSION_WRITE: ${PERIFUSE_IO_COMPRESSION_WRITE:-on}
+            # 自动清理超过 N 天的 telemetry 数据；0 或未设置表示关闭（默认保留所有数据）。
+            PERIFUSE_TELEMETRY_RETENTION_DAYS: ${PERIFUSE_TELEMETRY_RETENTION_DAYS:-0}
         volumes:
             # 数据一律 bind 到本文件同级的 ./data（契约 §6.5：禁止命名卷）：三份 .turso.db 与 .salt
             # 都在这里，随交付面搬迁/备份，升级镜像不丢数据。

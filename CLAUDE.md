@@ -41,7 +41,7 @@
 - 后端开发规范：`docs/developer/system/backend-development.md`
   - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
 - 当前架构事实、稳定契约与长期约束：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）。
-- 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
+- 本文件维护跨模块工程原则、关键工作流、架构契约和项目特有不变量；表设计与 REST 要求在下文显式列出，必须直接遵守，其他实现细则见离代码更近的规范。
 - 与 `docs/developer/architecture/engineering-standards.md` 冲突时，以该工程架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
 
 ## 项目与架构地图
@@ -123,7 +123,15 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 - 新接口默认补齐 OpenAPI 的 `detail`、`params`、`query`、`headers`、`body` 和 `response`。
 - 协议 DTO、领域对象、数据库记录和前端 ViewModel 在边界处独立转换；前端类型必须对应后端真实返回，禁止增加“幻影字段”。
 - 前端 URL 统一使用 `/web/*`，不得新增历史 `/v1`、`/v2` 前缀。
-- AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 管理接口使用 REST：集合 GET/POST，单资源 `/:id` GET/PATCH/DELETE；重启、探测等操作使用资源子路径 POST。ID 为数据库资源 ID，名称不参与已有资源定位；默认 Agent/模型偏好接口保留原契约。
+
+#### REST 设计要求
+
+1. 新增或重写资源 API 必须遵循 REST：URL 表达资源，HTTP 方法表达操作；路径使用小写 kebab-case，资源名优先复数，如 `/web/knowledge-bases`。
+2. 集合查询与详情使用 `GET`（只读、不带 body），创建使用 `POST`，完整替换使用 `PUT`，部分更新使用 `PATCH`，删除使用 `DELETE`；已有接口的方法变更须评估调用方与兼容性，不为形式统一改坏契约。
+3. 路径参数只放稳定资源标识与层级，不用名称或展示名定位已有资源；筛选、分页、排序与开关放 query。分页统一 `page` / `pageSize`，排序统一 `sortBy` / `sortOrder`。
+4. 非 CRUD 动作使用资源子路径 `POST /资源/:id/动作`，如 `POST /web/agent-configs/:id/publish`；不通过请求体 `action` 字段把多种业务行为塞进一个接口。天然多消息类型的 WebSocket、事件流按各自协议处理。
+5. AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 管理接口：集合 GET/POST，单资源 `/:id` GET/PATCH/DELETE；重启、探测等操作使用资源子路径 POST。ID 为数据库资源 ID；默认 Agent/模型偏好接口保留原契约。
+6. `/web` 与 `/api` 必须复用同一个 Resource Facade，不能分别实现业务规则；接口变更同步请求与响应 schema、调用方、测试和 OpenAPI。更完整的响应、错误与兼容性要求见后端开发规范 §7。
 
 ### 前端边界与体验
 
@@ -204,6 +212,19 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端消费方经包 `exports` 直连根入口；从根入口 re-export 服务端模块会把 Node 依赖打进浏览器 bundle 并导致加载失败，边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
 
 ## 数据库与迁移
+
+### 表设计要求
+
+1. 新增或修改表结构前，必须说明表、字段与关系的业务必要性并取得用户明确批准；不得为未确认的未来需求增加表或字段。
+2. 新增业务表必须有稳定主标识，默认主键名为 `id`，按需求选择 `uuid` 或字符串 ID；表间统一用稳定主标识关联，关联字段命名默认与被关联表主键一致，禁止用名称、路径、可变 code 或展示名表达外键语义。
+3. 核心业务表至少有 `createdAt`，可更新实体通常同时有 `updatedAt`；涉及组织隔离的资源必须明确 `organizationId` 或等价租户字段。
+4. 一对一仅在强约束且生命周期一致时直接放外键；一对多中，子实体有独立生命周期时可在子表放外键。不因尚未确认的未来需求改变当前一对多建模。
+5. 多对多必须使用独立关联表，不在单字段中存数组关系；关系本身需要属性、排序、状态或来源时，也使用独立关联表，命名应清晰表达关系。
+6. 枚举语义优先使用 `pgEnum` 或受限字符串，禁止业务代码散落魔法值；JSON 字段只用于确实不适合完全结构化且读写边界清晰的数据。
+7. 可空字段必须有明确业务含义，不为“以后可能用到”随意 nullable；空字符串与 `null` 分别建模，默认值按业务语义处理。
+8. 第三方框架约束或历史设计影响的表遵循其 owner 模块现状，不为形式统一做高风险改表。完整规则见后端开发规范 §6.1。
+
+### Schema 所有权与迁移
 
 - **一张表的定义只在一个 owner 手里**：业务表定义在所属模块的 `packages/**/db/schema.ts`（经该包 `exports["./db"]` 公开，如 `@fenix/resource-task/db`），身份表在 `packages/platform/identity/db/schema.ts`；宿主 `apps/server/src/db/schema.ts` 只保留身份表转出、`data_migrate_record` 与仍在清理中的旧授权表。改哪张表就到它的 owner 包改，不得在宿主或别的包复制一份。`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 包路径与宿主 schema，否则 `db:generate` 会把漏声明的一族误判为已删除。
 - 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
