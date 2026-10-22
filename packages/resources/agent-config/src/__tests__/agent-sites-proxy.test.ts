@@ -186,3 +186,74 @@ describe("AOS-BUG-001 站点发布访问", () => {
     });
   }
 });
+
+describe("站点代理的状态码", () => {
+  const originalFetch = globalThis.fetch;
+  let forwarded: string[];
+
+  beforeEach(() => {
+    initializeAgentConfigModuleConfig({
+      agentSitesBaseUrl: "http://agent-sites.test",
+      agentSitesMasterKey: crypto.randomUUID(),
+    });
+    resetAgentModuleStub();
+    installAgentModuleStub({ siteFacade: { findPublishTarget: async () => null } });
+    forwarded = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      forwarded.push(String(input));
+      return new Response(PAGE);
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    resetAgentModuleStub();
+  });
+
+  // 非 /app- 路径由兼容层兜底；必须显式 404，不能被 Elysia 的空 200 掩盖成上传成功。
+  test("兼容层对非 app- 路径返回 404", async () => {
+    const { host } = createHost();
+    const response = await createAgentConfigAgentSitesCompatRoutes(host).handle(
+      new Request("http://localhost/api/apps/app-037dc43a/files/index.html", {
+        method: "PUT",
+        body: "probe",
+      }),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not Found");
+    expect(forwarded).toHaveLength(0);
+  });
+
+  // 格式非法的 appId 不能进入代理链路。
+  test("非法 appId 返回 404", async () => {
+    const { host } = createHost();
+    const response = await createAgentConfigAgentSitesProxyRoutes(host).handle(
+      new Request("http://localhost/web/site/deploy/not-an-app/"),
+    );
+    expect(response.status).toBe(404);
+    expect(forwarded).toHaveLength(0);
+  });
+
+  // RCS 没有发布记录时返回 404，不能静默 200。
+  test("未登记的 app 返回 404", async () => {
+    const { host } = createHost();
+    const response = await createAgentConfigAgentSitesProxyRoutes(host).handle(
+      new Request(`http://localhost/web/site/deploy/${APP_ID}/`),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("App 不存在");
+    expect(forwarded).toHaveLength(0);
+  });
+
+  // agent-sites 未配置时返回 503，与「app 不存在」区分。
+  test("agent-sites 未配置时返回 503", async () => {
+    initializeAgentConfigModuleConfig();
+    const { host } = createHost();
+    const response = await createAgentConfigAgentSitesProxyRoutes(host).handle(
+      new Request(`http://localhost/web/site/deploy/${APP_ID}/`),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("Agent Sites 未配置");
+    expect(forwarded).toHaveLength(0);
+  });
+});
