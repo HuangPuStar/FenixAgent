@@ -1,4 +1,5 @@
 import type { StructuredMessage } from "@fenix/chat-channel";
+import { applyLosslessEntryMerge, assistantText } from "./sync-chat-entry-merge";
 
 /** 助手消息异 ID 双写的实时配对窗口；用户消息按出现次数与轮次锚点配对，不受该窗口限制。 */
 export const SYNC_MESSAGE_MATCH_WINDOW_MS = 5000;
@@ -10,52 +11,15 @@ function isText(message: StructuredMessage): message is TextMessage {
 }
 
 function textOf(message: TextMessage): string {
-  return message.type === "user_message"
-    ? message.content
-    : message.chunks
-        .filter((chunk) => chunk.type === "message")
-        .map((chunk) => chunk.text)
-        .join("");
-}
-
-/**
- * 旧投影中「后面紧跟工具调用」的助手消息 id。
- *
- * 这类文本在旧展示模型里还会以 `entryId#N` 追加工具后的段，而新投影把整条 entry 的正文压成
- * 一条消息、不携带工具位置。流式中间态（工具已到、工具后的正文尚未在旧侧成段）若用新投影的
- * 整段文本顶替这一位，工具后的正文会整体前移到工具之前（用户可见 "ai ai tools"）。
- */
-function toolFollowedAssistantIds(legacy: readonly StructuredMessage[]): Set<string> {
-  const ids = new Set<string>();
-  for (let index = 0; index < legacy.length; index += 1) {
-    const message = legacy[index];
-    if (message?.type !== "assistant_message") continue;
-    for (let next = index + 1; next < legacy.length; next += 1) {
-      const candidate = legacy[next];
-      if (!candidate) continue;
-      // 工具是旧展示模型的文本分段边界；plan 等其他条目不影响正文分段，继续向后看。
-      if (candidate.type === "tool_call") {
-        ids.add(message.id);
-        break;
-      }
-      if (candidate.type === "assistant_message" || candidate.type === "user_message") break;
-    }
-  }
-  return ids;
+  return message.type === "user_message" ? message.content : assistantText(message);
 }
 
 /** 旧侧保留非文本/错误；纯文本取更完整的一侧，避免双写传输先后导致流式正文回退。 */
-function preferredMessage(
-  legacy: StructuredMessage,
-  sync: StructuredMessage,
-  toolFollowed: ReadonlySet<string>,
-): StructuredMessage {
+function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): StructuredMessage {
   if (!isText(legacy) || !isText(sync) || legacy.type !== sync.type) return legacy;
   if (legacy.type === "assistant_message" && (legacy.error || legacy.chunks.some((c) => c.type !== "message"))) {
     return legacy;
   }
-  // 工具前的文本位只认旧分段结构：新投影的整段正文包含工具后的内容，顶替会打乱工具顺序。
-  if (toolFollowed.has(legacy.id)) return legacy;
   return textOf(sync).length >= textOf(legacy).length ? sync : legacy;
 }
 
@@ -185,10 +149,18 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
   let observed = new Map<string, number>();
 
   return (
-    legacy: readonly StructuredMessage[],
-    sync: readonly StructuredMessage[],
+    legacyInput: readonly StructuredMessage[],
+    syncInput: readonly StructuredMessage[],
     matchWindowMs: number = SYNC_MESSAGE_MATCH_WINDOW_MS,
   ): StructuredMessage[] => {
+    // 分段/工具邻接 entry 先做无损合并：新正文补齐旧侧缺段后再进入通用配对，
+    // 避免整段文本顶替工具前的段落，也避免旧侧永不追平时丢失新正文。
+    const injected = applyLosslessEntryMerge(legacyInput, syncInput);
+    const legacy = injected.legacy;
+    const sync =
+      injected.consumedSyncIds.size === 0
+        ? syncInput
+        : syncInput.filter((message) => !injected.consumedSyncIds.has(message.id));
     const nextAliases = new Map<string, string>();
     const nextObserved = new Map<string, number>();
     const candidates = new Map<string, StructuredMessage>();
@@ -199,7 +171,6 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     // 分段 entry 除外：新投影只能表达合并后的整条正文，覆盖证明不成立。
     const segmentedBases = segmentedEntryBases(legacy);
     const segmentedText = segmentedTextByBase(legacy, segmentedBases);
-    const toolFollowed = toolFollowedAssistantIds(legacy);
     const syncCoversAssistantText = retireLegacyText && sync.some((message) => message.type === "assistant_message");
     // 分段 entry 的单条合并文本，只有被旧结构正文完整覆盖时才可退役。
     const coveredBySegments = (message: StructuredMessage): boolean => {
@@ -223,7 +194,9 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     const legacyById = new Map(legacy.map((message) => [message.id, message]));
     const exactIds = new Set<string>();
     for (const message of sync) {
-      if (legacyById.has(message.id)) exactIds.add(message.id);
+      const legacyMessage = legacyById.get(message.id);
+      // 同 id 不同角色（用户/助手）不是双写，不能互相配对或顶替。
+      if (legacyMessage !== undefined && legacyMessage.type === message.type) exactIds.add(message.id);
     }
 
     // 别名 → 旧消息：旧实现每次同步消息都线性扫描 legacy 找别名，双写流下同样退化。
@@ -252,7 +225,12 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       if (segmentedBases.has(message.id)) continue;
       const alias = aliases.get(`sync:${message.id}`);
       let match = legacyById.get(message.id);
-      if (!match && alias !== undefined) match = aliasToLegacy.get(alias);
+      // 同 id 不同角色不是双写（例如用户与助手共用 key），不得配对后互相顶替。
+      if (match !== undefined && match.type !== message.type) match = undefined;
+      if (!match && alias !== undefined) {
+        const aliased = aliasToLegacy.get(alias);
+        if (aliased !== undefined && aliased.type === message.type) match = aliased;
+      }
       if (!match && isText(message)) {
         const bucket = textIndex.get(`${message.type}\u0000${textOf(message)}`);
         if (bucket !== undefined) {
@@ -327,7 +305,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(`sync:${pair.id}`, key);
-      candidates.set(key, pair ? preferredMessage(message, pair, toolFollowed) : message);
+      candidates.set(key, pair ? preferredMessage(message, pair) : message);
       times.set(key, legacyTimes.get(message) ?? now());
       legacyKeys.push(key);
     }
@@ -335,10 +313,8 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       // 旧分段完整覆盖时合并文本退役；缺段（分页/旧结构缺失）时保留为兜底，不能整条丢弃。
       if (segmentedBases.has(message.id) && coveredBySegments(message)) continue;
       if (nextAliases.has(`sync:${message.id}`)) continue;
-      const key = aliases.get(`sync:${message.id}`) ?? message.id;
-      // 同 key 位置是工具前的旧分段文本时不能被整段新文本顶替（工具顺序会丢）。
-      const existing = candidates.get(key);
-      if (existing?.type === "assistant_message" && toolFollowed.has(existing.id)) continue;
+      // 同 id 已属于另一种角色的旧消息时改用独立 key，两侧都能显示，不能互相覆盖。
+      const key = aliases.get(`sync:${message.id}`) ?? (legacyById.has(message.id) ? `sync:${message.id}` : message.id);
       nextAliases.set(`sync:${message.id}`, key);
       candidates.set(key, message);
       times.set(key, syncTimes.get(message) ?? now());

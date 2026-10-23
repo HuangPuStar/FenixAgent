@@ -428,7 +428,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 10. **`ChatView` 与 `EntryRenderer` 使用 `React.memo`**，comparator 必须与调用方 prop 稳定性保持一致（`ChatView.tsx`、`EntryRenderer` 有显式逐 prop 比较，`MessageResponse` 比较 `children` + `envId`）；改动 props 时同步更新 comparator 与渲染测试。
 11. **`@fenix/chat-channel` 根入口必须浏览器安全**：根入口只导出类型（`./types`）、schema、`public-error`、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（channel 控制面、persist 持久化、state 聚合层）必须经 `@fenix/chat-channel/server` 导出；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护，`scripts/check-architecture.ts` 的 `browser-entry-server-import` 同时静态拦截 `@fenix/chat-channel/server`。
 12. **实例切换保留面板缓存**：宿主按当前 `organizationId + userId` 隔离缓存，以 `environmentId + instanceUid` 标识面板；A → B → A 只切可见性，保留连接、会话、输入草稿和滚动位置。单实例重启事件必须携带 `instanceUid`，只重建该实例；环境级重启重建该环境所有已缓存面板。删除环境释放其全部面板，组织/用户变化与宿主卸载释放全部缓存。历史仍遵循单面板的有界窗口，不复制第二份聊天状态。
-13. **新旧两路消息合并不得跨工具移动正文**：`sync-chat-messages.ts` 的合并器只用旧投影表达工具位置；旧投影中后面紧跟 `tool_call` 的助手消息（工具前的文本位）只能采用旧分段结构，不得用新投影（整条 entry 压成一条正文、不含工具位置）的更长文本顶替，否则工具后的正文会前移到工具之前（`ai ai tools`）。新增合并规则时必须同时覆盖“工具已到、工具后正文尚未成段”的流式中间态测试。
+13. **新旧两路消息合并不得跨工具移动正文，也不得因等待旧侧而隐藏正文**：`sync-chat-messages.ts` 的合并器只用旧投影表达工具位置。旧投影中后面紧跟 `tool_call` 的助手消息（工具前的文本位）只能采用旧分段结构，不得用新投影（整条 entry 压成一条正文、不含工具位置）的更长文本顶替，否则工具后的正文会前移到工具之前（`ai ai tools`）。同时，旧侧缺尾段/中段、永久停滞、新侧已 `final`、重连或分页缺段时，新投影中未被旧结构覆盖的正文必须按同步顺序补到紧随其后的已知段或条目末尾（含工具之后），无法对齐时整段兜底；**禁止以“等待旧侧追平”为由让正文永久不可见**。新增合并规则时必须同时覆盖“工具已到、工具后正文尚未成段”的流式中间态与“旧侧永不追平 + 新侧 final”的终态测试。
 
 ### 8.6 现状偏离
 - `chat-channel/src/transport/ws-close-codes.ts` 的 4503 行（`stopReconnect: true` + `uiCode: null`，用户会看到「连接停了但没有任何提示」）— 补齐 `uiCode` 是**行为变化**，必须单独一批、单独授权，不得以「消缺口」为由顺手补；裁定前保持 `null`，并在策略表注释里保留指向本节的位置（§8.3）。

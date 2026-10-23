@@ -292,4 +292,59 @@ describe("useChatHydration", () => {
     expect(state.loading).toBeNull();
     expect(state.structuredMessages.map((message) => message.id)).toEqual(["old"]);
   });
+
+  // 对抗验证 H01/H02：终态旧快照缺尾段时，合并结果必须保留新投影尾文；scope 重建不能让它消失。
+  test("终态旧快照缺尾段时保留新投影尾文并跨 scope 重建可见", async () => {
+    const latest: { current: ChatHydrationState | null } = { current: null };
+    const tool: StructuredMessage = { type: "tool_call", id: "t", title: "Read", status: "complete", content: [] };
+    let options: UseChatHydrationOptions = {
+      scope: "terminal-stale",
+      legacy: [assistant("e", "A"), tool, assistant("e#1", "B")],
+      sync: [assistant("e", "ABC")],
+      sourceReady: true,
+      liveActive: false,
+      noReplaySession: true,
+    };
+    function Probe() {
+      latest.current = useChatHydration(options);
+      return null;
+    }
+    const container = win.document.createElement("div");
+    const root = createRoot(container as unknown as HTMLElement);
+    const visibleText = () =>
+      (latest.current?.messages ?? [])
+        .filter((message): message is Extract<StructuredMessage, { type: "assistant_message" }> => {
+          return message.type === "assistant_message";
+        })
+        .flatMap((message) => message.chunks)
+        .map((chunk) => chunk.text)
+        .join("");
+
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(350);
+    });
+    expect(latest.current?.hydrating).toBe(false);
+    expect(visibleText()).toBe("ABC");
+
+    // 重连/换代 scope：同一份旧快照与新投影必须仍然完整可见。
+    options = { ...options, scope: "reconnected-stale" };
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(350);
+    });
+    expect(latest.current?.hydrating).toBe(false);
+    expect(visibleText()).toBe("ABC");
+
+    // 旧侧追平后回到权威分段，且不重复。
+    options = { ...options, legacy: [assistant("e", "A"), tool, assistant("e#1", "BC")] };
+    act(() => root.render(createElement(Probe)));
+    await act(async () => {
+      await wait(50);
+    });
+    expect(latest.current?.messages.map((message) => message.id)).toEqual(["e", "t", "e#1"]);
+    expect(visibleText()).toBe("ABC");
+
+    act(() => root.unmount());
+  });
 });
