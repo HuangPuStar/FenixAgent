@@ -78,8 +78,8 @@ describe("mcp resource access frontend flow", () => {
 
   // 详情读取与 key 推导规则一致，外部资源同样使用跨组织资源键。
   test("外部 MCP 详情读取使用跨组织资源键", () => {
-    expect(getMcpLookupKey(externalMcp())).toBe("org-source/mcp-external");
-    expect(getMcpLookupKey({ name: "shared" })).toBe("shared");
+    expect(getMcpLookupKey(externalMcp())).toBe("mcp-external");
+    expect(getMcpLookupKey({ id: "mcp-solo", name: "shared" })).toBe("mcp-solo");
   });
 
   // 归属判定比对 scope.organizationId 与当前组织；缺少归属或当前组织未知时按本组织保守处理。
@@ -160,8 +160,8 @@ describe("mcp resource access frontend flow", () => {
     const url = call[0] as string;
     const init = call[1] as RequestInit;
     const body = JSON.parse(init.body as string);
-    expect(init.method).toBe("PUT");
-    expect(url).toContain("name=shared");
+    expect(init.method).toBe("PATCH");
+    expect(url).toContain("/mcp/shared");
     expect(body).toEqual({
       config: {
         type: "remote",

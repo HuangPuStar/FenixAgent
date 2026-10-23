@@ -51,3 +51,7 @@ Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 
 
 - **← Environment**：通过 agentConfigId 绑定，一套配置可被多个 Environment 复用
 - **→ LaunchSpecBuilder**（`packages/orchestration`）：spawn 时消费全部引用关系，产出不可变 `AgentLaunchSpec`（含 cwd）
+
+## 控制台管理身份
+
+已有 AgentConfig 的详情、更新、删除与重启使用数据库 ID，创建时提交 name；内置 Agent 保护依据真实行名称。默认 Agent 偏好保留现有语义。完整接口见 [配置系统](./06-config.md#控制台资源接口)。

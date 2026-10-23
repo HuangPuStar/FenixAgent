@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Config API
 
-管理 RCS 平台的五大配置模块。配置 API 使用 REST 风格；资源名称通过 `name` 查询参数或路径参数传递，操作类接口使用 `/actions/*` 子路径。
+管理 RCS 平台的五大配置模块。配置 API 使用 REST 风格；已有资源使用列表或创建响应中的数据库 ID 定位；POST 创建、PATCH 更新、DELETE 删除，动作使用资源子路径。下文 PROVIDER_ID、MODEL_ID、AGENT_CONFIG_ID、SKILL_ID、MCP_ID 均指真实行 ID，不能填名称。默认偏好接口保留原契约。
 
 ---
 
@@ -23,24 +23,24 @@ curl -s "$USER_META_BASE_URL/web/config/providers" \
 ### 获取 Provider 详情（含 Model 列表）
 
 ```bash
-curl -s "$USER_META_BASE_URL/web/config/providers?name=openai" \
+curl -s "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '.data | keys'
 ```
 
-返回包含 `id`、`name`、`protocol`、`baseUrl`、`models` 数组等。
+返回包含 `id`、`name`、`protocol`、`displayName`、`baseURL`、`models` 数组等。
 
-### 设置/更新 Provider
+### 更新 Provider（创建使用 POST 集合路径，并额外传入 name）
 
 ```bash
-curl -s -X PUT "$USER_META_BASE_URL/web/config/providers?name=my-provider" \
+curl -s -X PATCH "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "protocol":"openai",
     "baseURL":"https://api.openai.com/v1",
     "apiKey":"sk-xxx",
-    "name":"My OpenAI"
+    "displayName":"My OpenAI"
   }' | jq '.data | { id, name, protocol, keyHint }'
 ```
 
@@ -49,7 +49,7 @@ curl -s -X PUT "$USER_META_BASE_URL/web/config/providers?name=my-provider" \
 ### 测试 Provider 连接
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/web/config/providers/actions/fetch-models?name=my-provider" \
+curl -s -X POST "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID/fetch-models" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{}' | \
@@ -61,31 +61,31 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/providers/actions/fetch-models?n
 ### 测试特定 Model
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/web/config/providers/actions/test-model?name=my-provider" \
+curl -s -X POST "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID/models/$MODEL_ID/test" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"modelId":"gpt-4o"}' | jq '.data'
+  -d '{}' | jq '.data'
 ```
 
 ### 添加/更新/删除 Model
 
 ```bash
 # 添加 model
-curl -s -X POST "$USER_META_BASE_URL/web/config/providers/actions/models?name=my-provider" \
+curl -s -X POST "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID/models" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"modelId":"gpt-4o","contextLimit":128000}' | \
+  -d '{"modelId":"gpt-4o","limit":{"context":128000}}' | \
   jq '{ success }'
 
 # 更新 model
-curl -s -X PUT "$USER_META_BASE_URL/web/config/providers/actions/models/gpt-4o?name=my-provider" \
+curl -s -X PATCH "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID/models/$MODEL_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"contextLimit":200000}' | \
+  -d '{"limit":{"context":200000}}' | \
   jq '{ success }'
 
 # 删除 model
-curl -s -X DELETE "$USER_META_BASE_URL/web/config/providers/actions/models/gpt-4o?name=my-provider" \
+curl -s -X DELETE "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID/models/$MODEL_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '{ success }'
 ```
@@ -93,7 +93,7 @@ curl -s -X DELETE "$USER_META_BASE_URL/web/config/providers/actions/models/gpt-4
 ### 删除 Provider
 
 ```bash
-curl -s -X DELETE "$USER_META_BASE_URL/web/config/providers?name=my-provider" \
+curl -s -X DELETE "$USER_META_BASE_URL/web/config/providers/$PROVIDER_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '{ success }'
 ```
@@ -129,7 +129,7 @@ curl -s "$USER_META_BASE_URL/web/config/agents" \
 ### 获取 Agent 配置详情
 
 ```bash
-curl -s "$USER_META_BASE_URL/web/config/agents?name=general" \
+curl -s "$USER_META_BASE_URL/web/config/agents/$AGENT_CONFIG_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '.data'
 ```
@@ -147,7 +147,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/agents" \
       "modelId":"<MODEL_ID>",
       "prompt":"你是一个助手"
     }
-  }' | jq '.data | { name }'
+  }' | jq '.data | { id, name }'
 ```
 
 `modelId` 必须是 `GET /web/config/models` 的 `data.available[]` 中对应模型条目的 `id`（UUID）；先在该数组按 `provider` 和 `modelId` 定位条目。
@@ -155,7 +155,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/agents" \
 ### 更新 Agent 配置
 
 ```bash
-curl -s -X PUT "$USER_META_BASE_URL/web/config/agents?name=my-agent" \
+curl -s -X PATCH "$USER_META_BASE_URL/web/config/agents/$AGENT_CONFIG_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -164,7 +164,7 @@ curl -s -X PUT "$USER_META_BASE_URL/web/config/agents?name=my-agent" \
       "modelId":"<MODEL_ID>",
       "skillIds":["<skill-id-1>","<skill-id-2>"]
     }
-  }' | jq '.data | { name }'
+  }' | jq '.data | { id, name }'
 ```
 
 `skillIds` 会全量覆盖该 Agent 绑定的 skill 列表。
@@ -181,7 +181,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/agents/default" \
 ### 删除 Agent 配置
 
 ```bash
-curl -s -X DELETE "$USER_META_BASE_URL/web/config/agents?name=my-agent" \
+curl -s -X DELETE "$USER_META_BASE_URL/web/config/agents/$AGENT_CONFIG_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '{ success }'
 ```
@@ -201,7 +201,7 @@ curl -s "$USER_META_BASE_URL/web/config/skills" \
 ### 获取 Skill 详情
 
 ```bash
-curl -s "$USER_META_BASE_URL/web/config/skills/agent-platform-api" \
+curl -s "$USER_META_BASE_URL/web/config/skills/$SKILL_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '.data | { name, description, content: (.content | length) }'
 ```
@@ -225,7 +225,7 @@ jq -n --arg content "$SKILL_CONTENT" --arg desc "我的自定义 skill" \
 curl -s -X POST "$USER_META_BASE_URL/web/config/skills" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
-  -d @- | jq '.data | { name }'
+  -d @- | jq '.data | { id, name }'
 ```
 
 ### 上传 Skill 文件
@@ -246,7 +246,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/skills/upload" \
 ### 删除 Skill
 
 ```bash
-curl -s -X DELETE "$USER_META_BASE_URL/web/config/skills/my-skill" \
+curl -s -X DELETE "$USER_META_BASE_URL/web/config/skills/$SKILL_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '{ success }'
 ```
@@ -266,7 +266,7 @@ curl -s "$USER_META_BASE_URL/web/config/mcp" \
 ### 获取 MCP 服务器配置
 
 ```bash
-curl -s "$USER_META_BASE_URL/web/config/mcp?name=my-mcp" \
+curl -s "$USER_META_BASE_URL/web/config/mcp/$MCP_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '.data'
 ```
@@ -296,15 +296,16 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/mcp" \
 ### 启用/禁用 MCP 服务器
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/web/config/mcp/actions/enable?name=my-mcp" \
+curl -s -X PATCH "$USER_META_BASE_URL/web/config/mcp/$MCP_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" | jq '.data | { name, enabled }'
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}' | jq '.data | { name, enabled }'
 ```
 
 ### 测试 MCP 服务器
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/web/config/mcp/actions/test?name=my-mcp" \
+curl -s -X POST "$USER_META_BASE_URL/web/config/mcp/$MCP_ID/test" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '.data'
 ```
@@ -312,7 +313,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/config/mcp/actions/test?name=my-mcp" \
 ### 检查 MCP 工具列表
 
 ```bash
-curl -s "$USER_META_BASE_URL/web/config/mcp/actions/tools?name=my-mcp" \
+curl -s "$USER_META_BASE_URL/web/config/mcp/$MCP_ID/tools" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | \
   jq '.data.tools[] | { name, description }'
@@ -321,7 +322,7 @@ curl -s "$USER_META_BASE_URL/web/config/mcp/actions/tools?name=my-mcp" \
 ### 删除 MCP 服务器
 
 ```bash
-curl -s -X DELETE "$USER_META_BASE_URL/web/config/mcp?name=my-mcp" \
+curl -s -X DELETE "$USER_META_BASE_URL/web/config/mcp/$MCP_ID" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" | jq '{ success }'
 ```

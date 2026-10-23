@@ -143,8 +143,8 @@ describe("Agent 表单与资源访问纯逻辑", () => {
   // 外部 Agent 不可写或管理共享，但所有资源定位和展示必须使用来源组织上下文。
   test("按 Agent 资源权限解析标识、展示和操作能力", () => {
     const agent = { id: "local-id", name: "writer", ...sharedAgentFields() };
-    expect(getAgentConfigLookupKey(agent)).toBe("org-source/local-id");
-    expect(getAgentConfigLookupKey({ name: "writer" })).toBe("writer");
+    expect(getAgentConfigLookupKey(agent)).toBe("local-id");
+    expect(() => getAgentConfigLookupKey({ name: "writer" })).toThrow("ID is required");
     expect(getAgentDisplayName(agent)).toBe("Source Team/writer");
     expect(isAgentWritable(agent)).toBe(false);
     expect(canManageAgentSharing(agent)).toBe(false);

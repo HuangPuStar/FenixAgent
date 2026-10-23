@@ -29,7 +29,7 @@ export type AgentFormDialogProps =
       open: boolean;
       onOpenChange: (open: boolean) => void;
       mode: "edit";
-      agentName: string;
+      agentConfigId: string;
       portalContainer?: HTMLElement | null;
       onSuccess?: never;
       defaultName?: never;

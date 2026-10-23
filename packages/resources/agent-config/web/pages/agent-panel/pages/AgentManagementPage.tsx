@@ -78,7 +78,7 @@ export function AgentManagementPage() {
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [editAgentName, setEditAgentName] = useState<string | null>(null);
+  const [editAgentConfigId, setEditAgentConfigId] = useState<string | null>(null);
   const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
 
   // 列表查询：并行拉取 Agent 配置与环境列表，按 agentConfigId 关联
@@ -265,7 +265,7 @@ export function AgentManagementPage() {
                   skills={agent.skillLabels ?? []}
                   sourceOrg={isExternalAgent(agent, orgId) ? agent.organizationName : undefined}
                   onEnter={() => runEnter(node)}
-                  onEdit={() => setEditAgentName(getAgentConfigLookupKey(agent))}
+                  onEdit={() => setEditAgentConfigId(getAgentConfigLookupKey(agent))}
                   isBusy={isBusy}
                 />
               );
@@ -281,12 +281,12 @@ export function AgentManagementPage() {
           onSuccess={refresh}
         />
         <AgentFormDialog
-          open={editAgentName !== null}
+          open={editAgentConfigId !== null}
           onOpenChange={(open) => {
-            if (!open) setEditAgentName(null);
+            if (!open) setEditAgentConfigId(null);
           }}
           mode="edit"
-          agentName={editAgentName ?? ""}
+          agentConfigId={editAgentConfigId ?? ""}
           portalContainer={editorHost}
         />
       </div>

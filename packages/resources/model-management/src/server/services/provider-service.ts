@@ -62,6 +62,8 @@ export interface ProviderService {
   create(input: {
     name: string;
     data: ProviderWriteData;
+    /** 创建冲突不更新既有行；已发布的幂等入口仍使用默认行为。 */
+    rejectConflict?: boolean;
     organizationId: string;
     ownerUserId: string;
     visibility: string;

@@ -73,6 +73,7 @@ export function createStubProviderFacade(overrides: Partial<ProviderFacadeApi> =
     getById: unstubbed("facade.getById"),
     getForProbe: unstubbed("facade.getForProbe"),
     getWritable: unstubbed("facade.getWritable"),
+    create: unstubbed("facade.create"),
     save: unstubbed("facade.save"),
     saveById: unstubbed("facade.saveById"),
     remove: unstubbed("facade.remove"),

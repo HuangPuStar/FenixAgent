@@ -32,7 +32,7 @@ function modelDraft(model?: ProviderModel): ModelDraft {
   const limit = readLimitRecord(model?.limit);
   const modalities = (model?.modalities ?? {}) as { input?: string[]; output?: string[] };
   return {
-    id: model?.id ?? "",
+    modelId: model?.modelId ?? "",
     name: model?.name ?? "",
     // 编辑时按列中真实值回显，并标记为「未触碰」：只有用户动过数字框才允许提交该列。
     limit: { edited: false, context: formatOptionalNumber(limit.context), output: formatOptionalNumber(limit.output) },
@@ -57,7 +57,7 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
     update(key, draft[key].includes(value) ? draft[key].filter((item) => item !== value) : [...draft[key], value]);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!target || !draft.id.trim()) return;
+    if (!target || !draft.modelId.trim()) return;
     try {
       await onSave(target.providerKey, draft, original);
       onClose();
@@ -72,8 +72,8 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
         target?.mode === "create"
           ? t("modelSubrow.createTitle")
           : readOnly
-            ? t("modelSubrow.detailTitle", { id: original?.id })
-            : t("modelSubrow.editTitle", { id: original?.id })
+            ? t("modelSubrow.detailTitle", { id: original?.modelId })
+            : t("modelSubrow.editTitle", { id: original?.modelId })
       }
       readOnly={readOnly}
       saving={saving}
@@ -82,10 +82,10 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
     >
       <LabeledField label={t("modelSubrow.modelId")}>
         <Input
-          value={draft.id}
+          value={draft.modelId}
           disabled={Boolean(original) || readOnly}
           required
-          onChange={(event) => update("id", event.target.value)}
+          onChange={(event) => update("modelId", event.target.value)}
         />
       </LabeledField>
       <LabeledField label={t("modelSubrow.displayName")}>
@@ -220,7 +220,7 @@ export function ModelDeleteDialogs({
         open={Boolean(model)}
         onOpenChange={onCloseModel}
         title={t("modelSubrow.deleteModel.confirmTitle")}
-        description={t("modelSubrow.deleteModel.confirmDesc", { id: model?.model.id ?? "" })}
+        description={t("modelSubrow.deleteModel.confirmDesc", { id: model?.model.modelId ?? "" })}
         variant="destructive"
         loading={deleting}
         onConfirm={onDeleteModel}

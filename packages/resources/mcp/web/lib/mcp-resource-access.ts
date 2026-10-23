@@ -27,13 +27,10 @@ export function getMcpKey(server: McpResourceLike) {
   return server.name;
 }
 
-/**
- * 详情读取使用的查找键，语义与 {@link getMcpKey} 相同。
- *
- * 独立命名是为了标明调用点意图：详情接口的 `name` 参数同时承载服务器名与跨组织资源键。
- */
+/** 资源管理操作使用数据库 ID，缺失时拒绝名称回退。 */
 export function getMcpLookupKey(server: McpResourceLike) {
-  return getMcpKey(server);
+  if (!server.id) throw new Error("MCP resource ID is required");
+  return server.id;
 }
 
 /**

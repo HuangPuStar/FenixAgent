@@ -31,7 +31,7 @@ interface AgentSidebarTreeProps {
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onCreateAgent?: () => void;
   /** 打开 agent 配置；参数是跨组织稳定查找键（`getAgentConfigLookupKey`）。 */
-  onEditAgent?: (agentName: string) => void;
+  onEditAgent?: (agentConfigId: string) => void;
   /** 删除智能体后回调被清理的环境 id（宿主据此收起已删除环境的聊天面板）。 */
   onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }

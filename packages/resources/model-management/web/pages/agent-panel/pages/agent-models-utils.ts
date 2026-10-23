@@ -37,7 +37,7 @@ export function canWriteProvider(provider: ProviderInfo): boolean {
  * 已配置模型 ID 更接近真实厂商，因此优先用于品牌图标解析。
  */
 export function getProviderIconModelId(provider: ProviderInfo, models: ProviderModel[]): string {
-  return models[0]?.id ?? provider.id;
+  return models[0]?.modelId ?? provider.name;
 }
 
 /**
@@ -139,4 +139,19 @@ export function getProviderColor(name: string): string {
     if (key.includes(k)) return v;
   }
   return "#64748b";
+}
+
+/** 目录搜索同时覆盖稳定身份、配置名、展示名和上游模型代码。 */
+export function providerMatchesQuery(provider: ProviderInfo, models: ProviderModel[], query: string): boolean {
+  const keyword = query.trim().toLowerCase();
+  return [
+    provider.id,
+    provider.name,
+    provider.displayName,
+    provider.protocol,
+    ...models.flatMap((model) => [model.id, model.modelId, model.name]),
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(keyword);
 }

@@ -46,14 +46,14 @@ describe("MCP 资源访问纯逻辑补充覆盖", () => {
     expect(getMcpKey(legacyMcp("legacy-server"))).toBe("legacy-server");
   });
 
-  // 详情查询和列表 identity 都应使用同一 key，避免共享资源同名冲突。
-  test("getMcpLookupKey 使用归属组织派生的 key", () => {
-    expect(getMcpLookupKey(mcp("duplicate-name"))).toBe("org-owned/mcp-owned");
+  // 详情只使用数据库 ID，避免共享资源同名冲突。
+  test("getMcpLookupKey 使用资源 ID", () => {
+    expect(getMcpLookupKey(mcp("duplicate-name"))).toBe("mcp-owned");
   });
 
-  // 缺失归属范围时，详情查询必须继续使用原名称。
-  test("getMcpLookupKey 缺少归属范围时回退名称", () => {
-    expect(getMcpLookupKey(legacyMcp("legacy-server"))).toBe("legacy-server");
+  // 缺失 ID 时必须显式失败，禁止名称回退。
+  test("getMcpLookupKey 缺少 ID 时拒绝名称回退", () => {
+    expect(() => getMcpLookupKey(legacyMcp("legacy-server"))).toThrow("MCP resource ID is required");
   });
 
   // 授权判断只信任后端下发的动作集合，缺失即保守视为不可写，避免越权展示编辑入口。
