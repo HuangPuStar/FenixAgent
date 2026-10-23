@@ -15,6 +15,8 @@ export function toSessionConnection(
     ownerUserId: entry.ownerUserId,
     agentId: entry.agentId,
     instanceId: entry.instanceId,
+    runtimeIdentity: shared?.runtimeIdentity,
+    getSessionContinuity: () => shared?.handle.sessionContinuity,
     rcsSessionId: entry.rcsSessionId,
     acpSessionId: entry.acpSessionId,
     agentStatusReceived: entry.agentStatusReceived,
@@ -33,6 +35,7 @@ export function toSessionConnection(
       if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
       shared.pendingPromptIds.add(rpcId);
       if (turnId) {
+        shared.liveTurnId = turnId;
         if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
         shared.pendingPromptTurns.set(rpcId, turnId);
       }

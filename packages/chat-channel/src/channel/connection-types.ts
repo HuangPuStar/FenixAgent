@@ -152,16 +152,24 @@ export interface ClientConnection {
 
 /**
  * 同一 instanceId + userId 的前端连接共享的 relay 句柄。
- * refCount 归零（最后客户端断开）后由 gateway 统一释放；relay_closed 后由
+ * refCount 归零且回复与在途 prompt 均已收口后由 gateway 释放；relay_closed 后由
  * relay-event-handler 触发实例级清理并销毁对应实时资源。
  */
 export interface SharedRelay {
+  /** 回复收口监听，最终释放 relay 时注销。 */
+  stopRetentionWatch?: () => void;
+  /** RPC 登记消费后复核零页面连接的收口条件。 */
+  checkRetention?: () => void;
+  /** 运行实例强制停止或服务关闭时释放零页面的在途租约。 */
+  releaseRetained?: () => void;
   handle: EngineRelayHandle;
   unsubscribe: (() => void) | null;
   refCount: number;
   userId: string;
   agentId: string;
   instanceId: string;
+  /** 当前 relay 捕获的运行身份，不由浏览器提供。 */
+  runtimeIdentity?: string;
   /** 空闲监控已记录为 relay 已连接，最后释放时必须成对注销。 */
   idleMonitorAttached?: boolean;
   /** RCS 会话标识符，同一实例的所有前端连接共享 */
@@ -237,6 +245,8 @@ export interface SharedRelay {
    * 聚合层能区分终态归属，stale turn 的迟到终态不再误伤新 turn。
    */
   pendingPromptTurns?: Map<number | string, string>;
+  /** 本 relay 发起或由实时 steer 投递建立的 turn；持久快照不能证明仍在执行。 */
+  liveTurnId?: string;
   /** session/list 轮询因 status 门禁未置位而连续跳过的次数（连续 3 次告警，成功后清零） */
   sessionListSkipCount?: number;
   /**

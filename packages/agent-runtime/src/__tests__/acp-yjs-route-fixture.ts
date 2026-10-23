@@ -100,6 +100,7 @@ export async function createYjsRouteFixture(bigHistory = false, syncEnabled = fa
   setChatChannelBootstrapDeps({
     docManager: manager,
     ensureRunning: async () => "instance-route",
+    getRuntimeIdentity: () => JSON.stringify(["route-test", 1]),
     connectAgentRelay: async () => ({
       state: "open",
       send: (message) => {

@@ -69,6 +69,7 @@ describe("chat channel bootstrap", () => {
         return "instance-1";
       }) as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
+      getRuntimeIdentity: () => undefined,
     });
 
     const controller = getChatChannelController();
@@ -96,6 +97,7 @@ describe("chat channel bootstrap", () => {
         return requestedInstanceUid ?? "instance-default";
       }) as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
+      getRuntimeIdentity: () => undefined,
     });
 
     const controller = getChatChannelController();
@@ -130,6 +132,7 @@ describe("chat channel bootstrap", () => {
         return `instance-${agentId}`;
       }) as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
+      getRuntimeIdentity: () => undefined,
     });
 
     const controller = getChatChannelController();
@@ -188,6 +191,7 @@ describe("chat channel bootstrap", () => {
       } as never,
       ensureRunning: (async () => "instance-1") as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
+      getRuntimeIdentity: () => undefined,
     });
 
     const controller = getChatChannelController();

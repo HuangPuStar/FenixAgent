@@ -1,4 +1,5 @@
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { disposeRelayContinuity, readRelayContinuity } from "./relay-continuity";
 import { RelayRpcScope } from "./relay-rpc-namespace";
 
 /** A consumer owns its listeners; only the runtime owner closes the physical relay. */
@@ -11,6 +12,9 @@ export function createRelayLease(physical: EngineRelayHandle): EngineRelayHandle
       return released ? "closed" : physical.state;
     },
     ready: physical.ready,
+    get sessionContinuity() {
+      return released ? undefined : readRelayContinuity(physical);
+    },
     send(message) {
       if (released) throw new Error("Relay lease has been released");
       return rpc.send(message);
@@ -75,6 +79,7 @@ export class RuntimeRelayConnection {
   private async closeRelay(relay: EngineRelayHandle): Promise<void> {
     if (this.closedRelay === relay) return;
     this.closedRelay = relay;
+    disposeRelayContinuity(relay);
     await relay.close(1000, "runtime superseded or relay failed");
   }
 

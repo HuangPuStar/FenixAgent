@@ -34,7 +34,7 @@ import { refreshInstanceEnvironment } from "../../services/orchestration-instanc
 import { getAgentRuntimeConfig } from "../config";
 import { environmentRepo } from "../repositories/environment";
 import { createFileSessionTitleStore } from "../repositories/session-title-store";
-import { connectAgentRelay } from "../transport/agent-relay";
+import { connectAgentRelay, getAgentRuntimeIdentity } from "../transport/agent-relay";
 import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
 import { agentInstanceService } from "./agent-instance-service";
 import { resolveWorkspacePath } from "./workspace-resolver";
@@ -44,6 +44,7 @@ type ChatChannelBootstrapDeps = {
   resolveWorkspacePath: typeof resolveWorkspacePath;
   ensureRunning: (ownerUserId: string, environmentId: string, requestedInstanceUid?: string) => Promise<string>;
   connectAgentRelay: typeof connectAgentRelay;
+  getRuntimeIdentity: typeof getAgentRuntimeIdentity;
   refreshInstanceEnvironment: typeof refreshInstanceEnvironment;
   markInstanceRelayAttached: typeof markInstanceRelayAttached;
   markInstanceRelayDetached: typeof markInstanceRelayDetached;
@@ -73,6 +74,7 @@ const defaultDeps: ChatChannelBootstrapDeps = {
     return instance.id;
   },
   connectAgentRelay,
+  getRuntimeIdentity: getAgentRuntimeIdentity,
   refreshInstanceEnvironment,
   markInstanceRelayAttached,
   markInstanceRelayDetached,
@@ -131,6 +133,7 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ensureRunning: deps.ensureRunning,
     connectAgentRelay: deps.connectAgentRelay,
+    getRuntimeIdentity: deps.getRuntimeIdentity,
     refreshInstanceEnvironment: deps.refreshInstanceEnvironment,
     markRelayAttached: deps.markInstanceRelayAttached,
     markRelayDetached: deps.markInstanceRelayDetached,
