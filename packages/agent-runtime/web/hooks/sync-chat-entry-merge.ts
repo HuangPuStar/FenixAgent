@@ -15,109 +15,24 @@
 // - 合成段 id 必须在全部 legacy + sync 消息 id 中唯一；冲突时顺延序号。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
-
-type AssistantMessage = Extract<StructuredMessage, { type: "assistant_message" }>;
-type AssistantChunk = AssistantMessage["chunks"][number];
-
-/** 助手正文（只取 message chunk，thought 不进入正文）。 */
-export function assistantText(message: AssistantMessage): string {
-  return message.chunks
-    .filter((chunk) => chunk.type === "message")
-    .map((chunk) => chunk.text)
-    .join("");
-}
-
-interface EntrySegment {
-  readonly message: AssistantMessage;
-  readonly index: number;
-  readonly text: string;
-  readonly ordinal: number;
-}
-
-interface SegmentMatch {
-  readonly segment: EntrySegment;
-  readonly start: number;
-  readonly end: number;
-}
-
-interface PlannedInsertion {
-  readonly beforeIndex: number;
-  readonly ordinal: number;
-  readonly text: string;
-  readonly reference: EntrySegment;
-}
-
-interface PlannedEdit {
-  readonly segment: EntrySegment;
-  readonly side: "prefix" | "suffix";
-  readonly text: string;
-}
-
-interface GroupPlan {
-  readonly mode: "skip" | "inject" | "fallback";
-  readonly insertions: readonly PlannedInsertion[];
-  readonly edits: readonly PlannedEdit[];
-}
+import { type GroupPlan, planGroup } from "./sync-chat-heuristic-merge";
+import {
+  type AssistantMessage,
+  appendSegmentText,
+  assistantText,
+  type EntrySegment,
+  type MergeDegradation,
+  type MergeDegradeReason,
+  type PlannedEdit,
+  type PlannedInsertion,
+  prependSegmentText,
+} from "./sync-chat-merge-types";
+import { planStructuralGroup, type StructuralPlan } from "./sync-chat-structural-merge";
 
 interface Insertion {
   readonly beforeIndex: number;
   readonly order: number;
   readonly message: AssistantMessage;
-}
-
-function prependSegmentText(message: AssistantMessage, text: string): AssistantMessage {
-  if (text.length === 0) return message;
-  const chunks = message.chunks.map((chunk) => ({ ...chunk }));
-  const index = chunks.findIndex((chunk) => chunk.type === "message");
-  const target = index >= 0 ? chunks[index] : undefined;
-  if (target !== undefined && target.type === "message") {
-    chunks[index] = { ...target, text: `${text}${target.text}` };
-  } else {
-    const chunk: AssistantChunk = { type: "message", text };
-    chunks.unshift(chunk);
-  }
-  return { ...message, chunks };
-}
-
-function appendSegmentText(message: AssistantMessage, text: string): AssistantMessage {
-  if (text.length === 0) return message;
-  const chunks = message.chunks.map((chunk) => ({ ...chunk }));
-  let lastMessageIndex = -1;
-  for (let index = 0; index < chunks.length; index += 1) {
-    if (chunks[index]?.type === "message") lastMessageIndex = index;
-  }
-  const target = lastMessageIndex >= 0 ? chunks[lastMessageIndex] : undefined;
-  if (target !== undefined && target.type === "message") {
-    chunks[lastMessageIndex] = { ...target, text: `${target.text}${text}` };
-  } else {
-    const chunk: AssistantChunk = { type: "message", text };
-    chunks.push(chunk);
-  }
-  return { ...message, chunks };
-}
-
-/** 把旧分段按出现顺序对齐到同步整段文本，返回已覆盖区间与未覆盖缺口。 */
-function alignSegmentsToSyncText(
-  syncText: string,
-  segments: readonly EntrySegment[],
-): { matches: SegmentMatch[]; gaps: Array<{ start: number; end: number }> } {
-  const matches: SegmentMatch[] = [];
-  let cursor = 0;
-  for (const segment of segments) {
-    if (segment.text.length === 0) continue;
-    const position = syncText.indexOf(segment.text, cursor);
-    if (position < 0) continue;
-    matches.push({ segment, start: position, end: position + segment.text.length });
-    cursor = position + segment.text.length;
-  }
-  const gaps: Array<{ start: number; end: number }> = [];
-  let coveredUntil = 0;
-  for (const match of matches) {
-    if (match.start > coveredUntil) gaps.push({ start: coveredUntil, end: match.start });
-    coveredUntil = match.end;
-  }
-  if (coveredUntil < syncText.length) gaps.push({ start: coveredUntil, end: syncText.length });
-  return { matches, gaps };
 }
 
 /** 分段后缀序号：入口 id 为 0，`entryId#N` 为 N；其他形态返回 null（视为不可判定）。 */
@@ -171,14 +86,6 @@ function collectEntrySegments(legacy: readonly StructuredMessage[]): {
 }
 
 /** 范围 [from, to] 内的工具消息下标；from > to 返回空。 */
-function toolIndicesIn(legacy: readonly StructuredMessage[], from: number, to: number): number[] {
-  const indices: number[] = [];
-  for (let index = Math.max(0, from); index <= to && index < legacy.length; index += 1) {
-    if (legacy[index]?.type === "tool_call") indices.push(index);
-  }
-  return indices;
-}
-
 /** 入口块边界：向前/向后吞掉紧邻的工具/计划消息，前缀/尾段缺口据此定位。 */
 function blockBounds(
   legacy: readonly StructuredMessage[],
@@ -205,79 +112,6 @@ function blockBounds(
  *
  * 只在「工具数 == 分段边界数」时给出精确位置；否则返回 fallback，由调用方整条退化为新投影单条消息。
  */
-function planGroup(
-  segments: readonly EntrySegment[],
-  legacy: readonly StructuredMessage[],
-  syncText: string,
-  blockStart: number,
-  blockEnd: number,
-): GroupPlan {
-  const { matches, gaps } = alignSegmentsToSyncText(syncText, segments);
-  const insertions: PlannedInsertion[] = [];
-  const edits: PlannedEdit[] = [];
-
-  // 缺口从左到右处理：每个缺口只会落在下一个已知段之前，或条目末尾。
-  for (const gap of gaps) {
-    const gapText = syncText.slice(gap.start, gap.end);
-    if (gapText.length === 0) continue;
-    const following = matches.find((match) => match.start >= gap.end);
-    const preceding = [...matches].reverse().find((match) => match.end <= gap.start);
-
-    if (gapText.trim().length === 0) {
-      // 纯空白不制造空消息：并入相邻已知段，正文空白不丢失。
-      if (preceding !== undefined) edits.push({ segment: preceding.segment, side: "suffix", text: gapText });
-      else if (following !== undefined) edits.push({ segment: following.segment, side: "prefix", text: gapText });
-      continue;
-    }
-
-    if (following === undefined) {
-      // 尾段：缺失正文从末段后第一个工具之后开始；没有工具则直接并入末段。
-      const lastSegment = preceding?.segment ?? segments[segments.length - 1];
-      if (lastSegment === undefined) return { mode: "fallback", insertions: [], edits: [] };
-      const tools = toolIndicesIn(legacy, lastSegment.index + 1, blockEnd);
-      if (tools.length === 0) {
-        edits.push({ segment: lastSegment, side: "suffix", text: gapText });
-      } else {
-        insertions.push({
-          beforeIndex: tools[0]! + 1,
-          ordinal: lastSegment.ordinal + 1,
-          text: gapText,
-          reference: lastSegment,
-        });
-      }
-      continue;
-    }
-
-    if (preceding === undefined) {
-      // 缺首段：缺失正文在第一个分段边界之前，即第一个工具之前。
-      const boundaries = following.segment.ordinal;
-      if (boundaries <= 0) return { mode: "fallback", insertions: [], edits: [] };
-      const tools = toolIndicesIn(legacy, blockStart, following.segment.index - 1);
-      if (tools.length !== boundaries) return { mode: "fallback", insertions: [], edits: [] };
-      insertions.push({
-        beforeIndex: tools[0]!,
-        ordinal: 0,
-        text: gapText,
-        reference: following.segment,
-      });
-      continue;
-    }
-
-    // 缺中段：缺失正文从上一个已知段后的第一个工具之后开始。
-    const boundaries = following.segment.ordinal - preceding.segment.ordinal;
-    if (boundaries <= 0) return { mode: "fallback", insertions: [], edits: [] };
-    const tools = toolIndicesIn(legacy, preceding.segment.index + 1, following.segment.index - 1);
-    if (tools.length !== boundaries) return { mode: "fallback", insertions: [], edits: [] };
-    insertions.push({
-      beforeIndex: tools[0]! + 1,
-      ordinal: preceding.segment.ordinal + 1,
-      text: gapText,
-      reference: preceding.segment,
-    });
-  }
-
-  return { mode: "inject", insertions, edits };
-}
 
 function makeInsertionMessage(
   base: string,
@@ -304,7 +138,7 @@ function makeInsertionMessage(
 export function applyLosslessEntryMerge(
   legacy: readonly StructuredMessage[],
   sync: readonly StructuredMessage[],
-): { legacy: StructuredMessage[]; consumedSyncIds: Set<string> } {
+): { legacy: StructuredMessage[]; consumedSyncIds: Set<string>; degraded: MergeDegradation[] } {
   const { exact, byParent } = collectEntrySegments(legacy);
   const indexById = new Map<string, number>();
   for (let index = 0; index < legacy.length; index += 1) {
@@ -312,13 +146,25 @@ export function applyLosslessEntryMerge(
     if (message !== undefined) indexById.set(message.id, index);
   }
 
-  const syncById = new Map<string, AssistantMessage>();
+  // 同步投影按入口 id 分组：标记存在时同一 entry 会有 base / base#1 / … 多条消息。
+  // `entryBaseId` 由镜像层显式提供；手工/旧消息退回“去掉末尾 #N”的解析。
+  const syncGroups = new Map<string, AssistantMessage[]>();
   for (const message of sync) {
     if (message.type !== "assistant_message") continue;
-    const existing = syncById.get(message.id);
-    if (existing === undefined || assistantText(message).length > assistantText(existing).length) {
-      syncById.set(message.id, message);
-    }
+    const base = message.entryBaseId ?? segmentParentId(message.id) ?? message.id;
+    const bucket = syncGroups.get(base);
+    if (bucket) bucket.push(message);
+    else syncGroups.set(base, [message]);
+  }
+  for (const [base, messages] of syncGroups) {
+    const unique = new Map<string, AssistantMessage>();
+    for (const message of messages) unique.set(message.id, message);
+    syncGroups.set(
+      base,
+      [...unique.values()].sort(
+        (left, right) => (segmentOrdinal(left.id, base) ?? 0) - (segmentOrdinal(right.id, base) ?? 0),
+      ),
+    );
   }
 
   const reserved = new Set<string>();
@@ -327,16 +173,21 @@ export function applyLosslessEntryMerge(
 
   interface Analysis {
     readonly base: string;
+    readonly syncMessages: AssistantMessage[];
     readonly syncMessage: AssistantMessage;
     readonly segments: EntrySegment[];
     readonly blockStart: number;
     readonly blockEnd: number;
     readonly mode: "skip" | "inject" | "fallback";
     readonly plan: GroupPlan | null;
+    readonly structural: StructuralPlan | null;
+    readonly degradeReason: MergeDegradeReason | null;
   }
 
   const analyses: Analysis[] = [];
-  for (const [base, syncMessage] of syncById) {
+  const degraded: MergeDegradation[] = [];
+
+  for (const [base, syncMessages] of syncGroups) {
     const group: AssistantMessage[] = [];
     const seen = new Set<string>();
     const baseSegment = exact.get(base);
@@ -349,7 +200,13 @@ export function applyLosslessEntryMerge(
       group.push(segment);
       seen.add(segment.id);
     }
-    if (group.length === 0) continue;
+    if (group.length === 0) {
+      // 新投影有分段但旧侧完全没有文本锚点：不消费，交给通用合并器按序追加；显式降级。
+      const structural =
+        syncMessages.length > 1 || syncMessages.some((message) => (segmentOrdinal(message.id, base) ?? 0) > 0);
+      if (structural) degraded.push({ entryId: base, reason: "missing-text-anchor" });
+      continue;
+    }
 
     const segments: EntrySegment[] = [];
     for (const message of group) {
@@ -387,33 +244,123 @@ export function applyLosslessEntryMerge(
       }
     }
     const segmented = segments.length > 1 || firstSegment.ordinal > 0;
-    const syncText = assistantText(syncMessage);
-    if (syncText.length === 0) continue;
+    const primary = syncMessages.find((message) => (segmentOrdinal(message.id, base) ?? -1) === 0) ?? syncMessages[0]!;
+    const structuralGroup =
+      syncMessages.length > 1 || syncMessages.some((message) => (segmentOrdinal(message.id, base) ?? 0) > 0);
+
     if (!ordered) {
-      analyses.push({ base, syncMessage, segments, blockStart, blockEnd, mode: "fallback", plan: null });
+      analyses.push({
+        base,
+        syncMessages,
+        syncMessage: primary,
+        segments,
+        blockStart,
+        blockEnd,
+        mode: "fallback",
+        plan: null,
+        structural: null,
+        degradeReason: "unordered-legacy",
+      });
       continue;
     }
     if (!toolAdjacent && !segmented) continue;
+
+    if (structuralGroup) {
+      // 标记存在：按段序号与工具 run 精确落位，不再使用字符串启发式。
+      const plan = planStructuralGroup({
+        legacy,
+        base,
+        legacySegments: segments,
+        syncMessages,
+        blockStart,
+        blockEnd,
+      });
+      analyses.push({
+        base,
+        syncMessages,
+        syncMessage: primary,
+        segments,
+        blockStart,
+        blockEnd,
+        mode: plan.mode,
+        plan: null,
+        structural: plan,
+        degradeReason: plan.mode === "fallback" ? (plan.reason ?? "boundary-count-mismatch") : null,
+      });
+      continue;
+    }
+
+    // 标记缺失（旧数据/旧协议）：保留原有启发式，并显式上报降级。
+    const syncText = assistantText(primary);
+    if (syncText.length === 0) continue;
     const plan = planGroup(segments, legacy, syncText, blockStart, blockEnd);
-    analyses.push({ base, syncMessage, segments, blockStart, blockEnd, mode: plan.mode, plan });
+    const degradeReason =
+      plan.mode === "fallback"
+        ? (plan.reason ?? "boundary-count-mismatch")
+        : plan.insertions.length > 0 || plan.edits.length > 0
+          ? "markers-missing"
+          : null;
+    analyses.push({
+      base,
+      syncMessages,
+      syncMessage: primary,
+      segments,
+      blockStart,
+      blockEnd,
+      mode: plan.mode,
+      plan,
+      structural: null,
+      degradeReason,
+    });
   }
 
   const consumedSyncIds = new Set<string>();
   const removedIds = new Set<string>();
   for (const analysis of analyses) {
     if (analysis.mode === "skip") continue;
-    consumedSyncIds.add(analysis.base);
+    for (const message of analysis.syncMessages) consumedSyncIds.add(message.id);
     if (analysis.mode === "fallback") {
       for (const segment of analysis.segments) removedIds.add(segment.message.id);
     }
   }
-  // 被移除/被消费的消息 id 让位给合成段；其余 sync/legacy/tool id 全部保留，保证全局唯一。
+  // 只有被移除的旧段和被消费且不再被任何保留消息占用的 sync id 才让位给合成段；
+  // 同 id 的用户/工具/计划仍在保留集中，合成段必须另选空闲 id，绝不能覆盖它们。
+  const retainedLegacyIds = new Set(legacy.map((message) => message.id));
+  for (const id of removedIds) retainedLegacyIds.delete(id);
   for (const id of removedIds) reserved.delete(id);
-  for (const id of consumedSyncIds) reserved.delete(id);
+  for (const id of consumedSyncIds) {
+    if (!retainedLegacyIds.has(id)) reserved.delete(id);
+  }
+  for (const analysis of analyses) {
+    if (analysis.degradeReason !== null) {
+      degraded.push({ entryId: analysis.base, reason: analysis.degradeReason });
+    }
+  }
 
   const replacements = new Map<string, AssistantMessage>();
   const insertions: Insertion[] = [];
   let order = 0;
+
+  const applyEdit = (edit: PlannedEdit): void => {
+    const current = replacements.get(edit.segment.message.id) ?? edit.segment.message;
+    const next =
+      edit.side === "prefix" ? prependSegmentText(current, edit.text) : appendSegmentText(current, edit.text);
+    replacements.set(edit.segment.message.id, next);
+  };
+  const pushInsertion = (analysis: Analysis, planned: PlannedInsertion): void => {
+    insertions.push({
+      beforeIndex: planned.beforeIndex,
+      order: order++,
+      message: makeInsertionMessage(
+        analysis.base,
+        planned.ordinal,
+        planned.text,
+        planned.reference,
+        analysis.syncMessage,
+        reserved,
+      ),
+    });
+  };
 
   for (const analysis of analyses) {
     if (analysis.mode === "skip") continue;
@@ -421,44 +368,42 @@ export function applyLosslessEntryMerge(
     if (firstSegment === undefined) continue;
 
     if (analysis.mode === "fallback") {
-      const desired = analysis.syncMessage.id;
+      // 降级消息使用整条 entry 的合并正文（标记存在时可能有多段），id 必须全局唯一。
+      const combinedText = analysis.syncMessages
+        .slice()
+        .sort(
+          (left, right) =>
+            (segmentOrdinal(left.id, analysis.base) ?? 0) - (segmentOrdinal(right.id, analysis.base) ?? 0),
+        )
+        .map(assistantText)
+        .join("");
+      if (combinedText.length === 0) continue;
+      const desired = analysis.base;
       let id = desired;
       if (reserved.has(desired)) id = nextFreeEntryId(analysis.base, 0, reserved);
       else reserved.add(desired);
       insertions.push({
         beforeIndex: firstSegment.index,
         order: order++,
-        message: { ...analysis.syncMessage, id },
+        message: { ...analysis.syncMessage, id, chunks: [{ type: "message", text: combinedText }] },
       });
+      continue;
+    }
+
+    if (analysis.structural !== null) {
+      for (const edit of analysis.structural.edits) applyEdit(edit);
+      for (const planned of analysis.structural.insertions) pushInsertion(analysis, planned);
       continue;
     }
 
     const plan = analysis.plan;
     if (plan === null) continue;
-    for (const edit of plan.edits) {
-      const current = replacements.get(edit.segment.message.id) ?? edit.segment.message;
-      const next =
-        edit.side === "prefix" ? prependSegmentText(current, edit.text) : appendSegmentText(current, edit.text);
-      replacements.set(edit.segment.message.id, next);
-    }
-    for (const planned of plan.insertions) {
-      insertions.push({
-        beforeIndex: planned.beforeIndex,
-        order: order++,
-        message: makeInsertionMessage(
-          analysis.base,
-          planned.ordinal,
-          planned.text,
-          planned.reference,
-          analysis.syncMessage,
-          reserved,
-        ),
-      });
-    }
+    for (const edit of plan.edits) applyEdit(edit);
+    for (const planned of plan.insertions) pushInsertion(analysis, planned);
   }
 
   if (replacements.size === 0 && insertions.length === 0 && consumedSyncIds.size === 0) {
-    return { legacy: [...legacy], consumedSyncIds };
+    return { legacy: [...legacy], consumedSyncIds, degraded };
   }
 
   insertions.sort((left, right) => left.beforeIndex - right.beforeIndex || left.order - right.order);
@@ -478,5 +423,5 @@ export function applyLosslessEntryMerge(
     if (removedIds.has(message.id)) continue;
     merged.push(replacements.get(message.id) ?? message);
   }
-  return { legacy: merged, consumedSyncIds };
+  return { legacy: merged, consumedSyncIds, degraded };
 }

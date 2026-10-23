@@ -130,6 +130,7 @@ describe("sync content Doc 只读投影", () => {
       {
         type: "assistant_message",
         id: "turn_1:assistant",
+        entryBaseId: "turn_1:assistant",
         chunks: [{ type: "message", text: "hello world" }],
         seq: 0,
         ts: 0,
@@ -174,6 +175,7 @@ describe("sync content Doc 只读投影", () => {
       {
         type: "assistant_message",
         id: "turn_2:assistant",
+        entryBaseId: "turn_2:assistant",
         chunks: [{ type: "message", text: "done" }],
         seq: 0,
         ts: 1700000000000,

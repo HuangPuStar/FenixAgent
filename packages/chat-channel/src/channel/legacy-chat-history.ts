@@ -37,20 +37,47 @@ export interface LegacyChatDocumentSource {
   isGenerationCurrent?(rcsSessionId: string, generation: string): Promise<boolean>;
 }
 
-/** 读取一个旧条目的可见正文；工具块和 reasoning 不计入。 */
-function readVisibleText(entry: Y.Map<unknown>): string {
+/**
+ * 读取一个旧条目的可见正文与有序工具边界。
+ *
+ * 顺序严格按 `blockOrder`：文本块输出 `text_part`，工具块输出 `tool_boundary` 标记，
+ * 新投影据此把正文切成与旧结构一致的分段；reasoning 块不进入正文也不产生边界。
+ */
+function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: number): SyncHistoryRecord[] {
   const blocks = entry.get("blocks");
   const order = entry.get("blockOrder");
-  if (!(blocks instanceof Y.Map) || !(order instanceof Y.Array)) return "";
-  let text = "";
+  if (!(blocks instanceof Y.Map) || !(order instanceof Y.Array)) return [];
+  const records: SyncHistoryRecord[] = [];
+  let partIndex = 0;
+  let emittedText = false;
   for (const blockId of order.toArray()) {
     if (typeof blockId !== "string") continue;
     const block = blocks.get(blockId);
-    if (!(block instanceof Y.Map) || block.get("type") !== "text") continue;
+    if (!(block instanceof Y.Map)) continue;
+    const type = block.get("type");
+    if (type === "tool_call") {
+      const toolCallId = block.get("toolCallId");
+      records.push({
+        value: typeof toolCallId === "string" ? toolCallId : "",
+        meta: { kind: "tool_boundary", entryId, contentSlot: 0, partIndex: partIndex++ },
+      });
+      continue;
+    }
+    if (type !== "text") continue;
     const value = block.get("text");
-    if (value instanceof Y.Text) text += value.toString();
+    if (!(value instanceof Y.Text)) continue;
+    const text = value.toString();
+    if (text.length === 0) continue;
+    for (const part of splitText(text, maxPartChars)) {
+      records.push({
+        value: part,
+        meta: { kind: "text_part", entryId, contentSlot: 0, partIndex: partIndex++ },
+      });
+      emittedText = true;
+    }
   }
-  return text;
+  // 只有工具、没有可见正文的 entry 不进入文本投影；边界单独存在没有展示意义。
+  return emittedText ? records : [];
 }
 
 /** 按 code units 切片，且不把代理对拆到两个记录（孤立代理项由保真序列化保留）。 */
@@ -91,14 +118,7 @@ export function readLegacyCommittedHistory(ydoc: Y.Doc, maxPartChars = LEGACY_HI
     if (status === "pending" || status === "streaming") continue;
     const role = entry.get("role");
     if (role !== "user" && role !== "assistant") continue;
-    const text = readVisibleText(entry);
-    if (text.length === 0) continue;
-    for (const [partIndex, part] of splitText(text, maxPartChars).entries()) {
-      records.push({
-        value: part,
-        meta: { kind: "text_part", entryId, contentSlot: 0, partIndex },
-      });
-    }
+    records.push(...readEntryRecords(entry, entryId, maxPartChars));
   }
   return records;
 }

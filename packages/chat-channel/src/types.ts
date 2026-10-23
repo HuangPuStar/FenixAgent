@@ -273,6 +273,13 @@ export interface AssistantMessage {
   ts: number;
   /** 本 turn 失败的脱敏错误（后端 ChatEntry.error 投影而来，挂在最后一段助手消息） */
   error?: PublicErrorInfo;
+  /**
+   * 新同步投影的分段来源入口 id（仅展示层使用）。
+   *
+   * 旧投影/手工消息可缺省；新投影按有序工具边界切段时必须提供，避免入口 id 自身含 `#`
+   * 时无法区分“base 为 e#1 的段 0”和“base 为 e 的段 1”。
+   */
+  entryBaseId?: string;
 }
 
 export interface UserMessage {

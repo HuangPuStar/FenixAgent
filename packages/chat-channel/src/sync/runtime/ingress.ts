@@ -422,6 +422,9 @@ function fromSessionUpdate(
     case "agent_thought_chunk":
       return textDeltaEvents(update, turnId, REASONING_SLOT);
     case "tool_call":
+    case "tool_call_started":
+      // 工具开始/首帧：在当前位置写入有序边界（标准 ACP 的 tool_call 与内部 started 同义）。
+      return toolEvents(update, turnId, null, true);
     case "tool_call_update":
       return toolEvents(update, turnId);
     case "tool_call_result":
@@ -474,6 +477,7 @@ function toolEvents(
   update: Record<string, unknown>,
   turnId: string | null,
   terminalFallback: "completed" | "failed" | null = null,
+  boundary = false,
 ): readonly SyncIngressEvent[] {
   if (turnId === null) return EMPTY_EVENTS;
   const toolCallId = optionalString(update.toolCallId);
@@ -496,6 +500,7 @@ function toolEvents(
       toolCallId,
       metadata,
       ...(terminal ? { terminal: true } : {}),
+      ...(boundary ? { boundary: true } : {}),
     }),
   ];
 }

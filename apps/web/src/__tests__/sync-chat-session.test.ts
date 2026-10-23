@@ -659,6 +659,7 @@ describe("sync chat 浏览器会话", () => {
       {
         type: "assistant_message",
         id: "turn_1:assistant",
+        entryBaseId: "turn_1:assistant",
         chunks: [{ type: "message", text: "hello" }],
         seq: 0,
         ts: 0,

@@ -4,7 +4,7 @@
 // 事务都是存储契约，用替身自证会掩盖实现与契约的分歧；唯一注入是 `wrap` 上的三个委托代理（在真实实现之上只改
 // 回执或计数，不伪造结局）。
 
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
@@ -757,3 +757,23 @@ function recordUpdate(docId: string, text: string): Uint8Array {
   doc.destroy();
   return bytes;
 }
+
+describe("有序工具边界标记", () => {
+  // 工具开始时在文本 cursor 位置写边界记录；同一 toolCallId 的重放不得产生第二条。
+  test("工具开始写入边界记录，重复重放不重复", async () => {
+    const fixture = await setup();
+    const toolStart = {
+      ...semantic("tool", { entityId: "t1", toolCallId: "t1", boundary: true, metadata: { title: "Read" } }),
+      entryId: "turn-1:assistant",
+    };
+    await fixture.writer.accept(textDelta("turn-1:assistant", "A"));
+    await fixture.writer.accept(toolStart);
+    await fixture.writer.accept(textDelta("turn-1:assistant", "B"));
+    await fixture.writer.accept(toolStart);
+    const records = readRecords(fixture, fixture.contentId);
+    expect(records.map((record) => record.kind)).toEqual(["text", "tool_boundary", "text"]);
+    const boundary = records.find((record) => record.kind === "tool_boundary");
+    expect(JSON.parse(TEXT_DECODER.decode(boundary!.payload))).toBe("t1");
+    await fixture.writer.close();
+  });
+});

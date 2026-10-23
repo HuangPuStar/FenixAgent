@@ -77,7 +77,7 @@ export interface LiveRecordValue {
   readonly contentSlot: string;
   readonly contentType: string;
   readonly partIndex: number;
-  readonly kind: "text" | "final";
+  readonly kind: "text" | "final" | "tool_boundary";
   readonly payload: Uint8Array;
 }
 export const LIVE_WRITER_LEASE_TTL_MS = 30_000;
@@ -165,7 +165,7 @@ class LiveWriterImpl implements LiveWriter {
     if (input.kind !== "text-delta") {
       const semantic = input.semantic;
       if (semantic === undefined) malformed("semantic input requires a semantic payload");
-      return await this.run(() => this.writeSemantic(semantic));
+      return await this.run(() => this.writeSemantic(semantic, entryId));
     }
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
@@ -268,7 +268,7 @@ class LiveWriterImpl implements LiveWriter {
     }
   }
   /** 语义事件：带终态描述符的事件（`kind: "final"`，或声明实体类别并携带描述符的等价形态）把描述符写进内容块并在同批次移出实体，其余按实体身份更新运行态；语义实体不可拆分，拆一半比一次明确失败更糟。 */
-  private async writeSemantic(semantic: NonNullable<LiveInput["semantic"]>): Promise<void> {
+  private async writeSemantic(semantic: NonNullable<LiveInput["semantic"]>, entryId: string): Promise<void> {
     const gauge = createRuntimeDoc(RUNTIME_KIND, this.options.limits, this.cursor(RUNTIME_KIND).doc);
     const stats = { encodedBytes: gauge.encodedBytes(), entityCount: gauge.entityCount() };
     if (this.rotation.evaluate(stats).rotate) await this.rotateRuntimeDoc();
@@ -319,6 +319,38 @@ class LiveWriterImpl implements LiveWriter {
         this.capture(slices, runtime, () => target.removeEntity(entityId));
         recordBytes = Math.max(terminalContent.byteLength, descriptorPayload.byteLength);
       } else {
+        // 工具开始：在文本 cursor 的当前位置写一条有序边界记录，供前端把正文切成与旧投影一致的分段。
+        // 文本已由 run() 的 barrier 先落盘，因此标记顺序 = 事件顺序；同一 toolCallId 的重放不再写第二条。
+        if (semantic.payload.boundary === true) {
+          const content = this.cursor(CONTENT_KIND);
+          const existing = records<LiveRecordValue>(content.doc)?.toArray() ?? [];
+          const decoder = new TextDecoder();
+          const duplicate = existing.some((value) => {
+            if (value.kind !== "tool_boundary") return false;
+            try {
+              return JSON.parse(decoder.decode(value.payload)) === entityId;
+            } catch {
+              return false;
+            }
+          });
+          if (!duplicate) {
+            const boundaryPayload = bytes(JSON.stringify(entityId));
+            const boundaryIdentity: Identity = {
+              entryId,
+              contentSlot: "boundary",
+              contentType: "tool-boundary",
+            };
+            const boundaryPartIndex = existing.filter((value) => value.kind === "tool_boundary").length;
+            const boundaryRecord = this.buildRecord(
+              boundaryIdentity,
+              "tool_boundary",
+              boundaryPayload,
+              boundaryPartIndex,
+            );
+            this.capture(slices, content, () => records(content.doc, [boundaryRecord]));
+            recordBytes = Math.max(recordBytes, boundaryPayload.byteLength);
+          }
+        }
         const record = entityOf(semantic.kind, semantic.payload);
         this.capture(slices, runtime, () => target.upsertEntity(record));
       }
@@ -373,7 +405,12 @@ class LiveWriterImpl implements LiveWriter {
     const used = slices.filter((slice) => slice.docId === cursor.docId).length;
     slices.push({ docId: cursor.docId, fromSeq: cursor.lastSeq + used + 1, bytes: update });
   }
-  private buildRecord(id: Identity, kind: "text" | "final", payload: Uint8Array, partIndex: number): LiveRecordValue {
+  private buildRecord(
+    id: Identity,
+    kind: "text" | "final" | "tool_boundary",
+    payload: Uint8Array,
+    partIndex: number,
+  ): LiveRecordValue {
     const { entryId, contentSlot, contentType } = id;
     const recordId = `rec_${hex(this.options.random, 8)}`;
     return { recordId, entryId, contentSlot, contentType: contentType ?? "", partIndex, kind, payload };

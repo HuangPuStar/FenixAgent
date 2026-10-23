@@ -8,7 +8,13 @@ import {
   LEGACY_HISTORY_PART_CHARS,
   readLegacyCommittedHistory,
 } from "../channel/legacy-chat-history";
-import { appendEntryText, ensureEntry, initChatDocStructure, setEntryStatus } from "../state/chat-writer";
+import {
+  addToolCallBlock,
+  appendEntryText,
+  ensureEntry,
+  initChatDocStructure,
+  setEntryStatus,
+} from "../state/chat-writer";
 
 function emptyChat(): Y.Doc {
   const ydoc = new Y.Doc();
@@ -65,6 +71,21 @@ describe("readLegacyCommittedHistory", () => {
     expect(records.map((record) => record.value)).toEqual(["a", "😀", "b"]);
     expect(records.map((record) => (record.meta.kind === "text_part" ? record.meta.partIndex : -1))).toEqual([0, 1, 2]);
     expect(records.every((record) => record.meta.kind === "text_part" && record.meta.contentSlot === 0)).toBe(true);
+    ydoc.destroy();
+  });
+
+  // 工具边界按 blockOrder 输出：新投影据此把正文切成与旧投影一致的分段。
+  test("工具边界按 blockOrder 输出，供新投影切段", () => {
+    const ydoc = emptyChat();
+    ensureEntry(ydoc, { entryId: "turn-1:assistant", turnId: "turn-1", kind: "message", role: "assistant" });
+    appendEntryText(ydoc, "turn-1:assistant", "text:1", "text", "A");
+    addToolCallBlock(ydoc, "turn-1:assistant", "t1");
+    appendEntryText(ydoc, "turn-1:assistant", "text:2", "text", "B");
+    setEntryStatus(ydoc, "turn-1:assistant", "completed");
+    const records = readLegacyCommittedHistory(ydoc);
+    expect(records.map((record) => record.meta.kind)).toEqual(["text_part", "tool_boundary", "text_part"]);
+    expect(records.map((record) => record.value)).toEqual(["A", "t1", "B"]);
+    expect(records.map((record) => record.meta.partIndex)).toEqual([0, 1, 2]);
     ydoc.destroy();
   });
 

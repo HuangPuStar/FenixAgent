@@ -25,6 +25,10 @@ function user(id: string, content: string): StructuredMessage {
   return { type: "user_message", id, content, ts: 10000, seq: 0 };
 }
 
+function plan(id: string): StructuredMessage {
+  return { type: "plan", id, entries: [] };
+}
+
 function view(messages: readonly StructuredMessage[]): string[] {
   return messages.map((message) =>
     message.type === "assistant_message" ? `${message.id}=${textOf(message)}` : `${message.type}:${message.id}`,
@@ -48,59 +52,128 @@ function ids(messages: readonly StructuredMessage[]): string[] {
   return messages.map((message) => message.id);
 }
 
-describe("缺口定位：不得跨越未知工具边界", () => {
-  // 缺中段：分段序号 0→2、其间恰好两个工具，缺失段 #1 必须落在 t1 与 t2 之间。
-  test("缺中段时正文落在正确的两个工具之间", () => {
+describe("缺口定位：无标记时只处理单缺口，其余显式降级", () => {
+  // 单缺中段（一个边界、一个工具）：缺失正文属于下一段的前缀，工具位置正确。
+  test("单缺中段时正文前缀合并到工具之后的已知段", () => {
     const merged = createSyncMessageMerger()(
-      [assistant("e", "A"), tool("t1"), tool("t2"), assistant("e#2", "C")],
+      [assistant("e", "A"), tool("t"), assistant("e#1", "C")],
       [assistant("e", "ABC", 0)],
     );
-    expect(view(merged)).toEqual(["e=A", "tool_call:t1", "e#1=B", "tool_call:t2", "e#2=C"]);
+    expect(view(merged)).toEqual(["e=A", "tool_call:t", "e#1=BC"]);
     expect(body(merged)).toBe("ABC");
   });
 
-  // 缺首段：首个已知段序号为 1、其前恰好一个工具，缺失的 #0 必须排在工具之前。
-  test("缺首段时正文落在第一个工具之前", () => {
+  // 单缺首段（一个边界、一个工具）：缺失的 #0 必须排在工具之前。
+  test("单缺首段时正文落在第一个工具之前", () => {
     const merged = createSyncMessageMerger()([tool("t1"), assistant("e#1", "B")], [assistant("e", "AB", 0)]);
     expect(view(merged)).toEqual(["e=A", "tool_call:t1", "e#1=B"]);
     expect(body(merged)).toBe("AB");
   });
 
-  // 缺尾段：缺失正文从末段后第一个工具之后开始，后续工具保持在其后。
-  test("缺尾段时正文落在末段后第一个工具之后", () => {
-    const merged = createSyncMessageMerger()([assistant("e", "A"), tool("t1"), tool("t2")], [assistant("e", "AB", 0)]);
-    expect(view(merged)).toEqual(["e=A", "tool_call:t1", "e#1=B", "tool_call:t2"]);
-    expect(body(merged)).toBe("AB");
+  // 多缺段无法拆分：不得把 B、C 合并塞到第一个工具之后；整条降级，正文只出现一次。
+  test("多缺段无法拆分时安全降级", () => {
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })([assistant("e", "A"), tool("t1"), tool("t2"), assistant("e#2", "C")], [assistant("e", "ABC", 0)]);
+    expect(ids(merged)).toEqual(["e", "t1", "t2"]);
+    expect(textOf(merged[0]!)).toBe("ABC");
+    expect(degradations).toContainEqual({ entryId: "e", reason: "boundary-count-mismatch" });
   });
 
-  // 边界计数不一致（两个分段边界却只有一个工具）时不得猜测：整条 entry 退化为新投影单条消息。
+  // 缺尾段且其后有工具：位置不可判定，必须降级而不是猜在第一个工具之后。
+  test("缺尾段且其后有工具时安全降级", () => {
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })([assistant("e", "A"), tool("t1"), tool("t2")], [assistant("e", "AB", 0)]);
+    expect(ids(merged)).toEqual(["e", "t1", "t2"]);
+    expect(textOf(merged[0]!)).toBe("AB");
+    expect(degradations).toContainEqual({ entryId: "e", reason: "trailing-tools-without-markers" });
+  });
+
+  // 边界计数与工具数不一致：不得猜测，整条降级。
   test("工具数与分段边界数不一致时安全降级且正文只出现一次", () => {
     const merged = createSyncMessageMerger()(
       [assistant("e", "A"), tool("t1"), assistant("e#2", "C")],
       [assistant("e", "ABC", 0)],
     );
     expect(ids(merged)).toEqual(["e", "t1"]);
-    expect(body(merged)).toBe("ABC");
-    expect(new Set(ids(merged)).size).toBe(ids(merged).length);
+    expect(textOf(merged[0]!)).toBe("ABC");
+  });
+
+  // 重复子串有多种对齐方式：不得贪心拆到工具两侧，整条降级且正文只出现一次。
+  test("重复子串无法唯一对齐时安全降级", () => {
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })([assistant("e", "A"), tool("t1"), tool("t2"), assistant("e#1", "B")], [assistant("e", "AABB", 0)]);
+    expect(body(merged)).toBe("AABB");
+    expect(body(merged).split("A")).toHaveLength(3);
+    expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual(["t1", "t2"]);
+    expect(degradations).toContainEqual({ entryId: "e", reason: "ambiguous-alignment" });
+  });
+
+  // 同一 entry + 原因只上报一次，避免流式每帧刷日志。
+  test("降级回调每个 entry 与原因只上报一次", () => {
+    const seen: string[] = [];
+    const merge = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => seen.push(`${degradation.entryId}:${degradation.reason}`),
+    });
+    const legacy = [assistant("e", "A"), tool("t")];
+    const sync = [assistant("e", "AB", 0)];
+    merge(legacy, sync);
+    merge(legacy, sync);
+    expect(seen).toEqual(["e:trailing-tools-without-markers"]);
   });
 });
 
-describe("合成 id 与别名 key 的全局唯一性", () => {
-  // 另一条新投影 entry 占用 e#1 时，合成尾段必须顺延到 e#2，正文 AB + XYZ 都可见。
-  test("合成段 id 不得与另一条新投影 entry 冲突", () => {
+describe("全局唯一 id 与 fallback 覆盖", () => {
+  // fallback 不得复用被消费的 sync base id 覆盖同 id 用户消息。
+  test("fallback 不得覆盖同 id 用户消息", () => {
+    const merged = createSyncMessageMerger()(
+      [user("e", "问"), assistant("e#2", "C"), tool("t")],
+      [assistant("e", "ABC", 0)],
+    );
+    expect(ids(merged)).toEqual(["e", "e#1", "t"]);
+    expect(merged[0]).toMatchObject({ type: "user_message", content: "问" });
+    expect(textOf(merged[1]!)).toBe("ABC");
+    expect(new Set(ids(merged)).size).toBe(ids(merged).length);
+  });
+
+  // fallback 不得覆盖同 id 工具。
+  test("fallback 不得覆盖同 id 工具", () => {
+    const merged = createSyncMessageMerger()([tool("e"), assistant("e#2", "C")], [assistant("e", "ABC", 0)]);
+    expect(ids(merged)).toEqual(["e", "e#1"]);
+    expect(merged[0]).toMatchObject({ type: "tool_call", id: "e" });
+    expect(textOf(merged[1]!)).toBe("ABC");
+    expect(new Set(ids(merged)).size).toBe(ids(merged).length);
+  });
+
+  // fallback 不得覆盖同 id plan。
+  test("fallback 不得覆盖同 id plan", () => {
+    const merged = createSyncMessageMerger()([plan("e"), assistant("e#2", "C"), tool("t")], [assistant("e", "ABC", 0)]);
+    expect(ids(merged)).toEqual(["e", "e#1", "t"]);
+    expect(merged[0]).toMatchObject({ type: "plan", id: "e" });
+    expect(textOf(merged[1]!)).toBe("ABC");
+    expect(new Set(ids(merged)).size).toBe(ids(merged).length);
+  });
+
+  // 降级 id 不得与另一条新投影 entry 冲突，正文 AB + XYZ 都可见。
+  test("降级 id 不得与另一条新投影 entry 冲突", () => {
     const merged = createSyncMessageMerger()(
       [assistant("e", "A"), tool("t")],
       [assistant("e", "AB", 0), assistant("e#1", "XYZ", 0)],
     );
-    expect(view(merged)).toEqual(["e=A", "tool_call:t", "e#2=B", "e#1=XYZ"]);
+    expect(view(merged)).toEqual(["e=AB", "tool_call:t", "e#1=XYZ"]);
     expect(body(merged)).toBe("ABXYZ");
     expect(new Set(ids(merged)).size).toBe(ids(merged).length);
   });
 
-  // 工具 id 恰好是 e#1 时，合成尾段不得覆盖工具；工具与正文都保留。
-  test("合成段 id 不得与工具 id 冲突", () => {
+  // 降级 id 不得与工具 id 冲突；工具与正文都保留。
+  test("降级 id 不得与工具 id 冲突", () => {
     const merged = createSyncMessageMerger()([assistant("e", "A"), tool("e#1")], [assistant("e", "AB", 0)]);
-    expect(view(merged)).toEqual(["e=A", "tool_call:e#1", "e#2=B"]);
+    expect(view(merged)).toEqual(["e=AB", "tool_call:e#1"]);
     expect(body(merged)).toBe("AB");
     expect(merged.some((message) => message.type === "tool_call" && message.id === "e#1")).toBe(true);
   });
@@ -116,8 +189,8 @@ describe("合成 id 与别名 key 的全局唯一性", () => {
     expect(new Set(ids(merged)).size).toBe(ids(merged).length);
   });
 
-  // 合成 id 与别名 key 都不得与输入中的任何消息 id 重复。
-  test("重复 merge 时合成 id 稳定且不与输入 id 冲突", () => {
+  // 重复 merge 时降级 id 稳定，且不与输入中的任何消息 id 重复。
+  test("重复 merge 时降级 id 稳定且不与输入 id 冲突", () => {
     const legacy = [assistant("e", "A"), tool("e#1")];
     const sync = [assistant("e", "AB", 0)];
     const merge = createSyncMessageMerger();
@@ -153,14 +226,14 @@ describe("空白、乱序与重复 merge", () => {
   });
 
   // 旧侧追平、再次落后时尾段必须出现/消失/再出现，且不重复。
-  test("旧侧追平与再次落后时尾段幂等收敛", () => {
+  test("旧侧追平与再次落后时前缀合并且不重复", () => {
     const sync = [assistant("e", "ABC", 0)];
     const merge = createSyncMessageMerger();
-    const behind = merge([assistant("e", "A"), tool("t")], sync);
+    const behind = merge([assistant("e", "A"), tool("t"), assistant("e#1", "C")], sync);
     expect(view(behind)).toEqual(["e=A", "tool_call:t", "e#1=BC"]);
     const caughtUp = merge([assistant("e", "A"), tool("t"), assistant("e#1", "BC")], sync);
     expect(view(caughtUp)).toEqual(["e=A", "tool_call:t", "e#1=BC"]);
-    const behindAgain = merge([assistant("e", "A"), tool("t")], sync);
+    const behindAgain = merge([assistant("e", "A"), tool("t"), assistant("e#1", "C")], sync);
     expect(view(behindAgain)).toEqual(["e=A", "tool_call:t", "e#1=BC"]);
     expect(body(behindAgain)).toBe("ABC");
   });
@@ -208,6 +281,100 @@ describe("空白、乱序与重复 merge", () => {
     expect(projection.skippedRecords).toBe(1);
     hub.dispose();
     content.destroy();
+  });
+});
+
+describe("有序工具边界标记（精确结构）", () => {
+  /** 用真实 SyncContentProjectionHub 从 content Doc 记录派生投影；text / tool_boundary 交替。 */
+  function project(parts: ReadonlyArray<string | { tool: string }>): StructuredMessage[] {
+    const content = new Y.Doc();
+    const records = new Y.Array<Record<string, unknown>>();
+    content.getMap("root").set("records", records);
+    const encoder = new TextEncoder();
+    parts.forEach((part, index) => {
+      const text = typeof part === "string";
+      records.push([
+        {
+          recordId: `r${index}`,
+          entryId: "turn:assistant",
+          entryOrder: 1,
+          contentSlot: text ? "text" : "boundary",
+          partIndex: index,
+          kind: text ? "text" : "tool_boundary",
+          payload: encoder.encode(text ? part : JSON.stringify(part.tool)),
+        },
+      ]);
+    });
+    const hub = createSyncContentProjectionHub({ onProjection: () => {} });
+    hub.applyUpdate({ docId: "sync/content/gen/0/nonce", generation: "gen", payload: Y.encodeStateAsUpdate(content) });
+    const messages = hub.snapshot().messages;
+    hub.dispose();
+    content.destroy();
+    return messages;
+  }
+
+  // 标记存在时多缺段可精确拆分：B 落 t1/t2 之间，C 落 t2/t3 之间。
+  test("多缺段按标记精确落位", () => {
+    const sync = project(["A", { tool: "t1" }, "B", { tool: "t2" }, "C", { tool: "t3" }, "D"]);
+    expect(sync.map((message) => message.id)).toEqual([
+      "turn:assistant",
+      "turn:assistant#1",
+      "turn:assistant#2",
+      "turn:assistant#3",
+    ]);
+    const merged = createSyncMessageMerger()(
+      [assistant("turn:assistant", "A"), tool("t1"), tool("t2"), tool("t3"), assistant("turn:assistant#3", "D")],
+      sync,
+    );
+    expect(view(merged)).toEqual([
+      "turn:assistant=A",
+      "tool_call:t1",
+      "turn:assistant#1=B",
+      "tool_call:t2",
+      "turn:assistant#2=C",
+      "tool_call:t3",
+      "turn:assistant#3=D",
+    ]);
+    expect(body(merged)).toBe("ABCD");
+  });
+
+  // 标记存在时缺首段 + 缺中段都能精确落位，不跨越工具。
+  test("缺首段与缺中段按标记精确落位", () => {
+    const sync = project(["A", { tool: "t1" }, "B", { tool: "t2" }, "C"]);
+    const merged = createSyncMessageMerger()([tool("t1"), tool("t2"), assistant("turn:assistant#2", "C")], sync);
+    expect(view(merged)).toEqual([
+      "turn:assistant=A",
+      "tool_call:t1",
+      "turn:assistant#1=B",
+      "tool_call:t2",
+      "turn:assistant#2=C",
+    ]);
+    expect(body(merged)).toBe("ABC");
+  });
+
+  // 标记存在时缺尾段落在工具 run 之后（run 内的多个工具都属于该边界）。
+  test("缺尾段按标记落在工具 run 之后", () => {
+    const sync = project(["A", { tool: "t1" }, { tool: "t2" }, "B"]);
+    const merged = createSyncMessageMerger()([assistant("turn:assistant", "A"), tool("t1"), tool("t2")], sync);
+    expect(view(merged)).toEqual(["turn:assistant=A", "tool_call:t1", "tool_call:t2", "turn:assistant#1=B"]);
+    expect(body(merged)).toBe("AB");
+  });
+
+  // 重复子串在标记存在时按真实段边界切分，不做字符串贪心。
+  test("重复子串按标记精确切分", () => {
+    const sync = project(["A", { tool: "t1" }, "AB", { tool: "t2" }, "B"]);
+    const merged = createSyncMessageMerger()(
+      [assistant("turn:assistant", "A"), tool("t1"), tool("t2"), assistant("turn:assistant#2", "B")],
+      sync,
+    );
+    expect(view(merged)).toEqual([
+      "turn:assistant=A",
+      "tool_call:t1",
+      "turn:assistant#1=AB",
+      "tool_call:t2",
+      "turn:assistant#2=B",
+    ]);
+    expect(body(merged)).toBe("AABB");
   });
 });
 

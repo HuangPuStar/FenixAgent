@@ -82,7 +82,10 @@ export interface SyncContentProjectionHub {
 
 interface ParsedPart {
   readonly index: number;
+  readonly kind: "text" | "boundary";
   readonly text: string;
+  /** 边界记录的工具 id：用于重放/重复标记去重；缺失时按普通边界处理。 */
+  readonly toolCallId: string | null;
 }
 
 interface DocEntryContribution {
@@ -107,10 +110,10 @@ interface GlobalEntry {
   readonly byDoc: Map<string, DocEntryContribution>;
   firstEntryOrder: number | null;
   completedAt: number | null;
-  /** 正文缓存：只有贡献变化的 entry 才重新拼接。 */
-  text: string | null;
+  /** 正文分段缓存：有序工具边界把文本切成与旧投影一致的段。 */
+  segments: Array<{ ordinal: number; text: string }> | null;
+  messages: StructuredMessage[] | null;
   signature: string | null;
-  message: StructuredMessage | null;
 }
 
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -199,6 +202,20 @@ function parseDoc(mirror: MirrorDoc): {
       recordCount += 1;
       continue;
     }
+    if (kind === "tool_boundary") {
+      // 有序工具边界：载荷是工具 id 的保真 JSON 字符串；坏载荷仍保留边界（无法去重但不丢正文）。
+      let toolCallId: string | null = null;
+      try {
+        const value: unknown = JSON.parse(UTF8_DECODER.decode(payload));
+        if (typeof value === "string" && value.length > 0) toolCallId = value;
+      } catch {
+        toolCallId = null;
+      }
+      entry.parts.push({ index, kind: "boundary", text: "", toolCallId });
+      entry.recordCount += 1;
+      recordCount += 1;
+      continue;
+    }
     if (kind === "text_part") {
       // 历史记录的载荷是保真 JSON：字符串值带引号与转义，直接按 UTF-8 当正文会显示成 `"hello"`。
       // 实时 `text` 记录才是裸 UTF-8 片段（见 live-writer 的 writeText）。
@@ -208,7 +225,7 @@ function parseDoc(mirror: MirrorDoc): {
           skippedRecords += 1;
           continue;
         }
-        entry.parts.push({ index, text: value });
+        entry.parts.push({ index, kind: "text", text: value, toolCallId: null });
         entry.recordCount += 1;
         recordCount += 1;
       } catch {
@@ -223,7 +240,7 @@ function parseDoc(mirror: MirrorDoc): {
     }
     try {
       const text = UTF8_DECODER.decode(payload);
-      entry.parts.push({ index, text });
+      entry.parts.push({ index, kind: "text", text, toolCallId: null });
       entry.recordCount += 1;
       recordCount += 1;
     } catch {
@@ -259,9 +276,9 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     }
     entry.firstEntryOrder = firstEntryOrder;
     entry.completedAt = completedAt;
-    entry.text = null;
+    entry.segments = null;
+    entry.messages = null;
     entry.signature = null;
-    entry.message = null;
   }
 
   /** 同一 entry 的内容未变时复用旧贡献对象，保住正文/消息对象引用（React.memo 依赖）。 */
@@ -278,7 +295,13 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     for (let index = 0; index < left.parts.length; index += 1) {
       const leftPart = left.parts[index]!;
       const rightPart = right.parts[index]!;
-      if (leftPart.index !== rightPart.index || leftPart.text !== rightPart.text) return false;
+      if (
+        leftPart.index !== rightPart.index ||
+        leftPart.kind !== rightPart.kind ||
+        leftPart.text !== rightPart.text ||
+        leftPart.toolCallId !== rightPart.toolCallId
+      )
+        return false;
     }
     return true;
   }
@@ -311,9 +334,9 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
           byDoc: new Map(),
           firstEntryOrder: null,
           completedAt: null,
-          text: null,
+          segments: null,
+          messages: null,
           signature: null,
-          message: null,
         };
         entries.set(entryId, entry);
       }
@@ -364,31 +387,81 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
     let seq = 0;
     for (const row of rows) {
       const entry = row.entry;
-      if (entry.text === null) {
-        const parts: Array<{ rank: number; index: number; text: string }> = [];
+      if (entry.segments === null) {
+        const parts: Array<{
+          rank: number;
+          index: number;
+          kind: "text" | "boundary";
+          text: string;
+          toolCallId: string | null;
+        }> = [];
         for (const [docId, contribution] of entry.byDoc) {
           const docRank = rank.get(docId);
           if (docRank === undefined) continue;
-          for (const part of contribution.parts) parts.push({ rank: docRank, index: part.index, text: part.text });
+          for (const part of contribution.parts) {
+            parts.push({
+              rank: docRank,
+              index: part.index,
+              kind: part.kind,
+              text: part.text,
+              toolCallId: part.toolCallId,
+            });
+          }
         }
         parts.sort((left, right) => left.rank - right.rank || left.index - right.index);
-        entry.text = parts.map((part) => part.text).join("");
+        // 有序边界把正文切成段：连续边界（同一工具 run）不产生空段；
+        // 同一 toolCallId 的重放标记被忽略，避免在文本中间多切一段。
+        const segments: Array<{ ordinal: number; text: string }> = [];
+        const seenBoundaries = new Set<string>();
+        let current = "";
+        let ordinal = 0;
+        const flush = (): void => {
+          if (current.length === 0) return;
+          segments.push({ ordinal, text: current });
+          ordinal += 1;
+          current = "";
+        };
+        for (const part of parts) {
+          if (part.kind === "boundary") {
+            if (part.toolCallId !== null) {
+              if (seenBoundaries.has(part.toolCallId)) continue;
+              seenBoundaries.add(part.toolCallId);
+            }
+            flush();
+            continue;
+          }
+          current += part.text;
+        }
+        flush();
+        entry.segments = segments;
       }
-      const text = entry.text;
-      if (text.length === 0) continue;
+      const segments = entry.segments;
+      if (segments.length === 0) continue;
       const ts = entry.completedAt ?? 0;
       const type = row.entryId.endsWith(":user") ? "user_message" : "assistant_message";
-      const signature = `${String(seq)}|${type}|${String(ts)}|${text}`;
-      if (entry.message === null || entry.signature !== signature) {
-        // 内容未变的 entry 复用同一个消息对象，旧 ChatView 的 React.memo 才能跳过整棵子树。
-        entry.message =
-          type === "user_message"
-            ? { type: "user_message", id: row.entryId, content: text, seq, ts }
-            : { type: "assistant_message", id: row.entryId, chunks: [{ type: "message", text }], seq, ts };
+      const signature = `${String(seq)}|${type}|${String(ts)}|${segments
+        .map((segment) => `${String(segment.ordinal)}:${segment.text}`)
+        .join("\u0000")}`;
+      if (entry.messages === null || entry.signature !== signature) {
+        // 内容未变的 entry 复用同一批消息对象，旧 ChatView 的 React.memo 才能跳过整棵子树。
+        entry.messages = segments.map((segment, index) => {
+          const id = segment.ordinal === 0 ? row.entryId : `${row.entryId}#${segment.ordinal}`;
+          const messageSeq = seq + index;
+          return type === "user_message"
+            ? { type: "user_message", id, content: segment.text, seq: messageSeq, ts }
+            : {
+                type: "assistant_message",
+                id,
+                entryBaseId: row.entryId,
+                chunks: [{ type: "message", text: segment.text }],
+                seq: messageSeq,
+                ts,
+              };
+        });
         entry.signature = signature;
       }
-      messages.push(entry.message);
-      seq += 1;
+      for (const message of entry.messages) messages.push(message);
+      seq += entry.messages.length;
     }
 
     return Object.freeze({

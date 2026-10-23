@@ -92,7 +92,16 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     localCreate = false,
   } = options;
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope 只作为重建合并器的驱动键，合并器函数体不读取它。
-  const merger = useMemo(() => createSyncMessageMerger(), [scope]);
+  const merger = useMemo(
+    () =>
+      createSyncMessageMerger(undefined, {
+        onDegraded: (degradation) => {
+          // 旧数据没有有序工具标记或边界不可判定：只记录内部标识与原因码，不含正文。
+          console.warn("[chat-merge] degraded", degradation.entryId, degradation.reason);
+        },
+      }),
+    [scope],
+  );
   const latest = useRef<LatestInput>({ scope, legacy, sync, merger });
 
   const [display, setDisplay] = useState<{ scope: string; messages: StructuredMessage[]; hydrating: boolean }>(() => ({

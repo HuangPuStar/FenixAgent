@@ -1,5 +1,6 @@
 import type { StructuredMessage } from "@fenix/chat-channel";
-import { applyLosslessEntryMerge, assistantText } from "./sync-chat-entry-merge";
+import { applyLosslessEntryMerge } from "./sync-chat-entry-merge";
+import { assistantText, type MergeDegradation } from "./sync-chat-merge-types";
 
 /** 助手消息异 ID 双写的实时配对窗口；用户消息按出现次数与轮次锚点配对，不受该窗口限制。 */
 export const SYNC_MESSAGE_MATCH_WINDOW_MS = 5000;
@@ -155,6 +156,11 @@ export interface SyncMessageMergerOptions {
    * 新投影为空时保留旧全量，覆盖回退与导入未就绪场景。
    */
   readonly retireLegacyText?: boolean;
+  /**
+   * 有序工具标记缺失或边界不可判定时的降级回调；每个 entry + 原因只上报一次。
+   * 仅含内部标识与原因码，不含正文/工具参数，供日志或遥测消费。
+   */
+  readonly onDegraded?: (degradation: MergeDegradation) => void;
 }
 
 /**
@@ -171,6 +177,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
   let previous: StructuredMessage[] = [];
   let aliases = new Map<string, string>();
   let observed = new Map<string, number>();
+  const degradedReported = new Set<string>();
 
   return (
     legacyInput: readonly StructuredMessage[],
@@ -180,6 +187,12 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     // 分段/工具邻接 entry 先做无损合并：新正文补齐旧侧缺段后再进入通用配对，
     // 避免整段文本顶替工具前的段落，也避免旧侧永不追平时丢失新正文。
     const injected = applyLosslessEntryMerge(legacyInput, syncInput);
+    for (const degradation of injected.degraded) {
+      const key = `${degradation.entryId}\u0000${degradation.reason}`;
+      if (degradedReported.has(key)) continue;
+      degradedReported.add(key);
+      options.onDegraded?.(degradation);
+    }
     const legacy = injected.legacy;
     const sync =
       injected.consumedSyncIds.size === 0
