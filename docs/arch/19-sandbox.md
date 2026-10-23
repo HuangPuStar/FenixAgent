@@ -363,6 +363,15 @@ RCS_URL=ws://...
 
 Provider 返回资源已就绪，不代表 FenixAgent 已经可以使用该沙盒。只有使用对应 `machine_id` 的 ACP runtime 回连并完成现有 Machine 注册后，`sandbox_instance` 才能进入 `ready`。如果沙盒进程启动成功但 ACP runtime 没有回连，启动流程会先查询并尝试恢复原 Provider 资源，仍失败时再销毁并重建；重建后仍未回连才进入 `error`，并保留外部资源引用。
 
+### 5.4.1 失联后的按需恢复
+
+1. Chat、API 和 Workflow 共用的 Instance ensure 在占用生命周期操作槽位前，检查由 Machine 断连产生的 `unknown`。Sandbox 按已绑定的 Machine 查询已有记录并核对实例属主；普通机器、其他用户、手动停止、删除与 shutdown 不自动恢复。
+2. 可执行判定使用 MachineHostPort 提供的当前 ACP 能力：socket 有效、当前连接 clean-slate 已确认、transport 和 AgentNode 已激活、Core 节点 online。数据库 `ready/online` 或 Provider `ready` 不能单独证明就绪。
+3. 原资源停止时先 resume；资源明确不存在或 error 时替换；资源声称可用但 ACP 持续超时，才复查并重建。Provider 查询、认证、网络或服务端错误直接传播，不视为资源不存在。
+4. 同一进程按业务沙盒 ID 合并整轮恢复；单请求取消只结束自身等待。Provider 副作用使用现有行锁，锁内复查恢复意图与外部资源身份；ACP 等待放在事务外，旧超时不得销毁其他请求的新资源。一轮最多恢复原资源一次、重建一次，初始协调已经替换过资源时不连续重建。
+5. 旧资源明确不存在或销毁成功后，先经 Machine 释放入口收敛旧 runtime 与配额，再创建新资源。失败状态先提交、再传播原异常；新资源创建失败仍保留旧实体已终止的事实。超时回写只作用于仍匹配的资源。
+6. 恢复后由 Instance coordinator 重新判断最新意图，以原 instanceUid 启动；不重放被中断的任务。该机制仅由进入/主动重试触发，不做后台对账，也不改变已打开页面的自动重连策略。
+
 ### 5.5 显式删除与重建
 
 修改资源池配置只写入数据库，不直接修改正在运行的 Provider 沙盒；需要让资源池默认值作用到存量 Instance 时调用 rebuild。rebuild 按资源池当前默认配置和 Instance 的 `resource_overrides` 重新生成 `resolved_config`，只有快照发生变化的 Instance 才销毁旧 Provider 资源。

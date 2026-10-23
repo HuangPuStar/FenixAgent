@@ -75,10 +75,14 @@ test("retries the existing provider resource after the first ACP timeout", async
   const manager = {
     getPool: async () => ({ id: "pool_default", providerKey: "test-provider", image: "sandbox:test" }),
     createOrReuse: async () => ({ id: "sbi_recover", machineId: "mach_sandbox_sbi_recover", status: "starting" }),
-    restart: async () => {
+    repairRuntime: async (_id: string, options: { recreate?: boolean }) => {
       restartCalled = true;
+      recoverCalled = Boolean(options.recreate);
       online = true;
-      return { id: "sbi_recover", machineId: "mach_sandbox_sbi_recover", status: "starting" };
+      return {
+        instance: { id: "sbi_recover", machineId: "mach_sandbox_sbi_recover", status: "starting" },
+        replaced: false,
+      };
     },
     recover: async () => {
       recoverCalled = true;
@@ -111,21 +115,22 @@ test("retries the existing provider resource after the first ACP timeout", async
 });
 
 // 原 Provider 资源无法恢复且再次等待仍失败时，才销毁旧资源并重建。
-test("recreates the sandbox when retrying the existing provider resource fails", async () => {
+test("recreates the sandbox after the existing resource stays disconnected", async () => {
   let restartCalled = false;
   let recoverCalled = false;
   let online = false;
   const manager = {
     getPool: async () => ({ id: "pool_default", providerKey: "test-provider", image: "sandbox:test" }),
     createOrReuse: async () => ({ id: "sbi_rebuild", machineId: "mach_sandbox_sbi_rebuild", status: "starting" }),
-    restart: async () => {
-      restartCalled = true;
-      throw new Error("provider resource is not recoverable");
-    },
-    recover: async () => {
-      recoverCalled = true;
-      online = true;
-      return { id: "sbi_rebuild", machineId: "mach_sandbox_sbi_rebuild", status: "starting" };
+    repairRuntime: async (_id: string, options: { recreate?: boolean }) => {
+      if (options.recreate) {
+        recoverCalled = true;
+        online = true;
+      } else restartCalled = true;
+      return {
+        instance: { id: "sbi_rebuild", machineId: "mach_sandbox_sbi_rebuild", status: "starting" },
+        replaced: Boolean(options.recreate),
+      };
     },
     markError: async () => {
       throw new Error("must not be called");

@@ -231,7 +231,7 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 4. 清理完成前不得向新连接报告 ready；
 5. 重连后先确认前一连接世代 `cleanup_complete`；
 6. 主服务收到确认前不得在该 Machine 上启动相同 Instance；
-7. Machine 长期不可用时，相关 Instance 保持 `unknown`，本期不提供 force-delete。
+7. 普通 Machine 长期不可用时，相关 Instance 保持 `unknown`，本期不提供 force-delete。托管 Sandbox 可在再次进入时通过下述按需恢复确认旧资源终止。
 
 服务重启不扫描 DB 自动启动 Instance。clean-slate 完成后，后续 enter/ensure 才能以原 `instanceUid` 创建新的 Runtime Incarnation。
 
@@ -243,7 +243,7 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 - 机器断连把实例标记为 `unknown` 时（`packages/agent-runtime/src/server/transport/acp-ws-handler.ts` 的 `performMachineCleanup`（:522 起，置态调用在 :549）与 `triggerMachineCleanupByMachineId`（:593 起，置态调用在 :617）），协调器在内存中记录该条目归属的 `machineId`（`agent-instance-runtime-coordinator.ts:34` 的 entry 字段，由 `handleRuntimeDisconnect` 的 `machineId` 入参写入，见 :107、:201）；该归属不进 `RuntimeSnapshot`（对外快照字段见 :63-73），也不进任何对外响应。
 - 本次修复新增 `AgentInstanceRuntimeCoordinator.handleMachineCleanSlate(machineId): string[]`（`agent-instance-runtime-coordinator.ts:122`，服务层转发见 `agent-instance-service.ts:165-167`）：只复位「归属该 `machineId` + 状态为 `unknown` + 无在飞 operation」的条目（判定见 :126-131），复位动作为私有 `#resolveUnknown`（:206），置为 `stopped` 并推进 generation；条目若有在飞 operation，则先置延后标记（:127-130），待 operation 释放槽位后再复位（守卫与补做见 :264-265）。
 - 调用点位于 `acp-ws-handler.ts` 的 `clean_slate_confirmed` 分支（:372-404，复位调用在 :396），且放在 `activateRemoteMachine` 的 try/catch 之外，宿主激活失败不影响复位。
-- 该复位不覆盖：`stop`/`delete` 操作失败产生的 `unknown`、shutdown 排空产生的 `unknown`（二者不带机器归属，不参与复位、保持 `unknown`，仍须先完成 clean-slate/reconcile；`unknown` gate 仍只放行 `stop`，见 :227-228）；机器不重连时按上文第 7 条保持 `unknown`。
+- 该复位不覆盖：`stop`/`delete` 操作失败产生的 `unknown`、shutdown 排空产生的 `unknown`（二者不带机器归属，不参与复位、保持 `unknown`，仍须先完成 clean-slate/reconcile；`unknown` gate 仍只放行 `stop`，见 :227-228）；普通机器不重连时按上文第 7 条保持 `unknown`；托管沙盒允许下述按需恢复。
 - shutdown 中同样不参与复位：`handleMachineCleanSlate` 与延后补做都带 `!this.#shuttingDown` 守卫（:123、:264），原因见 :262-263 注释——进程退出中不得把 shutdown drain 留下的未确认 runtime 伪装成 `stopped`。delete 被断连 fence 后 `deleting` 残留属相邻缺口，本次不修。
 
 ### 沙盒销毁/机器退役的确定终止（2026-10-21）
@@ -255,6 +255,13 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 - ACP 断连 / 重连路径不设置该标记，`unknown` 仍只能由 Machine clean-slate 复位。
 
 未做这一步时，沙盒配置变更销毁资源后条目会停留在 `running` 或 `unknown`：前者让下一次 `ensure` 直接返回（沙盒永远不重建），后者让 `ensure`/`restart` 被 `unknown` gate 拒绝（实例启动 500）。
+
+### 托管 Sandbox 的进入恢复
+
+- `AgentInstanceService.ensureInstanceRuntime` 在 ensure 占槽前获取只读断连恢复上下文；等待在飞操作结束，排除手动停止、删除、shutdown 和非断连来源的 unknown。意图谓词绑定 operationId、generation 与 Machine，不修改运行状态。
+- Sandbox 的公开执行入口按已有 Machine 及属主恢复资源，依赖方向保持 `agent-runtime → sandbox → machine`。Runtime 不查询 Sandbox repository，不因恢复函数返回成功就清除 unknown。
+- 只有 Machine clean-slate 或 Provider 确认旧资源不存在/销毁成功，才允许复位 unknown；确定终止同步释放执行与 session 配额，在创建替换资源之前完成。新建失败不恢复旧状态，迟到的旧 generation 事件不得影响新 runtime。
+- 恢复结束再次进入 coordinator 的原 ensure 仲裁，保留用户停止/删除等最新意图及原 instanceUid；共享恢复的请求取消互不影响。没有后台自动恢复或中断任务重放，详情见 [Sandbox 按需恢复](./19-sandbox.md#_5-4-1-失联后的按需恢复)。
 
 ## 10. 安全、故障与观测
 

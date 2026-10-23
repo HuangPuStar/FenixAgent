@@ -12,6 +12,7 @@ import {
   getAcpEventBus,
   getAgentNodeService,
   getAllEventBuses,
+  isMachineAcpReady,
   removeEventBus,
   triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
@@ -108,6 +109,7 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
     // 路径不同：sandbox 已销毁时旧 Agent 进程不可能回连，实例运行态必须直接复位为 stopped。
     unregisterCoreRuntimeNode: (machineId) => unregisterRemoteNode(machineId, { runtimeTerminated: true }),
     findMachineConnectionById,
+    isMachineAcpReady,
     triggerMachineCleanupByMachineId,
   });
   // Machine 包读 environment 的两个原语（记录读取 + 归属校验）：实现仍在 agent-runtime，由此处转发。

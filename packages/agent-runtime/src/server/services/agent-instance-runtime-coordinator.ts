@@ -53,6 +53,12 @@ export interface RuntimeCoordinatorOptions {
   shutdownDrainTimeoutMs?: number;
 }
 
+/** 仅由机器断连产生、且尚未被其他生命周期意图接管的恢复上下文。 */
+export interface RuntimeRecoveryContext {
+  machineId: string;
+  isCurrent(): boolean;
+}
+
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 10_000;
 const PRIORITY: Record<RuntimeLifecycleOperation, number> = { ensure: 0, reclaim: 1, restart: 2, stop: 3, delete: 4 };
 
@@ -88,6 +94,40 @@ export class AgentInstanceRuntimeCoordinator {
 
   ensureRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
     return this.#run(instance, "ensure", "strict", signal);
+  }
+
+  /** 在 ensure 占槽前读取恢复意图，避免与 clean-slate 的延后复位互相等待。 */
+  async getDisconnectedRecovery(instanceUid: string, signal?: AbortSignal): Promise<RuntimeRecoveryContext | null> {
+    const entry = this.#entries.get(instanceUid);
+    if (entry?.state !== "unknown" || entry.manuallyStopped || entry.deleting || this.#shuttingDown) return null;
+    if (entry.operationPromise)
+      await this.#wait(
+        entry.operationPromise.catch(() => undefined),
+        signal,
+      );
+    signal?.throwIfAborted();
+    if (
+      entry.state !== "unknown" ||
+      !entry.machineId ||
+      entry.operation ||
+      entry.manuallyStopped ||
+      entry.deleting ||
+      this.#shuttingDown
+    )
+      return null;
+    const { machineId, operationId, generation } = entry;
+    return {
+      machineId,
+      isCurrent: () =>
+        !this.#shuttingDown &&
+        !entry.manuallyStopped &&
+        !entry.deleting &&
+        !entry.operation &&
+        entry.state === "unknown" &&
+        entry.machineId === machineId &&
+        entry.operationId === operationId &&
+        entry.generation === generation,
+    };
   }
 
   restartRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
@@ -162,9 +202,11 @@ export class AgentInstanceRuntimeCoordinator {
       entry.generation += 1;
       entry.abortController?.abort(new Error("Runtime terminated with its machine"));
       entry.state = "stopped";
+      entry.runtimePresent = false;
       entry.machineId = null;
       entry.pendingCleanSlate = false;
       entry.lastFailure = null;
+      this.adapter.onStopped?.(instanceUid);
       resolved.push(instanceUid);
     }
     return resolved;

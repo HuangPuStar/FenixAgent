@@ -42,8 +42,102 @@ export type SandboxRemoteReconcilerDependencies = {
   releaseRuntime: (machineId: string) => void;
 };
 
+/** 超时恢复必须绑定原资源身份，并在副作用前复查请求意图。 */
+export type SandboxRuntimeRepairOptions = {
+  recreate?: boolean;
+  expectedExternalSandboxId?: string | null;
+  isCurrent?: () => boolean;
+};
+
+/** replaced 表示本轮已替换资源，后续连接超时不得再次重建。 */
+export type SandboxRuntimeRepairResult = { instance: SandboxInstance; replaced: boolean };
+
 export class SandboxRemoteReconciler {
   constructor(private readonly dependencies: SandboxRemoteReconcilerDependencies) {}
+
+  /** 只标记本次等待的资源，不能让旧超时覆盖替换后的成功状态。 */
+  async markRuntimeNotReady(expected: SandboxInstance): Promise<void> {
+    await this.withCommittedResult(expected.id, async (scope) => {
+      const current = await scope.findById(expected.id);
+      if (!current || current.status === "deleting" || current.externalSandboxId !== expected.externalSandboxId) return;
+      if (await this.dependencies.isMachineOnline(current.machineId)) return;
+      await scope.update(current.id, "error", { providerPayload: { reason: "sandbox_acp_connection_timeout" } });
+    });
+  }
+
+  /** 恢复现有资源；连接等待由调用方在事务外完成。 */
+  async repairWithLock(id: string, options: SandboxRuntimeRepairOptions): Promise<SandboxRuntimeRepairResult> {
+    return this.withCommittedResult(id, async (scope) => {
+      const instance = await scope.findById(id);
+      if (!instance || instance.status === "deleting")
+        throw new SandboxStateError(`sandbox instance '${id}' unavailable`);
+      const checkIntent = () => {
+        if (options.isCurrent && !options.isCurrent())
+          throw new SandboxStateError("sandbox recovery intent superseded");
+      };
+      if (await this.dependencies.isMachineOnline(instance.machineId)) return { instance, replaced: false };
+      checkIntent();
+      if (
+        options.expectedExternalSandboxId !== undefined &&
+        instance.externalSandboxId !== options.expectedExternalSandboxId
+      ) {
+        return { instance, replaced: true };
+      }
+      try {
+        const provider = this.dependencies.providers.get(instance.providerKey);
+        const ref = instance.externalSandboxId ? await provider.get(instance.externalSandboxId, id) : null;
+        // 查询期间机器可能已经完成重连；销毁前必须重新检查。
+        if (await this.dependencies.isMachineOnline(instance.machineId)) return { instance, replaced: false };
+        checkIntent();
+        if (!ref) {
+          this.releaseRuntime(instance.machineId);
+          const reset = await scope.update(id, "creating", { externalSandboxId: null, providerPayload: null });
+          if (!reset) throw new SandboxStateError(`sandbox instance '${id}' not found`);
+          return { instance: await this.createRemote(reset, scope), replaced: true };
+        }
+        if (options.recreate || ref.status === "error") {
+          return { instance: await this.recreateRemote(instance, scope), replaced: true };
+        }
+        const next =
+          ref.status === "stopped"
+            ? await this.resumeRemote(instance, provider, ref, scope)
+            : await this.saveProviderRef(id, ref, scope);
+        return { instance: next, replaced: false };
+      } catch (error) {
+        await scope.update(id, "error", { providerPayload: { reason: "sandbox_runtime_recovery_failed" } });
+        throw error;
+      }
+    });
+  }
+
+  /** 将已写入的失败事实提交后再抛出，避免 Provider 副作用与数据库回滚产生分歧。 */
+  private async withCommittedResult<T>(
+    id: string,
+    operation: (scope: SandboxInstanceLockScope) => Promise<T>,
+  ): Promise<T> {
+    const { instances } = this.dependencies;
+    const execute = async (scope: SandboxInstanceLockScope) => {
+      try {
+        return { ok: true as const, value: await operation(scope) };
+      } catch (error) {
+        return { ok: false as const, error };
+      }
+    };
+    const result = instances.withLock
+      ? await instances.withLock(id, execute)
+      : await execute({
+          findById: async (key) => (await instances.findById?.(key)) ?? null,
+          update: instances.update.bind(instances),
+          delete: async (key) => (await instances.delete?.(key)) ?? null,
+        });
+    if (!result.ok) throw result.error;
+    return result.value;
+  }
+
+  private releaseRuntime(machineId: string): void {
+    this.dependencies.releaseRuntime(machineId);
+    stopHeartbeat(machineId);
+  }
 
   /**
    * 协调同一个 sandbox_instance 的所有启动请求。
@@ -58,15 +152,17 @@ export class SandboxRemoteReconciler {
    */
   async reconcileWithLock(
     instance: SandboxInstance,
-    options?: { createMachine?: () => Promise<void> },
+    options?: { createMachine?: () => Promise<void>; onRecovery?: (action: "resume" | "replace") => void },
   ): Promise<SandboxInstance> {
     const { instances } = this.dependencies;
     if (!instances.withLock) {
       // 仅保留给未注入完整 repository 的单元测试；生产默认 repository 始终提供数据库锁。
       await options?.createMachine?.();
-      return options?.createMachine ? this.createRemote(instance) : this.reconcileExisting(instance);
+      return options?.createMachine
+        ? this.createRemote(instance)
+        : this.reconcileExistingWithRepository(instance, instances, options?.onRecovery);
     }
-    return instances.withLock(instance.id, async (scope) => {
+    return this.withCommittedResult(instance.id, async (scope) => {
       try {
         await options?.createMachine?.();
       } catch (error) {
@@ -76,7 +172,7 @@ export class SandboxRemoteReconciler {
       const locked = await scope.findById(instance.id);
       if (!locked) throw new SandboxStateError(`sandbox instance '${instance.id}' not found`);
       if (options?.createMachine) return this.createRemote(locked, scope);
-      return this.reconcileExistingWithRepository(locked, scope);
+      return this.reconcileExistingWithRepository(locked, scope, options?.onRecovery);
     });
   }
 
@@ -92,6 +188,7 @@ export class SandboxRemoteReconciler {
         );
         await this.dependencies.providers.get(instance.providerKey).destroy(instance.externalSandboxId, instance.id);
       }
+      this.releaseRuntime(instance.machineId);
       const reset = await repository.update(instance.id, "creating", {
         externalSandboxId: null,
         providerPayload: null,
@@ -100,7 +197,7 @@ export class SandboxRemoteReconciler {
       logger.info(`[recreate] creating provider resource sandboxId='${instance.id}'`);
       return this.createRemote(reset, repository);
     } catch (error) {
-      await repository.update(instance.id, "error", { providerPayload: { reason: "sandbox_recreate_failed", error } });
+      await repository.update(instance.id, "error", { providerPayload: { reason: "sandbox_recreate_failed" } });
       throw error;
     }
   }
@@ -140,13 +237,10 @@ export class SandboxRemoteReconciler {
     stopHeartbeat(instance.machineId);
   }
 
-  private async reconcileExisting(instance: SandboxInstance): Promise<SandboxInstance> {
-    return this.reconcileExistingWithRepository(instance, this.dependencies.instances);
-  }
-
   private async reconcileExistingWithRepository(
     instance: SandboxInstance,
     repository: Pick<SandboxInstanceLockScope, "update">,
+    onRecovery?: (action: "resume" | "replace") => void,
   ): Promise<SandboxInstance> {
     // 这里使用锁内重新读取的快照，并将所有状态回写委托给同一个锁作用域，
     // 确保 provider 创建成功后，externalSandboxId 与本次创建结果原子地落回数据库。
@@ -156,7 +250,10 @@ export class SandboxRemoteReconciler {
     if (instance.status === "deleting") throw new SandboxStateError(`sandbox instance '${instance.id}' is deleting`);
     if (["starting", "creating"].includes(instance.status)) return instance;
     if (instance.status === "ready" && (await this.dependencies.isMachineOnline(instance.machineId))) return instance;
-    if (instance.status === "error" && !instance.externalSandboxId) return this.createRemote(instance, repository);
+    if (instance.status === "error" && !instance.externalSandboxId) {
+      onRecovery?.("replace");
+      return this.createRemote(instance, repository);
+    }
 
     try {
       const provider = this.dependencies.providers.get(instance.providerKey);
@@ -165,14 +262,20 @@ export class SandboxRemoteReconciler {
         `[reconcile] provider result sandboxId='${instance.id}' providerSandboxId='${instance.externalSandboxId ?? ""}' providerStatus='${ref?.status ?? "missing"}'`,
       );
       if (!ref) {
+        onRecovery?.("replace");
         logger.warn(`[reconcile] provider resource missing, creating sandboxId='${instance.id}'`);
-        return this.createRemote(instance, repository);
+        this.releaseRuntime(instance.machineId);
+        const reset = await repository.update(instance.id, "creating", { externalSandboxId: null });
+        if (!reset) throw new SandboxStateError(`sandbox instance '${instance.id}' not found`);
+        return this.createRemote(reset, repository);
       }
       if (ref.status === "stopped") {
+        onRecovery?.("resume");
         logger.info(`[reconcile] provider resource stopped, resuming sandboxId='${instance.id}'`);
         return this.resumeRemote(instance, provider, ref, repository);
       }
       if (ref.status === "error") {
+        onRecovery?.("replace");
         logger.warn(`[reconcile] provider resource errored, recreating sandboxId='${instance.id}'`);
         return this.recreateRemote(instance, repository);
       }

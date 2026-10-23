@@ -423,6 +423,7 @@ const {
   bindSessionEventBusPort,
   environmentRepo,
   findMachineConnectionById,
+  isMachineAcpReady,
   getAgentNodeService,
   getAllEventBuses,
   removeEventBus,
@@ -485,6 +486,7 @@ bindMachineHostPort({
     coreBootstrapRegistry.get("unregisterRemoteNode")(machineId);
   },
   findMachineConnectionById,
+  isMachineAcpReady,
   triggerMachineCleanupByMachineId,
 });
 bindMachineEnvironmentPort({

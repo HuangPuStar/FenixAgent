@@ -49,6 +49,9 @@ export interface MachineHostPort {
   /** file-ws 连接索引中该机器的活跃连接；无连接返回 null。 */
   findMachineConnectionById(machineId: string): object | null;
 
+  /** 当前 ACP 已完成清场及运行节点激活，允许发送生命周期命令。 */
+  isMachineAcpReady(machineId: string): boolean;
+
   /** 触发该机器维度的 relay 清理（sweep 检出的断连无法关联具体 wsId，故按 machineId 清理）。 */
   triggerMachineCleanupByMachineId(machineId: string, reason: string): void;
 }
@@ -86,6 +89,7 @@ export function getMachineHostPort(): MachineHostPort {
   const getCoreRuntimeNode = override?.getCoreRuntimeNode ?? hostPort?.getCoreRuntimeNode;
   const unregisterCoreRuntimeNode = override?.unregisterCoreRuntimeNode ?? hostPort?.unregisterCoreRuntimeNode;
   const findMachineConnectionById = override?.findMachineConnectionById ?? hostPort?.findMachineConnectionById;
+  const isMachineAcpReady = override?.isMachineAcpReady ?? hostPort?.isMachineAcpReady;
   const triggerMachineCleanupByMachineId =
     override?.triggerMachineCleanupByMachineId ?? hostPort?.triggerMachineCleanupByMachineId;
   if (
@@ -93,6 +97,7 @@ export function getMachineHostPort(): MachineHostPort {
     !getCoreRuntimeNode ||
     !unregisterCoreRuntimeNode ||
     !findMachineConnectionById ||
+    !isMachineAcpReady ||
     !triggerMachineCleanupByMachineId
   ) {
     throw new Error("MachineHostPort has not been bound");
@@ -102,6 +107,7 @@ export function getMachineHostPort(): MachineHostPort {
     getCoreRuntimeNode,
     unregisterCoreRuntimeNode,
     findMachineConnectionById,
+    isMachineAcpReady,
     triggerMachineCleanupByMachineId,
   };
 }
