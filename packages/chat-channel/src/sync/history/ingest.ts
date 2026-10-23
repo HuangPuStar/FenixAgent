@@ -27,7 +27,7 @@ import { fidelitySerialize, scanJsonText } from "./fidelity-json";
 import type { HistorySpool, SpoolManifest, SpoolTask } from "./spool";
 
 /** 历史记录的三种来源形态：整对象、长文本/长载荷片段、工具对象（设计 §4.2 的扁平记录 kind）。 */
-export type HistoryRecordKind = "history_object" | "text_part" | "tool_object";
+export type HistoryRecordKind = "history_object" | "text_part" | "tool_object" | "tool_boundary";
 
 /** 记录头（不含正文）：身份、槽位与拼接位置。 */
 export interface HistoryRecordMeta {
@@ -113,6 +113,7 @@ function assertRecordKind(value: unknown): HistoryRecordKind {
     case "history_object":
     case "text_part":
     case "tool_object":
+    case "tool_boundary":
       return value;
     default:
       throw malformed("unknown history record kind");

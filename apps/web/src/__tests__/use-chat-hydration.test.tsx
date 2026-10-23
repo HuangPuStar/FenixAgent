@@ -3,17 +3,21 @@
 // 新协议基线在途时同步投影冻结，基线齐备后一次合并。使用真实 hook + happy-dom，不 mock 模块。
 
 import { describe, expect, test } from "bun:test";
-import type { StructuredMessage } from "@fenix/chat-channel";
+import { createYjsStore, type NormalizedEvent, type StructuredMessage } from "@fenix/chat-channel";
+import { applyNormalizedEvent, createChatDoc, createSessionDoc } from "@fenix/chat-channel/server";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { chatDocEntriesToStructuredMessages } from "@fenix/web-runtime/chat/structured-to-thread";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import * as Y from "yjs";
 import {
   applyChatHydration,
   type ChatHydrationState,
   type UseChatHydrationOptions,
   useChatHydration,
 } from "../../../../packages/agent-runtime/web/hooks/use-chat-hydration";
+import { createSyncContentProjectionHub } from "../../../../packages/agent-runtime/web/yjs/sync-doc-hub";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -347,4 +351,108 @@ describe("useChatHydration", () => {
 
     act(() => root.unmount());
   });
+});
+
+// 真实链路：YjsStore 派生旧投影 + SyncContentProjectionHub 从有序工具标记切段 + useChatHydration 合并。
+// 标记存在时缺失段必须精确落在工具之后，而不是走字符串启发式。
+test("真实 YjsStore + 投影 hub + hook：标记存在时精确落位", async () => {
+  const chat = createChatDoc("rcs-hook-marker", null).ydoc;
+  const session = createSessionDoc("rcs-hook-marker", null).ydoc;
+  const pair = { chat, session };
+  const event = (
+    type: NormalizedEvent["type"],
+    update: Record<string, unknown> = {},
+    turnId = "turn-hook",
+  ): NormalizedEvent =>
+    ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问" } }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "A" } }));
+  applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-h", title: "Read" }));
+
+  const store = createYjsStore(chatDocEntriesToStructuredMessages, []);
+  store.switchDoc("hook-scope", () => ({ ydoc: new Y.Doc() }));
+  store.applyUpdate(Y.encodeStateAsUpdate(chat));
+  await wait(60);
+  const legacy = store.getSnapshot();
+
+  const content = new Y.Doc();
+  const records = new Y.Array<Record<string, unknown>>();
+  content.getMap("root").set("records", records);
+  const encoder = new TextEncoder();
+  records.push([
+    {
+      recordId: "r0",
+      entryId: "turn-hook:assistant",
+      entryOrder: 1,
+      contentSlot: "text",
+      partIndex: 0,
+      kind: "text",
+      payload: encoder.encode("A"),
+    },
+    {
+      recordId: "r1",
+      entryId: "turn-hook:assistant",
+      entryOrder: 1,
+      contentSlot: "boundary",
+      partIndex: 1,
+      kind: "tool_boundary",
+      payload: encoder.encode(JSON.stringify("tool-h")),
+    },
+    {
+      recordId: "r2",
+      entryId: "turn-hook:assistant",
+      entryOrder: 1,
+      contentSlot: "text",
+      partIndex: 2,
+      kind: "text",
+      payload: encoder.encode("B"),
+    },
+  ]);
+  const hub = createSyncContentProjectionHub({ onProjection: () => {} });
+  hub.applyUpdate({ docId: "sync/content/gen/0/nonce", generation: "gen", payload: Y.encodeStateAsUpdate(content) });
+  const sync = hub.snapshot().messages;
+
+  const latest: { current: ChatHydrationState | null } = { current: null };
+  const options: UseChatHydrationOptions = {
+    scope: "hook-marker",
+    legacy,
+    sync,
+    sourceReady: true,
+    liveActive: false,
+    noReplaySession: true,
+  };
+  function Probe() {
+    latest.current = useChatHydration(options);
+    return null;
+  }
+  const container = win.document.createElement("div");
+  const root = createRoot(container as unknown as HTMLElement);
+  act(() => root.render(createElement(Probe)));
+  await act(async () => {
+    await wait(350);
+  });
+  expect(latest.current?.hydrating).toBe(false);
+  expect(latest.current?.messages.map((message) => message.id)).toEqual([
+    "turn-hook:user",
+    "turn-hook:assistant",
+    "tool-h",
+    "turn-hook:assistant#1",
+  ]);
+  expect(
+    latest.current?.messages
+      .map((message) =>
+        message.type === "assistant_message"
+          ? message.chunks.map((chunk) => (chunk.type === "message" ? chunk.text : "")).join("")
+          : "",
+      )
+      .join(""),
+  ).toBe("AB");
+
+  act(() => root.unmount());
+  hub.dispose();
+  content.destroy();
+  store.destroy();
+  chat.destroy();
+  session.destroy();
 });
