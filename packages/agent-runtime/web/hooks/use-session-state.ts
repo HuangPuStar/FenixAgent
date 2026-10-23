@@ -121,11 +121,8 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   }
 
   return {
-    // agent.acpSessionId 只在 agent_status 帧投影（连接建立时，值为 null）；
-    // create/load 成功后回退读取 session.sessionId（session_updated 投影），
-    // 否则前端 send_prompt 永远不带 sessionId（多会话共享 relay 时路由错乱）
-    acpSessionId:
-      (agent?.get("acpSessionId") as string | undefined) ?? (session?.get("sessionId") as string | undefined) ?? "",
+    // Agent status 会跨投影换代保留，可能仍携带旧 locator；动作目标只取当前会话投影。
+    acpSessionId: (session?.get("sessionId") as string | undefined) ?? "",
     sessionStatus: (session?.get("status") as SessionDocStatus | undefined) ?? null,
     // 展示态投影字段缺失（Session Doc 尚未同步）时给安全默认值：
     // presenting="idle"、loading=null、canCancel=false
