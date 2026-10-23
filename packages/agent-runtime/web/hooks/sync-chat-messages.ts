@@ -4,6 +4,30 @@ import { applyLosslessEntryMerge, assistantText } from "./sync-chat-entry-merge"
 /** 助手消息异 ID 双写的实时配对窗口；用户消息按出现次数与轮次锚点配对，不受该窗口限制。 */
 export const SYNC_MESSAGE_MATCH_WINDOW_MS = 5000;
 
+/**
+ * 新投影消息的内部 key 前缀。NUL 不会出现在协议标识中（标识符禁止控制字符），
+ * 因此不会与任何真实 legacy 消息 id（例如恰好叫 `sync:e` 的条目）碰撞。
+ */
+const SYNC_ALIAS_PREFIX = "\u0000sync:";
+
+function syncAliasKey(id: string): string {
+  return `${SYNC_ALIAS_PREFIX}${id}`;
+}
+
+/** 新投影消息与旧消息同 id 时的可打印候选 key 前缀；生成前必须对全部既有 id/key 查重。 */
+const SYNC_MESSAGE_KEY_PREFIX = "sync-ext:";
+
+function uniqueMessageKey(id: string, reserved: Set<string>): string {
+  let key = `${SYNC_MESSAGE_KEY_PREFIX}${id}`;
+  let suffix = 1;
+  while (reserved.has(key)) {
+    key = `${SYNC_MESSAGE_KEY_PREFIX}${id}#${suffix}`;
+    suffix += 1;
+  }
+  reserved.add(key);
+  return key;
+}
+
 type TextMessage = Extract<StructuredMessage, { type: "user_message" | "assistant_message" }>;
 
 function isText(message: StructuredMessage): message is TextMessage {
@@ -223,7 +247,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     for (const message of sync) {
       // 分段 entry 不参与配对：旧结构决定工具顺序，合并文本只作为缺段时的兜底消息。
       if (segmentedBases.has(message.id)) continue;
-      const alias = aliases.get(`sync:${message.id}`);
+      const alias = aliases.get(syncAliasKey(message.id));
       let match = legacyById.get(message.id);
       // 同 id 不同角色不是双写（例如用户与助手共用 key），不得配对后互相顶替。
       if (match !== undefined && match.type !== message.type) match = undefined;
@@ -261,7 +285,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       if (message.type !== "assistant_message" || pairedSyncs.has(message)) continue;
       if (segmentedBases.has(message.id) || exactIds.has(message.id)) continue;
       // 已绑定别名的同步消息代表上一轮已显示的条目，不能再次抵消另一条旧消息。
-      if (aliases.has(`sync:${message.id}`) || coverageIds.has(message.id)) continue;
+      if (aliases.has(syncAliasKey(message.id)) || coverageIds.has(message.id)) continue;
       coverageIds.add(message.id);
       const text = normalizedText(textOf(message));
       coverage.push({ text });
@@ -302,20 +326,30 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
         takeCoverage(normalizedText(textOf(message)))
       )
         continue;
-      const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
+      const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(syncAliasKey(pair.id))) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
-      if (pair) nextAliases.set(`sync:${pair.id}`, key);
+      if (pair) nextAliases.set(syncAliasKey(pair.id), key);
       candidates.set(key, pair ? preferredMessage(message, pair) : message);
       times.set(key, legacyTimes.get(message) ?? now());
       legacyKeys.push(key);
     }
+    // 新投影消息与旧消息同 id（或与已占用 key 相同）时，需要一个可打印且全局唯一的候选 key；
+    // 保留集覆盖全部 legacy/sync id 与已分配 key，避免覆盖任何既有消息。
+    const reservedCandidateKeys = new Set<string>([
+      ...legacyById.keys(),
+      ...sync.map((message) => message.id),
+      ...candidates.keys(),
+    ]);
     for (const message of sync) {
       // 旧分段完整覆盖时合并文本退役；缺段（分页/旧结构缺失）时保留为兜底，不能整条丢弃。
       if (segmentedBases.has(message.id) && coveredBySegments(message)) continue;
-      if (nextAliases.has(`sync:${message.id}`)) continue;
+      if (nextAliases.has(syncAliasKey(message.id))) continue;
       // 同 id 已属于另一种角色的旧消息时改用独立 key，两侧都能显示，不能互相覆盖。
-      const key = aliases.get(`sync:${message.id}`) ?? (legacyById.has(message.id) ? `sync:${message.id}` : message.id);
-      nextAliases.set(`sync:${message.id}`, key);
+      let key = aliases.get(syncAliasKey(message.id)) ?? message.id;
+      if (legacyById.has(message.id) || candidates.has(key)) {
+        key = uniqueMessageKey(message.id, reservedCandidateKeys);
+      }
+      nextAliases.set(syncAliasKey(message.id), key);
       candidates.set(key, message);
       times.set(key, syncTimes.get(message) ?? now());
     }

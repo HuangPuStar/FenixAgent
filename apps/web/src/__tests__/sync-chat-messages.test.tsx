@@ -156,11 +156,12 @@ describe("新旧消息合并视图", () => {
       "turn-page:user",
       "turn-page:assistant",
       "t1",
+      "turn-page:assistant#1",
       "t2",
       "turn-page:assistant#2",
     ]);
-    // 无法判定的中段并入紧随其后的已知段（C → BC），保证正文完整且文本顺序 A→B→C。
-    expect(textOf(merged[4]!)).toBe("BC");
+    // 分段序号 0→2 且其间恰好 2 个工具：缺段 #1 落在 t1 与 t2 之间，工具位置不被跨越。
+    expect(merged.map((message) => textOf(message))).toEqual(["", "A", "", "B", "", "C"]);
     expect(merged.map((message) => textOf(message)).join("")).toBe("ABC");
   });
 
@@ -260,7 +261,7 @@ describe("新旧消息合并视图", () => {
   // 对抗验证 M11：用户与助手同 id 时不能互相顶替，两侧正文都必须可见。
   test("用户与助手同 key 时助手正文不得丢失", () => {
     const merged = createSyncMessageMerger()([user("e", "问")], [assistant("e", "答", 0)]);
-    expect(merged.map((message) => message.id)).toEqual(["e", "sync:e"]);
+    expect(merged.map((message) => message.id)).toEqual(["e", "sync-ext:e"]);
     expect(merged[0]).toMatchObject({ type: "user_message", content: "问" });
     expect(merged[1]).toMatchObject({ type: "assistant_message" });
     expect(textOf(merged[1]!)).toBe("答");

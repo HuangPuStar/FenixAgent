@@ -3,8 +3,16 @@
 //
 // 新投影把一条 entry 的全部文本压成一条消息、不携带工具位置（sync-doc-hub 跳过 tool_object），
 // 因此合并必须同时满足：工具前的文本不被整段顶替；旧侧缺首段/中段/尾段、永久停滞或新侧已 final
-// 时，新侧未被覆盖的正文仍要可见。这里只处理「分段或工具邻接」的 entry，纯文本 entry 交给
-// sync-chat-messages 的 preferredMessage。
+// 时，新侧未被覆盖的正文仍要可见；缺口定位不得跨越工具边界盲目插入。
+//
+// 边界规则（content Doc 没有有序工具标记，只能从旧投影的分段序号推断）：
+// - 分段 id 的 `#N` 是文本分段序号，`#0` 即入口 id；相邻已知段的序号差 = 其间文本分段边界数。
+// - 只有「段间工具消息数 == 序号差」时边界才可判定：
+//   缺首段 → 插在第一个工具之前；缺中段 → 插在第一个工具之后；缺尾段 → 插在末段后第一个工具之后。
+// - 计数不一致 / 分段序号乱序 / 无工具却有边界 → 视为不可判定：整条 entry 退化为新投影单条消息，
+//   保留工具与输入顺序，正文只出现一次。宁可整体退化，也不把缺口静默塞到未知工具的一侧。
+// - 纯空白缺口不制造空消息，合并到相邻已知段；正文空白不丢失。
+// - 合成段 id 必须在全部 legacy + sync 消息 id 中唯一；冲突时顺延序号。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
 
@@ -23,6 +31,7 @@ interface EntrySegment {
   readonly message: AssistantMessage;
   readonly index: number;
   readonly text: string;
+  readonly ordinal: number;
 }
 
 interface SegmentMatch {
@@ -31,12 +40,31 @@ interface SegmentMatch {
   readonly end: number;
 }
 
-interface EntryInjectionPlan {
-  readonly replacements: Map<string, AssistantMessage>;
-  readonly tail: { readonly afterIndex: number; readonly message: AssistantMessage } | null;
+interface PlannedInsertion {
+  readonly beforeIndex: number;
+  readonly ordinal: number;
+  readonly text: string;
+  readonly reference: EntrySegment;
 }
 
-/** 在段首合并正文：保留 thought 块位置，只改第一条 message chunk。 */
+interface PlannedEdit {
+  readonly segment: EntrySegment;
+  readonly side: "prefix" | "suffix";
+  readonly text: string;
+}
+
+interface GroupPlan {
+  readonly mode: "skip" | "inject" | "fallback";
+  readonly insertions: readonly PlannedInsertion[];
+  readonly edits: readonly PlannedEdit[];
+}
+
+interface Insertion {
+  readonly beforeIndex: number;
+  readonly order: number;
+  readonly message: AssistantMessage;
+}
+
 function prependSegmentText(message: AssistantMessage, text: string): AssistantMessage {
   if (text.length === 0) return message;
   const chunks = message.chunks.map((chunk) => ({ ...chunk }));
@@ -51,7 +79,6 @@ function prependSegmentText(message: AssistantMessage, text: string): AssistantM
   return { ...message, chunks };
 }
 
-/** 在段尾合并正文：与同步投影的拼接顺序一致，保留其后可能存在的 thought 块。 */
 function appendSegmentText(message: AssistantMessage, text: string): AssistantMessage {
   if (text.length === 0) return message;
   const chunks = message.chunks.map((chunk) => ({ ...chunk }));
@@ -69,12 +96,7 @@ function appendSegmentText(message: AssistantMessage, text: string): AssistantMe
   return { ...message, chunks };
 }
 
-/**
- * 把旧分段按出现顺序对齐到同步整段文本。
- *
- * 两路正文来自同一 ACP 增量流：旧侧是「工具切段后的前缀/子集」，新侧是完整拼接。能对齐的段给出
- * 覆盖区间，剩余区间就是新侧比旧侧多出的正文；对齐失败的段不参与计算，但其旧文本仍保留。
- */
+/** 把旧分段按出现顺序对齐到同步整段文本，返回已覆盖区间与未覆盖缺口。 */
 function alignSegmentsToSyncText(
   syncText: string,
   segments: readonly EntrySegment[],
@@ -98,82 +120,32 @@ function alignSegmentsToSyncText(
   return { matches, gaps };
 }
 
-/** 未被旧侧占用的下一个顺序段 id（与 legacy 的 `entryId#N` 编号兼容，追平后 id 稳定）。 */
-function nextFreeSegmentId(base: string, segments: readonly EntrySegment[]): string {
-  const used = new Set(segments.map((segment) => segment.message.id));
-  let index = 1;
-  while (used.has(`${base}#${index}`)) index += 1;
-  return `${base}#${index}`;
+/** 分段后缀序号：入口 id 为 0，`entryId#N` 为 N；其他形态返回 null（视为不可判定）。 */
+function segmentOrdinal(id: string, base: string): number | null {
+  if (id === base) return 0;
+  if (!id.startsWith(`${base}#`)) return null;
+  const suffix = id.slice(base.length + 1);
+  return /^\d+$/.test(suffix) ? Number(suffix) : null;
 }
 
-/**
- * 旧侧分段为骨架、新侧整段为正文来源的无损合并计划。
- *
- * 新投影不携带工具位置，因此：
- * - 旧侧已覆盖的正文原样保留在工具两侧；
- * - 新侧多出的正文按同步顺序补到「紧随其后的已知段」之前；没有后续已知段时补到条目末尾
- *   （若末尾是工具则排在工具之后）；
- * - 两路无法对齐时把整段新正文作为条目尾段兜底，宁可重复也不能永久隐藏正文。
- */
-function planEntryInjection(
-  base: string,
-  segments: readonly EntrySegment[],
-  blockLastIndex: number,
-  syncMessage: AssistantMessage,
-): EntryInjectionPlan {
-  const syncText = assistantText(syncMessage);
-  const replacements = new Map<string, AssistantMessage>();
-  const { matches, gaps } = alignSegmentsToSyncText(syncText, segments);
-  let tailText = "";
+/** 由序号生成入口/分段 id；0 复用入口 id，与 legacy 的 `entryId#N` 编号一致。 */
+function idForOrdinal(base: string, ordinal: number): string {
+  return ordinal === 0 ? base : `${base}#${ordinal}`;
+}
 
-  const assignTrailing = (text: string): void => {
-    if (text.length === 0) return;
-    const lastMatch = matches.length > 0 ? matches[matches.length - 1] : undefined;
-    if (lastMatch !== undefined && lastMatch.segment.index === blockLastIndex) {
-      const current = replacements.get(lastMatch.segment.message.id) ?? lastMatch.segment.message;
-      replacements.set(lastMatch.segment.message.id, appendSegmentText(current, text));
-      return;
-    }
-    // 尾文必须排在工具之后；纯空白不制造空消息。
-    if (text.trim().length > 0) tailText += text;
-  };
-
-  if (matches.length === 0) {
-    const legacyText = segments.map((segment) => segment.text).join("");
-    if (!legacyText.startsWith(syncText)) {
-      if (syncText.startsWith(legacyText)) {
-        assignTrailing(syncText.slice(legacyText.length));
-      } else if (syncText.trim().length > 0) {
-        tailText += syncText;
-      }
-    }
-  } else {
-    for (const gap of gaps) {
-      const gapText = syncText.slice(gap.start, gap.end);
-      if (gapText.length === 0) continue;
-      const next = matches.find((match) => match.start >= gap.end);
-      if (next !== undefined) {
-        const current = replacements.get(next.segment.message.id) ?? next.segment.message;
-        replacements.set(next.segment.message.id, prependSegmentText(current, gapText));
-      } else {
-        assignTrailing(gapText);
-      }
-    }
+/** 在全部既有 id 中取下一个空闲序号 id；冲突时顺延，绝不覆盖工具/计划/用户或其他 sync 消息。 */
+function nextFreeEntryId(base: string, startOrdinal: number, reserved: Set<string>): string {
+  let ordinal = Math.max(0, startOrdinal);
+  let candidate = idForOrdinal(base, ordinal);
+  while (reserved.has(candidate)) {
+    ordinal += 1;
+    candidate = idForOrdinal(base, ordinal);
   }
-
-  if (tailText.length === 0) return { replacements, tail: null };
-  const lastSegment = segments[segments.length - 1];
-  const tail: AssistantMessage = {
-    type: "assistant_message",
-    id: nextFreeSegmentId(base, segments),
-    chunks: [{ type: "message", text: tailText }],
-    seq: lastSegment?.message.seq ?? syncMessage.seq,
-    ts: syncMessage.ts > 0 ? syncMessage.ts : (lastSegment?.message.ts ?? 0),
-  };
-  return { replacements, tail: { afterIndex: blockLastIndex, message: tail } };
+  reserved.add(candidate);
+  return candidate;
 }
 
-/** 旧展示模型的分段后缀：`entryId#N`（N 为十进制序号）；entryId 自身可能已含 `#`。 */
+/** 旧展示模型的分段后缀：`entryId#N`；entryId 自身可能已含 `#`。 */
 function segmentParentId(id: string): string | null {
   const match = /#\d+$/.exec(id);
   return match === null ? null : id.slice(0, match.index);
@@ -181,29 +153,152 @@ function segmentParentId(id: string): string | null {
 
 /** 按「精确入口 id + 紧随其后的 `#N` 分段」索引旧助手消息，兼容 entryId 自身含 `#`。 */
 function collectEntrySegments(legacy: readonly StructuredMessage[]): {
-  exact: Map<string, EntrySegment>;
-  byParent: Map<string, EntrySegment[]>;
+  exact: Map<string, AssistantMessage>;
+  byParent: Map<string, AssistantMessage[]>;
 } {
-  const exact = new Map<string, EntrySegment>();
-  const byParent = new Map<string, EntrySegment[]>();
-  for (let index = 0; index < legacy.length; index += 1) {
-    const message = legacy[index];
-    if (message?.type !== "assistant_message") continue;
-    const segment: EntrySegment = { message, index, text: assistantText(message) };
-    exact.set(message.id, segment);
+  const exact = new Map<string, AssistantMessage>();
+  const byParent = new Map<string, AssistantMessage[]>();
+  for (const message of legacy) {
+    if (message.type !== "assistant_message") continue;
+    exact.set(message.id, message);
     const parent = segmentParentId(message.id);
     if (parent === null) continue;
     const bucket = byParent.get(parent);
-    if (bucket) bucket.push(segment);
-    else byParent.set(parent, [segment]);
+    if (bucket) bucket.push(message);
+    else byParent.set(parent, [message]);
   }
   return { exact, byParent };
 }
 
+/** 范围 [from, to] 内的工具消息下标；from > to 返回空。 */
+function toolIndicesIn(legacy: readonly StructuredMessage[], from: number, to: number): number[] {
+  const indices: number[] = [];
+  for (let index = Math.max(0, from); index <= to && index < legacy.length; index += 1) {
+    if (legacy[index]?.type === "tool_call") indices.push(index);
+  }
+  return indices;
+}
+
+/** 入口块边界：向前/向后吞掉紧邻的工具/计划消息，前缀/尾段缺口据此定位。 */
+function blockBounds(
+  legacy: readonly StructuredMessage[],
+  firstIndex: number,
+  lastIndex: number,
+): { blockStart: number; blockEnd: number } {
+  let blockStart = firstIndex;
+  while (blockStart > 0) {
+    const previous = legacy[blockStart - 1];
+    if (previous?.type !== "tool_call" && previous?.type !== "plan") break;
+    blockStart -= 1;
+  }
+  let blockEnd = lastIndex;
+  while (blockEnd + 1 < legacy.length) {
+    const next = legacy[blockEnd + 1];
+    if (next?.type !== "tool_call" && next?.type !== "plan") break;
+    blockEnd += 1;
+  }
+  return { blockStart, blockEnd };
+}
+
 /**
- * 对「分段或工具邻接」的助手 entry 做无损合并：旧侧分段作为结构骨架，新侧整段补齐旧侧缺失的正文。
+ * 判定一条 entry 的缺口如何落位。
  *
- * 只有这类 entry 需要该处理：无工具的单段 entry 由 `preferredMessage` 选更长一侧即可，顺序不受影响。
+ * 只在「工具数 == 分段边界数」时给出精确位置；否则返回 fallback，由调用方整条退化为新投影单条消息。
+ */
+function planGroup(
+  segments: readonly EntrySegment[],
+  legacy: readonly StructuredMessage[],
+  syncText: string,
+  blockStart: number,
+  blockEnd: number,
+): GroupPlan {
+  const { matches, gaps } = alignSegmentsToSyncText(syncText, segments);
+  const insertions: PlannedInsertion[] = [];
+  const edits: PlannedEdit[] = [];
+
+  // 缺口从左到右处理：每个缺口只会落在下一个已知段之前，或条目末尾。
+  for (const gap of gaps) {
+    const gapText = syncText.slice(gap.start, gap.end);
+    if (gapText.length === 0) continue;
+    const following = matches.find((match) => match.start >= gap.end);
+    const preceding = [...matches].reverse().find((match) => match.end <= gap.start);
+
+    if (gapText.trim().length === 0) {
+      // 纯空白不制造空消息：并入相邻已知段，正文空白不丢失。
+      if (preceding !== undefined) edits.push({ segment: preceding.segment, side: "suffix", text: gapText });
+      else if (following !== undefined) edits.push({ segment: following.segment, side: "prefix", text: gapText });
+      continue;
+    }
+
+    if (following === undefined) {
+      // 尾段：缺失正文从末段后第一个工具之后开始；没有工具则直接并入末段。
+      const lastSegment = preceding?.segment ?? segments[segments.length - 1];
+      if (lastSegment === undefined) return { mode: "fallback", insertions: [], edits: [] };
+      const tools = toolIndicesIn(legacy, lastSegment.index + 1, blockEnd);
+      if (tools.length === 0) {
+        edits.push({ segment: lastSegment, side: "suffix", text: gapText });
+      } else {
+        insertions.push({
+          beforeIndex: tools[0]! + 1,
+          ordinal: lastSegment.ordinal + 1,
+          text: gapText,
+          reference: lastSegment,
+        });
+      }
+      continue;
+    }
+
+    if (preceding === undefined) {
+      // 缺首段：缺失正文在第一个分段边界之前，即第一个工具之前。
+      const boundaries = following.segment.ordinal;
+      if (boundaries <= 0) return { mode: "fallback", insertions: [], edits: [] };
+      const tools = toolIndicesIn(legacy, blockStart, following.segment.index - 1);
+      if (tools.length !== boundaries) return { mode: "fallback", insertions: [], edits: [] };
+      insertions.push({
+        beforeIndex: tools[0]!,
+        ordinal: 0,
+        text: gapText,
+        reference: following.segment,
+      });
+      continue;
+    }
+
+    // 缺中段：缺失正文从上一个已知段后的第一个工具之后开始。
+    const boundaries = following.segment.ordinal - preceding.segment.ordinal;
+    if (boundaries <= 0) return { mode: "fallback", insertions: [], edits: [] };
+    const tools = toolIndicesIn(legacy, preceding.segment.index + 1, following.segment.index - 1);
+    if (tools.length !== boundaries) return { mode: "fallback", insertions: [], edits: [] };
+    insertions.push({
+      beforeIndex: tools[0]! + 1,
+      ordinal: preceding.segment.ordinal + 1,
+      text: gapText,
+      reference: preceding.segment,
+    });
+  }
+
+  return { mode: "inject", insertions, edits };
+}
+
+function makeInsertionMessage(
+  base: string,
+  ordinal: number,
+  text: string,
+  reference: EntrySegment,
+  syncMessage: AssistantMessage,
+  reserved: Set<string>,
+): AssistantMessage {
+  return {
+    type: "assistant_message",
+    id: nextFreeEntryId(base, ordinal, reserved),
+    chunks: [{ type: "message", text }],
+    seq: reference.message.seq,
+    ts: syncMessage.ts > 0 ? syncMessage.ts : reference.message.ts,
+  };
+}
+
+/**
+ * 对「分段或工具邻接」的助手 entry 做无损合并。
+ *
  * 返回的 `consumedSyncIds` 必须从后续配对/候选中剔除，否则整段新正文会顶掉工具前的段。
  */
 export function applyLosslessEntryMerge(
@@ -211,6 +306,11 @@ export function applyLosslessEntryMerge(
   sync: readonly StructuredMessage[],
 ): { legacy: StructuredMessage[]; consumedSyncIds: Set<string> } {
   const { exact, byParent } = collectEntrySegments(legacy);
+  const indexById = new Map<string, number>();
+  for (let index = 0; index < legacy.length; index += 1) {
+    const message = legacy[index];
+    if (message !== undefined) indexById.set(message.id, index);
+  }
 
   const syncById = new Map<string, AssistantMessage>();
   for (const message of sync) {
@@ -221,66 +321,162 @@ export function applyLosslessEntryMerge(
     }
   }
 
-  const replacements = new Map<string, AssistantMessage>();
-  const tails = new Map<number, AssistantMessage[]>();
-  const consumedSyncIds = new Set<string>();
+  const reserved = new Set<string>();
+  for (const message of legacy) reserved.add(message.id);
+  for (const message of sync) reserved.add(message.id);
 
+  interface Analysis {
+    readonly base: string;
+    readonly syncMessage: AssistantMessage;
+    readonly segments: EntrySegment[];
+    readonly blockStart: number;
+    readonly blockEnd: number;
+    readonly mode: "skip" | "inject" | "fallback";
+    readonly plan: GroupPlan | null;
+  }
+
+  const analyses: Analysis[] = [];
   for (const [base, syncMessage] of syncById) {
-    const group: EntrySegment[] = [];
+    const group: AssistantMessage[] = [];
     const seen = new Set<string>();
     const baseSegment = exact.get(base);
     if (baseSegment !== undefined) {
       group.push(baseSegment);
-      seen.add(baseSegment.message.id);
+      seen.add(baseSegment.id);
     }
     for (const segment of byParent.get(base) ?? []) {
-      if (seen.has(segment.message.id)) continue;
+      if (seen.has(segment.id)) continue;
       group.push(segment);
-      seen.add(segment.message.id);
+      seen.add(segment.id);
     }
     if (group.length === 0) continue;
-    group.sort((left, right) => left.index - right.index);
 
-    const firstSegment = group[0];
-    const lastSegment = group[group.length - 1];
-    if (firstSegment === undefined || lastSegment === undefined) continue;
-
-    let blockLastIndex = lastSegment.index;
-    while (blockLastIndex + 1 < legacy.length) {
-      const next = legacy[blockLastIndex + 1];
-      if (next?.type !== "tool_call" && next?.type !== "plan") break;
-      blockLastIndex += 1;
+    const segments: EntrySegment[] = [];
+    for (const message of group) {
+      const ordinal = segmentOrdinal(message.id, base);
+      if (ordinal === null) {
+        segments.length = 0;
+        break;
+      }
+      const index = indexById.get(message.id);
+      if (index === undefined) {
+        segments.length = 0;
+        break;
+      }
+      segments.push({ message, index, text: assistantText(message), ordinal });
     }
+    if (segments.length === 0) continue;
+    segments.sort((left, right) => left.index - right.index);
+
+    // 乱序 legacy 不能拿来推断工具边界：整条退化为新投影单条消息（安全降级）。
+    let ordered = true;
+    for (let index = 1; index < segments.length; index += 1) {
+      if (segments[index]!.ordinal <= segments[index - 1]!.ordinal) ordered = false;
+    }
+
+    const firstSegment = segments[0];
+    const lastSegment = segments[segments.length - 1];
+    if (firstSegment === undefined || lastSegment === undefined) continue;
+    const { blockStart, blockEnd } = blockBounds(legacy, firstSegment.index, lastSegment.index);
+
     let toolAdjacent = false;
-    for (let index = firstSegment.index; index <= blockLastIndex; index += 1) {
+    for (let index = blockStart; index <= blockEnd; index += 1) {
       if (legacy[index]?.type === "tool_call") {
         toolAdjacent = true;
         break;
       }
     }
-    const segmented = group.length > 1 || group.some((segment) => segment.message.id !== base);
-    if (!toolAdjacent && !segmented) continue;
-
-    const plan = planEntryInjection(base, group, blockLastIndex, syncMessage);
-    for (const [id, message] of plan.replacements) replacements.set(id, message);
-    if (plan.tail !== null) {
-      const bucket = tails.get(plan.tail.afterIndex);
-      if (bucket) bucket.push(plan.tail.message);
-      else tails.set(plan.tail.afterIndex, [plan.tail.message]);
+    const segmented = segments.length > 1 || firstSegment.ordinal > 0;
+    const syncText = assistantText(syncMessage);
+    if (syncText.length === 0) continue;
+    if (!ordered) {
+      analyses.push({ base, syncMessage, segments, blockStart, blockEnd, mode: "fallback", plan: null });
+      continue;
     }
-    consumedSyncIds.add(base);
+    if (!toolAdjacent && !segmented) continue;
+    const plan = planGroup(segments, legacy, syncText, blockStart, blockEnd);
+    analyses.push({ base, syncMessage, segments, blockStart, blockEnd, mode: plan.mode, plan });
   }
 
-  if (replacements.size === 0 && tails.size === 0 && consumedSyncIds.size === 0) {
+  const consumedSyncIds = new Set<string>();
+  const removedIds = new Set<string>();
+  for (const analysis of analyses) {
+    if (analysis.mode === "skip") continue;
+    consumedSyncIds.add(analysis.base);
+    if (analysis.mode === "fallback") {
+      for (const segment of analysis.segments) removedIds.add(segment.message.id);
+    }
+  }
+  // 被移除/被消费的消息 id 让位给合成段；其余 sync/legacy/tool id 全部保留，保证全局唯一。
+  for (const id of removedIds) reserved.delete(id);
+  for (const id of consumedSyncIds) reserved.delete(id);
+
+  const replacements = new Map<string, AssistantMessage>();
+  const insertions: Insertion[] = [];
+  let order = 0;
+
+  for (const analysis of analyses) {
+    if (analysis.mode === "skip") continue;
+    const firstSegment = analysis.segments[0];
+    if (firstSegment === undefined) continue;
+
+    if (analysis.mode === "fallback") {
+      const desired = analysis.syncMessage.id;
+      let id = desired;
+      if (reserved.has(desired)) id = nextFreeEntryId(analysis.base, 0, reserved);
+      else reserved.add(desired);
+      insertions.push({
+        beforeIndex: firstSegment.index,
+        order: order++,
+        message: { ...analysis.syncMessage, id },
+      });
+      continue;
+    }
+
+    const plan = analysis.plan;
+    if (plan === null) continue;
+    for (const edit of plan.edits) {
+      const current = replacements.get(edit.segment.message.id) ?? edit.segment.message;
+      const next =
+        edit.side === "prefix" ? prependSegmentText(current, edit.text) : appendSegmentText(current, edit.text);
+      replacements.set(edit.segment.message.id, next);
+    }
+    for (const planned of plan.insertions) {
+      insertions.push({
+        beforeIndex: planned.beforeIndex,
+        order: order++,
+        message: makeInsertionMessage(
+          analysis.base,
+          planned.ordinal,
+          planned.text,
+          planned.reference,
+          analysis.syncMessage,
+          reserved,
+        ),
+      });
+    }
+  }
+
+  if (replacements.size === 0 && insertions.length === 0 && consumedSyncIds.size === 0) {
     return { legacy: [...legacy], consumedSyncIds };
   }
+
+  insertions.sort((left, right) => left.beforeIndex - right.beforeIndex || left.order - right.order);
+  const insertionsByIndex = new Map<number, Insertion[]>();
+  for (const insertion of insertions) {
+    const bucket = insertionsByIndex.get(insertion.beforeIndex);
+    if (bucket) bucket.push(insertion);
+    else insertionsByIndex.set(insertion.beforeIndex, [insertion]);
+  }
+
   const merged: StructuredMessage[] = [];
-  for (let index = 0; index < legacy.length; index += 1) {
+  for (let index = 0; index <= legacy.length; index += 1) {
+    for (const insertion of insertionsByIndex.get(index) ?? []) merged.push(insertion.message);
+    if (index === legacy.length) break;
     const message = legacy[index];
     if (message === undefined) continue;
+    if (removedIds.has(message.id)) continue;
     merged.push(replacements.get(message.id) ?? message);
-    const tail = tails.get(index);
-    if (tail !== undefined) merged.push(...tail);
   }
   return { legacy: merged, consumedSyncIds };
 }
