@@ -15,6 +15,14 @@ export type FullRelayHandle = EngineRelayHandle & {
   ready?: Promise<void>;
 };
 
+/** 当前运行的服务端身份；缺少代次时不能证明跨连接连续性。 */
+export function getAgentRuntimeIdentity(instanceId: string): string | undefined {
+  const snapshot = getBoundCoreRuntime().getInstance(instanceId);
+  return snapshot?.status === "running" && snapshot.runtimeGeneration !== undefined && snapshot.serverEpoch
+    ? JSON.stringify([snapshot.serverEpoch, snapshot.runtimeGeneration])
+    : undefined;
+}
+
 /**
  * 通过 CoreRuntimeFacade 连接 Agent relay handle。
  * 共享于 WS relay 和 HTTP OpenAI 端点。

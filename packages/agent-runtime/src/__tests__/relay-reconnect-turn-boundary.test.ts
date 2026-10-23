@@ -11,7 +11,7 @@ import {
 } from "@fenix/chat-channel/server";
 import { createInMemoryAgentRelay } from "./fixtures/in-memory-agent-relay";
 
-// 真实 Gateway 归零重连会重置局部编号，旧无 sessionId 结果不能终结新会话，后续文本仍能落入投影。
+// 回复中刷新保留旧请求归属，迟到的旧终态仍不能终结切换后的新会话。
 test("reconnected Gateway survives a delayed previous lease result and accepts the real new answer", async () => {
   const relay = await createInMemoryAgentRelay((message) => {
     const rpc = message as unknown as { type?: string; id: number; method: string; params: { sessionId: string } };
@@ -92,14 +92,15 @@ test("reconnected Gateway survives a delayed previous lease result and accepts t
     const oldWireId = prompts()[0]!.id;
     const oldLocalId = [...registry.getShared("relay-boundary", "user", "rcs-rpc")!.pendingPromptIds!][0]!;
     gateway.handleClose("old");
-    expect(relay.listeners.size).toBe(0);
+    expect(registry.getShared("relay-boundary", "user", "rcs-rpc")!.pendingPromptIds?.has(oldLocalId)).toBe(true);
     expect(relay.physical.state).toBe("open");
     await open("new");
     await action("new", "load-new", "ses-new", "load_session");
     await action("new", "prompt-new", "ses-new", "send_prompt");
     expect(prompts()).toHaveLength(2);
     const shared = registry.getShared("relay-boundary", "user", "rcs-rpc")!;
-    expect(shared.pendingPromptIds).toEqual(new Set([oldLocalId]));
+    expect(shared.pendingPromptIds?.size).toBe(2);
+    const newLocalId = [...shared.pendingPromptIds!].find((id) => id !== oldLocalId)!;
     const newWireId = prompts()[1]!.id;
     expect(newWireId).not.toBe(oldWireId);
     const session = getSessionInfo(docManager.getSessionYdoc("rcs-rpc")!);
@@ -109,7 +110,7 @@ test("reconnected Gateway survives a delayed previous lease result and accepts t
     await Promise.resolve();
     expect(session.get("activeTurnId")).toBe(turnId);
     expect(session.get("activeTurnStatus")).not.toBe("completed");
-    expect(shared.pendingPromptIds).toEqual(new Set([oldLocalId]));
+    expect(shared.pendingPromptIds).toEqual(new Set([newLocalId]));
     relay.emit({
       jsonrpc: "2.0",
       method: "session/update",

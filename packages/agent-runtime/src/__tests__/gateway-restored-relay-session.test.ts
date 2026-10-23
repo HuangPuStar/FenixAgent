@@ -13,11 +13,23 @@ import { createInMemoryAgentRelay } from "./fixtures/in-memory-agent-relay";
 
 // 真实 Gateway 归零重连仅恢复服务端绑定，不依赖 load、prompt 或队列快照也必须继续接收输出与权限请求。
 test("Gateway reconnect restores its trusted relay session without targeted RPCs or snapshot capabilities", async () => {
+  let busy = false;
   const relay = await createInMemoryAgentRelay((message) => {
     const rpc = message as unknown as { type?: string; id: number; method: string; params: { sessionId: string } };
     if (rpc.type === "connect") relay.emit({ type: "status", payload: { connected: true, capabilities: {} } });
+    if (rpc.method === "session/prompt") busy = true;
     if (rpc.method === "session/load")
-      queueMicrotask(() => relay.emit({ jsonrpc: "2.0", id: rpc.id, result: { sessionId: rpc.params.sessionId } }));
+      queueMicrotask(() =>
+        relay.emit(
+          busy
+            ? {
+                jsonrpc: "2.0",
+                id: rpc.id,
+                error: { code: -32010, message: "Session is executing; retry after the current turn" },
+              }
+            : { jsonrpc: "2.0", id: rpc.id, result: { sessionId: rpc.params.sessionId } },
+        ),
+      );
     if (rpc.method === "session/new")
       queueMicrotask(() => relay.emit({ jsonrpc: "2.0", id: rpc.id, result: { sessionId: "ses-created" } }));
   });
@@ -37,7 +49,17 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
       inbound.push(raw);
     },
   });
-  const sessionChannel = new SessionChannel({ docManager, replaceProjection() {}, syncSessionId() {}, reportError });
+  const sessionChannel = new SessionChannel({
+    docManager,
+    replaceProjection() {},
+    reportError,
+    syncSessionId(connection, sessionId) {
+      registry.forEachByRcsSession(connection.rcsSessionId, (entry) => {
+        entry.acpSessionId = sessionId;
+        entry.sessionLoaded = true;
+      });
+    },
+  });
   const freshId = () => `${sessionChannel.getCommandEpoch()}.${crypto.randomUUID()}`;
   const gateway = new Gateway({
     registry,
@@ -50,6 +72,7 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
     resolveWorkspacePath: () => "/workspace",
     ensureRunning: async () => "relay-boundary",
     connectAgentRelay: relay.connect,
+    getRuntimeIdentity: () => JSON.stringify(["test", 1]),
     markRelayAttached() {},
     markRelayDetached() {},
     reportLog() {},
@@ -97,12 +120,22 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
     expect(
       (relay.sent as unknown as Array<{ method?: string }>).filter((frame) => frame.method === "session/prompt"),
     ).toHaveLength(1);
+    const originalChat = docManager.getChatYdoc("rcs-restored");
     gateway.handleClose("old");
-    expect(relay.listeners.size).toBe(0);
+    expect(registry.getShared("relay-boundary", "user", "rcs-restored")).toBeDefined();
     const beforeReconnect = relay.sent.length;
     await open("new");
     await open("second-tab");
     expect(registry.getClient("new")!.acpSessionId).toBe("ses-bound");
+    for (const tab of ["new", "second-tab"]) {
+      await gateway.handleMessage(
+        ws,
+        tab,
+        JSON.stringify({ action: "load_session", commandId: freshId(), sessionId: "ses-bound" }),
+      );
+      expect(registry.getClient(tab)!.sessionLoaded).toBe(true);
+      expect(docManager.getChatYdoc("rcs-restored")).toBe(originalChat);
+    }
     const reconnectFrames = relay.sent.slice(beforeReconnect) as unknown as Array<{
       method?: string;
       params?: { sessionId?: string };
@@ -122,7 +155,7 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
     registry.getClient("new")!.relayHandle.send(answer as unknown as EngineRelayMessage);
     expect(relay.sent.at(-1)).toEqual(answer as unknown as EngineRelayMessage);
     gateway.handleClose("new");
-    expect(relay.listeners.size).toBe(1);
+    expect(relay.listeners.size).toBeGreaterThan(0);
     const secondChunk = update("ses-bound", " survives one tab closing");
     relay.emit(secondChunk);
     expect(inbound.at(-1)).toEqual(secondChunk);
@@ -131,6 +164,14 @@ test("Gateway reconnect restores its trusted relay session without targeted RPCs
     const projected = JSON.stringify(docManager.getChatYdoc("rcs-restored")!.toJSON());
     expect(projected).toContain("continued after reconnect survives one tab closing");
     expect(projected).not.toContain("foreign output");
+    const prompt = relay.sent.find(
+      (message) => (message as unknown as { method?: string }).method === "session/prompt",
+    ) as unknown as { id: number };
+    relay.emit({ jsonrpc: "2.0", id: prompt.id, result: { stopReason: "end_turn" } });
+    expect(docManager.getSessionYdoc("rcs-restored")!.getMap("root").toJSON().session.activeTurnStatus).toBe(
+      "completed",
+    );
+    busy = false;
     // 随后的真实 load/new 确认必须替换共享绑定，历史推断目标的 chunk 与 permission 均不可再入站。
     for (const [action, sessionId, previous] of [
       ["load_session", "ses-next", "ses-bound"],

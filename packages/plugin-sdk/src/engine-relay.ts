@@ -17,6 +17,8 @@ export type EngineRelayState = "open" | "closed";
 export interface EngineRelayHandle {
   /** 当前 relay 连接状态。 */
   readonly state: EngineRelayState;
+  /** 主服务租约按需提供的 Agent 连续性凭据；子进程断开后更换，不跨进程持久化。 */
+  readonly sessionContinuity?: object;
   /** 向 engine 发送一条实时消息。 */
   send(message: EngineRelayMessage): Promise<void> | void;
   /** 主动关闭 relay 连接。 */

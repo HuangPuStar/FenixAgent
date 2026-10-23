@@ -70,6 +70,7 @@ export function useChatPanelRuntime({
   usePeriTaskViews: UsePeriTaskViews;
 }): ChatPanelRuntime {
   const [connectionState, setConnectionState] = useState<ChatWsConnectionState>("disconnected");
+  const [initialSyncKey, setInitialSyncKey] = useState<string | null>(null);
   const [classifiedError, setClassifiedError] = useState<PublicErrorInfo | null>(null);
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
@@ -178,7 +179,7 @@ export function useChatPanelRuntime({
     sync: syncChat.projection.messages,
     sourceReady: connectionState === "connected",
     replayActive: legacyScopeReady && legacySessionState.status === "replaying",
-    liveActive: legacyScopeReady && legacySessionState.status === "responding",
+    liveActive: legacyScopeReady && initialSyncKey === docHubKey && legacySessionState.status === "responding",
     blocked: hydrationBlockedBySync,
     syncTerminalError,
     noReplaySession,
@@ -302,7 +303,19 @@ export function useChatPanelRuntime({
       // 只有服务端显式确认本轮初始同步完成才算恢复：实时 update 会在握手期间穿插到达，
       // 若拿它当证据，缺失文档尚未交付就会提前解除发送门禁。
       onSyncComplete: (info) => {
-        if (!disposed) complete(connectionEpoch, info, getDocHubGenerations(rcsSessionKey));
+        if (disposed || !isCurrentConnection(connectionEpoch)) return;
+        const generations = getDocHubGenerations(rcsSessionKey);
+        complete(connectionEpoch, info, generations);
+        // onopen 早于快照；快速显示实时回复前须确认本轮两个 Doc 都已交付。
+        if (
+          info.generation &&
+          [`chat:${rcsSessionKey}`, `session:${rcsSessionKey}`].every(
+            (docName) =>
+              info.docs.includes(docName) &&
+              generations.some((doc) => doc.docName === docName && doc.generation === info.generation),
+          )
+        )
+          setInitialSyncKey(rcsSessionKey);
       },
       onClose: (close) => {
         if (disposed || !ownsConnection(connectionEpoch)) return;
@@ -326,6 +339,7 @@ export function useChatPanelRuntime({
         if (state === "connecting") connectionEpoch = beginConnection();
         if (!ownsConnection(connectionEpoch)) return;
         if (state === "connecting") {
+          setInitialSyncKey(null);
           setAutoReconnecting(false);
           // 重试/自动重连开始：历史缺失保持到缺失文档真正重新交付，连接事件不构成恢复证明。
           // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。

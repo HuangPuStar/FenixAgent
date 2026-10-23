@@ -40,6 +40,8 @@ export interface ChatChannelDependencies {
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
   /** 持久实例生命周期：省略 UID 时解析 user/default，并经 Coordinator ensure。 */
   ensureRunning: (ownerUserId: string, agentId: string, requestedInstanceUid?: string) => Promise<string>;
+  /** 当前 Agent 运行身份，只从宿主 Core 读取。 */
+  getRuntimeIdentity?: (instanceId: string) => string | undefined;
   /** relay 连接（宿主 connectAgentRelay 语义） */
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<ClientConnection["relayHandle"]>;
   /** 新 ACP session 创建前刷新复用实例的 workspace 配置与 Skills。 */
@@ -146,6 +148,7 @@ export class ChatChannelController {
       reportError: dependencies.reportError,
       log: dependencies.log,
       touchInstanceActivity: dependencies.touchInstanceActivity,
+      invalidateRuntimeSession: (rcsSessionId) => this.sessionChannel.invalidateRuntimeSession(rcsSessionId),
       onNormalizedEvent: (rcsSessionId, event) => {
         this.registry.forEachByRcsSession(rcsSessionId, (client) => {
           client.syncConnection?.acceptNormalizedEvent(event);
@@ -163,6 +166,7 @@ export class ChatChannelController {
       resolveWorkspacePath: dependencies.resolveWorkspacePath,
       ensureRunning: dependencies.ensureRunning,
       connectAgentRelay: dependencies.connectAgentRelay,
+      getRuntimeIdentity: dependencies.getRuntimeIdentity,
       markRelayAttached: dependencies.markRelayAttached,
       markRelayDetached: dependencies.markRelayDetached,
       reportLog: dependencies.log,

@@ -68,6 +68,8 @@ export class RelayEventHandler {
         await this.handleMessage(shared, message);
       } catch (err) {
         this.dependencies.reportError(`[YJS-FE] relay event processing failed: instanceId=${shared.instanceId}`, err);
+      } finally {
+        shared.checkRetention?.();
       }
     };
   }
@@ -211,7 +213,9 @@ export class RelayEventHandler {
    * eligibleForDispose 注释。
    */
   private async handleRelayClosed(shared: SharedRelay): Promise<void> {
+    if (!this.isCurrentRelay(shared)) return;
     const { registry } = this.dependencies;
+    if (this.isCurrentRelay(shared)) this.dependencies.invalidateRuntimeSession?.(shared.rcsSessionId);
     failPendingSessionMutations(shared);
     // 在途 steer 请求一并收敛为失败：Agent 会话已死，回执不可达，继续等待只会让前端
     // 停在"发送中"（同 failPendingSessionMutations 语义，不重试）。
@@ -254,6 +258,15 @@ export class RelayEventHandler {
     if (eligibleForDispose()) {
       await this.disposeRealtimeResources(shared.rcsSessionId, eligibleForDispose);
     }
+  }
+
+  /** 迟到旧 relay 不得作废已经由后继实例接管的会话确认。 */
+  private isCurrentRelay(shared: SharedRelay): boolean {
+    const current = this.dependencies.registry.getShared(shared.instanceId, shared.userId, shared.rcsSessionId);
+    const owner = this.findSessionOwner(shared.rcsSessionId);
+    return (
+      !shared.destroyed && (!current || current === shared) && (owner === undefined || owner === shared.instanceId)
+    );
   }
 
   // ── 实例级实时资源回收（SP-C2）──
@@ -358,9 +371,15 @@ export class RelayEventHandler {
     // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
     // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
     if (payload?.connected === false) {
+      if (!this.isCurrentRelay(shared)) return;
+      this.dependencies.invalidateRuntimeSession?.(shared.rcsSessionId);
+      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+        entry.sessionLoaded = false;
+      });
       // Agent 断连（可能伴随重启）：清空补拉标记，使重连后的就绪 status 重新补拉一次
       // 队列快照（新进程的 generation 与旧投影不同，不补拉会让用户带着旧代号重试并被
       // -32602 拒绝一次）。能力位保留，等下一次就绪 status 覆盖。
+      if (shared.refCount === 0) shared.releaseRetained?.();
       shared.userInputSnapshotSessionId = null;
       // 断连换代：peri 队列不跨进程持久，旧 items/generation 必须清空——否则在新快照
       // 到达前前端仍渲染旧代号的「可点」待发送项，点击必被 -32602 拒绝。enabled 同步

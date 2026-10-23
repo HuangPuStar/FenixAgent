@@ -330,13 +330,14 @@ sequenceDiagram
 - 实例生命周期在连接建立时完成：`ensureRunning(ownerUserId, agentId, requestedInstanceUid?)`（宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配，内部走 `agentInstanceService.resolveInstanceForOperation` + `ensureInstanceRuntime`）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
 - **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
-- **切换确认与输入归属**：`load_session` / `resume_session` 登记 RPC id 和独立的 loading target 后才发送；loading target 只允许该目标的历史回放，不充当 prompt 的发送绑定。成功回执可省略 sessionId，此时沿用登记目标；错误、超时、断开、非法结果或目标不符均不能提交绑定。失败后同目标重试仍会发 RPC。只有当前活跃 relay 上已收到成功回执的会话绑定可以跳过重复 load；单独的 locator、持久投影或时间线不证明当前 runtime 已加载，重新建立频道后必须重新确认；仅有 locator 的首次 prompt 返回 `ACTION.VERSION_CONFLICT`，确认 load 后才允许发送。
+- **切换确认与输入归属**：`load_session` / `resume_session` 登记 RPC id 和独立的 loading target 后才发送；loading target 只允许该目标的历史回放，不充当 prompt 的发送绑定。成功回执可省略 sessionId，此时沿用登记目标；错误、超时、断开、非法结果或目标不符均不能提交绑定。失败后同目标重试仍会发 RPC。当前活跃频道上已确认的会话可跳过重复 load。页面最后连接断开时，若仍有在途 prompt 或本 relay 实时确认的未结束 turn，保留共享 relay、回执归属及频道绑定直到回复收口；只有 turn 终态且 prompt 回执全部结算后才释放，实例停止与服务关闭强制回收。空闲时释放 relay、命令绑定和定时器，但成功 load/new 的确认凭据随内存投影保留；刷新后仅在 user、environment、instance、ACP session、`serverEpoch + runtimeGeneration`、主服务按需观察的 Agent 子进程连续性凭据和原 Chat/Session 投影均匹配时恢复确认绑定并跳过 RPC，不换代、不清空活动 turn。凭据通过弱引用依附内存 Session Doc，不写入 Redis；连续性观察器归运行实例所有，不随页面租约归零释放；子进程断连轮换凭据，物理 relay 关闭时注销。运行身份或连续性凭据缺失/变化、投影重建/换代、Agent 断连均要求重新加载。单独的 locator、持久投影或时间线不能证明当前 runtime 已加载；仅有 locator 的首次 prompt 返回 `ACTION.VERSION_CONFLICT`，确认 load 后才允许发送。
 - **排队命令身份**：每条命令保留发起连接和提交时的会话代次，出队后从逻辑频道的已确认绑定解析目标。切换前排队或切换期间提交的会话输入返回 `ACTION.VERSION_CONFLICT`，由调用方重新确认输入；无效动作不能覆盖其他命令的连接身份。RPC 响应处理在每个异步提交点复核同步代次，旧回执不能改写新投影或绑定。
 - **跨进程投影换代**：`replaceProjection` 只能触达本进程连接；其他节点上的 legacy 连接由 `LegacyGenerationWatcher` 每 2 秒复核 Redis active generation，重载本地 Chat/Session 投影后强制广播成对 replace 帧。不得关闭 legacy 动作 socket：它可能正是 `load_session` 的调用方，关闭会释放共享 relay 让命令失败。
 - **陈旧窗口不落库**：同步连接的用户消息与 legacy `registerUserMessage` 在写入前复核 active generation；世代已过期则丢弃并让连接换代，不能把新会话的消息静默写进旧 generation。ACP 增量与广播保持每帧零 Redis I/O。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
 - **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
 - **回放窗口**：load/resume 转发时开启，首条更新前保留 `REPLAY_WINDOW_MS`（10s）最长等待；收到当前会话的 `session/update` 后，每条更新重置 `REPLAY_IDLE_MS`（200ms）静默计时，成功回执也启动该计时以覆盖零历史。静默不得超过当前最长等待期限；显式 `session/replay_complete` 可立即结束。收口先提交尾部批次，再将回放 turn 与 `replayState` 标记为完成；重连恢复已有时间线时跳过重复合成。
+- **实时回复刷新展示**：前端收到当前 scope 的 `presenting=responding`，且本轮 `yjs:sync-complete` 确认 Chat/Session Doc 均已应用同一 generation 后，同步基线齐备即可按帧提交已恢复的消息；后续流式增量不得重置首次提交计时。WebSocket open 不构成初始交付证明，新连接作废旧证明。历史回放仍等待服务端完成信号及前端尾批静默，不以实时输出暂停作为刷新恢复条件。
 - **用户消息会话级写入**：`registerUserMessage` 成功后经 `SessionChannel` 的会话级入口扇出到该 `rcsSessionId` 的全部同步连接；动作 socket 通常没有同步 runtime，不得只写发起连接，也不重新启用 Agent 回显。attach 窗口内入队的消息在首个 HELLO 建立基线后补水；写者按 `entryId + 内容槽` 对已提交记录与新写者本地待提交集合去重，覆盖写者交接、多标签与重复 `turnId`。
 - **未配对用户消息不可退役**：合并器只有在 `turnId + entryId` 或等价稳定身份证明覆盖后才能删除旧用户消息；“sync 存在任意文本”不构成覆盖证明。分页缺段时保留新投影合并正文兜底。
 - **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。
@@ -901,7 +902,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 
 本地 `acp-link` 的 `createAcpServer` 以 server 实例持有 Agent 子进程、ACP 连接与活动会话。普通 relay WebSocket 关闭或 `disconnect` 只释放该连接的权限请求、提问与会话投递绑定；最后一条 relay 关闭也不终止 Agent。重连的 `connect` 复用存活的 ACP 连接并重新发送 status，刷新后继续对话由 prompt 的显式 `sessionId` 重新绑定通知路由，不执行重复的 `session/load` 回放。多个 relay 的 JSON-RPC 结果仅回发起 socket，Agent 通知按会话绑定投递；server 实例关闭才终止子进程，初始化与关闭竞态不得产生迟到的 ready 状态。
 
-所有 relay 均断开期间，Agent 仍可继续运行，但无活跃 relay 可接收其增量通知，旧 socket 上在途 RPC 的最终响应也会丢失。该边界不提供跨 relay 的内存队列或补发；客户端重连后同步现存 Y.Doc 投影并从后续交互继续，不能将断线期间未投递的增量当作已确认消息。
+主服务在回复期间保留 relay，页面刷新不属于所有 relay 均断开的情况。所有 relay 因传输故障等原因均断开期间，Agent 仍可继续运行，但无活跃 relay 可接收其增量通知，旧 socket 上在途 RPC 的最终响应也会丢失。该边界不提供跨 relay 的内存队列或补发；客户端重连后同步现存 Y.Doc 投影并从后续交互继续，不能将断线期间未投递的增量当作已确认消息。
 
 ### 9.3 运行时更新
 

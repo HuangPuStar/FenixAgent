@@ -36,6 +36,49 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("useChatHydration", () => {
+  // 回复中刷新不能等流式输出暂停；初始快照和同步基线齐备后应在持续输出期间显示。
+  test.each(["ready", "source", "baseline"])("实时回复持续输出时结束加载：%s", async (pending) => {
+    const latest: { current: ChatHydrationState | null } = { current: null };
+    let options: UseChatHydrationOptions = {
+      scope: "refresh-live",
+      legacy: [assistant("reply", "已收到的回复")],
+      sync: [],
+      sourceReady: pending !== "source",
+      blocked: pending === "baseline",
+      liveActive: true,
+    };
+    function Probe() {
+      latest.current = useChatHydration(options);
+      return null;
+    }
+    const container = win.document.createElement("div");
+    const root = createRoot(container as unknown as HTMLElement);
+    try {
+      act(() => root.render(createElement(Probe)));
+      if (pending !== "ready") {
+        await act(async () => {
+          await wait(300);
+        });
+        expect(latest.current?.hydrating).toBe(true);
+        expect(latest.current?.messages).toEqual([]);
+        options = { ...options, sourceReady: true, blocked: false };
+        act(() => root.render(createElement(Probe)));
+      }
+      for (let index = 1; index <= 4; index += 1) {
+        options = { ...options, legacy: [assistant("reply", `持续输出-${index}`)] };
+        act(() => root.render(createElement(Probe)));
+        await act(async () => {
+          await wait(40);
+        });
+      }
+      expect(latest.current?.hydrating).toBe(false);
+      expect(latest.current?.loadingVisible).toBe(false);
+      expect(latest.current?.messages).toEqual([...options.legacy]);
+    } finally {
+      act(() => root.unmount());
+    }
+  });
+
   // 切换会话后回放期间不展示任何半成品；回放结束后一次收口，实时增量随后可达。
   test("回放期间不展示，结束后收口", async () => {
     const latest: { current: ChatHydrationState | null } = { current: null };

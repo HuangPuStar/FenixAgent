@@ -264,7 +264,18 @@ export class RelayProjection {
   /** 投递规范化事件到聚合层（binding 不存在时由 docManager 丢弃） */
   dispatch(shared: SharedRelay, event: NormalizedEvent): void {
     try {
+      const previousTurnId =
+        event.type === "user_input_delivered"
+          ? readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId
+          : null;
       this.dependencies.docManager.processNormalizedEvent(shared.rcsSessionId, event);
+      if (event.type === "user_input_delivered") {
+        const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
+        // steer 自行开启新轮次，没有 session/prompt；重复 delivered 不授予旧投影执行证明。
+        if (active.turnId && active.turnId !== previousTurnId && isTurnWritable(active.turnStatus)) {
+          shared.liveTurnId = active.turnId;
+        }
+      }
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
     }
