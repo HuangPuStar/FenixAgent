@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { encodeYjsUpdateFrame } from "@fenix/chat-channel";
 import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
+import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { I18nextProvider } from "react-i18next";
 import * as Y from "yjs";
 import { useChatAreaSlots } from "../agent-panel/chat-area-lifecycle";
 import { type ChatPanelRuntime, useChatPanelRuntime } from "../agent-panel/use-chat-panel-runtime";
@@ -11,11 +13,14 @@ import {
   installFakeWebSocket,
   legacySockets,
   restoreFakeWebSocket,
+  syncSockets,
   win,
 } from "./helpers/chat-panel-runtime-fixture";
 
 afterEach(restoreFakeWebSocket);
 
+const i18n = createInstance();
+await i18n.init({ lng: "zh", resources: {} });
 const usePeriTaskViews = () => ({ state: { tasks: [], loaded: true } });
 
 /** 只替换浏览器 socket；缓存生命周期、可见性和连接 hook 都使用生产实现。 */
@@ -52,7 +57,13 @@ function renderCache() {
   }
   const render = (next: Partial<typeof options> = {}) => {
     options = { ...options, ...next };
-    act(() => root.render(<Cache />));
+    act(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Cache />
+        </I18nextProvider>,
+      ),
+    );
   };
   render();
   return {
@@ -81,6 +92,105 @@ async function bindSession(socket: FakeWebSocket, rcsSessionKey: string, session
 }
 
 describe("ChatArea 实例缓存", () => {
+  // enter 恢复运行态后应重连已终止的目标连接，不能要求刷新或丢掉缓存草稿。
+  test("机器不可用后 enter 成功恢复目标连接并保留面板", async () => {
+    installFakeWebSocket();
+    const h = renderCache();
+    try {
+      const socketA = legacySockets()[0]!;
+      const panelA = h.panel("inst-a")!;
+      panelA.querySelector("input")!.value = "恢复前草稿";
+      act(() => socketA.closeFromServer(4500, "machine_unavailable"));
+      h.render({ sessionId: "inst-b" });
+      const socketB = legacySockets()[1]!;
+      act(() =>
+        win.dispatchEvent(
+          new win.CustomEvent("agent:entered", {
+            detail: { envId: "env-other", instanceUid: "inst-a" },
+          }),
+        ),
+      );
+      expect(legacySockets()).toHaveLength(2);
+      act(() => {
+        for (let i = 0; i < 2; i++)
+          win.dispatchEvent(
+            new win.CustomEvent("agent:entered", {
+              detail: { envId: "env-a", instanceUid: "inst-a" },
+            }),
+          );
+      });
+      expect(legacySockets()).toHaveLength(3);
+      const recovered = legacySockets()[2]!;
+      expect(socketB.readyState).toBe(FakeWebSocket.CONNECTING);
+      expect(h.panel("inst-a")).toBe(panelA);
+      expect(panelA.querySelector("input")!.value).toBe("恢复前草稿");
+      await bindSession(recovered, h.runtimes.get("inst-a")!.rcsSessionKey!, "ses-recovered");
+      expect(h.runtimes.get("inst-a")!.connectionState).toBe("connected");
+      expect(h.runtimes.get("inst-a")!.terminalUiCode).toBeNull();
+      act(() => h.runtimes.get("inst-a")!.callbacks.onCancel());
+      expect(JSON.parse(String(recovered.sent.at(-1)))).toMatchObject({ action: "cancel", sessionId: "ses-recovered" });
+    } finally {
+      h.unmount();
+    }
+  });
+
+  // 重复进入正常实例不得打断连接或重建面板；在途连接也不能重复创建。
+  test("enter 通知保留已连接和连接中的实例", async () => {
+    installFakeWebSocket();
+    const h = renderCache();
+    try {
+      const panel = h.panel("inst-a");
+      const enter = () =>
+        act(() =>
+          win.dispatchEvent(
+            new win.CustomEvent("agent:entered", {
+              detail: { envId: "env-a", instanceUid: "inst-a" },
+            }),
+          ),
+        );
+      enter();
+      expect(legacySockets()).toHaveLength(1);
+      await bindSession(legacySockets()[0]!, h.runtimes.get("inst-a")!.rcsSessionKey!, "ses-a");
+      enter();
+      expect(legacySockets()).toHaveLength(1);
+      expect(h.panel("inst-a")).toBe(panel);
+      expect(h.runtimes.get("inst-a")!.connectionState).toBe("connected");
+    } finally {
+      h.unmount();
+    }
+  });
+
+  // 动作通道恢复时，同步通道也必须重新握手，避免新回复仍被失效投影拦住。
+  test("enter 同时恢复已终止的同步连接", () => {
+    installFakeWebSocket();
+    const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: win.localStorage });
+    win.localStorage.setItem("active_org_id", "org-1");
+    const h = renderCache();
+    try {
+      expect(syncSockets()).toHaveLength(1);
+      act(() => {
+        legacySockets()[0]!.closeFromServer(4500, "machine_unavailable");
+        syncSockets()[0]!.closeFromServer(4500, "machine_unavailable");
+      });
+      act(() =>
+        win.dispatchEvent(
+          new win.CustomEvent("agent:entered", {
+            detail: { envId: "env-a", instanceUid: "inst-a" },
+          }),
+        ),
+      );
+      expect(legacySockets()).toHaveLength(2);
+      expect(syncSockets()).toHaveLength(2);
+      expect(syncSockets()[1]!.readyState).toBe(FakeWebSocket.CONNECTING);
+    } finally {
+      h.unmount();
+      win.localStorage.removeItem("active_org_id");
+      if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
+      else Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
+
   // 来回切换必须保留原 DOM、草稿和滚动位置，两实例继续通过各自的连接发送动作。
   test("A → B → A 保留面板和连接，动作不串会话", async () => {
     installFakeWebSocket();

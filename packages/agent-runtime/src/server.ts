@@ -136,6 +136,7 @@ export { resolveWorkspacePath } from "./server/services/workspace-resolver"; // 
 export {
   bindAcpInstanceActivityPort,
   findMachineConnectionById,
+  isMachineAcpReady,
   triggerMachineCleanupByMachineId,
 } from "./server/transport/acp-ws-handler"; // 宿主注入·`bindAcpInstanceActivityPort` 实例活跃度上报（宿主在 main.ts 绑定）｜宿主取用·`findMachineConnectionById` / `triggerMachineCleanupByMachineId` 机器连接索引与清理（Machine host port 的实现来源，本身不是 port）。W6b：帧处理函数与连接表读取改由 `/server/testing` 出口（observer 生产侧已改经 `/runtime` 的观测面）
 // 前端 relay/YJS 生命周期（`closeAllRelayConnections` / `reclaimInstanceYjsDocs` 等）不再出口：

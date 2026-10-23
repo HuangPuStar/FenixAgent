@@ -186,6 +186,13 @@ export function useAgentSidebarTree({
         enterResult = await unwrap(envApi.enter({ id: envId }, instanceUid ? { instanceUid } : undefined));
       }
 
+      // enter 已确保运行态就绪；同实例的缓存面板不会因导航重新挂载，需显式恢复其断开的连接。
+      window.dispatchEvent(
+        new window.CustomEvent("agent:entered", {
+          detail: { envId: enterResult.environmentId ?? envId, instanceUid: enterResult.instanceUid },
+        }),
+      );
+
       // 第三个实参是 **instanceUid**，不是 DB/ACP 会话 id（形参名 `sessionId` 是历史遗留叫法）。
       // 该值落到宿主 URL 段 `/agent/chat/{environmentId}/{instanceUid}`，下游有两处硬约束：
       //   ① `use-chat-panel-runtime` 把它当 WS query 的 `instanceUid`，服务端 `routes/acp/index.ts`

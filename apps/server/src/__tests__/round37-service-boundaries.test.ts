@@ -144,21 +144,18 @@ function makeExecutionManager(sandboxId: string, mode: "restart" | "recover" | "
   const manager = {
     getPool: async () => ({ id: "pool-boundary", providerKey: "provider-boundary", image: "sandbox:test" }),
     createOrReuse: async () => instance,
-    restart: async () => {
-      calls.restart += 1;
-      if (mode === "restart") online = true;
-      if (mode === "error") throw new Error("provider restart failed");
-      return instance;
+    repairRuntime: async (_id: string, options: { recreate?: boolean }) => {
+      if (options.recreate) {
+        calls.recover += 1;
+        if (mode === "recover") online = true;
+      } else {
+        calls.restart += 1;
+        if (mode === "restart") online = true;
+      }
+      return { instance, replaced: Boolean(options.recreate) };
     },
-    recover: async () => {
-      calls.recover += 1;
-      if (mode === "recover") online = true;
-      if (mode === "error") throw new Error("provider recovery failed");
-      return instance;
-    },
-    markError: async () => {
+    markRuntimeNotReady: async () => {
       calls.markError += 1;
-      return instance;
     },
   };
   return { calls, manager, readOnline: async () => online };
@@ -179,6 +176,7 @@ const BOUNDARY_CONNECT_TIMEOUT_MS = 50;
 
 describe("Sandbox ACP 错误补偿边界", () => {
   for (const sandboxId of executionCases) {
+    // 首次等待失败后仍应先复用原资源。
     test(`Sandbox ${sandboxId} 首次等待失败后重启资源并补偿为可连接状态`, async () => {
       const fixture = makeExecutionManager(sandboxId, "restart");
       const handler = new SandboxExecutionHandler(fixture.manager as never, fixture.readOnline);
@@ -195,7 +193,8 @@ describe("Sandbox ACP 错误补偿边界", () => {
   }
 
   for (const sandboxId of executionCases) {
-    test(`Sandbox ${sandboxId} 重启失败后恢复资源并补偿为可连接状态`, async () => {
+    // 只有连接继续超时才推进到单次重建。
+    test(`Sandbox ${sandboxId} 重试超时后重建资源并补偿为可连接状态`, async () => {
       const fixture = makeExecutionManager(sandboxId, "recover");
       const handler = new SandboxExecutionHandler(fixture.manager as never, fixture.readOnline);
       await expect(
@@ -211,7 +210,8 @@ describe("Sandbox ACP 错误补偿边界", () => {
   }
 
   for (const sandboxId of executionCases) {
-    test(`Sandbox ${sandboxId} 重启和恢复均失败时标记错误且拒绝执行`, async () => {
+    // 重建也未连接时应明确失败，不能无限重试。
+    test(`Sandbox ${sandboxId} 重试与重建后仍未回连时标记错误且拒绝执行`, async () => {
       const fixture = makeExecutionManager(sandboxId, "error");
       const handler = new SandboxExecutionHandler(fixture.manager as never, fixture.readOnline);
       await expect(

@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
+import { createWsRemoteTransport, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
 import type { AgentInstanceRecord } from "../server/repositories/agent-instance";
 import {
   agentInstanceService,
@@ -33,7 +33,12 @@ import {
   stubCoreRuntimeFacade,
   stubMachineRegistryPort,
 } from "../server/testing";
-import { handleAcpWsMessage, triggerMachineCleanupByMachineId } from "../server/transport/acp-ws-handler";
+import {
+  findMachineConnectionById,
+  handleAcpWsMessage,
+  isMachineAcpReady,
+  triggerMachineCleanupByMachineId,
+} from "../server/transport/acp-ws-handler";
 import {
   bindRelayLifecyclePort,
   type RelayLifecyclePort,
@@ -184,6 +189,32 @@ async function waitForRelayClose(instanceId: string): Promise<void> {
 }
 
 describe("machine clean slate recovery", () => {
+  // 注册存在不代表可执行；clean-slate 和 transport/节点激活全部完成后才可复用。
+  test("requires clean slate and activated transport for sandbox readiness", async () => {
+    const machineId = "mach_strict_readiness";
+    const wsId = "ws_strict_readiness";
+    const ws = await connectMachine(wsId, machineId);
+    let online = true;
+    stubCoreRuntimeFacade({
+      getNode: () => ({ id: machineId, mode: "remote", engineTypes: ["peri"], status: online ? "online" : "offline" }),
+    });
+    expect(isMachineAcpReady(machineId)).toBe(false);
+    await confirmCleanSlate(ws, wsId);
+    const entry = findMachineConnectionById(machineId)!;
+    expect(entry.cleanSlateConfirmed).toBe(true);
+    expect(isMachineAcpReady(machineId)).toBe(false);
+    entry.remoteTransport = createWsRemoteTransport(ws);
+    expect(isMachineAcpReady(machineId)).toBe(true);
+    online = false;
+    expect(isMachineAcpReady(machineId)).toBe(false);
+    online = true;
+    entry.cleanSlateConfirmed = false;
+    expect(isMachineAcpReady(machineId)).toBe(false);
+    entry.cleanSlateConfirmed = true;
+    Object.defineProperty(ws, "readyState", { value: 3 });
+    expect(isMachineAcpReady(machineId)).toBe(false);
+  });
+
   // 机器确认 clean slate 是「旧 runtime 已终止」的唯一可信信号，接线到协调器后进入实例不应再被 runtime gate 拒绝。
   test("clean slate confirmation resolves unknown runtimes of that machine", async () => {
     const machineId = "mach_clean_slate_001";

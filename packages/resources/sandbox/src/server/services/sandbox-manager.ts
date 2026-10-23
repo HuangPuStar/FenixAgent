@@ -1,5 +1,4 @@
-import { createLogger } from "@fenix/logger";
-import { createSandboxMachine, isMachineOnline, releaseMachineRuntime } from "@fenix/resource-machine/server";
+import { createSandboxMachine, isMachineRuntimeReady, releaseMachineRuntime } from "@fenix/resource-machine/server";
 import type { SandboxInstance, SandboxPool } from "@fenix/resource-sandbox/db";
 import type { SandboxResourceOverrides, SandboxResources, SandboxTemplate } from "@fenix/sandbox-provider";
 import type { SandboxInstanceLockScope } from "../repositories/sandbox-instance-repository";
@@ -9,6 +8,7 @@ import {
   findActiveSandboxInstance,
   findSandboxInstanceById,
   findSandboxInstanceByIdForUser,
+  findSandboxInstanceByMachineId,
   listSandboxInstances,
   updateSandboxInstance,
   withSandboxInstanceLock,
@@ -18,9 +18,11 @@ import { getProviderExtra, getSandboxAgentType, resolveSandboxConfig, sandboxCon
 import { SandboxInstanceConflictError, SandboxStateError } from "./sandbox-errors";
 import { asSandboxResources, sandboxMachineId, withMachineId } from "./sandbox-instance-snapshot";
 import type { SandboxProviderRegistry } from "./sandbox-provider-registry";
-import { SandboxRemoteReconciler } from "./sandbox-remote-reconciler";
-
-const logger = createLogger("sandbox-manager");
+import {
+  SandboxRemoteReconciler,
+  type SandboxRuntimeRepairOptions,
+  type SandboxRuntimeRepairResult,
+} from "./sandbox-remote-reconciler";
 
 type SandboxPoolRepository = {
   findById(id: string): Promise<SandboxPool | null>;
@@ -30,6 +32,7 @@ type SandboxPoolRepository = {
 type SandboxInstanceRepository = {
   findActive(providerKey: string, poolId: string, userId: string): Promise<SandboxInstance | null>;
   findById?(id: string): Promise<SandboxInstance | null>;
+  findByMachineId?(machineId: string): Promise<SandboxInstance | null>;
   findByIdForUser(id: string, userId: string): Promise<SandboxInstance | null>;
   create(input: Parameters<typeof createSandboxInstance>[0]): Promise<SandboxInstance>;
   update(
@@ -98,8 +101,6 @@ export class SandboxManager {
   private readonly instances: SandboxInstanceRepository;
   private readonly now: () => Date;
   private readonly createMachine: typeof createSandboxMachine;
-  /** `restart` 需要直接查询 Provider 资源是否仍可复用，因此这里保留注册表句柄。 */
-  private readonly providers: SandboxProviderRegistry;
   /** 远程资源（Provider 沙盒、machine 路由）的创建与释放都收敛在协调器内。 */
   private readonly remote: SandboxRemoteReconciler;
 
@@ -111,6 +112,7 @@ export class SandboxManager {
     this.instances = dependencies.instances ?? {
       findActive: findActiveSandboxInstance,
       findById: findSandboxInstanceById,
+      findByMachineId: findSandboxInstanceByMachineId,
       findByIdForUser: findSandboxInstanceByIdForUser,
       create: createSandboxInstance,
       update: updateSandboxInstance,
@@ -120,16 +122,18 @@ export class SandboxManager {
     };
     this.now = dependencies.now ?? (() => new Date());
     this.createMachine = dependencies.createMachine ?? createSandboxMachine;
-    this.providers = dependencies.providers;
     this.remote = new SandboxRemoteReconciler({
-      providers: this.providers,
+      providers: dependencies.providers,
       instances: this.instances,
-      isMachineOnline: dependencies.isMachineOnline ?? isMachineOnline,
+      isMachineOnline: dependencies.isMachineOnline ?? isMachineRuntimeReady,
       releaseRuntime: dependencies.releaseRuntime ?? releaseMachineRuntime,
     });
   }
 
-  async createOrReuse(input: SandboxManagerCreateInput): Promise<SandboxInstance> {
+  async createOrReuse(
+    input: SandboxManagerCreateInput,
+    onRecovery?: (action: "resume" | "replace") => void,
+  ): Promise<SandboxInstance> {
     const pool =
       input.organizationId && this.pools.findReadableById
         ? await this.pools.findReadableById(input.poolId, input.organizationId)
@@ -140,7 +144,7 @@ export class SandboxManager {
     }
 
     const existing = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-    if (existing) return this.remote.reconcileWithLock(existing);
+    if (existing) return this.remote.reconcileWithLock(existing, { onRecovery });
 
     const createdAt = this.now();
     const machineId = sandboxMachineId(input.sandboxId);
@@ -176,7 +180,7 @@ export class SandboxManager {
       if (isUniqueConstraintError(error)) {
         // 并发创建冲突：复用抢占成功的一方；machine 和 provider 资源均由持有记录的一方创建。
         const concurrent = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-        if (concurrent) return this.remote.reconcileWithLock(concurrent);
+        if (concurrent) return this.remote.reconcileWithLock(concurrent, { onRecovery });
         // 冲突但查不到并发实例（极端竞态）：按冲突上报
         throw new SandboxInstanceConflictError(
           error instanceof Error ? error.message : "sandbox instance create conflicted",
@@ -226,52 +230,20 @@ export class SandboxManager {
     return instance;
   }
 
-  /** ACP 等待超时后，优先复用原 Provider 资源恢复连接，不主动销毁资源。 */
-  async restart(sandboxId: string): Promise<SandboxInstance> {
-    const instance = await this.instances.findById?.(sandboxId);
-    if (!instance) throw new SandboxStateError(`sandbox instance '${sandboxId}' not found`);
-    if (!instance.externalSandboxId) {
-      throw new SandboxStateError(`sandbox instance '${sandboxId}' has no provider resource to restart`);
-    }
-
-    const provider = this.providers.get(instance.providerKey);
-    const ref = await provider.get(instance.externalSandboxId, instance.id);
-    if (!ref) {
-      throw new SandboxStateError(`provider resource '${instance.externalSandboxId}' was not found`);
-    }
-    logger.info(
-      `[restart] provider result sandboxId='${instance.id}' providerSandboxId='${ref.sandboxId}' providerStatus='${ref.status}'`,
-    );
-    if (ref.status === "error") {
-      throw new SandboxStateError(`provider resource '${ref.sandboxId}' is not recoverable`);
-    }
-    if (ref.status === "stopped") {
-      logger.info(`[restart] provider resource stopped, resuming sandboxId='${instance.id}'`);
-      return this.remote.resumeRemote(instance, provider, ref);
-    }
-
-    // creating/ready 资源仍然有效，只需重新等待其 ACP runtime 回连。
-    return this.remote.saveProviderRef(instance.id, ref);
+  /** 按可信 Machine 归属定位现有沙盒，不创建业务记录。 */
+  async getByMachineForUser(machineId: string, userId: string): Promise<SandboxInstance | null> {
+    const instance = await this.instances.findByMachineId?.(machineId);
+    return instance?.userId === userId ? instance : null;
   }
 
-  /** ACP 等待多次失败且原 Provider 资源无法恢复时，按 Instance 配置快照重建。 */
-  async recover(sandboxId: string): Promise<SandboxInstance> {
-    const recoverLocked = async (scope: SandboxInstanceLockScope): Promise<SandboxInstance> => {
-      const instance = await scope.findById(sandboxId);
-      if (!instance) throw new SandboxStateError(`sandbox instance '${sandboxId}' not found`);
-      logger.warn(
-        `[recover] ACP connection timeout, recreating provider resource sandboxId='${instance.id}' status='${instance.status}' externalSandboxId='${instance.externalSandboxId ?? ""}'`,
-      );
-      return this.remote.recreateRemote(instance, scope);
-    };
+  /** 在行锁内检查资源身份与恢复意图，再推进 Provider 资源。 */
+  repairRuntime(id: string, options: SandboxRuntimeRepairOptions = {}): Promise<SandboxRuntimeRepairResult> {
+    return this.remote.repairWithLock(id, options);
+  }
 
-    if (this.instances.withLock) return this.instances.withLock(sandboxId, recoverLocked);
-    const instance = await this.instances.findById?.(sandboxId);
-    if (!instance) throw new SandboxStateError(`sandbox instance '${sandboxId}' not found`);
-    logger.warn(
-      `[recover] ACP connection timeout, recreating provider resource sandboxId='${instance.id}' status='${instance.status}' externalSandboxId='${instance.externalSandboxId ?? ""}'`,
-    );
-    return this.remote.recreateRemote(instance);
+  /** 将连接失败写回仍匹配的资源，避免旧超时污染后来一次恢复。 */
+  markRuntimeNotReady(expected: SandboxInstance): Promise<void> {
+    return this.remote.markRuntimeNotReady(expected);
   }
 
   async getForUser(id: string, userId: string): Promise<SandboxInstance | null> {

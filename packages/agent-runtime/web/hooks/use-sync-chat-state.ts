@@ -23,6 +23,8 @@ export interface UseSyncChatStateOptions {
    * 追加到上一会话的时间线上。
    */
   readonly projectionVersion?: number;
+  /** enter 确认运行态恢复后递增，让终止的同步连接重新握手。 */
+  readonly connectionAttempt?: number;
   readonly contentDocIds?: readonly string[];
   readonly generation?: string;
   /** 测试注入；生产使用浏览器 WebSocket。 */
@@ -93,6 +95,7 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     options.organizationId,
     options.sessionKey,
     options.projectionVersion ?? null,
+    options.connectionAttempt ?? 0,
   ]);
   const [snapshot, setSnapshot] = useState({ scope, state: EMPTY_STATE });
   const fallbackScope = useRef<string | null>(null);

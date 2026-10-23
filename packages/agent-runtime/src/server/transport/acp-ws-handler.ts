@@ -690,6 +690,17 @@ export function findMachineConnectionById(machineId: string): AcpConnectionEntry
   return null;
 }
 
+/** 沙盒可执行的严格判定：当前 socket 已确认清场且两侧运行节点均激活。 */
+export function isMachineAcpReady(machineId: string): boolean {
+  const entry = findMachineConnectionById(machineId);
+  return Boolean(
+    entry?.cleanSlateConfirmed &&
+      entry.remoteTransport &&
+      getAgentNodeService().hasActiveConnection(machineId) &&
+      getCoreRuntime().getNode(machineId)?.status === "online",
+  );
+}
+
 /** 只读快照：供 Observer 等只读消费者遍历活跃连接，不暴露 ws/unsub 句柄。 */
 export function listAcpConnections(): AcpConnectionSnapshot[] {
   return [...connections.values()].map((entry) => ({
