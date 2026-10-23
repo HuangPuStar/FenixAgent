@@ -18,12 +18,44 @@ function textOf(message: TextMessage): string {
         .join("");
 }
 
+/**
+ * 旧投影中「后面紧跟工具调用」的助手消息 id。
+ *
+ * 这类文本在旧展示模型里还会以 `entryId#N` 追加工具后的段，而新投影把整条 entry 的正文压成
+ * 一条消息、不携带工具位置。流式中间态（工具已到、工具后的正文尚未在旧侧成段）若用新投影的
+ * 整段文本顶替这一位，工具后的正文会整体前移到工具之前（用户可见 "ai ai tools"）。
+ */
+function toolFollowedAssistantIds(legacy: readonly StructuredMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (let index = 0; index < legacy.length; index += 1) {
+    const message = legacy[index];
+    if (message?.type !== "assistant_message") continue;
+    for (let next = index + 1; next < legacy.length; next += 1) {
+      const candidate = legacy[next];
+      if (!candidate) continue;
+      // 工具是旧展示模型的文本分段边界；plan 等其他条目不影响正文分段，继续向后看。
+      if (candidate.type === "tool_call") {
+        ids.add(message.id);
+        break;
+      }
+      if (candidate.type === "assistant_message" || candidate.type === "user_message") break;
+    }
+  }
+  return ids;
+}
+
 /** 旧侧保留非文本/错误；纯文本取更完整的一侧，避免双写传输先后导致流式正文回退。 */
-function preferredMessage(legacy: StructuredMessage, sync: StructuredMessage): StructuredMessage {
+function preferredMessage(
+  legacy: StructuredMessage,
+  sync: StructuredMessage,
+  toolFollowed: ReadonlySet<string>,
+): StructuredMessage {
   if (!isText(legacy) || !isText(sync) || legacy.type !== sync.type) return legacy;
   if (legacy.type === "assistant_message" && (legacy.error || legacy.chunks.some((c) => c.type !== "message"))) {
     return legacy;
   }
+  // 工具前的文本位只认旧分段结构：新投影的整段正文包含工具后的内容，顶替会打乱工具顺序。
+  if (toolFollowed.has(legacy.id)) return legacy;
   return textOf(sync).length >= textOf(legacy).length ? sync : legacy;
 }
 
@@ -167,6 +199,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
     // 分段 entry 除外：新投影只能表达合并后的整条正文，覆盖证明不成立。
     const segmentedBases = segmentedEntryBases(legacy);
     const segmentedText = segmentedTextByBase(legacy, segmentedBases);
+    const toolFollowed = toolFollowedAssistantIds(legacy);
     const syncCoversAssistantText = retireLegacyText && sync.some((message) => message.type === "assistant_message");
     // 分段 entry 的单条合并文本，只有被旧结构正文完整覆盖时才可退役。
     const coveredBySegments = (message: StructuredMessage): boolean => {
@@ -294,7 +327,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(`sync:${pair.id}`)) ?? message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(`sync:${pair.id}`, key);
-      candidates.set(key, pair ? preferredMessage(message, pair) : message);
+      candidates.set(key, pair ? preferredMessage(message, pair, toolFollowed) : message);
       times.set(key, legacyTimes.get(message) ?? now());
       legacyKeys.push(key);
     }
@@ -303,6 +336,9 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       if (segmentedBases.has(message.id) && coveredBySegments(message)) continue;
       if (nextAliases.has(`sync:${message.id}`)) continue;
       const key = aliases.get(`sync:${message.id}`) ?? message.id;
+      // 同 key 位置是工具前的旧分段文本时不能被整段新文本顶替（工具顺序会丢）。
+      const existing = candidates.get(key);
+      if (existing?.type === "assistant_message" && toolFollowed.has(existing.id)) continue;
       nextAliases.set(`sync:${message.id}`, key);
       candidates.set(key, message);
       times.set(key, syncTimes.get(message) ?? now());
