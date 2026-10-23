@@ -347,6 +347,8 @@ sequenceDiagram
 
 ### 4.3 发送消息与流式响应
 
+前端发送动作的 ACP 会话目标只读取 Session Doc 的 `session.sessionId`。`agent.acpSessionId` 是最近一次 Agent status 的 locator，随 Agent 状态跨投影换代保留，可能仍指向旧会话，不能作为 create/load 成功后的动作目标。
+
 ```mermaid
 sequenceDiagram
     autonumber
