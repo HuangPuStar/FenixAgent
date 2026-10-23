@@ -84,7 +84,7 @@ describe("readLegacyCommittedHistory", () => {
     setEntryStatus(ydoc, "turn-1:assistant", "completed");
     const records = readLegacyCommittedHistory(ydoc);
     expect(records.map((record) => record.meta.kind)).toEqual(["text_part", "tool_boundary", "text_part"]);
-    expect(records.map((record) => record.value)).toEqual(["A", "t1", "B"]);
+    expect(records.map((record) => record.value)).toEqual(["A", JSON.stringify({ toolCallId: "t1", ordinal: 0 }), "B"]);
     expect(records.map((record) => record.meta.partIndex)).toEqual([0, 1, 2]);
     ydoc.destroy();
   });

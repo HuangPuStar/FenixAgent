@@ -84,10 +84,12 @@ export function planStructuralGroup(input: {
     }
   }
   if (input.legacySegments.length === 0) return fallback("missing-text-anchor");
+  if (input.syncMessages.some((message) => message.entryBoundaryIssue === true)) {
+    return fallback("incomplete-markers");
+  }
 
   const legacyById = new Map(input.legacySegments.map((segment) => [segment.message.id, segment]));
   const tools = toolIndicesIn(input.legacy, input.blockStart, input.blockEnd);
-  const required = syncSegments.reduce((max, segment) => Math.max(max, segment.ordinal), 0);
   const edits: PlannedEdit[] = [];
   const insertions: PlannedInsertion[] = [];
 
@@ -97,7 +99,17 @@ export function planStructuralGroup(input: {
       const legacyText = assistantText(legacy.message);
       if (segment.text.startsWith(legacyText)) {
         const extra = segment.text.slice(legacyText.length);
-        if (extra.length > 0) edits.push({ segment: legacy, side: "suffix", text: extra });
+        if (extra.length > 0) {
+          // 同步段跨过了后续旧段边界：说明中间 marker 缺失（例如缺 t2 导致 #1=BC）。
+          // 不能把后续段正文追加到当前旧段，否则会与仍保留的后续段重复（ABCC）；整条降级。
+          const laterTexts = input.legacySegments.filter(
+            (candidate) => candidate.ordinal > legacy.ordinal && candidate.text.length > 0,
+          );
+          if (laterTexts.some((candidate) => extra.includes(candidate.text))) {
+            return fallback("incomplete-markers");
+          }
+          edits.push({ segment: legacy, side: "suffix", text: extra });
+        }
       } else if (!legacyText.startsWith(segment.text)) {
         // 同一分段两路正文互不为前缀：无法判断谁更完整，整条降级而不是拼接。
         return fallback("ambiguous-alignment");
@@ -105,20 +117,25 @@ export function planStructuralGroup(input: {
       continue;
     }
 
-    // 缺段位置：工具数恰好等于边界数时逐工具定位；否则只有“最后一个边界”能确定
-    // （该边界之后的所有工具都属于同一个尾 run）。中间边界在多工具 run 内无法拆分，降级。
+    // 缺段位置：边界标记记录了本段之前的最后一个工具 id（工具 run 取 run 的最后一个）。
+    // 直接在该工具之后插入；缺失/未知 id 说明标记不完整，降级而不是猜 run 切分。
     let beforeIndex: number;
     if (segment.ordinal === 0) {
       beforeIndex = tools[0] ?? input.blockStart;
     } else {
-      if (tools.length < segment.ordinal) return fallback("boundary-count-mismatch");
-      if (tools.length === required) {
-        beforeIndex = tools[segment.ordinal - 1]! + 1;
-      } else if (segment.ordinal === required) {
-        beforeIndex = tools[tools.length - 1]! + 1;
-      } else {
-        return fallback("boundary-count-mismatch");
+      const boundaryToolId = segment.message.entryBoundaryToolId;
+      if (typeof boundaryToolId !== "string" || boundaryToolId.length === 0) {
+        return fallback("incomplete-markers");
       }
+      const toolIndex = input.legacy.findIndex(
+        (message, index) =>
+          index >= input.blockStart &&
+          index <= input.blockEnd &&
+          message.type === "tool_call" &&
+          message.id === boundaryToolId,
+      );
+      if (toolIndex < 0) return fallback("incomplete-markers");
+      beforeIndex = toolIndex + 1;
     }
     const reference =
       input.legacySegments.find((candidate) => candidate.ordinal >= segment.ordinal) ??

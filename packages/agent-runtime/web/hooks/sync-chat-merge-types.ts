@@ -30,6 +30,7 @@ export interface PlannedEdit {
 /** 降级原因：旧数据没有有序工具标记，或边界无法唯一判定时显式上报。 */
 export type MergeDegradeReason =
   | "markers-missing"
+  | "incomplete-markers"
   | "ambiguous-alignment"
   | "boundary-count-mismatch"
   | "trailing-tools-without-markers"

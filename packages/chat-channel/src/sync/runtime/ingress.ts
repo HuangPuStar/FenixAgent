@@ -426,13 +426,14 @@ function fromSessionUpdate(
       // 工具开始/首帧：在当前位置写入有序边界（标准 ACP 的 tool_call 与内部 started 同义）。
       return toolEvents(update, turnId, null, true);
     case "tool_call_update":
-      return toolEvents(update, turnId);
+      // 更新帧也可能是一个工具的首个可见帧；写者按 (entryId, toolCallId) 去重，只有第一次落边界。
+      return toolEvents(update, turnId, null, true);
     case "tool_call_result":
     case "tool_call_completed":
-      return toolEvents(update, turnId, "completed");
+      return toolEvents(update, turnId, "completed", true);
     case "tool_call_error":
     case "tool_call_failed":
-      return toolEvents(update, turnId, "failed");
+      return toolEvents(update, turnId, "failed", true);
     case "permission_request":
       return permissionEvents(update, turnId, "pending");
     case "permission_response":

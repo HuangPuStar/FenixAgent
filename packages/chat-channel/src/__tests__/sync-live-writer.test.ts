@@ -759,6 +759,44 @@ function recordUpdate(docId: string, text: string): Uint8Array {
 }
 
 describe("有序工具边界标记", () => {
+  // 终态首帧（started 自带 completed）也必须在文本 cursor 处写边界；重放只保留一条。
+  test("终态首帧写边界且重放不重复", async () => {
+    const fixture = await setup();
+    const terminal = {
+      ...semantic("tool", {
+        entityId: "t1",
+        toolCallId: "t1",
+        boundary: true,
+        terminal: true,
+        metadata: { status: "completed" },
+      }),
+      entryId: "turn-1:assistant",
+    };
+    await fixture.writer.accept(terminal);
+    await fixture.writer.accept(terminal);
+    const records = readRecords(fixture, fixture.contentId);
+    expect(records.filter((record) => record.kind === "tool_boundary")).toHaveLength(1);
+    expect(records.map((record) => record.kind).slice(0, 3)).toEqual(["tool_boundary", "final", "final"]);
+    await fixture.writer.close();
+  });
+
+  // 去重身份是 (entryId, toolCallId)：不同 entry 复用同名工具各写一条边界。
+  test("不同 entry 的同名 toolCallId 各写一条边界", async () => {
+    const fixture = await setup();
+    const start = semantic("tool", {
+      entityId: "t1",
+      toolCallId: "t1",
+      boundary: true,
+      metadata: { title: "Read" },
+    });
+    await fixture.writer.accept({ ...start, entryId: "entry-1" });
+    await fixture.writer.accept({ ...start, entryId: "entry-2" });
+    const boundaries = readRecords(fixture, fixture.contentId).filter((record) => record.kind === "tool_boundary");
+    expect(boundaries.map((record) => record.entryId)).toEqual(["entry-1", "entry-2"]);
+    expect(boundaries.map((record) => JSON.parse(TEXT_DECODER.decode(record.payload)).ordinal)).toEqual([0, 0]);
+    await fixture.writer.close();
+  });
+
   // 工具开始时在文本 cursor 位置写边界记录；同一 toolCallId 的重放不得产生第二条。
   test("工具开始写入边界记录，重复重放不重复", async () => {
     const fixture = await setup();
@@ -773,7 +811,7 @@ describe("有序工具边界标记", () => {
     const records = readRecords(fixture, fixture.contentId);
     expect(records.map((record) => record.kind)).toEqual(["text", "tool_boundary", "text"]);
     const boundary = records.find((record) => record.kind === "tool_boundary");
-    expect(JSON.parse(TEXT_DECODER.decode(boundary!.payload))).toBe("t1");
+    expect(JSON.parse(TEXT_DECODER.decode(boundary!.payload))).toEqual({ toolCallId: "t1", ordinal: 0 });
     await fixture.writer.close();
   });
 });

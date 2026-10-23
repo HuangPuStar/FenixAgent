@@ -382,10 +382,22 @@ export function applyLosslessEntryMerge(
       let id = desired;
       if (reserved.has(desired)) id = nextFreeEntryId(analysis.base, 0, reserved);
       else reserved.add(desired);
+      // 降级只替换文本段，非文本（thought）与 entry 错误必须挂到合并消息上，不能静默删除。
+      const preservedChunks = analysis.segments.flatMap((segment) =>
+        segment.message.chunks.filter((chunk) => chunk.type !== "message"),
+      );
+      const legacyError = analysis.segments
+        .map((segment) => segment.message.error)
+        .find((error) => error !== undefined);
       insertions.push({
         beforeIndex: firstSegment.index,
         order: order++,
-        message: { ...analysis.syncMessage, id, chunks: [{ type: "message", text: combinedText }] },
+        message: {
+          ...analysis.syncMessage,
+          id,
+          chunks: [...preservedChunks, { type: "message", text: combinedText }],
+          ...(legacyError !== undefined ? { error: legacyError } : {}),
+        },
       });
       continue;
     }

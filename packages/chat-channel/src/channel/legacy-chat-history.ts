@@ -49,6 +49,7 @@ function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: 
   if (!(blocks instanceof Y.Map) || !(order instanceof Y.Array)) return [];
   const records: SyncHistoryRecord[] = [];
   let partIndex = 0;
+  let boundaryOrdinal = 0;
   let emittedText = false;
   for (const blockId of order.toArray()) {
     if (typeof blockId !== "string") continue;
@@ -58,9 +59,13 @@ function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: 
     if (type === "tool_call") {
       const toolCallId = block.get("toolCallId");
       records.push({
-        value: typeof toolCallId === "string" ? toolCallId : "",
+        value: JSON.stringify({
+          toolCallId: typeof toolCallId === "string" ? toolCallId : "",
+          ordinal: boundaryOrdinal,
+        }),
         meta: { kind: "tool_boundary", entryId, contentSlot: 0, partIndex: partIndex++ },
       });
+      boundaryOrdinal += 1;
       continue;
     }
     if (type !== "text") continue;

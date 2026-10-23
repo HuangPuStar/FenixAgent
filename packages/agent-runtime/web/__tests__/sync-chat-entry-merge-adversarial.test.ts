@@ -159,14 +159,15 @@ describe("全局唯一 id 与 fallback 覆盖", () => {
     expect(new Set(ids(merged)).size).toBe(ids(merged).length);
   });
 
-  // 降级 id 不得与另一条新投影 entry 冲突，正文 AB + XYZ 都可见。
-  test("降级 id 不得与另一条新投影 entry 冲突", () => {
+  // 不完整分段（缺 boundaryToolId）不得猜位置：整条降级为单条正文 + 工具，正文不丢且 id 唯一。
+  test("不完整分段降级时正文不丢且 id 唯一", () => {
     const merged = createSyncMessageMerger()(
       [assistant("e", "A"), tool("t")],
       [assistant("e", "AB", 0), assistant("e#1", "XYZ", 0)],
     );
-    expect(view(merged)).toEqual(["e=AB", "tool_call:t", "e#1=XYZ"]);
     expect(body(merged)).toBe("ABXYZ");
+    expect(merged.some((message) => message.type === "tool_call" && message.id === "t")).toBe(true);
+    expect(merged.filter((message) => message.type === "assistant_message")).toHaveLength(1);
     expect(new Set(ids(merged)).size).toBe(ids(merged).length);
   });
 
@@ -286,22 +287,39 @@ describe("空白、乱序与重复 merge", () => {
 
 describe("有序工具边界标记（精确结构）", () => {
   /** 用真实 SyncContentProjectionHub 从 content Doc 记录派生投影；text / tool_boundary 交替。 */
-  function project(parts: ReadonlyArray<string | { tool: string }>): StructuredMessage[] {
+  function project(parts: ReadonlyArray<string | { tool: string; ordinal?: number }>): StructuredMessage[] {
     const content = new Y.Doc();
     const records = new Y.Array<Record<string, unknown>>();
     content.getMap("root").set("records", records);
     const encoder = new TextEncoder();
+    let nextOrdinal = 0;
     parts.forEach((part, index) => {
       const text = typeof part === "string";
+      if (text) {
+        records.push([
+          {
+            recordId: `r${index}`,
+            entryId: "turn:assistant",
+            entryOrder: 1,
+            contentSlot: "text",
+            partIndex: index,
+            kind: "text",
+            payload: encoder.encode(part),
+          },
+        ]);
+        return;
+      }
+      const ordinal = part.ordinal ?? nextOrdinal;
+      nextOrdinal = Math.max(nextOrdinal, ordinal + 1);
       records.push([
         {
           recordId: `r${index}`,
           entryId: "turn:assistant",
           entryOrder: 1,
-          contentSlot: text ? "text" : "boundary",
+          contentSlot: "boundary",
           partIndex: index,
-          kind: text ? "text" : "tool_boundary",
-          payload: encoder.encode(text ? part : JSON.stringify(part.tool)),
+          kind: "tool_boundary",
+          payload: encoder.encode(JSON.stringify({ toolCallId: part.tool, ordinal })),
         },
       ]);
     });
@@ -375,6 +393,112 @@ describe("有序工具边界标记（精确结构）", () => {
       "turn:assistant#2=B",
     ]);
     expect(body(merged)).toBe("AABB");
+  });
+
+  // 工具 run 中缺中段：边界工具 id 指向前一个 run 的最后一个工具，缺失段精确落在 t1 之后。
+  test("工具 run 中缺中段按边界工具精确落位", () => {
+    const sync = project(["A", { tool: "t1" }, "B", { tool: "t2" }, { tool: "t3" }, "C"]);
+    const merged = createSyncMessageMerger()(
+      [assistant("turn:assistant", "A"), tool("t1"), tool("t2"), tool("t3"), assistant("turn:assistant#2", "C")],
+      sync,
+    );
+    expect(view(merged)).toEqual([
+      "turn:assistant=A",
+      "tool_call:t1",
+      "turn:assistant#1=B",
+      "tool_call:t2",
+      "tool_call:t3",
+      "turn:assistant#2=C",
+    ]);
+    expect(body(merged)).toBe("ABC");
+  });
+
+  // 部分 marker 缺失（缺 t2）时，同步 #1 跨越旧 #1/#2 边界：必须降级，不能把 C 追加到 B 后造成 ABCC。
+  test("部分边界缺失时正文只出现一次并显式降级", () => {
+    const sync = project(["A", { tool: "t1" }, "B", "C"]);
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })(
+      [
+        assistant("turn:assistant", "A"),
+        tool("t1"),
+        assistant("turn:assistant#1", "B"),
+        tool("t2"),
+        assistant("turn:assistant#2", "C"),
+      ],
+      sync,
+    );
+    expect(body(merged)).toBe("ABC");
+    expect(body(merged).split("C")).toHaveLength(2);
+    expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual(["t1", "t2"]);
+    expect(degradations).toContainEqual({ entryId: "turn:assistant", reason: "incomplete-markers" });
+  });
+
+  // 边界序号缺口（0 → 2）说明 marker 不完整：即使文本齐全也必须降级。
+  test("边界序号缺口触发降级", () => {
+    const sync = project(["A", { tool: "t1", ordinal: 0 }, "B", { tool: "t3", ordinal: 2 }, "C"]);
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })(
+      [assistant("turn:assistant", "A"), tool("t1"), tool("t2"), tool("t3"), assistant("turn:assistant#2", "C")],
+      sync,
+    );
+    expect(body(merged)).toBe("ABC");
+    expect(body(merged).split("B")).toHaveLength(2);
+    expect(degradations).toContainEqual({ entryId: "turn:assistant", reason: "incomplete-markers" });
+  });
+
+  // fallback 只替换文本段，thought 与 entry 错误必须挂到合并消息，不能静默删除。
+  test("fallback 保留 thought 与 error", () => {
+    const first: Assistant = {
+      ...assistant("e", "A"),
+      chunks: [
+        { type: "thought", text: "THINK" },
+        { type: "message", text: "A" },
+      ],
+      error: { type: "AGENT_RUNTIME.PROMPT_REJECTED", id: "err-1", message: "ERR" },
+    };
+    const merged = createSyncMessageMerger()(
+      [first, tool("t1"), tool("t2"), assistant("e#2", "C")],
+      [assistant("e", "ABC", 0)],
+    );
+    const mergedAssistant = merged.find((message): message is Assistant => message.type === "assistant_message");
+    expect(mergedAssistant?.chunks).toContainEqual({ type: "thought", text: "THINK" });
+    expect(textOf(mergedAssistant!)).toBe("ABC");
+    expect(mergedAssistant?.error).toEqual({ type: "AGENT_RUNTIME.PROMPT_REJECTED", id: "err-1", message: "ERR" });
+    expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual(["t1", "t2"]);
+  });
+
+  // 标记存在时任意缺段组合都精确落位；全部文本缺失时无锚点，只要求正文/工具不丢。
+  test("标记存在时任意缺段组合精确落位", () => {
+    const sync = project(["A", { tool: "t1" }, "B", { tool: "t2" }, "C"]);
+    const expected = ["turn:assistant=A", "tool_call:t1", "turn:assistant#1=B", "tool_call:t2", "turn:assistant#2=C"];
+    let checks = 0;
+    for (let round = 0; round < 200; round += 1) {
+      for (let mask = 1; mask < 8; mask += 1) {
+        const legacy: StructuredMessage[] = [
+          ...(mask & 1 ? [] : [assistant("turn:assistant", "A")]),
+          tool("t1"),
+          ...(mask & 2 ? [] : [assistant("turn:assistant#1", "B")]),
+          tool("t2"),
+          ...(mask & 4 ? [] : [assistant("turn:assistant#2", "C")]),
+        ];
+        const merged = createSyncMessageMerger()(legacy, sync);
+        if (mask === 7) {
+          expect(body(merged)).toBe("ABC");
+          expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual([
+            "t1",
+            "t2",
+          ]);
+        } else {
+          expect(view(merged)).toEqual(expected);
+        }
+        checks += 1;
+      }
+    }
+    expect(checks).toBe(1400);
   });
 });
 
