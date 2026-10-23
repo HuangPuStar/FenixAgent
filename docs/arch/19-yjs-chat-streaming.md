@@ -254,6 +254,8 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 
 宿主的实例面板缓存在当前 `organizationId + userId` 内按 `environmentId + instanceUid` 保留。实例切换只改变可见性，原面板、连接、会话、草稿和滚动位置保持；每个面板继续使用自身的历史窗口和 MCP 数据。单实例重启以 `agent:reconnect` 的 `envId + instanceUid` 精确失效，只有环境级事件省略 `instanceUid`；删除环境释放对应面板，组织/用户变化和宿主卸载释放全部缓存。
 
+侧栏进入实例时，只有 `/web/environments/:id/enter` 成功后才派发 `agent:entered`，目标取响应的 `environmentId + instanceUid`。缓存面板仅在目标匹配且动作连接已断开或进入错误态时重建动作与同步连接，保留面板、草稿和确定性会话标识；已连接或正在连接时忽略通知。该信号不改变终态关闭码的后台自动重连策略，enter 失败不触发重连。
+
 `instanceUid` 只决定 Doc 归属，不决定 ACP 会话：**同一实例内切换 ACP 会话不改 URL、也不改 `rcsSessionId`**，由 `SessionChannel` 调 `docManager.replaceProjection(rcsSessionId, sessionId)` 在同一个 `rcsSessionId` 下整份替换投影（新 generation，见 §4.2）。因此「换实例」与「同实例换会话」是两条不同的路径，前者换命名空间，后者只有投影换代。
 
 ```mermaid

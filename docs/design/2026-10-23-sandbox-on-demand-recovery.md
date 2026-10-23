@@ -13,9 +13,9 @@
 | 断连时同步降级 | 更及时地展示沙盒非健康 | 单独使用仍会被 runtime 的 `unknown` 门禁拦住 | 本次不做 |
 | 后台周期对账 | 无人访问也能发现和修复故障 | 增加调度、退避与任务生命周期 | 本次不做 |
 
-本次只增加进入流程的恢复前置步骤。不新增数据库结构、环境变量、后台定时器、外部 API 或通用恢复框架，不修改 OpenSandbox、沙盒内 acp-runtime、acp-link 协议及前端重连策略。
+本次增加进入流程的恢复前置步骤，并在前端 enter 成功后恢复目标缓存面板的失效连接。不新增数据库结构、环境变量、后台定时器、外部 API 或通用恢复框架，不修改 OpenSandbox、沙盒内 acp-runtime、acp-link 协议及前端后台自动重连策略。
 
-成功标准是「再次进入或主动重试可以恢复」。已经打开的页面在收到 `4500` 后自动恢复、管理页实时健康展示、自动重放中断的任务均不在本次范围。重建保留现有持久 Instance 身份、配置快照和挂载配置；容器内未持久化的数据不能保证保留。
+成功标准是「再次进入或主动重试可以恢复，前端无需刷新」。没有再次进入操作时页面收到 `4500` 后的后台自动恢复、管理页实时健康展示、自动重放中断的任务均不在本次范围。重建保留现有持久 Instance 身份、配置快照和挂载配置；容器内未持久化的数据不能保证保留。
 
 ## 2. 根因与已有能力
 
@@ -105,7 +105,7 @@ Manager 当前 468 行、coordinator 455 行，修改后仍须不超过 500 行�
 
 复用 `@fenix/logger`，记录恢复开始、复用 / resume / 重建决策、确定终止、成功或失败及耗时。关联已有 `requestId`、`instanceUid`、业务沙盒 ID 和 Machine ID；不记录凭据、完整 Provider 响应或配置环境变量。
 
-不新增 HTTP 接口、错误响应结构或 WebSocket 关闭码。本版允许恢复失败后用户再次进入或点击重试，不承诺已打开页面自动重连；因此不调整 `4500`、`1011`、`1012` 的策略。
+不新增 HTTP 接口、错误响应结构或 WebSocket 关闭码。前端仅在 enter 成功后通过 `agent:entered` 通知目标缓存面板；动作连接已断开或进入错误态时，重建动作与同步连接，保留面板和草稿。已连接或正在连接时忽略通知，enter 失败不通知；不调整 `4500`、`1011`、`1012` 的后台自动重连策略。
 
 ## 9. 验收与实施顺序
 
@@ -128,7 +128,7 @@ Manager 当前 468 行、coordinator 455 行，修改后仍须不超过 500 行�
 | 旧 generation 的 disconnect / death 迟到 | 不覆盖已经恢复的运行态 |
 | 聊天、API、Workflow 的 ensure 调用 | 共享修复，不改变各入口 Instance 选择和所有权 |
 
-验证先运行相关 coordinator、instance service、sandbox execution / manager、Machine 就绪与宿主接线测试，再运行 `bun run fastcheck`、`bun run precheck` 和 `bun run docs:build`。本次不修改前端，前端生产构建不作为新增要求。
+验证先运行相关 coordinator、instance service、sandbox execution / manager、Machine 就绪、宿主接线和前端 enter 重连测试，再运行 `bun run fastcheck`、`bun run precheck`、`bun run build:web` 和 `bun run docs:build`。
 
 实施后把仍有效的按需恢复契约同步到 `docs/arch/19-sandbox.md` 和 `docs/arch/22-agent-instance-management.md`。回滚使用上一版本主服务，无数据库迁移；已发生的容器重建不因代码回滚而撤销。
 
@@ -142,4 +142,4 @@ Manager 当前 468 行、coordinator 455 行，修改后仍须不超过 500 行�
 - [x] 用户审查书面设计。
 - [x] 设计通过后调用 writing-plans，形成逐项实现计划。
 
-本文档按仓库约定保存在 `docs/design/`。当前未获创建 Git commit 的明确指令，因此仅写入文件，不提交。
+本文档按仓库约定保存在 `docs/design/`；落地后的稳定契约见 `docs/arch/`。

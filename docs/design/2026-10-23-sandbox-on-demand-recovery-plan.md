@@ -12,8 +12,8 @@
 
 ## 执行约束
 
-- 当前分支 `fix/chat-new-session-target`，开始前仅设计文档未提交；本次内联执行，不改分支、不创建 commit。
-- 只处理按需恢复，不增加断连状态投影、定时器、数据库结构或前端重连机制。
+- 使用 `fix/sandbox-on-demand-recovery` 分支；用户已授权提交并创建 PR。
+- 只处理按需恢复与 enter 成功后的目标面板连接恢复，不增加断连状态投影、定时器、数据库结构或后台自动重连机制。
 - 基线：coordinator、机器恢复、sandbox manager recovery、execution handler 共 39 项通过。
 - 每个任务先运行失败测试，再实现并重跑；所有 `test` 补中文行为注释，不使用 `mock.module()`。
 - 文件上限 500 行；manager 和 coordinator 接近上限，新增沙盒恢复编排放在 execution handler 邻近的小文件。
@@ -76,7 +76,14 @@ expect(providerCreateCount).toBe(1);
 - [x] 验证普通 Machine、正常启动、Chat/API/Workflow 共用 ensure 的回归，保持入口选择与权限规则。
 - [x] 同步架构文档的稳定恢复契约、按需触发边界及无后台对账的限制。
 - [x] 运行局部相关测试、`bun run fastcheck`、`bun run precheck`、`bun run docs:build`；逐项记录退出码和阻塞原因。
-- [x] 对最终 diff 做独立代码审查，处理正确性问题；不提交、不合并、不部署。
+- [x] 对最终 diff 做独立代码审查，处理正确性问题；不合并、不部署。
+
+## 任务 5：enter 成功后恢复缓存面板连接
+
+- [x] 先复现 enter 成功但缓存面板停留在终态断连的失败测试。
+- [x] enter 成功后按响应中的环境与实例通知缓存面板，仅恢复断开或错误态的动作与同步连接。
+- [x] 验证草稿保留、其他实例隔离、重复通知去重、健康与连接中的实例不受影响、enter 失败不重连。
+- [x] 同步稳定契约；运行前端回归、`fastcheck`、`precheck`、`build:web` 和文档构建，并进行独立审查。
 
 ## 审查重点
 
