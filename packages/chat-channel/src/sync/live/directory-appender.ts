@@ -26,8 +26,7 @@ import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { createBatchId, parseDocId } from "../protocol/identity";
 import type { GenerationEntryRefs, ProjectionStore, SyncDocRecord, WriterLease } from "../store/types";
 import { captureChange } from "./change-capture";
-
-const TAIL_PAGE_SIZE = 256;
+import { loadCommittedDoc } from "./committed-doc";
 
 export interface DirectoryAppenderOptions {
   readonly store: ProjectionStore;
@@ -55,35 +54,8 @@ export interface DirectoryAppender {
   tailContentDocId(): string | null;
 }
 
-interface LoadedDoc {
-  readonly doc: Y.Doc;
-  readonly lastSeq: number;
-}
-
 function fail(code: SyncErrorCode, message: string): never {
   throw new SyncProtocolError(code, { message });
-}
-
-/** 逐条应用已提交 tail；序号不连续时不跳过，直接失败。 */
-async function loadCommittedDoc(store: ProjectionStore, docId: string): Promise<LoadedDoc | null> {
-  const base = await store.readDocStateAt(docId, 0);
-  if (base === null) return null;
-  const doc = new Y.Doc({ guid: docId });
-  Y.applyUpdate(doc, base.snapshot);
-  let lastSeq = 0;
-  for (;;) {
-    const page = await store.readUpdatesAfter(docId, lastSeq, TAIL_PAGE_SIZE);
-    if (page.length === 0) break;
-    for (const update of page) {
-      if (update.updateSeq !== lastSeq + 1) {
-        doc.destroy();
-        fail("SEQUENCE_GAP", `directory tail of ${docId} is not continuous`);
-      }
-      Y.applyUpdate(doc, update.bytes);
-      lastSeq = update.updateSeq;
-    }
-  }
-  return { doc, lastSeq };
 }
 
 class DirectoryAppenderImpl implements DirectoryAppender {

@@ -1,9 +1,6 @@
 // packages/agent-runtime/web/hooks/sync-chat-structural-merge.ts
-// 有序工具边界标记存在时的精确合并：同步投影已按标记切好段（entryId / entryId#N），
-// 缺失段按序号落在第 N 个工具 run 之后；旧段保留 thought/error，只追加同步多出的正文。
-//
-// 该路径不依赖字符串启发式：段序号与工具 run 一一对应。任何不对称（序号不连续、
-// run 数不足、正文无法前缀对齐）都返回 fallback，由调用方整条降级，绝不猜测位置。
+// 有序工具边界标记存在时按 entry 内工具 occurrence 合并；无法校验时显式降级。
+// 正文段序号与工具 ordinal 不等价：工具开头、连续 run 均不产生空正文段。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
 import type {
@@ -90,24 +87,54 @@ export function planStructuralGroup(input: {
 
   const legacyById = new Map(input.legacySegments.map((segment) => [segment.message.id, segment]));
   const tools = toolIndicesIn(input.legacy, input.blockStart, input.blockEnd);
+  const legacyMaxOrdinal = input.legacySegments.reduce((max, segment) => Math.max(max, segment.ordinal), 0);
+  const syncMaxOrdinal = syncSegments[syncSegments.length - 1]?.ordinal ?? 0;
+  const boundaryCount = input.syncMessages.reduce((max, message) => Math.max(max, message.entryBoundaryCount ?? 0), 0);
+  const lastAnchorIndex = Math.max(...input.legacySegments.map((segment) => segment.index));
+  const anchoredTools = tools.filter((index) => index < lastAnchorIndex);
+  if (
+    boundaryCount < legacyMaxOrdinal ||
+    syncMaxOrdinal < legacyMaxOrdinal ||
+    (input.syncMessages.some((message) => message.entryBoundaryCount !== undefined) &&
+      anchoredTools.length > boundaryCount)
+  ) {
+    return fallback("incomplete-markers");
+  }
   const edits: PlannedEdit[] = [];
   const insertions: PlannedInsertion[] = [];
 
   for (const segment of syncSegments) {
+    const markerOrdinal = segment.message.entryBoundaryMarkerOrdinal;
+    const boundaryToolId = segment.message.entryBoundaryToolId;
+    const matchingTools = tools.filter((index) => input.legacy[index]?.id === boundaryToolId);
+    const boundaryIndex =
+      typeof markerOrdinal === "number"
+        ? tools[markerOrdinal]
+        : matchingTools.length === 1
+          ? matchingTools[0]
+          : undefined;
+    if (
+      typeof boundaryToolId === "string" &&
+      boundaryToolId.length > 0 &&
+      (boundaryIndex === undefined || input.legacy[boundaryIndex]?.id !== boundaryToolId)
+    ) {
+      return fallback("incomplete-markers");
+    }
     const legacy = legacyById.get(segment.message.id);
     if (legacy !== undefined) {
       const legacyText = assistantText(legacy.message);
       if (segment.text.startsWith(legacyText)) {
         const extra = segment.text.slice(legacyText.length);
         if (extra.length > 0) {
-          // 同步段跨过了后续旧段边界：说明中间 marker 缺失（例如缺 t2 导致 #1=BC）。
-          // 不能把后续段正文追加到当前旧段，否则会与仍保留的后续段重复（ABCC）；整条降级。
+          // 旧格式缺 occurrence 元数据时，文本重叠只能作为“不完整”的证据，不能据此精确落位。
           const laterTexts = input.legacySegments.filter(
             (candidate) => candidate.ordinal > legacy.ordinal && candidate.text.length > 0,
           );
-          if (laterTexts.some((candidate) => extra.includes(candidate.text))) {
+          if (
+            typeof markerOrdinal !== "number" &&
+            laterTexts.some((candidate) => extra.includes(candidate.text) || candidate.text.includes(extra))
+          )
             return fallback("incomplete-markers");
-          }
           edits.push({ segment: legacy, side: "suffix", text: extra });
         }
       } else if (!legacyText.startsWith(segment.text)) {
@@ -117,25 +144,14 @@ export function planStructuralGroup(input: {
       continue;
     }
 
-    // 缺段位置：边界标记记录了本段之前的最后一个工具 id（工具 run 取 run 的最后一个）。
-    // 直接在该工具之后插入；缺失/未知 id 说明标记不完整，降级而不是猜 run 切分。
+    // 工具 occurrence ordinal 在本 entry 块内定位 run 尾，不能按同名 id 取第一条。
     let beforeIndex: number;
-    if (segment.ordinal === 0) {
+    if (boundaryIndex !== undefined) {
+      beforeIndex = boundaryIndex + 1;
+    } else if (segment.ordinal === 0 && !boundaryToolId) {
       beforeIndex = tools[0] ?? input.blockStart;
     } else {
-      const boundaryToolId = segment.message.entryBoundaryToolId;
-      if (typeof boundaryToolId !== "string" || boundaryToolId.length === 0) {
-        return fallback("incomplete-markers");
-      }
-      const toolIndex = input.legacy.findIndex(
-        (message, index) =>
-          index >= input.blockStart &&
-          index <= input.blockEnd &&
-          message.type === "tool_call" &&
-          message.id === boundaryToolId,
-      );
-      if (toolIndex < 0) return fallback("incomplete-markers");
-      beforeIndex = toolIndex + 1;
+      return fallback("incomplete-markers");
     }
     const reference =
       input.legacySegments.find((candidate) => candidate.ordinal >= segment.ordinal) ??

@@ -6,8 +6,9 @@ import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, createBatchId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
 import type { CommitOutcome, DocFrontier, WriterLease } from "../store/types";
-import { BoundaryIndex, boundaryPayload } from "./boundary-index";
+import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
 import { captureChange } from "./change-capture";
+import { loadCommittedDoc } from "./committed-doc";
 import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
 import {
@@ -61,7 +62,7 @@ export class LiveWriterImpl implements LiveWriter {
   private lease: WriterLease | null = null;
   private generation: string | null = null;
   private readonly cursors = new Map<DocKind, Cursor>();
-  /** 工具边界去重与序号索引：身份 (entryId, toolCallId)，轮转后沿用，恢复时重建。 */
+  /** 工具边界 occurrence 索引，轮转沿用，恢复时覆盖当前代次全部可达块。 */
   private readonly boundaryIndex = new BoundaryIndex();
   private boundarySeeded = false;
   private readonly directory: DirectoryAppender;
@@ -225,14 +226,19 @@ export class LiveWriterImpl implements LiveWriter {
         await this.sealActive(CONTENT_KIND);
       }
     }
-    // 边界必须在终态分支之前写：工具首帧可能直接带 completed/failed（快速完成），
-    // 此时仍要在文本 cursor 处留下边界。identity=(entryId, toolCallId)，重放只认第一次。
+    // 终态首帧也必须留下边界；源 occurrence 相同的重放只认第一次。
     if (semantic.kind === "tool" && semantic.payload.boundary === true) {
       if (!this.boundarySeeded) {
-        this.boundaryIndex.seed(records<LiveRecordValue>(this.cursor(CONTENT_KIND).doc)?.toArray() ?? []);
+        await seedBoundaryIndexFromDocs(
+          this.boundaryIndex,
+          this.options.store,
+          this.requireGeneration(),
+          this.historyContentDocIds,
+          this.cursor(CONTENT_KIND),
+        );
         this.boundarySeeded = true;
       }
-      const ordinal = this.boundaryIndex.claim(entryId, entityId);
+      const ordinal = this.boundaryIndex.claim(entryId, entityId, semantic.payload.boundaryOrdinal);
       if (ordinal !== null) {
         const content = this.cursor(CONTENT_KIND);
         const boundaryBytes = boundaryPayload(entityId, ordinal);
@@ -442,18 +448,9 @@ export class LiveWriterImpl implements LiveWriter {
     this.rotation.reset();
   }
   private async loadCursor(docId: string, kind: DocKind): Promise<Cursor> {
-    const base = await this.options.store.readDocStateAt(docId, 0);
-    if (base === null) fail("DOC_NOT_FOUND", `document ${docId} has no committed base state`);
-    const cursor = this.openCursor(docId, kind, base.snapshot);
-    for (;;) {
-      const page = await this.options.store.readUpdatesAfter(docId, cursor.lastSeq, 256);
-      if (page.length === 0) break;
-      for (const update of page) {
-        if (update.updateSeq !== cursor.lastSeq + 1) fail("SEQUENCE_GAP", `tail of ${docId} is not continuous`);
-        Y.applyUpdate(cursor.doc, update.bytes);
-        cursor.lastSeq = update.updateSeq;
-      }
-    }
+    const loaded = await loadCommittedDoc(this.options.store, docId);
+    if (loaded === null) fail("DOC_NOT_FOUND", `document ${docId} has no committed base state`);
+    const cursor = { docId, kind, ...loaded };
     this.cursors.set(kind, cursor);
     return cursor;
   }

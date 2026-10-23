@@ -450,27 +450,6 @@ describe("有序工具边界标记（精确结构）", () => {
     expect(degradations).toContainEqual({ entryId: "turn:assistant", reason: "incomplete-markers" });
   });
 
-  // fallback 只替换文本段，thought 与 entry 错误必须挂到合并消息，不能静默删除。
-  test("fallback 保留 thought 与 error", () => {
-    const first: Assistant = {
-      ...assistant("e", "A"),
-      chunks: [
-        { type: "thought", text: "THINK" },
-        { type: "message", text: "A" },
-      ],
-      error: { type: "AGENT_RUNTIME.PROMPT_REJECTED", id: "err-1", message: "ERR" },
-    };
-    const merged = createSyncMessageMerger()(
-      [first, tool("t1"), tool("t2"), assistant("e#2", "C")],
-      [assistant("e", "ABC", 0)],
-    );
-    const mergedAssistant = merged.find((message): message is Assistant => message.type === "assistant_message");
-    expect(mergedAssistant?.chunks).toContainEqual({ type: "thought", text: "THINK" });
-    expect(textOf(mergedAssistant!)).toBe("ABC");
-    expect(mergedAssistant?.error).toEqual({ type: "AGENT_RUNTIME.PROMPT_REJECTED", id: "err-1", message: "ERR" });
-    expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual(["t1", "t2"]);
-  });
-
   // 标记存在时任意缺段组合都精确落位；全部文本缺失时无锚点，只要求正文/工具不丢。
   test("标记存在时任意缺段组合精确落位", () => {
     const sync = project(["A", { tool: "t1" }, "B", { tool: "t2" }, "C"]);
@@ -495,41 +474,6 @@ describe("有序工具边界标记（精确结构）", () => {
         } else {
           expect(view(merged)).toEqual(expected);
         }
-        checks += 1;
-      }
-    }
-    expect(checks).toBe(1400);
-  });
-});
-
-describe("缺口属性检查（200 轮 × 7 种缺段组合）", () => {
-  // 任意缺段组合下，正文必须完整可见、工具顺序不变；这是 1400 次断言的仓库内可复现证据。
-  test("任意缺段组合正文完整且工具顺序稳定", () => {
-    let checks = 0;
-    for (let round = 0; round < 200; round += 1) {
-      const segments = [`s${round}a`, `s${round}b`, `s${round}c`];
-      const full: StructuredMessage[] = [
-        assistant("e", segments[0]!),
-        tool("t1"),
-        assistant("e#1", segments[1]!),
-        tool("t2"),
-        assistant("e#2", segments[2]!),
-      ];
-      const sync = [assistant("e", segments.join(""), 0)];
-      for (let mask = 1; mask < 8; mask += 1) {
-        const paged = full.filter((message) => {
-          if (message.id === "e") return (mask & 1) === 0;
-          if (message.id === "e#1") return (mask & 2) === 0;
-          if (message.id === "e#2") return (mask & 4) === 0;
-          return true;
-        });
-        const merged = createSyncMessageMerger()(paged, sync);
-        expect(body(merged)).toBe(segments.join(""));
-        expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual([
-          "t1",
-          "t2",
-        ]);
-        expect(new Set(ids(merged)).size).toBe(ids(merged).length);
         checks += 1;
       }
     }

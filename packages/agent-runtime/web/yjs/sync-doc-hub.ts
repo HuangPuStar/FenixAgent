@@ -95,7 +95,12 @@ interface GlobalEntry {
   firstEntryOrder: number | null;
   completedAt: number | null;
   /** 正文分段缓存：有序工具边界把文本切成与旧投影一致的段。 */
-  segments: Array<{ ordinal: number; text: string; boundaryToolId: string | null }> | null;
+  segments: Array<{
+    ordinal: number;
+    text: string;
+    boundaryToolId: string | null;
+    boundaryMarkerOrdinal: number | null;
+  }> | null;
   /** 本 entry 看到的去重后边界数量与连续性/重复问题。 */
   boundaryCount: number;
   boundaryIssue: boolean;
@@ -272,7 +277,12 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
         parts.sort((left, right) => left.rank - right.rank || left.index - right.index);
         // 有序边界把正文切成段：连续边界（同一工具 run）不产生空段；
         // 同一 toolCallId 的重放标记被忽略；边界序号出现缺口/重复时标记 entry 不完整。
-        const segments: Array<{ ordinal: number; text: string; boundaryToolId: string | null }> = [];
+        const segments: Array<{
+          ordinal: number;
+          text: string;
+          boundaryToolId: string | null;
+          boundaryMarkerOrdinal: number | null;
+        }> = [];
         const seenBoundaries = new Set<string>();
         const seenOrdinals = new Set<number>();
         let boundaryCount = 0;
@@ -281,19 +291,31 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
         let current = "";
         let ordinal = 0;
         let currentBoundaryToolId: string | null = null;
+        let currentBoundaryMarkerOrdinal: number | null = null;
         const flush = (): void => {
           if (current.length === 0) return;
-          segments.push({ ordinal, text: current, boundaryToolId: currentBoundaryToolId });
+          segments.push({
+            ordinal,
+            text: current,
+            boundaryToolId: currentBoundaryToolId,
+            boundaryMarkerOrdinal: currentBoundaryMarkerOrdinal,
+          });
           ordinal += 1;
           current = "";
         };
         for (const part of parts) {
           if (part.kind === "boundary") {
-            if (part.toolCallId !== null) {
-              if (seenBoundaries.has(part.toolCallId)) continue;
-              seenBoundaries.add(part.toolCallId);
+            const boundaryKey =
+              part.ordinal !== null ? `${part.toolCallId ?? ""}\u0000${part.ordinal}` : part.toolCallId;
+            if (boundaryKey !== null) {
+              if (seenBoundaries.has(boundaryKey)) {
+                boundaryIssue = true;
+                continue;
+              }
+              seenBoundaries.add(boundaryKey);
             }
             boundaryCount += 1;
+            if (part.toolCallId === null) boundaryIssue = true;
             if (part.ordinal !== null) {
               if (seenOrdinals.has(part.ordinal) || part.ordinal !== expectedOrdinal) boundaryIssue = true;
               seenOrdinals.add(part.ordinal);
@@ -301,6 +323,7 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
             }
             flush();
             currentBoundaryToolId = part.toolCallId;
+            currentBoundaryMarkerOrdinal = part.ordinal;
             continue;
           }
           current += part.text;
@@ -317,7 +340,12 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
       const signature = `${String(seq)}|${type}|${String(ts)}|${String(entry.boundaryCount)}|${String(
         entry.boundaryIssue,
       )}|${segments
-        .map((segment) => `${String(segment.ordinal)}:${segment.boundaryToolId ?? ""}:${segment.text}`)
+        .map(
+          (segment) =>
+            `${String(segment.ordinal)}:${segment.boundaryToolId ?? ""}:${String(
+              segment.boundaryMarkerOrdinal,
+            )}:${segment.text}`,
+        )
         .join("\u0000")}`;
       if (entry.messages === null || entry.signature !== signature) {
         // 内容未变的 entry 复用同一批消息对象，旧 ChatView 的 React.memo 才能跳过整棵子树。
@@ -332,6 +360,9 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
                 entryBaseId: row.entryId,
                 entryBoundaryOrdinal: segment.ordinal,
                 entryBoundaryToolId: segment.boundaryToolId,
+                ...(segment.boundaryMarkerOrdinal !== null
+                  ? { entryBoundaryMarkerOrdinal: segment.boundaryMarkerOrdinal }
+                  : {}),
                 entryBoundaryCount: entry.boundaryCount,
                 entryBoundaryIssue: entry.boundaryIssue,
                 chunks: [{ type: "message", text: segment.text }],

@@ -1,20 +1,9 @@
 // packages/agent-runtime/web/hooks/sync-chat-entry-merge.ts
-// 新旧双路助手正文的无损合并：旧投影分段提供工具位置，新投影整段提供正文完整性。
-//
-// 新投影把一条 entry 的全部文本压成一条消息、不携带工具位置（sync-doc-hub 跳过 tool_object），
-// 因此合并必须同时满足：工具前的文本不被整段顶替；旧侧缺首段/中段/尾段、永久停滞或新侧已 final
-// 时，新侧未被覆盖的正文仍要可见；缺口定位不得跨越工具边界盲目插入。
-//
-// 边界规则（content Doc 没有有序工具标记，只能从旧投影的分段序号推断）：
-// - 分段 id 的 `#N` 是文本分段序号，`#0` 即入口 id；相邻已知段的序号差 = 其间文本分段边界数。
-// - 只有「段间工具消息数 == 序号差」时边界才可判定：
-//   缺首段 → 插在第一个工具之前；缺中段 → 插在第一个工具之后；缺尾段 → 插在末段后第一个工具之后。
-// - 计数不一致 / 分段序号乱序 / 无工具却有边界 → 视为不可判定：整条 entry 退化为新投影单条消息，
-//   保留工具与输入顺序，正文只出现一次。宁可整体退化，也不把缺口静默塞到未知工具的一侧。
-// - 纯空白缺口不制造空消息，合并到相邻已知段；正文空白不丢失。
-// - 合成段 id 必须在全部 legacy + sync 消息 id 中唯一；冲突时顺延序号。
+// 新旧双路正文合并：完整 marker 按工具 occurrence 定位，旧数据沿用启发式并显式降级。
+// fallback 保留 thought/error 的原始 chunk 位置；两路进度不一致不能隐藏已可见正文。
 
 import type { StructuredMessage } from "@fenix/chat-channel";
+import { fallbackSegments, fallbackText } from "./sync-chat-fallback";
 import { type GroupPlan, planGroup } from "./sync-chat-heuristic-merge";
 import {
   type AssistantMessage,
@@ -246,7 +235,13 @@ export function applyLosslessEntryMerge(
     const segmented = segments.length > 1 || firstSegment.ordinal > 0;
     const primary = syncMessages.find((message) => (segmentOrdinal(message.id, base) ?? -1) === 0) ?? syncMessages[0]!;
     const structuralGroup =
-      syncMessages.length > 1 || syncMessages.some((message) => (segmentOrdinal(message.id, base) ?? 0) > 0);
+      syncMessages.length > 1 ||
+      syncMessages.some(
+        (message) =>
+          (message.entryBoundaryCount ?? 0) > 0 ||
+          message.entryBoundaryIssue === true ||
+          (segmentOrdinal(message.id, base) ?? 0) > 0,
+      );
 
     if (!ordered) {
       analyses.push({
@@ -369,34 +364,37 @@ export function applyLosslessEntryMerge(
 
     if (analysis.mode === "fallback") {
       // 降级消息使用整条 entry 的合并正文（标记存在时可能有多段），id 必须全局唯一。
-      const combinedText = analysis.syncMessages
-        .slice()
-        .sort(
-          (left, right) =>
-            (segmentOrdinal(left.id, analysis.base) ?? 0) - (segmentOrdinal(right.id, analysis.base) ?? 0),
-        )
-        .map(assistantText)
-        .join("");
+      const combinedText = fallbackText(
+        analysis.segments,
+        analysis.syncMessages
+          .slice()
+          .sort(
+            (left, right) =>
+              (segmentOrdinal(left.id, analysis.base) ?? 0) - (segmentOrdinal(right.id, analysis.base) ?? 0),
+          )
+          .map(assistantText)
+          .join(""),
+      );
+      const preserved = fallbackSegments(analysis.segments, combinedText);
+      if (preserved !== null) {
+        for (const [index, segment] of analysis.segments.entries()) {
+          removedIds.delete(segment.message.id);
+          replacements.set(segment.message.id, preserved[index]!);
+        }
+        continue;
+      }
       if (combinedText.length === 0) continue;
       const desired = analysis.base;
       let id = desired;
       if (reserved.has(desired)) id = nextFreeEntryId(analysis.base, 0, reserved);
       else reserved.add(desired);
-      // 降级只替换文本段，非文本（thought）与 entry 错误必须挂到合并消息上，不能静默删除。
-      const preservedChunks = analysis.segments.flatMap((segment) =>
-        segment.message.chunks.filter((chunk) => chunk.type !== "message"),
-      );
-      const legacyError = analysis.segments
-        .map((segment) => segment.message.error)
-        .find((error) => error !== undefined);
       insertions.push({
         beforeIndex: firstSegment.index,
         order: order++,
         message: {
           ...analysis.syncMessage,
           id,
-          chunks: [...preservedChunks, { type: "message", text: combinedText }],
-          ...(legacyError !== undefined ? { error: legacyError } : {}),
+          chunks: [{ type: "message", text: combinedText }],
         },
       });
       continue;

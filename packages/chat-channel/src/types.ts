@@ -280,9 +280,11 @@ export interface AssistantMessage {
    * 时无法区分“base 为 e#1 的段 0”和“base 为 e 的段 1”。
    */
   entryBaseId?: string;
-  /** 本段之前的最后一个工具边界序号（段 0 为 null）；用于缺失段的精确落位。 */
+  /** 正文段序号（从 0 开始），与工具 occurrence ordinal 不同。 */
   entryBoundaryOrdinal?: number;
-  /** 本段之前的最后一个工具 id（段 0 为 null）；工具 run 中取 run 的最后一个工具。 */
+  /** 本段之前最后一个 marker 在 entry 内的 occurrence 序号（包含 run 内连续工具）。 */
+  entryBoundaryMarkerOrdinal?: number | null;
+  /** 本段之前的最后一个工具 id；无前置工具为 null，工具 run 取尾工具，正文段 0 也可非空。 */
   entryBoundaryToolId?: string | null;
   /** 本 entry 已见到的去重后边界数量。 */
   entryBoundaryCount?: number;

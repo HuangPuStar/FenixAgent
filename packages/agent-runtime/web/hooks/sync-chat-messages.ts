@@ -326,6 +326,20 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       return false;
     };
 
+    // 同名工具/计划可能来自不同 entry 或同一 run：通用 candidates 以 id 为 key 会合并掉第二条。
+    // 只要该 id 在 legacy 中出现多次，所有非文本 occurrence 都分配稳定唯一 key，避免与文本/彼此冲突。
+    const legacyIdCounts = new Map<string, number>();
+    for (const message of legacy) legacyIdCounts.set(message.id, (legacyIdCounts.get(message.id) ?? 0) + 1);
+    const nonTextOccurrences = new Map<string, number>();
+    const duplicateNonTextKeys = new WeakMap<StructuredMessage, string>();
+    for (const message of legacy) {
+      if (message.type !== "tool_call" && message.type !== "plan") continue;
+      const occurrence = (nonTextOccurrences.get(message.id) ?? 0) + 1;
+      nonTextOccurrences.set(message.id, occurrence);
+      if ((legacyIdCounts.get(message.id) ?? 0) > 1) {
+        duplicateNonTextKeys.set(message, `${message.id}\u0000dup:${occurrence}`);
+      }
+    }
     for (const message of legacy) {
       const pair = pairs.get(message.id);
       // 未配对用户消息必须保留：任意 sync 文本不构成“该轮已被覆盖”的证明。
@@ -339,7 +353,12 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
         takeCoverage(normalizedText(textOf(message)))
       )
         continue;
-      const key = aliases.get(`legacy:${message.id}`) ?? (pair && aliases.get(syncAliasKey(pair.id))) ?? message.id;
+      const duplicateKey = duplicateNonTextKeys.get(message);
+      const key =
+        duplicateKey ??
+        aliases.get(`legacy:${message.id}`) ??
+        (pair && aliases.get(syncAliasKey(pair.id))) ??
+        message.id;
       nextAliases.set(`legacy:${message.id}`, key);
       if (pair) nextAliases.set(syncAliasKey(pair.id), key);
       candidates.set(key, pair ? preferredMessage(message, pair) : message);
