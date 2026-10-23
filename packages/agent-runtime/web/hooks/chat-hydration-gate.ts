@@ -4,7 +4,7 @@
 //
 // 完成信号优先使用确定性事实：
 // - 旧路径：Session Doc 的 `presenting` 从 `replaying` 离开（服务端回放窗口收敛后写入）；
-// - 实时 turn：`presenting === "responding"`，不是 hydrate，立即完成；
+// - 实时 turn：`presenting === "responding"`，基线齐备后按帧提交，不等待输出静默；
 // - 新协议：首批 DOC_BASE 的 APPLY_ACK 全部 processed（由 transport tracker 提供）。
 //
 // 没有任何回放/基线活动时，用 noActivityMs 作为「不会再有回放」的兜底；maxWaitMs 是硬上限，
@@ -37,8 +37,10 @@ export interface HydrationGate {
   setBlocked(blocked: boolean): void;
   /** 旧路径进入/离开回放：进入时禁用无活动兜底，离开时由调用方 markComplete。 */
   setReplayActive(active: boolean): void;
-  /** 确定性完成信号：回放结束 / 实时 turn / 基线齐备且无回放。 */
+  /** 确定性完成信号：回放结束 / 基线齐备且无回放。 */
   markComplete(): void;
+  /** 已确认是实时回复：初始数据齐备后按帧提交，不等待输出静默。 */
+  markLive(): void;
   /** 任一消息源变化。 */
   notify(): void;
   phase(): HydrationPhase;
@@ -58,6 +60,7 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
   let complete = false;
   let blocked = false;
   let replayActive = false;
+  let liveActive = false;
   let noActivityElapsed = false;
   let settleCancel: (() => void) | null = null;
   let noActivityCancel: (() => void) | null = null;
@@ -100,11 +103,16 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
   function scheduleSettle(): void {
     if (disposed || !active || phase !== "hydrating" || blocked || replayActive) return;
     if (!complete && !noActivityElapsed) return;
+    // 实时输出可能永不静默；首帧一旦安排，后续增量不能推迟展示。
+    if (liveActive && settleCancel !== null) return;
     cancelSettle();
-    settleCancel = schedule(() => {
-      settleCancel = null;
-      reveal("settled");
-    }, options.settleMs);
+    settleCancel = schedule(
+      () => {
+        settleCancel = null;
+        reveal(liveActive ? "live" : "settled");
+      },
+      liveActive ? options.commitGapMs : options.settleMs,
+    );
   }
 
   function scheduleNoActivity(): void {
@@ -159,6 +167,7 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
       complete = false;
       blocked = false;
       replayActive = false;
+      liveActive = false;
       noActivityElapsed = false;
       livePending = false;
       if (nextActive) activate();
@@ -177,6 +186,7 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
       if (disposed || phase !== "hydrating") return;
       replayActive = nextReplayActive;
       if (replayActive) {
+        liveActive = false;
         cancelNoActivity();
         cancelSettle();
       }
@@ -185,6 +195,14 @@ export function createHydrationGate(options: HydrationGateOptions): HydrationGat
       if (disposed || phase !== "hydrating") return;
       complete = true;
       cancelNoActivity();
+      scheduleSettle();
+    },
+    markLive(): void {
+      if (disposed || phase !== "hydrating") return;
+      complete = true;
+      liveActive = true;
+      cancelNoActivity();
+      cancelSettle();
       scheduleSettle();
     },
     notify(): void {

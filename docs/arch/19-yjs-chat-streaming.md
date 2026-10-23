@@ -337,6 +337,7 @@ sequenceDiagram
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
 - **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
 - **回放窗口**：load/resume 转发时开启，首条更新前保留 `REPLAY_WINDOW_MS`（10s）最长等待；收到当前会话的 `session/update` 后，每条更新重置 `REPLAY_IDLE_MS`（200ms）静默计时，成功回执也启动该计时以覆盖零历史。静默不得超过当前最长等待期限；显式 `session/replay_complete` 可立即结束。收口先提交尾部批次，再将回放 turn 与 `replayState` 标记为完成；重连恢复已有时间线时跳过重复合成。
+- **实时回复刷新展示**：前端收到当前 scope 的 `presenting=responding`，且本轮 `yjs:sync-complete` 确认 Chat/Session Doc 均已应用同一 generation 后，同步基线齐备即可按帧提交已恢复的消息；后续流式增量不得重置首次提交计时。WebSocket open 不构成初始交付证明，新连接作废旧证明。历史回放仍等待服务端完成信号及前端尾批静默，不以实时输出暂停作为刷新恢复条件。
 - **用户消息会话级写入**：`registerUserMessage` 成功后经 `SessionChannel` 的会话级入口扇出到该 `rcsSessionId` 的全部同步连接；动作 socket 通常没有同步 runtime，不得只写发起连接，也不重新启用 Agent 回显。attach 窗口内入队的消息在首个 HELLO 建立基线后补水；写者按 `entryId + 内容槽` 对已提交记录与新写者本地待提交集合去重，覆盖写者交接、多标签与重复 `turnId`。
 - **未配对用户消息不可退役**：合并器只有在 `turnId + entryId` 或等价稳定身份证明覆盖后才能删除旧用户消息；“sync 存在任意文本”不构成覆盖证明。分页缺段时保留新投影合并正文兜底。
 - **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。

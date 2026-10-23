@@ -41,7 +41,7 @@ export interface UseChatHydrationOptions {
   readonly sourceReady: boolean;
   /** 旧路径正在回放历史（Session Doc presenting === "replaying"）。 */
   readonly replayActive?: boolean;
-  /** 旧路径有实时 turn（presenting === "responding"），不是 hydrate。 */
+  /** 当前 scope 的初始快照已确认，且旧路径有实时 turn（presenting === "responding"）。 */
   readonly liveActive?: boolean;
   /** 新协议基线（首批 DOC_BASE 的 APPLY_ACK）尚未齐备时暂缓放行。 */
   readonly blocked?: boolean;
@@ -195,7 +195,7 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     if (liveActive) {
       seenReplayRef.current = false;
       gate.setReplayActive(false);
-      gate.markComplete();
+      gate.markLive();
       return;
     }
     if (seenReplayRef.current) {
