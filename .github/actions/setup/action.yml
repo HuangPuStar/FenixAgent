@@ -19,7 +19,8 @@ runs:
     # 版本不是随手定的：bun 1.4.2 的 `bun test --isolate` 在 Linux x64 大套件下会间歇
     # `panic(main thread): abort() called`（oven-sh/bun#44599；本仓实测同一提交两次运行崩一次），
     # 1.4.3 修掉了这一类 isolate 崩溃（见 Bun v1.4.3 发布说明）。回退版本前先确认上游 issue 状态；
-    # 本地用 `bun upgrade` 跟到同一版本，`precheck` 才与 CI 同口径。
+    # 本地用 `bun upgrade` 跟到同一版本，`precheck` 才与 CI 同口径。Dockerfile 的 `oven/bun` 基座也固定
+    # 1.4.3，改这里时同步那四处 FROM，否则测试组合与发布组合再次分叉。
     - uses: oven-sh/setup-bun@v2
       with:
         bun-version: "1.4.3"

@@ -175,8 +175,8 @@ test("开发、构建和静态托管使用 apps 入口", () => {
   const staticPlugin = readRepoFile("apps/server/src/plugins/static.ts");
   const dockerfile = readRepoFile("Dockerfile");
 
-  expect(packageJson.scripts.dev).toBe("bun run apps/server/src/main.ts");
-  expect(packageJson.scripts.start).toBe("bun run apps/server/src/main.ts");
+  expect(packageJson.scripts.dev).toBe("bun run apps/server/src/entry.ts");
+  expect(packageJson.scripts.start).toBe("bun run apps/server/src/entry.ts");
   expect(packageJson.scripts["dev:web"]).toContain("apps/web/vite.config.ts");
   expect(packageJson.scripts["build:web"]).toContain("apps/web/vite.config.ts");
   expect(viteConfig).toContain("root: __dirname");
@@ -185,7 +185,9 @@ test("开发、构建和静态托管使用 apps 入口", () => {
   expect(staticPlugin).toContain("RCS_APPLICATION_ROOT");
   expect(staticPlugin).not.toContain('resolve(__dirname, "../../../web/dist")');
   expect(dockerfile).toContain("COPY apps/web ./apps/web");
-  expect(dockerfile).toContain("bun build apps/server/src/main.ts");
+  expect(dockerfile).toContain("bun build apps/server/src/entry.ts");
+  expect(dockerfile).toContain("--splitting --packages=external");
+  expect(readRepoFile("apps/server/src/entry.ts")).toContain('await import("./main")');
   expect(dockerfile).toContain("/app/apps/web/dist ./apps/web/dist");
   expect(dockerfile).toContain("ENV RCS_APPLICATION_ROOT=/app");
   expect(dockerfile).toContain('CMD ["bun", "dist/index.js"]');
@@ -211,7 +213,7 @@ test("Docker 生产交付路径使用 apps workspace", () => {
   expect(buildInstructions).toContain("COPY apps/server ./apps/server");
   expect(
     buildInstructions.some((instruction) =>
-      /^RUN\s+bun\s+build\s+apps\/server\/src\/main\.ts(?:\s|$)/.test(instruction),
+      /^RUN\s+bun\s+build\s+apps\/server\/src\/entry\.ts(?:\s|$)/.test(instruction),
     ),
   ).toBe(true);
   expect(runtimeInstructions).toContain("COPY --from=build /app/apps/web/dist ./apps/web/dist");

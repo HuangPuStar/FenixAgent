@@ -62,9 +62,9 @@ describe("logger 内存协议与上下文隔离 round27", () => {
     expect(entry("info", "array", { values: ["a", "b"] })).toMatchObject({ values: ["a", "b"] });
   });
 
-  // 嵌套对象附加字段不被改写。
+  // 非正文的嵌套诊断字段不被改写，payload 属于统一禁止的原始内容字段。
   test("保留嵌套对象附加字段", () => {
-    expect(entry("info", "object", { payload: { id: "job-1" } })).toMatchObject({ payload: { id: "job-1" } });
+    expect(entry("info", "object", { diagnostic: { id: "job-1" } })).toMatchObject({ diagnostic: { id: "job-1" } });
   });
 
   // 附加字段可以包含错误分类文本。

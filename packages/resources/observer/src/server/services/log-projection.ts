@@ -13,12 +13,10 @@
  *      投影层不假定上游干净——先按文本规则把凭据形状的内容抹掉，再出站。
  *   3. **长度裁剪**：单字段有上限，避免一行日志把响应和前端渲染拖垮。
  *
- * **已知残留（不是本层能修的，必须在设计上写明）**：本层无法还原语义，只能按形状脱敏。上游把
- * prompt 正文与 Agent 响应**截断后**写进日志的调用（例如 `packages/agent-runtime/src/routes/web/
- * control.ts` 的事件体 `JSON.stringify(b).slice(0, 200)`、`packages/acp-link/src/server.ts` 的
- * `promptText.slice(0, 200)`）落在 `message` 字段里，与普通诊断文本同形，投影层区分不了，因此这些
- * 片段仍可能出现在检索结果与导出里。修法在上游（记长度、摘要或结构化标记），归 §7 的「日志内容
- * 脱敏」优化项，不在本层再补一层猜测性正则——猜测会同时带来漏报和误伤。
+ * **残余风险（不是本层能修的）**：本层无法还原语义，只能按形状脱敏。任何上游若把用户正文、
+ * prompt 或 Agent 响应写进自由文本 `message`，都会与普通诊断同形，投影层区分不了。现有会话事件与
+ * ACP prompt/result 日志已改为长度/标识摘要；后续写入侧仍须遵守「不记录正文」约定，不在本层补
+ * 猜测性正则——猜测会同时带来漏报和误伤。
  */
 
 /** 日志记录的出站形状（协议 DTO 的定义在 `../../schemas/api-system-logs.schema`，本层只产数据）。 */
@@ -124,7 +122,7 @@ export function projectLogLine(line: string): ProjectedLogEntry {
 
   return {
     timestamp: projectedField(record.time, SHORT_FIELD_LIMIT),
-    level: projectedField(record.level, SHORT_FIELD_LIMIT),
+    level: projectedField(record.levelLabel ?? record.level, SHORT_FIELD_LIMIT),
     module: projectedField(record.module, SHORT_FIELD_LIMIT),
     requestId: projectedField(record.requestId, SHORT_FIELD_LIMIT),
     message: crop(redactLogText(typeof record.msg === "string" ? record.msg : raw), MESSAGE_FIELD_LIMIT),

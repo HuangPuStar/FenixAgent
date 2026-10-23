@@ -34,7 +34,7 @@
 
 ```bash
 # 0) 备份（后续步骤可能包含不可逆迁移），见 备份与恢复
-# 1) 更新 docker/main/docker-compose.yml 的 rcs image: 到目标版本 tag（进版本控制、经评审合入；仓库根 dev 编排的同一行同步更新）
+# 1) 在 docker/main/.env 设置 RCS_IMAGE_TAG=sha-<commit>（CI 已产出该镜像；dev 根编排的 :main 不动）
 # 2) 同步交付面到部署机（生产不在仓库工作区里跑，见 部署 §2.4）：在仓库执行 ./docker/deploy.sh export <目标目录>，
 #    在部署机上 diff 核对被跳过的文件后再进入下一步
 # 3) 迁移 + 启动：一条命令跑完三步。本节命令都在交付面的 docker/ 目录里执行（仓库里会被守卫拒绝）
@@ -45,11 +45,14 @@
 
 - 应用容器自身的启动命令仍会跑一次 `bun migrate.js`，多副本同时启动由 `pg_advisory_lock` 串行化（锁 key 是 `scripts/migrate.ts` 里的常量），因此第 2 步与容器启动重叠也不会互相撞车；把迁移单独跑出来的价值是**让迁移失败早于流量切换暴露**。
 - 核对本机实际版本用 `./deploy.sh ps`（镜像 tag/digest 可见）。
-- 离线交付：`docker/build-image.sh` 构建 runtime 镜像并 `docker save` 成 tar（脚本末尾打印目标机 `docker load` 命令）。
+- 离线交付：`docker/build-image.sh -t sha-<commit>` 构建 runtime 镜像并 `docker save` 成 tar；目标机 `docker load`
+  后把镜像 retag 为 `ghcr.io/huangpustar/fenixagent:sha-<commit>`（编排的仓库名固定），并在 `docker/main/.env`
+  设置同值 `RCS_IMAGE_TAG`。
 - 依赖（litellm / hindsight / ragflow / sandbox 节点等）与主服务是独立升级单元：默认只在 `deploy` 时 `pull` 并收敛主服务，依赖按自己的目录单独 `docker compose up -d`。Hindsight 一类需要经 `fenix-server` 访问主服务的依赖，重建顺序仍要先主后附。
 - **依赖实例口径**：每个依赖栈自带依赖实例，库与桶都不在主服务这边——`docker/litellm/` 自带 `litellm-postgres`（库 `litellm`，`DATABASE_URL` 指向 `litellm-postgres:5432`）、`docker/workflow/` 自带 `mysql` 与 `rustfs`（库 `opencoze`、桶 `opencoze` / `milvus`）、`docker/ragflow/` 自带 `ragflow-mysql` 与 `ragflow-rustfs`（库 `rag_flow`，桶由 RAGFlow 运行期按知识库 / 文件目录自建）；数据各落自己目录的 `./data/` 下。升级依赖时按该目录单独 `up -d` 收敛，栈内的一次性初始化服务随它一起跑（幂等：只建缺失的库 / 桶、只同步口令，不动既有数据；ragflow 侧不预建桶，它的 `ragflow-s3-init` 只对自带实例做能力探测），失败则该栈的主服务不启动；判定看 `docker ps -a` 里的 `Exited (0)` 与日志末行的完成行（[排障](./troubleshooting.md) §15）。**workflow 侧自 2026-10-14 起多两个前置一次性服务**：`assets-init` 先从 server 镜像展开初始化资产（因此 `WORKFLOW_STUDIO_TAG` 不得低于带资产的首个发布），`atlas-init` 再做 schema 收敛——升级时换 tag 后重跑 `up -d` 即可，它的数据目录已随交付面收到 `docker/workflow/data/`（搬迁口径见该目录 README §8、编排体系 §13.21）。
 - **回滚到旧编排要多读一件事**：回退到共享实例时代的编排（`docker/common/` 提供 `postgres` / `redis` / `mysql` / `rustfs`，各栈接入消费）时，数据仍在**旧数据目录**里（共享实例的 `docker/common/data/{postgres,mysql,rustfs}`，以及更早的各栈自带实例落点 `docker/ragflow/ragflow_mysql_data`、`ragflow_minio_data`、`<上游源码目录>/docker/data/minio`（`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、litellm 旧实例的 bind 目录，以及 Workflow 栈内服务的旧数据目录 `<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（后者自 2026-10-14 起滚进 `docker/workflow/data/`，见 `docker/workflow/README.md` §8）），所以旧目录在那次迁移验收通过并跑过一个业务周期之前不删——删了就只能从备份恢复（保留与可删条件见[备份与恢复](./backup-and-restore.md) §2 与各目录 README）；不存在「把共享实例里的数据搬回各栈」的自动路径。
-- 回滚同样只改这一行：把 `image:` 改回上一个 tag，再 `./deploy.sh up`（必要时先按 §1 跑迁移回滚口径，见 §5）。
+- 回滚同样只改生产 tag：在 `docker/main/.env` 把 `RCS_IMAGE_TAG` 改回上一个 `sha-<commit>`，再 `./deploy.sh up`
+  （必要时先按 §1 跑迁移回滚口径，见 §5）。
 
 ## 3. 源码升级（本地 / 单机）
 

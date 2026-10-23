@@ -1,4 +1,6 @@
+import { opentelemetry } from "@elysia/opentelemetry";
 import { createLogger, interceptConsole } from "@fenix/logger";
+import { isTelemetryEnabled, shutdownTelemetry } from "./telemetry";
 
 // ⚠️ 必须在所有其他代码之前拦截 console，保证全局日志统一
 interceptConsole();
@@ -8,6 +10,7 @@ const startupLog = createLogger("rcs");
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { resolveAssemblyEnv } from "./bootstrap/assembly-env";
+import { createGracefulShutdown } from "./bootstrap/graceful-shutdown";
 import { shutdownHostRuntime, startHostRuntime } from "./bootstrap/host-startup";
 import { wireHostRuntime } from "./bootstrap/host-wiring";
 import { API_SLOT, APP_SLOT, takeRouteContributions, WEB_CONFIG_SLOT, WEB_SLOT } from "./bootstrap/route-contributions";
@@ -17,7 +20,7 @@ import { authPlugin } from "./plugins/auth";
 import { bodyLimitPlugin } from "./plugins/body-limit";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { createApiApp } from "./routes/api";
 import { createWebApp } from "./routes/web";
@@ -47,11 +50,19 @@ const app = new Elysia({
     maxPayloadLength: config.wsMaxPayloadMb * 1024 * 1024,
   },
 })
+  .use(
+    isTelemetryEnabled()
+      ? opentelemetry({
+          serviceName: env.OTEL_SERVICE_NAME,
+          recordBody: false,
+          headersToSpanAttributes: { request: [], response: [] },
+        })
+      : new Elysia(),
+  )
   .use(corsPlugin)
   .use(createExternalOpenApiPlugin(config.version))
   .use(createWebOpenApiPlugin(config.version))
   .derive(deriveRequestId)
-  .onBeforeHandle(logRequest)
   .onAfterHandle(logResponse)
   .onAfterHandle(injectRequestId)
   // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
@@ -138,20 +149,23 @@ export default app;
 /**
  * 信号处理与关闭幂等：关闭序在 `bootstrap/host-startup.ts`，这里只保证「并发/重复信号只关一次」。
  *
- * 关闭完成后直接 `process.exit(0)`：宿主尚持有 uWS 等非事件循环可回收的句柄（Bun 的 server 不随
+ * 关闭完成后直接 `process.exit`：宿主尚持有 uWS 等非事件循环可回收的句柄（Bun 的 server 不随
  * `Promise` 结束释放），不显式退出会让进程挂着不退。
  */
-let gracefulShutdownPromise: Promise<void> | null = null;
+const shutdown = createGracefulShutdown({
+  stop: async () => {
+    await app.stop(false);
+  },
+  shutdownHost: () => shutdownHostRuntime(agentRuntime),
+  shutdownTelemetry,
+  graceMs: 5_000,
+  logger: {
+    info: (message) => startupLog.info(message),
+    warn: (message) => startupLog.warn(message),
+    error: (message, error) => startupLog.error(message, error),
+  },
+  exit: (code) => process.exit(code),
+});
 
-function gracefulShutdown(signal: string): Promise<void> {
-  if (gracefulShutdownPromise) return gracefulShutdownPromise;
-  gracefulShutdownPromise = (async () => {
-    startupLog.info(`Received ${signal}, shutting down...`);
-    await shutdownHostRuntime(agentRuntime);
-    process.exit(0);
-  })();
-  return gracefulShutdownPromise;
-}
-
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

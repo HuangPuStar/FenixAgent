@@ -1468,7 +1468,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       console.log("[acp-server] prompt:", {
         sessionId: promptSessionId,
         id,
-        text: promptText.slice(0, 200),
+        textLength: promptText.length,
         blocks: content.length,
       });
       const result = await state.connection.prompt({
@@ -1476,7 +1476,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         prompt: content as acp.ContentBlock[],
       });
 
-      console.log("[acp-server] prompt completed:", JSON.stringify(result).slice(0, 500));
+      console.log("[acp-server] prompt completed:", { sessionId: promptSessionId, id });
       sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
       restoreSession(ws, previousSessionId, promptSessionId);

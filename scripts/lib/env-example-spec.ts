@@ -47,6 +47,8 @@ export interface EnvTemplate {
    */
   readonly surface?: "deploy";
   readonly overrides?: Readonly<Record<string, string>>;
+  /** 场景默认值覆盖：只改变模板展示的默认值，键声明与校验仍以代码为准。 */
+  readonly defaultOverrides?: Readonly<Record<string, string>>;
   readonly undeclared?: readonly UndeclaredKey[];
 }
 
@@ -68,11 +70,31 @@ export const HOST_ENV_NOTES: Readonly<Record<string, { readonly description: str
     description: "/api/system/* 管理端点（建用户、建组织、签发用户级 API Key）使用的系统级密钥；逗号分隔。",
     secret: true,
   },
+  OTEL_SDK_DISABLED: { description: "显式关闭观测；未配置 endpoint 同样关闭。" },
+  OTEL_SERVICE_NAME: { description: "服务端稳定服务名。" },
+  OTEL_RESOURCE_ATTRIBUTES: { description: "允许的 namespace、环境与主机资源属性；实例与版本由入口生成。" },
+  OTEL_EXPORTER_OTLP_ENDPOINT: { description: "Collector OTLP/HTTP 基址；不配置时不导出。" },
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: { description: "链路完整 OTLP URL。" },
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: { description: "指标完整 OTLP URL。" },
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: { description: "日志完整 OTLP URL。" },
+  OTEL_EXPORTER_OTLP_PROTOCOL: { description: "固定使用 http/protobuf。" },
+  OTEL_EXPORTER_OTLP_HEADERS: { description: "Collector 服务端凭据；不会下发浏览器。", secret: true },
+  OTEL_EXPORTER_OTLP_TIMEOUT: { description: "单次导出超时（毫秒）。" },
+  OTEL_TRACES_EXPORTER: { description: "链路导出器 otlp 或 none。" },
+  OTEL_METRICS_EXPORTER: { description: "指标导出器 otlp 或 none。" },
+  OTEL_LOGS_EXPORTER: { description: "日志导出器 otlp 或 none。" },
+  OTEL_METRIC_EXPORT_INTERVAL: { description: "指标导出周期（毫秒）。" },
+  OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: { description: "固定累计指标语义。" },
+  OTEL_TRACES_SAMPLER: { description: "父级一致比例采样。" },
+  OTEL_TRACES_SAMPLER_ARG: { description: "链路采样率；不影响指标计数。" },
+  OTEL_NODE_ENABLED_INSTRUMENTATIONS: { description: "自动插件允许列表 pg,ioredis,pino。" },
   NODE_ENV: { description: "运行环境标识。" },
   RCS_HOST: { description: "HTTP 监听地址。" },
   RCS_PORT: { description: "HTTP 监听端口。" },
   RCS_CORS_ORIGIN: { description: "允许的跨域来源；`*` 或逗号分隔列表。" },
-  RCS_BASE_URL: { description: "服务公开基址；日志、spawn 的 acp-link 与 better-auth 的回退基址。" },
+  RCS_BASE_URL: {
+    description: "服务公开基址；日志、spawn 的 acp-link 与 better-auth 的回退基址。",
+  },
   RCS_VERSION: { description: "版本号；由构建或镜像注入。" },
   RCS_APPLICATION_ROOT: { description: "应用根目录的绝对路径；用于定位 bundle 之外的静态资源。" },
   RCS_ASSEMBLY_PROFILE_PATH: {
@@ -157,7 +179,9 @@ export const DEPLOY_INTERPOLATION_KEYS: readonly string[] = [
   "RCS_API_KEYS",
   "RCS_BASE_URL",
   "RCS_DISABLE_SCHEDULER",
+  "RCS_IMAGE_TAG",
   "RCS_SECRET_ENCRYPTION_KEY",
+  "OTEL_RESOURCE_ATTRIBUTES",
   "REGISTRY_SECRET",
 ];
 
@@ -186,6 +210,19 @@ export const MAIN_FEATURE_SWITCHES: readonly { readonly name: string; readonly d
  * 处理一致：容器侧部署配置不进宿主 env 声明面，也不进主服务 env 模板。
  */
 const APP_UNDECLARED: readonly UndeclaredKey[] = [...LOGGER_UNDECLARED, ...BASE_SERVICE_UNDECLARED];
+
+/**
+ * 主服务生产模板额外列出的编排键：`RCS_IMAGE_TAG` 只被 docker/main 编排消费，不是应用环境变量，
+ * 但它是 `up` / `deploy` 的必填发布 pin；写进生产模板，`init` 后部署方能看到并取消注释。
+ */
+const MAIN_UNDECLARED: readonly UndeclaredKey[] = [
+  ...APP_UNDECLARED,
+  {
+    key: "RCS_IMAGE_TAG",
+    description: "生产主服务镜像 tag；CI 产出 sha-<commit> 后填入，up / deploy 前缺失会校验失败。",
+    consumer: "docker/main/docker-compose.yml",
+  },
+];
 
 export const ENV_TEMPLATES: readonly EnvTemplate[] = [
   {
@@ -231,12 +268,18 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       RCS_API_KEYS:
         "生产必须是长随机值（`openssl rand -hex 32`）——编排的缺省值是公开的本地兜底值，不得带进生产；空串按校验失败处理，且不得提交。",
       RCS_BASE_URL: "填部署方可达的对外地址（如 https://agent.example.com）：影响生成的回链与 skill 下载链接。",
+      OTEL_RESOURCE_ATTRIBUTES:
+        "主服务编排在容器环境显式注入 production；staging 等环境必须显式覆盖 deployment.environment.name，不能沿用 development。" +
+        "绕过编排直接跑源码时按代码默认 development。",
       RCS_DEFAULT_ENGINE_TYPE: "DSH 通过远端 sandbox-dsh 以 ccb 槽位注册，不支持填写 dsh。",
       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL:
         "docker 部署由 `./docker/deploy.sh` 在 init / up / deploy 时按主机名生成并固化（写入本文件、之后不再改动）；" +
         "独立部署须自行填部署方可控的邮箱，并登记为保留账号（见 docker/workflow/README.md §5）。",
     },
-    undeclared: APP_UNDECLARED,
+    defaultOverrides: {
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=fenix,deployment.environment.name=production",
+    },
+    undeclared: MAIN_UNDECLARED,
   },
   {
     path: "docker/deploy.env.example",
@@ -251,7 +294,7 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
       "写进主服务 env（生产 docker/main/.env、dev 仓库根 .env），本文件不列。",
       "",
       "键行一律是注释行：不写就等于用脚本与 compose 的缺省行为（未列出的依赖不启动），要改再取消注释。",
-      "镜像版本不在这里：所有镜像固定版本、写在各自 compose 文件里（主服务 rcs 的 image 行随发布更新，dev 与生产两份编排同步）。",
+      "镜像版本不在这里：第三方镜像固定写在各自 compose；主服务 rcs 的 tag 由 docker/main/.env 的 RCS_IMAGE_TAG 显式提供（CI 产出的 sha-<commit>）。",
       "权威文档：docs/operations/docker-topology.md（§7 配置、§8 env 规范）。",
     ],
   },
