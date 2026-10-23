@@ -80,6 +80,42 @@ describe("新旧消息合并视图", () => {
     expect(merged.at(-1)).toMatchObject({ id: "entry-1#1" });
   });
 
+  // 流式中间态：工具已到、工具后的正文尚未成段时，新投影把前后两段拼成的整段文本不能前移到工具之前，
+  // 否则用户会看到 "ai ai tools"（工具后正文跑到工具前）；旧路径补齐成段后必须恢复原顺序且不重复。
+  test("工具后正文未成段时新投影整段文本不得前移到工具之前", () => {
+    const chat = createChatDoc("rcs-stream-order", null).ydoc;
+    const session = createSessionDoc("rcs-stream-order", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问" } }, "turn-stream"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai " } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-s", title: "Read" }));
+
+    // 中间态：旧路径只有首段 + 工具，新投影已包含工具后的正文（整段文本）
+    const merger = createSyncMessageMerger();
+    const mid = merger(chatDocEntriesToStructuredMessages(chat), [assistant("turn-stream:assistant", "ai ai", 0)]);
+    expect(mid.map((message) => message.id)).toEqual(["turn-stream:user", "turn-stream:assistant", "tool-s"]);
+    expect(mid[1]).toMatchObject({ type: "assistant_message" });
+    expect(textOf(mid[1]!)).toBe("ai ");
+
+    // 旧路径补齐第二段：工具后的正文必须排在工具之后，且整段文本不得再出现
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai" } }));
+    const done = merger(chatDocEntriesToStructuredMessages(chat), [assistant("turn-stream:assistant", "ai ai", 0)]);
+    expect(done.map((message) => message.id)).toEqual([
+      "turn-stream:user",
+      "turn-stream:assistant",
+      "tool-s",
+      "turn-stream:assistant#1",
+    ]);
+    expect(done.map((message) => textOf(message))).toEqual(["", "ai ", "", "ai"]);
+  });
+
   // 真实 Chat Doc 切分 → 合并器：工具前后多段正文、多工具与错误终态都必须保留最终答案（B02）。
   test("真实 Chat Doc 的多段正文与工具顺序经合并后不丢最终答案", () => {
     const chat = createChatDoc("rcs-real-merge", null).ydoc;

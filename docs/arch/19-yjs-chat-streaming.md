@@ -340,6 +340,7 @@ sequenceDiagram
 - **用户消息会话级写入**：`registerUserMessage` 成功后经 `SessionChannel` 的会话级入口扇出到该 `rcsSessionId` 的全部同步连接；动作 socket 通常没有同步 runtime，不得只写发起连接，也不重新启用 Agent 回显。attach 窗口内入队的消息在首个 HELLO 建立基线后补水；写者按 `entryId + 内容槽` 对已提交记录与新写者本地待提交集合去重，覆盖写者交接、多标签与重复 `turnId`。
 - **未配对用户消息不可退役**：合并器只有在 `turnId + entryId` 或等价稳定身份证明覆盖后才能删除旧用户消息；“sync 存在任意文本”不构成覆盖证明。分页缺段时保留新投影合并正文兜底。
 - **工具分段 entry 保留完整旧结构**：旧展示模型把含工具的助手 entry 拆成 `entryId` / `entryId#1`，新投影只能表达合并正文；合并器遇到分段 entry 时保留全部旧段与工具顺序，不用“任一 sync 文本”删除后续段。
+- **工具前文本位只认旧分段结构**：旧投影中后面紧跟工具调用的助手消息，即使工具后的正文尚未成段（流式中间态），也不得被新投影的整段正文顶替。新投影不携带工具位置，顶替会把工具后的正文整体前移到工具之前（用户可见 `ai ai tools`）；该位置保留旧消息，待旧侧 `entryId#N` 到齐后按原顺序展示（修复记录见 `docs/design/issues/2026-10-23-chat-streaming-tool-text-order-defect.md`）。
 - **写者租约按 scope 续租**：空闲期由 runtime tick 续租；过期后重新竞争新 epoch 并从已提交状态重建。入口停写必须由宿主关闭同步连接（可重试码）让客户端重建，不能只写服务端日志。
 - **工具/权限终态回收**：`completed|complete|done|failed|error` 与权限 `resolved` 先提交终态索引/描述符，再同批移出运行态实体；内容 Doc 达到软水位时先封口轮换，避免累计完成次数撑停入口。私有 `tool_call_result` / `tool_call_error` 帧即使不携带 `status`，也必须按帧类型收口为终态；工具原始输入输出仍由旧通道承载，不在本投影范围。
 - 能恢复既有 `acpSessionId` 时优先恢复（从 Session Doc `session.sessionId` 反查 binding）；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
