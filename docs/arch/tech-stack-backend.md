@@ -24,7 +24,7 @@ Elysia 是后端 HTTP 框架，同时承载 REST API、WebSocket Upgrade、静�
 **插件系统**：Elysia 的插件模型是核心架构的组织方式。启动时按以下功能域顺序注册插件和中间件：
 
 - **CORS 插件**：跨域配置
-- **双 OpenAPI 实例**：对外 API（`/api/*`，OpenAPI 3.1）+ 内部控制台 API（`/web/*`），均通过 Scalar UI 提供交互式文档
+- **双 OpenAPI 实例**：对外 API（`/api/*`，排除 `EXTERNAL_API_EXCLUDED_PATHS` 声明的路径及其子路径）+ 内部控制台 API（`/web/*`），均通过 Scalar UI 提供交互式文档
 - **结构化请求日志**：通过 `.onBeforeHandle()` / `.onAfterHandle()` 生命周期钩子挂载日志中间件
 - **统一错误格式**：所有错误返回 `{ error: { code, message } }` 结构
 - **限流插件**：API 访问速率限制
@@ -40,7 +40,14 @@ Elysia 是后端 HTTP 框架，同时承载 REST API、WebSocket Upgrade、静�
 - **ACP WebSocket 路由**：`/acp/ws`（远端 machine 接入）、`/acp/file-ws`（远程文件操作）、`/acp/relay`（前端中继）
 - **Webhook 端点**：外部系统通过 public hash 触发工作流（无认证）
 
-**OpenAPI 集成**：双 `openapi` 实例——对外（`/api/*`）+ 内部控制台（`/web/*`），通过 Scalar UI 提供交互式文档。
+**OpenAPI 集成**：宿主 `apps/server/src/openapi.ts` 统一按最终挂载路径决定归属，接口无需额外声明文档类别：
+
+1. `/docs/openapi/external` 收录 `/api/*`，排除 `EXTERNAL_API_EXCLUDED_PATHS` 声明的路径及其子路径；具体排除项只在代码中维护。
+2. `/docs/openapi/web` 仅收录 `/web/*`；其他协议路径不进入这两份文档。
+3. `detail.tags` 仅用于分组，新增、共用或缺失标签不改变归属；`detail.hide: true` 仍可隐藏接口。
+4. 路径筛选在 OpenAPI 生成前执行，两份文档不能包含重复接口。系统接口保留原路径与系统密钥鉴权，文档排除不改变实际访问权限。
+
+两份文档均通过 Scalar UI 展示，各自在文档地址后追加 `/json` 获取 OpenAPI JSON。
 
 **路由约定**：URL 小写 kebab-case，资源名复数；`GET` 查询、`POST` 创建/动作、`PUT` 更新、`DELETE` 删除。所有 route 的 `params`、`query`、`body`、`response` 绑定 Zod Schema，不内联声明。
 

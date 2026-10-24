@@ -1,21 +1,13 @@
 import { expect, test } from "bun:test";
 import type { ModuleManifest } from "@fenix/platform-sdk";
-import { Elysia } from "elysia";
+import { type AnyElysia, Elysia } from "elysia";
 import { generatedModuleManifests } from "../../../generated/module-registry";
 import { serverRouteHost } from "../bootstrap/route-host";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "../openapi";
 
 /**
- * 两份文档的 spec 生成必须对**真实**路由贡献成功（1.5f-1b 回归防护）。
- *
- * 背景：`@elysiajs/openapi` 在配置了 `exclude.tags` 时无条件读 `hooks.detail.tags`（1.4.15
- * `toOpenAPISchema`），因此任意一条缺 `detail` 的路由会让**整份** spec 抛 `TypeError`，
- * `/docs/openapi/web/json` 与 `/docs/openapi/external/json` 同时 500——失效面是全部文档，而不是那一条
- * 路由。`/hooks/:publicHash` 随「Webhook 入口迁回 workflow 包」恢复挂载时漏了 `detail`，当时没有任何
- * 测试覆盖文档生成，问题只能在浏览器里撞见。
- *
- * 本用例不启运行面也不连库：路由工厂只做 HTTP 边缘接线，构造它们不需要领域依赖（与装配期
- * `mountServerRouteContribution` 的调用方式一致），因此这条防线足够便宜、可以常驻。
+ * 真实路由贡献必须按最终挂载路径进入对应文档，且系统管理与独立协议入口不能进入这两份文档。
+ * 只构造协议层，不启运行面或连接数据库。
  */
 
 /** Elysia 路由路径 `:name` → OpenAPI 路径 `{name}`；用于把贡献路由与文档里的 path 对齐比对。 */
@@ -29,7 +21,7 @@ function toOpenApiPath(path: string): string {
  * 非 `app-route` 贡献（协议、生命周期）不参与 HTTP 文档面，跳过。
  */
 async function collectContributedRoutes() {
-  const instances: Elysia[] = [];
+  const instances: AnyElysia[] = [];
   const declared: string[] = [];
 
   // 收窄到契约面：生成物用 `as const satisfies` 保留各 manifest 的字面量类型，联合类型上访问不到
@@ -42,9 +34,13 @@ async function collectContributedRoutes() {
       const built = await (contribution.value as (host: typeof serverRouteHost) => unknown)(serverRouteHost);
       // 与 `mountServerRouteContribution` 同口径：工厂必须产出 Elysia 实例，否则装配期就会失败。
       if (!(built instanceof Elysia)) throw new Error(`贡献 ${manifest.id}/${contribution.id} 未产出 Elysia 实例`);
-      instances.push(built);
+      const mounted =
+        contribution.slot === "web" || contribution.slot === "web-config"
+          ? new Elysia({ prefix: "/web" }).use(built)
+          : built;
+      instances.push(mounted);
 
-      for (const route of built.routes) {
+      for (const route of mounted.routes) {
         if (route.hooks?.detail?.hide) continue;
         // 一条路由可声明多个方法（Elysia 的 `route.method` 此时是数组），逐方法比对。
         const methods = Array.isArray(route.method) ? route.method : [route.method];
@@ -56,8 +52,78 @@ async function collectContributedRoutes() {
   return { instances, declared };
 }
 
-// 真实贡献路由挂载后，两份 spec 必须都能生成，且未标记隐藏的路由必须至少出现在其中一份文档里。
-test("真实路由贡献下两份 OpenAPI spec 均可生成且覆盖未隐藏路由", async () => {
+// 路由标签只负责分组，共用、未知或缺失标签都不能改变文档的路径归属。
+test("OpenAPI 按路径归属且不依赖标签分类", async () => {
+  const app = new Elysia()
+    .use(createExternalOpenApiPlugin("test"))
+    .use(createWebOpenApiPlugin("test"))
+    .get("/api/skills", () => ({}), { detail: { tags: ["SkillConfig"] } })
+    .get("/web/skills", () => ({}), { detail: { tags: ["External Skill"] } })
+    .get("/api/plugin-market", () => ({}), { detail: { tags: ["PluginMarket"] } })
+    .get("/web/plugin-market", () => ({}), { detail: { tags: ["PluginMarket"] } })
+    .get("/api/new-resource", () => ({}), { detail: { tags: ["New Resource"] } })
+    .get("/web/new-resource", () => ({}))
+    .get("/api/system", () => ({}))
+    .get("/api/system/logs", () => ({}), { detail: { tags: ["System Logs"] } })
+    .get("/api/systematic", () => ({}))
+    .get("/api/auth", () => ({}))
+    .get("/api/auth/encryption-key", () => ({}), { detail: { tags: ["Auth"] } })
+    .get("/api/authors", () => ({}))
+    .get("/api/hidden", () => ({}), { detail: { hide: true } })
+    .get("/web/hidden", () => ({}), { detail: { hide: true } })
+    .post("/api/plugin-market", () => ({}), { detail: { hide: true } })
+    .get("/acp/agents", () => ({}), { detail: { tags: ["ACP"] } })
+    .get("/apiary/resources", () => ({}))
+    .get("/website/resources", () => ({}));
+
+  const externalResponse = await app.handle(new Request("http://localhost/docs/openapi/external/json"));
+  const webResponse = await app.handle(new Request("http://localhost/docs/openapi/web/json"));
+  expect(externalResponse.status).toBe(200);
+  expect(webResponse.status).toBe(200);
+  const externalSpec = await externalResponse.json();
+  const webSpec = await webResponse.json();
+  expect(Object.keys(externalSpec.paths).sort()).toEqual([
+    "/api/authors",
+    "/api/new-resource",
+    "/api/plugin-market",
+    "/api/skills",
+    "/api/systematic",
+  ]);
+  expect(Object.keys(webSpec.paths).sort()).toEqual(["/web/new-resource", "/web/plugin-market", "/web/skills"]);
+  expect(externalSpec.paths["/api/plugin-market"].get.tags).toEqual(["PluginMarket"]);
+  expect(externalSpec.paths["/api/plugin-market"].post).toBeUndefined();
+  expect(webSpec.paths["/web/plugin-market"].get.tags).toEqual(["PluginMarket"]);
+  const repeatedExternalSpec = await (
+    await app.handle(new Request("http://localhost/docs/openapi/external/json"))
+  ).json();
+  expect(repeatedExternalSpec.paths).toEqual(externalSpec.paths);
+  expect((await app.handle(new Request("http://localhost/api/system/logs"))).status).toBe(200);
+  expect((await app.handle(new Request("http://localhost/api/auth/encryption-key"))).status).toBe(200);
+});
+
+// 首次通过尾斜杠别名读取文档也必须隔离路径，避免污染后续规范地址请求的缓存。
+test("OpenAPI 尾斜杠入口与规范入口使用相同路径筛选", async () => {
+  const app = new Elysia()
+    .use(createExternalOpenApiPlugin("test"))
+    .use(createWebOpenApiPlugin("test"))
+    .get("/api/resources", () => ({}))
+    .get("/web/resources", () => ({}))
+    .get("/api/system/logs", () => ({}));
+
+  for (const [audience, expectedPaths] of [
+    ["external", ["/api/resources"]],
+    ["web", ["/web/resources"]],
+  ] as const) {
+    for (const suffix of ["/", ""]) {
+      const response = await app.handle(new Request(`http://localhost/docs/openapi/${audience}/json${suffix}`));
+      expect(response.status).toBe(200);
+      expect(Object.keys((await response.json()).paths)).toEqual([...expectedPaths]);
+    }
+  }
+});
+
+// 真实贡献按宿主前缀挂载后，每条可见 API 只出现在其所属文档，系统与协议路由不公开。
+test("真实路由贡献下两份 OpenAPI spec 按路径隔离并覆盖可见接口", async () => {
   const { instances, declared } = await collectContributedRoutes();
   expect(declared.length).toBeGreaterThan(0);
 
@@ -74,10 +140,21 @@ test("真实路由贡献下两份 OpenAPI spec 均可生成且覆盖未隐藏路
     expect(response.status, `[${name}] spec 生成失败：${body.slice(0, 300)}`).toBe(200);
     specs[name] = JSON.parse(body);
     expect(Object.keys(specs[name].paths).length).toBeGreaterThan(0);
+    for (const documentedPath of Object.keys(specs[name].paths)) {
+      if (name === "external") {
+        expect(documentedPath.startsWith("/api/"), documentedPath).toBe(true);
+        expect(documentedPath === "/api/system" || documentedPath.startsWith("/api/system/"), documentedPath).toBe(
+          false,
+        );
+      } else {
+        expect(documentedPath.startsWith("/web/"), documentedPath).toBe(true);
+      }
+    }
   }
 
-  // 契约：接进装配面的路由要么进文档，要么显式 `hide: true`——静默漏掉 detail 的那个分支现在会直接
-  // 让上一段断言失败，这里进一步保证「有 detail」不等于「被排除」。
+  const externalPaths = Object.keys(specs.external.paths);
+  expect(externalPaths.filter((path) => path in specs.web.paths)).toEqual([]);
+
   const documented = new Set<string>();
   for (const spec of Object.values(specs)) {
     for (const [path, operations] of Object.entries(spec.paths)) {
@@ -89,7 +166,17 @@ test("真实路由贡献下两份 OpenAPI spec 均可生成且覆盖未隐藏路
   }
   // 带扩展名的路径不算漏出：插件默认 `excludeStaticFile: true`，凡含 `.` 的路径都按静态资源排除
   // （如 `/api/system/sandbox-cluster/servers/{serverId}/tunnel/frpc.toml`），这是插件的既定口径。
-  const missing = declared.filter((route) => !documented.has(route) && !route.split(" ")[1]?.includes("."));
+  const missing = declared.filter((route) => {
+    const path = route.split(" ")[1];
+    const visible =
+      path.startsWith("/web/") ||
+      (path.startsWith("/api/") &&
+        path !== "/api/system" &&
+        !path.startsWith("/api/system/") &&
+        path !== "/api/auth" &&
+        !path.startsWith("/api/auth/"));
+    return visible && !path.includes(".") && !documented.has(route);
+  });
   expect(missing).toEqual([]);
 });
 

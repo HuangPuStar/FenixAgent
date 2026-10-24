@@ -7,6 +7,8 @@ Fenix 对外提供了一套独立的 External API，供其他系统通过 API Ke
 - 交互式文档：`http://server/docs/openapi/external`
 - OpenAPI JSON：`http://server/docs/openapi/external/json`
 
+文档由宿主统一按路径收录：`external` 包含 `/api/*`，排除 `apps/server/src/openapi.ts` 中 `EXTERNAL_API_EXCLUDED_PATHS` 声明的路径及其子路径；控制台 `/web/*` 接口位于 `/docs/openapi/web`。路由标签仅用于分组，不决定文档归属。
+
 具体字段、请求体和响应体定义，请直接以交互式文档为准，不要以本文档中的示例推断全部接口形态。
 
 ## API Key
@@ -34,6 +36,8 @@ Authorization: Bearer rcs_xxx
 ## System API
 
 除了面向普通外部调用方的 `/api/*` 接口外，Fenix 还提供一组单独的系统级管理接口：`/api/system/*`。
+
+对外文档的排除范围以 `EXTERNAL_API_EXCLUDED_PATHS` 为准；文档隐藏不改变系统密钥鉴权要求。
 
 这组接口主要给系统集成使用，和普通 External API 有两个关键区别：
 
