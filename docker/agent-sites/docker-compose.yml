@@ -7,7 +7,7 @@
 # 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_AGENT_SITES=true
 #
 # 网络：接入 fenix-server（主服务按 http://agent-sites:3000 访问）；
-# 宿主端口对外发布——站点本身要供外部访问。
+# 宿主端口只绑回环，仅供同机调试；站点对外访问统一经 RCS 反向代理。
 
 services:
 
@@ -33,7 +33,8 @@ services:
             - ./data:/app/data
             - ./public:/app/public
         ports:
-            - "${AGENT_SITES_PORT:-26778}:3000"
+            # 只绑回环：仅供同机调试，站点对外访问经 RCS 反向代理。
+            - "127.0.0.1:${AGENT_SITES_PORT:-26778}:3000"
 
 networks:
     fenix-server:

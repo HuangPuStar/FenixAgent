@@ -9,7 +9,7 @@
 # 站点运行参数一字不改。
 #
 # 网络：接入 fenix-server（rcs 按 http://agent-sites:3000 访问）；
-# 宿主端口对外发布——站点本身要供外部访问。
+# 宿主端口只绑回环，仅供本机调试；站点对外访问统一经 RCS 反向代理。
 
 services:
 
@@ -36,8 +36,8 @@ services:
             - ./data/agent-sites/data:/app/data
             - ./data/agent-sites/public:/app/public
         ports:
-            # 对外发布（非回环）：站点本身要供外部访问，这是文档 §6.4 允许绑 0.0.0.0 的那类入口。
-            - "${AGENT_SITES_PORT:-26778}:3000"
+            # 只绑回环：仅供本机调试，站点对外访问统一经 RCS 反向代理（文档 §6.4）。
+            - "127.0.0.1:${AGENT_SITES_PORT:-26778}:3000"
 
 networks:
     # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
