@@ -1,11 +1,12 @@
 // turn 收敛语义测试（H1/H2/H3/H6/M2）：
 // 「turn 离开活动态」统一经 convergeTurnExit 收敛（assistant entry 终态 +
-// 权限失效 + 工具收敛）；权限决议/过期按 turnId 归属校验；用户连发清理旧 turn
-// 残留；历史 turn 重放不顶掉当前 turn。这些边界是权限/工具状态反复出错的根因区。
+// 权限失效 + 工具收敛 + 取消/中断时的同步子任务收敛）；权限决议/过期按 turnId
+// 归属校验；用户连发清理旧 turn 残留；历史 turn 重放不顶掉当前 turn。这些边界
+// 是权限/工具/子任务状态反复出错的根因区。
 
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { type NormalizedEvent } from "../schema";
+import { type NormalizedEvent, type NormalizedPeriTaskEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
   getEntry,
@@ -307,4 +308,121 @@ test("peri background task terminal still projects after turn terminal", () => {
   expect(tasks.get("bg_1")?.get("summary")).toBe("output preview");
   // turn 状态机不受影响
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
+});
+
+// ── 取消 / 中断时同步子任务收敛（GitLab issue #38）──
+
+/** 构造 subagent started 规范化事件（isBackground 决定卡片是否随 turn 收敛） */
+function periSubagentStarted(taskId: string, isBackground = false): NormalizedPeriTaskEvent {
+  return {
+    type: "peri_task_started",
+    update: {},
+    content: null,
+    taskId,
+    kind: "subagent",
+    taskSubtype: null,
+    title: "general-purpose",
+    summary: null,
+    sourceStartedAt: null,
+    receivedAt: "2026-10-23T02:00:00.000Z",
+    isBackground,
+    detailAvailability: "unavailable",
+  };
+}
+
+// 用户点击停止（turn_cancelled）或取消超时（turn_interrupted）后，同步子任务随 turn
+// 级联取消；SubagentStopped 可能丢失，卡片不得永久停在「运行中」并持续计时
+test("cancelled or interrupted turn converges running sync subagent tasks", () => {
+  for (const type of ["turn_cancelled", "turn_interrupted"] as const) {
+    const fresh: DocPair = {
+      chat: createChatDoc(`rcs_${type}`, null).ydoc,
+      session: createSessionDoc(`rcs_${type}`, null).ydoc,
+    };
+    setActiveTurn(fresh.session, "turn_1", "cancelling");
+    applyNormalizedEvent(fresh, periSubagentStarted(`sub_${type}`));
+
+    applyNormalizedEvent(fresh, event(type, {}, "turn_1"));
+
+    const task = (getSessionRoot(fresh.session).get("tasks") as Y.Map<Y.Map<unknown>>).get(`sub_${type}`);
+    expect(task?.get("status")).toBe("cancelled");
+    // completedAt 必须是合法时间戳：前端据此冻结计时（running 才使用 now）
+    expect(Number.isFinite(Date.parse(String(task?.get("completedAt"))))).toBe(true);
+    expect(task?.get("completedAt")).toBe(task?.get("updatedAt"));
+  }
+});
+
+// 后台 subagent 独立于 turn 生命周期（isBackground=true）：主对话取消不得改写其状态，
+// 否则仍在真实运行的后台任务会被误报为已取消
+test("cancelled turn leaves running background subagent tasks untouched", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_bg", true));
+
+  applyNormalizedEvent(pair, event("turn_cancelled", {}, "turn_1"));
+
+  const task = (getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>).get("sub_bg");
+  expect(task?.get("status")).toBe("running");
+  expect(task?.get("completedAt")).toBeNull();
+});
+
+// 正常完成不做推断式收敛：同步子任务必须由自身终态事件收口，保持 task/turn 解耦契约
+test("completed turn does not infer sync subagent terminal state", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_1"));
+
+  applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+
+  const task = (getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>).get("sub_1");
+  expect(task?.get("status")).toBe("running");
+});
+
+// 用户连发新消息终结实时旧 turn 时同样级联取消同步子任务；历史回放 turn 只回显，
+// 不得触碰当前仍在运行的任务
+test("live turn superseded by new user message converges sync subagent tasks", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_1"));
+
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "next" } }, "turn_2"));
+
+  const task = (getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>).get("sub_1");
+  expect(task?.get("status")).toBe("cancelled");
+  expect(task?.get("completedAt")).not.toBeNull();
+});
+
+// 收敛后迟到的 subagent_stopped 不得回退已写入的 cancelled（终态保护）：
+// 取消路径可能先收敛卡片、再收到排队中的终态事件
+test("late subagent_stopped does not revert cancelled subagent task", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_1"));
+  applyNormalizedEvent(pair, event("turn_cancelled", {}, "turn_1"));
+  const tasks = getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>;
+  const completedAt = tasks.get("sub_1")?.get("completedAt");
+
+  applyNormalizedEvent(pair, {
+    type: "peri_task_completed",
+    update: {},
+    content: null,
+    taskId: "sub_1",
+    kind: "subagent",
+    success: true,
+    summary: "done",
+    durationMs: null,
+    receivedAt: "2026-10-23T02:01:40.000Z",
+    detailAvailability: "unavailable",
+  });
+
+  expect(tasks.get("sub_1")?.get("status")).toBe("cancelled");
+  expect(tasks.get("sub_1")?.get("completedAt")).toBe(completedAt);
+});
+
+// 回放旧 turn 被下一条历史消息接续时只收敛 entry/权限/工具，不得误取消当前
+// 仍在运行的同步子任务（回放期间实时任务可能并存）
+test("replay turn supersede keeps running sync subagent tasks", () => {
+  setActiveTurn(pair.session, "turn_replay_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_live"));
+
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "history" } }, "turn_2"));
+
+  const task = (getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>).get("sub_live");
+  expect(task?.get("status")).toBe("running");
+  expect(task?.get("completedAt")).toBeNull();
 });
