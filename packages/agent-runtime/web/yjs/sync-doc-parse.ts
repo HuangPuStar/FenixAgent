@@ -31,6 +31,14 @@ export interface ParsedContentDoc {
 
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
+/**
+ * 正文槽位：实时写者用字符串 `text`，历史导入的 `text_part` 用数字 0。
+ * reasoning 等其余字符串槽位不属于正文；放进正文会让思考混入回答（issue #37）。
+ */
+function isBodySlot(contentSlot: unknown): boolean {
+  return typeof contentSlot !== "string" || contentSlot === "text";
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -136,6 +144,11 @@ export function parseContentDoc(doc: Y.Doc): ParsedContentDoc {
       continue;
     }
     if (kind === "text_part") {
+      if (!isBodySlot(record.contentSlot)) {
+        entry.recordCount += 1;
+        recordCount += 1;
+        continue;
+      }
       // 历史记录的载荷是保真 JSON：字符串值带引号与转义，直接按 UTF-8 当正文会显示成 `"hello"`。
       // 实时 `text` 记录才是裸 UTF-8 片段（见 live-writer 的 writeText）。
       try {
@@ -155,6 +168,11 @@ export function parseContentDoc(doc: Y.Doc): ParsedContentDoc {
     if (kind !== "text") {
       // history_object / tool_object 的保真 JSON 尚无入口映射，不猜正文。
       skippedRecords += 1;
+      continue;
+    }
+    if (!isBodySlot(record.contentSlot)) {
+      entry.recordCount += 1;
+      recordCount += 1;
       continue;
     }
     try {
