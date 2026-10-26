@@ -209,7 +209,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   // ── 待发送队列（peri steer）──
   // 队列只读 Session Doc 投影（不另建本地队列状态）：三个操作发出控制面 action，界面等 Y.Doc 回推收敛。
-  // 「取回」把草稿交回输入岛：输入岛非空时不覆盖（判定在 ChatComposer 侧，那里才读得到半受控草稿）。
+  // 「取回」把草稿交回输入岛：输入岛在已有正文后换行追加（判定在 ChatComposer 侧，那里才读得到半受控草稿）。
   const queue = useUserInputQueueActions({
     supportsUserInputQueue,
     queue: userInputQueue,

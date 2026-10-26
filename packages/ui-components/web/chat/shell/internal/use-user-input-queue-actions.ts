@@ -36,8 +36,9 @@ export interface UserInputQueueActionsOptions {
   onDispatchUserInputs?: (inputIds: string[]) => boolean;
   onTakebackUserInput?: (inputId: string) => boolean;
   /**
-   * 取回成功后把草稿交回输入岛。是否覆盖由输入岛判定：草稿非空时不覆盖
-   * （`ChatComposer` 的 `restore-draft` 事件语义，见 `../composer/composer-effects`）。
+   * 取回成功后把草稿交回输入岛。输入岛在已有正文后换行追加：覆盖会丢用户正在写的内容，
+   * 忽略非空草稿则会让已撤出队列的条目失去落点（`ChatComposer` 的 `restore-draft` 事件语义，
+   * 见 `../composer/composer-effects`）。
    */
   restoreDraft: (text: string) => void;
   /** 动作未送达的提示文案（由组件翻译后传入，本 hook 不依赖 i18n） */

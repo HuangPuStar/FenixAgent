@@ -337,11 +337,15 @@ export function useComposerHandlers({
       textareaRef.current?.focus();
     },
     onQuote: handleQuote,
-    // 待发送队列「取回」：只在草稿为空时回填——用户已经重新打了字时覆盖等于丢草稿
-    // （判定必须在这里做，调用方读不到半受控草稿）。
+    // 待发送队列「取回」：把退回的草稿追加到已有正文之后，保留用户正在写的内容。
+    // 覆盖或忽略非空草稿都会让已从队列撤出的消息失去落点（连续取回第二条时会直接丢失）。
     onRestoreDraft: (prompt) => {
       if (!prompt) return;
-      setText((current) => (current.trim().length > 0 ? current : prompt));
+      setText((current) => {
+        // 去掉尾部换行再拼一个分隔符，避免已有草稿以换行结尾时多出一个空行
+        const base = current.replace(/\n+$/, "");
+        return base.trim().length > 0 ? `${base}\n${prompt}` : prompt;
+      });
       textareaRef.current?.focus();
     },
   });
