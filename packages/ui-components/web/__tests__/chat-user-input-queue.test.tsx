@@ -18,8 +18,8 @@ import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
 /**
- * 待发送队列（peri steer）的交互测试：入队 vs 直发的分流、单发/全发/取回三条动作、取回回填的
- * 覆盖条件、失败提示与重试，以及能力位为假时的完整回退。
+ * 待发送队列（peri steer）的交互测试：入队 vs 直发的分流、单发/全发/取回三条动作、取回追加的
+ * 顺序与换行规则、失败提示与重试，以及能力位为假时的完整回退。
  *
  * 只测行为与数据流（不是 UI 结构断言）：判定「提交去哪了」看端口调用，判定「条目从哪来」看注入的
  * 队列投影——组件不得持有第二份队列状态，因此投影不变时界面就不该变。
@@ -392,14 +392,29 @@ describe("待发送队列（peri steer）", () => {
     expect(textarea()?.value).toBe("摘要文本");
   });
 
-  // 取回不覆盖：用户已经重新打了字时保留现草稿（覆盖等于丢草稿）
-  test("取回不覆盖已输入的草稿", () => {
+  // 取回追加：用户已经重新打了字时保留现草稿，并在其后换行追加退回的内容
+  test("取回追加到已输入的草稿", () => {
     const { ports, setDraft } = mount({ queue: queueView([item("queued", "in-1", "摘要文本", "用户原始草稿")]) });
     setDraft("我正在重新写");
 
     click(button("user-input-queue-takeback"));
     expect(ports.takenBack).toEqual(["in-1"]);
-    expect(textarea()?.value).toBe("我正在重新写");
+    expect(textarea()?.value).toBe("我正在重新写\n用户原始草稿");
+  });
+
+  // 连续取回不同条目：按取回顺序换行累积，后一条不能因输入框已有内容被静默丢弃
+  test("连续取回按顺序追加到输入框", () => {
+    const { ports } = mount({
+      queue: queueView([item("queued", "in-1", "摘要A", "消息A"), item("queued", "in-2", "摘要B", "消息B")]),
+    });
+
+    click(button("user-input-queue-takeback", 0));
+    expect(textarea()?.value).toBe("消息A");
+
+    // 队列投影尚未回推时第二条仍在原位（真实环境由 Y.Doc 更新后收敛，不影响回填顺序）
+    click(button("user-input-queue-takeback", 1));
+    expect(ports.takenBack).toEqual(["in-1", "in-2"]);
+    expect(textarea()?.value).toBe("消息A\n消息B");
   });
 
   // 出站失败（socket 未就绪）：给出可重试提示，重试重放同一动作并成功后清掉提示
