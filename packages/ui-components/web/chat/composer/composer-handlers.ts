@@ -341,7 +341,11 @@ export function useComposerHandlers({
     // 覆盖或忽略非空草稿都会让已从队列撤出的消息失去落点（连续取回第二条时会直接丢失）。
     onRestoreDraft: (prompt) => {
       if (!prompt) return;
-      setText((current) => (current.trim().length > 0 ? `${current}\n${prompt}` : prompt));
+      setText((current) => {
+        // 去掉尾部换行再拼一个分隔符，避免已有草稿以换行结尾时多出一个空行
+        const base = current.replace(/\n+$/, "");
+        return base.trim().length > 0 ? `${base}\n${prompt}` : prompt;
+      });
       textareaRef.current?.focus();
     },
   });

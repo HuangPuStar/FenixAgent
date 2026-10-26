@@ -417,6 +417,16 @@ describe("待发送队列（peri steer）", () => {
     expect(textarea()?.value).toBe("消息A\n消息B");
   });
 
+  // 已有草稿以换行结尾时只保留一个分隔换行，避免取回后多出一个空行
+  test("取回时归一化已有草稿的尾部换行", () => {
+    const { ports, setDraft } = mount({ queue: queueView([item("queued", "in-1", "摘要文本", "用户原始草稿")]) });
+    setDraft("我正在重新写\n");
+
+    click(button("user-input-queue-takeback"));
+    expect(ports.takenBack).toEqual(["in-1"]);
+    expect(textarea()?.value).toBe("我正在重新写\n用户原始草稿");
+  });
+
   // 出站失败（socket 未就绪）：给出可重试提示，重试重放同一动作并成功后清掉提示
   test("动作未送达时给出可重试提示，重试重放同一动作", () => {
     const { ports } = mount({ queue: queueView([item("queued", "in-1", "第一条")]), failDispatch: 1 });
