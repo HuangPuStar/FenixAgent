@@ -152,7 +152,7 @@ issue 里的「优先级」是证据，不是结论；判不准取更高级别�
    已修复的意见应为 `isResolved: true`。
 7. **CI 全绿后立即回帖 GitLab**：通过的 check 数量/名称、CodeRabbit 结论、最后一次 push 的 commit；不要等合并才更新。
 
-## 8. 回帖 GitLab 与关闭
+## 8. 回帖 GitLab 与待回归标记
 
 1. 修复完成并创建 PR 后，用 `mcp__gitlab__create_issue_note` 回帖：
    - PR 链接、分支、根因、修复范围、回归测试、门禁结果
@@ -165,10 +165,10 @@ issue 里的「优先级」是证据，不是结论；判不准取更高级别�
    | 每次追加提交/推送 | commit、变更点、追加原因 |
    | CI 全绿 | check 数量与结果、CodeRabbit 状态、最后一次 push |
    | CodeRabbit 意见处理 | 意见结论、修复 commit、回归测试 |
-   | 合并后 | 合并信息，并关闭 issue |
+   | 合并后 | 合并信息，状态标签改为 `状态::待回归`，保持 open |
 
    同一次推送触发的「commit + CI」可以在 CI 出结果后合并成一条，但 CI 结果本身必须回帖；不要把多次推送积累到合并时一次补。
-3. **不要在 PR 合并前关闭 issue**。合并后（或用户确认）再 `mcp__gitlab__update_issue`，`state_event: "close"`；需要时补一条合并说明。
+3. **不要关闭 GitLab issue**：issue 生命周期由测试同学管理。PR 合并后把状态标签改为 `状态::待回归`，保持 `opened`，由测试同学回归后关闭。更新标签时 `labels` 会整体替换，必须带上原有其它标签。
 4. 回帖只写可公开的事实；不得出现密钥、token、连接串、完整环境变量或内部凭据。
 
 ## 9. 汇报
@@ -180,7 +180,7 @@ issue 里的「优先级」是证据，不是结论；判不准取更高级别�
 3. 改动文件与核心改动
 4. 验证命令与结果
 5. CI / CodeRabbit 状态
-6. 遗留与未做的事（如 issue 未关闭、已知边界）
+6. 遗留与未做的事（如 issue 已置待回归、已知边界）
 
 未实际运行的检查不得写成通过；环境性失败与产品失败分开说明。
 
@@ -190,6 +190,7 @@ issue 里的「优先级」是证据，不是结论；判不准取更高级别�
 - **不要把 GitHub origin 当成 GitLab 项目**：本仓代码在 GitHub，issue 在 GitLab。
 - **`/-/work_items/<iid>` 是正常 URL**：GitLab 会把 issue 展示为 work item。
 - **`list_issue_discussions` 返回 `null`**：没有讨论，不是权限或接口错误。
+- **不关闭 GitLab issue**：开发侧只把状态标签改为 `状态::待回归`，由测试同学回归后关闭。
 - **`gh pr checks` 的退出码**：8 = 仍有 pending，不是「检查失败」。
 - **CodeRabbit 摘要评论不是最终评审**：以晚于最后 push 的 review/comment 为准。
 - **并行 worktree 污染**：运行中可能出现无关 dirty 文件，绝不清理或混入提交。

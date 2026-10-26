@@ -60,7 +60,7 @@ mcp__gitlab__create_issue_note
 - 修复: <范围与行为变化>
 - 回归测试: <覆盖场景与结果>
 - 门禁: <命令与结果>
-- 说明: PR 尚未合并，本 issue 保持 open，合并后可关闭。
+- 说明: PR 尚未合并，本 issue 保持 open；合并后置为 `状态::待回归`，由测试同学关闭。
 ```
 
 需要回复某条讨论时传 `discussion_id`；普通进展更新不要传，创建顶层 note。
@@ -80,16 +80,18 @@ GitLab 同步是 workflow 的一部分，不是合并时的一次性动作。每
 
 只写可公开的事实；不要贴 token、环境变量或内部日志原文。
 
-## 关闭 / 改字段
+## 标记待回归 / 改字段
+
+PR 合并后只更新状态标签，不关闭 issue。`labels` 是整体替换，必须带上原有其它标签：
 
 ```text
 mcp__gitlab__update_issue
   project_id: "aos-test/aos-e2e-test"
   issue_iid: "40"
-  state_event: "close"
+  labels: ["优先级::P2", "模块::会话", "状态::待回归", "环境::VER"]
 ```
 
-- 只在 PR 合并后关闭，或用户明确要求时关闭。
+- GitLab issue 生命周期由测试同学管理；开发侧不传 `state_event: "close"`。
 - 需要修改描述时优先用 `update_issue_description_patch`（支持 `dry_run`），避免整段覆盖。
 - 不要为了「看起来处理完了」提前改 `state`、labels 或 assignee。
 
