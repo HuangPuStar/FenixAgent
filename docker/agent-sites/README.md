@@ -8,7 +8,7 @@
 | 键 | 位置 | 必需性 | 说明 |
 | --- | --- | --- | --- |
 | `AGENT_SITES_MASTER_KEY` | 本目录 `.env`（独立部署）/ 随主服务启动时由 `deploy.sh` 从主服务 env 带入同名同值 | 必需 | 站点部署密钥，与主服务的同名键**必须同值**，否则发布站点一律 401 |
-| `AGENT_SITES_PORT` | 本目录 `.env` | 默认值 26778 | 站点访问端口，对外发布 |
+| `AGENT_SITES_PORT` | 本目录 `.env` | 默认值 26778 | 宿主回环端口，仅供同机调试；站点访问经 RCS 反向代理 |
 
 容器内连接地址固定 `http://agent-sites:3000`（经 `fenix-server`）；主服务用 `AGENT_SITES_BASE_URL` 指向它。
 
@@ -21,7 +21,7 @@
 ## 验证
 
 ```bash
-curl -fsS http://localhost:26778/ -o /dev/null -w '%{http_code}\n'   # 预期 200/302
+curl -fsS http://127.0.0.1:26778/ -o /dev/null -w '%{http_code}\n'   # 预期 200/302
 ```
 
 ## 升级
