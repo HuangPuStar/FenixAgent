@@ -581,11 +581,13 @@ function applyTurnTerminal(
         : status === "cancelled"
           ? "cancelled"
           : "interrupted";
+  const isReplayTurn = active.turnId.startsWith("turn_replay_");
   convergeTurnExit(pair, active.turnId, {
     entryStatus: status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
     finalStatus: turnStatus,
-    // 取消/中断会级联终止同步子任务；其终态事件可能丢失，必须在此收敛卡片状态
-    cancelSyncSubagentTasks: status === "cancelled" || status === "interrupted",
+    // 取消/中断会级联终止同步子任务；其终态事件可能丢失，必须在此收敛卡片状态。
+    // 回放 turn 只是历史回显，不得触碰当前仍在运行的同步子任务。
+    cancelSyncSubagentTasks: !isReplayTurn && (status === "cancelled" || status === "interrupted"),
     meta: {
       error: status === "error" ? extractPublicError(event.update) : null,
       usage: status === "completed" ? (event.update.usage as Record<string, unknown> | null) : null,

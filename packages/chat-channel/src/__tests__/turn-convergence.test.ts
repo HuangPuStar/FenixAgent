@@ -426,3 +426,15 @@ test("replay turn supersede keeps running sync subagent tasks", () => {
   expect(task?.get("status")).toBe("running");
   expect(task?.get("completedAt")).toBeNull();
 });
+
+// 回放 turn 的取消/中断终态只是历史回显，不得误取消当前仍在运行的同步子任务
+test("replay turn terminal keeps running sync subagent tasks", () => {
+  setActiveTurn(pair.session, "turn_replay_1", "running");
+  applyNormalizedEvent(pair, periSubagentStarted("sub_live"));
+
+  applyNormalizedEvent(pair, event("turn_cancelled", {}, "turn_replay_1"));
+
+  const task = (getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>).get("sub_live");
+  expect(task?.get("status")).toBe("running");
+  expect(task?.get("completedAt")).toBeNull();
+});
