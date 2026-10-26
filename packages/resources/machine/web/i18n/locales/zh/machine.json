@@ -39,5 +39,30 @@
     "contextMenu": {
       "delete": "删除"
     }
+  },
+  "guide": {
+    "title": "Machine 本地连接指引",
+    "intro": "按照以下步骤，在本机或远程服务器启动 runtime，供平台运行 Agent。",
+    "loading": "正在读取连接参数…",
+    "loadError": "无法读取连接参数，请确认 Machine 仍存在且你有访问权限。",
+    "retry": "重试",
+    "installTitle": "1. 准备软件",
+    "installHint": "请自行安装 Bun 和下方对应的引擎，完成引擎所需的登录或模型配置。引擎需要 Node.js 时一并安装。命令适用于 Linux、macOS 或 Windows WSL 的 Bash / Zsh。",
+    "opencodeVersionHint": "OpenCode 必须安装指定版本 {{version}}，请使用下方命令，不要安装 latest 或其他版本。",
+    "parametersTitle": "2. 连接参数",
+    "secretHint": "向系统管理员索取",
+    "parametersHint": "平台地址和 Machine ID 已带入。目标机器无法访问此地址时，请将命令中的 RCS_URL 替换为可达的 ws:// 或 wss:// 地址。AGENT_TYPE 必须与当前引擎匹配。",
+    "downloadTitle": "3. 下载 runtime",
+    "download": "下载 acp-runtime.js",
+    "workspaceHint": "在目标机器新建工作区目录，将下载文件保存为 acp-runtime.js，并在终端进入该目录。启动目录就是工作区根，平台会在其下按组织、用户和实例创建隔离子目录。同一份 JS 适用于各平台，Bun 和引擎需匹配目标系统。",
+    "startTitle": "4. 本地启动",
+    "startHint": "将命令中的「自己填」替换为管理员提供的密钥，然后在上述目录执行这一行命令。",
+    "secretPlaceholder": "自己填",
+    "unsupportedEngine": "当前引擎没有启动示例，请向管理员确认引擎类型。",
+    "afterTitle": "5. 启动后使用",
+    "keepRunning": "保持终端运行。回到「组织」页面手动刷新机器列表，确认该 Machine 已上线。",
+    "selectMachine": "进入 Agent 配置，选择这台 Machine 作为执行机器，并检查引擎、模型和权限设置。",
+    "startChat": "创建并启动该 Agent 的实例，然后进入聊天页面选择实例发送消息；运行生成的文件位于目标机器的工作区中。",
+    "stop": "需要停止时在终端按 Ctrl+C。再次连接时，在同一工作区重新执行启动命令。"
   }
 }

@@ -1,11 +1,14 @@
+import { resolve } from "node:path";
 import { createLogger } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import {
   CreateMachineResponseSchema,
   CreateMachineSchema,
   DeleteMachineResponseSchema,
   EventQuerySchema,
+  MachineConnectionParametersSchema,
   MachineDetailResponseSchema,
   MachineListResponseSchema,
   MachineMutateResponseSchema,
@@ -13,6 +16,7 @@ import {
   RegistryEventListResponseSchema,
   UpdateMachineSchema,
 } from "../../../schemas/registry.schema";
+import type { MachineActor } from "../../facades/machine-registry-facade";
 import { machineRegistryFacade } from "../../facades/machine-registry-facade";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
@@ -87,7 +91,10 @@ function serializeEvent<T extends Record<string, unknown>>(row: T): T {
  * 改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state` 是实例作用域的，父实例无法
  * 向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`。
  */
-export function createWebRegistryRoutes(deps: WebMachineRouteDependencies) {
+export function createWebRegistryRoutes(
+  deps: WebMachineRouteDependencies,
+  runtimePath = resolve("dist/acp-runtime.js"),
+) {
   const app = new Elysia({ name: "web-registry" }).use(deps.authGuardPlugin).model({
     "create-machine-response": WebOkSchema(CreateMachineResponseSchema),
     "delete-machine-response": WebOkSchema(DeleteMachineResponseSchema),
@@ -329,5 +336,59 @@ export function createWebRegistryRoutes(deps: WebMachineRouteDependencies) {
     },
   );
 
+  app.get(
+    "/registry/acp-runtime.js",
+    async ({ status }) => {
+      const file = Bun.file(runtimePath);
+      if (!(await file.exists())) {
+        return status(503, {
+          success: false,
+          error: { code: "RUNTIME_NOT_BUILT", message: "Machine runtime is not built" },
+        });
+      }
+      return new Response(file, {
+        headers: {
+          "Content-Type": "application/javascript; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="acp-runtime.js"',
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+        },
+      });
+    },
+    {
+      sessionAuth: true,
+      response: { 200: z.string().describe("acp-runtime.js JavaScript bundle"), 503: WebErrSchema },
+      detail: {
+        tags: ["Registry"],
+        summary: "下载 Machine runtime",
+        description: "下载平台构建时生成的独立 acp-runtime.js。",
+      },
+    },
+  );
+  app.get(
+    "/registry/machines/:id/connection-parameters",
+    async ({ store, params, request, status }) => {
+      const actor = (store as { authContext: MachineActor }).authContext;
+      const machine = await registryRouteDeps.getMachine(actor, params.id);
+      if (!machine) return status(404, { success: false, error: { code: "NOT_FOUND", message: "Machine not found" } });
+      const url = new URL(request.url);
+      url.protocol =
+        url.protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https"
+          ? "wss:"
+          : "ws:";
+      return { success: true, data: { machineId: machine.id, agentType: machine.agentName, rcsUrl: url.origin } };
+    },
+    {
+      sessionAuth: true,
+      params: z.object({ id: z.string().min(1) }),
+      query: z.object({ activeOrganizationId: z.string().optional() }),
+      response: { 200: WebOkSchema(MachineConnectionParametersSchema), 404: WebErrSchema },
+      detail: {
+        tags: ["Registry"],
+        summary: "查询 Machine 连接参数",
+        description: "返回当前用户可见 Machine 的公开启动参数，不包含密钥。",
+      },
+    },
+  );
   return app;
 }

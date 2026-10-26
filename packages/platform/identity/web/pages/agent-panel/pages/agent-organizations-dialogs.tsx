@@ -15,6 +15,7 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Link } from "@tanstack/react-router";
 import { Check, Copy, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -328,6 +329,27 @@ function CopyValue({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 机器创建后的连接入口，保留组织上下文供新标签页读取连接参数。 */
+export function MachineCreatedDetails({ machineId, organizationId }: { machineId: string; organizationId?: string }) {
+  const { t } = useTranslation(NS.ORGS);
+  return (
+    <div className="grid gap-3.5 py-2">
+      <p className="text-sm text-text-secondary">{t("createMachineDialog.resultDesc")}</p>
+      <CopyValue label={t("machineId")} value={machineId} />
+      <Button asChild>
+        <Link
+          to="/agent/machine/connection-guide"
+          search={{ machineId, organizationId }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t("machineGuide")}
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 function MachineDialogs({ props }: { props: OrganizationsDialogsProps }) {
   const { t } = useTranslation(NS.ORGS);
   return (
@@ -339,14 +361,7 @@ function MachineDialogs({ props }: { props: OrganizationsDialogsProps }) {
               <DialogHeader>
                 <DialogTitle>{t("createMachineDialog.resultTitle")}</DialogTitle>
               </DialogHeader>
-              <p className="text-sm text-text-secondary">{t("createMachineDialog.resultDesc")}</p>
-              <div className="grid gap-3.5 py-2">
-                <CopyValue label={t("machineId")} value={props.machineCreateResult.id} />
-                <CopyValue label={t("createMachineDialog.initCommand")} value={props.machineCreateResult.initCommand} />
-              </div>
-              <DialogFooter>
-                <Button onClick={() => props.onMachineCreateOpenChange(false)}>{t("done")}</Button>
-              </DialogFooter>
+              <MachineCreatedDetails machineId={props.machineCreateResult.id} organizationId={props.organizationId} />
             </>
           ) : (
             <>
