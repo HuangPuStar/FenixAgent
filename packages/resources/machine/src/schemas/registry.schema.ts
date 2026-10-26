@@ -105,6 +105,16 @@ export const DeleteMachineResponseSchema = z.object({
 });
 
 export type Machine = z.infer<typeof MachineSchema>;
+/** 本地连接需要的公开参数；共享注册密钥始终由管理员线下提供。 */
+export const MachineConnectionParametersSchema = z.object({
+  machineId: z.string(),
+  agentType: z.string(),
+  rcsUrl: z.string(),
+});
+
+/** 连接文档使用的公开参数。 */
+export type MachineConnectionParameters = z.infer<typeof MachineConnectionParametersSchema>;
+
 export type MachineDetail = z.infer<typeof MachineDetailSchema>;
 export type RegistryEvent = z.infer<typeof RegistryEventSchema>;
 export type MachineListData = z.infer<typeof MachineListDataSchema>;

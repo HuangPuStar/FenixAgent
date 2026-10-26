@@ -6,6 +6,7 @@
 
 import type { PaginatedResponse } from "@fenix/web-runtime/api/request";
 import { request } from "@fenix/web-runtime/api/request";
+import type { MachineConnectionParameters } from "../../src/schemas/registry.schema";
 
 /** 机器注册记录 */
 export interface MachineRecord {
@@ -118,6 +119,12 @@ export interface EventListQuery {
 }
 
 export const registryApi = {
+  /** 查询指定组织内可见 Machine 的公开启动参数。 */
+  connectionParameters: (id: string, organizationId?: string) =>
+    request<MachineConnectionParameters>("/web/registry/machines/:id/connection-parameters", {
+      params: { id },
+      headers: organizationId ? { "x-active-org-id": organizationId } : undefined,
+    }),
   /**
    * 分页查询机器注册列表。
    *

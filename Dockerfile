@@ -29,6 +29,7 @@ COPY apps/web ./apps/web
 COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
+RUN bun run build:machine-runtime
 RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 

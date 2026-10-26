@@ -113,8 +113,7 @@
     "agentName": "引擎类型",
     "agentNamePlaceholder": "选择引擎类型",
     "resultTitle": "机器创建成功",
-    "resultDesc": "请将以下信息发送给机器管理员，在客户端设置环境变量后启动 acp-runtime。",
-    "initCommand": "初始化命令"
+    "resultDesc": "请打开连接指引，按照指引完成机器连接。"
   },
   "editMachineDialog": {
     "title": "编辑机器",
@@ -159,5 +158,6 @@
   "orgSwitchFailed": "切换组织失败：{{message}}",
   "nav": {
     "organizations": "组织"
-  }
+  },
+  "machineGuide": "连接指引"
 }
