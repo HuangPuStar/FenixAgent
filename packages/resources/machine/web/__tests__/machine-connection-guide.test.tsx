@@ -59,10 +59,21 @@ async function render() {
 test("文档包含自动带入的连接参数、下载和本地启动说明", async () => {
   await render();
   expect(api.mock.calls[0]).toEqual(["mach-a", "org-a"]);
-  expect(container.querySelector("a[download]")?.getAttribute("href")).toBe("/web/registry/acp-runtime.js");
+  expect(
+    [...container.querySelectorAll("a[download]")].map((link) => [
+      link.getAttribute("href"),
+      link.getAttribute("download"),
+    ]),
+  ).toEqual([
+    ["/web/registry/acp-runtime/linux-x64", "acp-runtime"],
+    ["/web/registry/acp-runtime/linux-arm64", "acp-runtime"],
+    ["/web/registry/acp-runtime/darwin-x64", "acp-runtime"],
+    ["/web/registry/acp-runtime/darwin-arm64", "acp-runtime"],
+    ["/web/registry/acp-runtime.js", "acp-runtime.js"],
+  ]);
   expect(container.textContent).toContain("RCS_MACHINE_ID='mach-a'");
   expect(container.textContent).toContain("RCS_URL='wss://platform.example'");
-  expect(container.textContent).toContain("bun ./acp-runtime.js peri acp");
+  expect(container.textContent).toContain("./acp-runtime peri acp");
   expect(container.textContent).toContain("启动后");
   expect(container.querySelector("a[href='https://bun.sh/']")).not.toBeNull();
   expect(container.querySelector("input")).toBeNull();
@@ -71,6 +82,11 @@ test("文档包含自动带入的连接参数、下载和本地启动说明", as
   const lines = container.querySelector("pre code")?.textContent?.split("\n");
   expect(lines).toHaveLength(1);
   expect(lines?.[0]).toBe(
+    "chmod +x ./acp-runtime && RCS_SECRET='自己填' RCS_URL='wss://platform.example' RCS_MACHINE_ID='mach-a' AGENT_TYPE='peri' ./acp-runtime peri acp",
+  );
+  const jsCommand = container.querySelectorAll("pre code")[1]?.textContent;
+  expect(jsCommand?.split("\n")).toHaveLength(1);
+  expect(jsCommand).toBe(
     "RCS_SECRET='自己填' RCS_URL='wss://platform.example' RCS_MACHINE_ID='mach-a' AGENT_TYPE='peri' bun ./acp-runtime.js peri acp",
   );
 });
@@ -90,13 +106,18 @@ test("根据引擎生成命令，不支持的引擎不生成启动命令", async
     act(() => root.unmount());
     root = createRoot(container);
     await render();
-    if (command) expect(container.textContent).toContain(`bun ./acp-runtime.js ${command}`);
-    else expect(container.textContent).not.toContain("bun ./acp-runtime.js");
+    if (command) {
+      expect(container.textContent).toContain(`./acp-runtime ${command}`);
+      expect(container.textContent).toContain(`bun ./acp-runtime.js ${command}`);
+    } else expect(container.querySelector("pre code")).toBeNull();
     if (agentType === "claude-code") {
       const startupCommand = container.querySelector("pre code")?.textContent;
       expect(startupCommand?.split("\n")).toHaveLength(1);
       expect(startupCommand).toContain("RCS_SECRET='自己填'");
       expect(startupCommand).toContain('CLAUDE_CODE_CLI_PATH="$(command -v claude)"');
+      expect(container.querySelectorAll("pre code")[1]?.textContent).toContain(
+        'CLAUDE_CODE_CLI_PATH="$(command -v claude)"',
+      );
     }
     if (agentType === "opencode") {
       expect(container.textContent).toContain("必须安装指定版本");
@@ -112,6 +133,6 @@ test("查询失败显示错误与重试入口", async () => {
   api.mockResolvedValue({ success: false, error: { code: "NOT_FOUND", message: "Machine not found" } });
   await render();
   expect(container.querySelector('[role="alert"]')).not.toBeNull();
-  expect(container.textContent).not.toContain("bun ./acp-runtime.js");
+  expect(container.querySelector("pre code")).toBeNull();
   expect(container.querySelector("button")?.textContent).toContain("重试");
 });

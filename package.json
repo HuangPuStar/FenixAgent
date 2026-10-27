@@ -25,7 +25,7 @@
     "db:migrate": "bunx drizzle-kit migrate",
     "run-data-migrations": "bun run db/data-migration-runner.ts",
     "build:web": "bunx vite build --config apps/web/vite.config.ts",
-    "build:machine-runtime": "bun build packages/acp-runtime-cli/src/bin.ts --target=bun --minify --outfile dist/acp-runtime.js",
+    "build:machine-runtime": "bun run packages/acp-runtime-cli/build-standalone.ts",
     "generate:module-registry": "bun run scripts/generate-module-registry.ts",
     "generate:web-contributions": "bun run scripts/generate-web-contributions.ts",
     "check:root-owner-inventory": "bun run scripts/check-root-source-owner-inventory.ts --check",

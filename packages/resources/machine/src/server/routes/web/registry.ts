@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createLogger } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
@@ -93,7 +93,7 @@ function serializeEvent<T extends Record<string, unknown>>(row: T): T {
  */
 export function createWebRegistryRoutes(
   deps: WebMachineRouteDependencies,
-  runtimePath = resolve("dist/acp-runtime.js"),
+  runtimeDirectory = resolve("dist/acp-runtime"),
 ) {
   const app = new Elysia({ name: "web-registry" }).use(deps.authGuardPlugin).model({
     "create-machine-response": WebOkSchema(CreateMachineResponseSchema),
@@ -339,7 +339,7 @@ export function createWebRegistryRoutes(
   app.get(
     "/registry/acp-runtime.js",
     async ({ status }) => {
-      const file = Bun.file(runtimePath);
+      const file = Bun.file(join(runtimeDirectory, "acp-runtime.js"));
       if (!(await file.exists())) {
         return status(503, {
           success: false,
@@ -357,11 +357,41 @@ export function createWebRegistryRoutes(
     },
     {
       sessionAuth: true,
-      response: { 200: z.string().describe("acp-runtime.js JavaScript bundle"), 503: WebErrSchema },
+      response: { 200: z.file().describe("acp-runtime.js JavaScript bundle"), 503: WebErrSchema },
+      detail: {
+        tags: ["Registry"],
+        summary: "下载 Machine runtime JS 版",
+        description: "下载跨平台 acp-runtime.js，需使用已安装的 Bun 运行。",
+      },
+    },
+  );
+  app.get(
+    "/registry/acp-runtime/:platform",
+    async ({ params, status }) => {
+      const file = Bun.file(join(runtimeDirectory, `acp-runtime-${params.platform}`));
+      if (!(await file.exists())) {
+        return status(503, {
+          success: false,
+          error: { code: "RUNTIME_NOT_BUILT", message: "Machine runtime is not built" },
+        });
+      }
+      return new Response(file, {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": 'attachment; filename="acp-runtime"',
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+        },
+      });
+    },
+    {
+      sessionAuth: true,
+      params: z.object({ platform: z.enum(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]) }),
+      response: { 200: z.file().describe("Standalone acp-runtime executable"), 503: WebErrSchema },
       detail: {
         tags: ["Registry"],
         summary: "下载 Machine runtime",
-        description: "下载平台构建时生成的独立 acp-runtime.js。",
+        description: "按系统和 CPU 架构下载独立可执行文件，无需安装 Bun 或 Node。",
       },
     },
   );

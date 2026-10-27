@@ -14,6 +14,12 @@ RCS 主服务器通过这个注册通道，向远程节点下发 `prepare` / `st
 
 ## 安装
 
+### 独立可执行文件
+
+从控制台 Machine 的「连接指引」下载目标系统和架构对应的 `acp-runtime`，按页面生成的命令运行。支持 Linux（glibc）和 macOS，均提供 x64 / arm64；runtime 已内置运行环境，无需安装 Bun 或 Node.js。引擎及其插件、MCP 的依赖仍需自行安装。
+
+已有 Bun 的机器也可以从同一页面下载通用 `acp-runtime.js`，使用页面提供的 `bun ./acp-runtime.js ...` 命令启动。
+
 ### 全局安装（发布后）
 
 ```bash
@@ -91,6 +97,10 @@ RCS_TENANT_ID=<组织ID> \
 ## 构建与发布
 
 ### 本地构建
+
+在仓库根目录运行 `bun run build:machine-runtime`，生成通用 JS bundle `dist/acp-runtime/acp-runtime.js` 和四个平台的独立程序：`dist/acp-runtime/acp-runtime-{linux-x64,linux-arm64,darwin-x64,darwin-arm64}`。可追加 `--platform <平台>` 只构建 JS bundle 和所选平台的独立程序，或 `--outdir <目录>` 指定输出位置。macOS 产物未签名，首次运行可能需要在「隐私与安全性」允许打开。
+
+以下命令构建 npm 包使用的 JavaScript bundle：
 
 ```bash
 cd packages/acp-runtime-cli
