@@ -14,6 +14,12 @@ const engines: Record<string, { name: string; url: string; command: string }> = 
   "claude-code": { name: "Claude Code", url: "https://code.claude.com/docs/en/setup", command: "claude-code" },
 };
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+const platforms = [
+  ["linux-x64", "Linux x64"],
+  ["linux-arm64", "Linux arm64"],
+  ["darwin-x64", "macOS Intel (x64)"],
+  ["darwin-arm64", "macOS Apple Silicon (arm64)"],
+] as const;
 
 /** Machine 的本地连接文档：只查询一次公开参数，不跟踪运行状态。 */
 export function MachineConnectionGuide({ machineId, organizationId }: { machineId: string; organizationId?: string }) {
@@ -26,7 +32,7 @@ export function MachineConnectionGuide({ machineId, organizationId }: { machineI
     },
   );
   const engine = data && Object.hasOwn(engines, data.agentType) ? engines[data.agentType] : undefined;
-  const command =
+  const launchEnvironment =
     data && engine
       ? [
           `RCS_SECRET=${quote(t("guide.secretPlaceholder"))}`,
@@ -34,9 +40,13 @@ export function MachineConnectionGuide({ machineId, organizationId }: { machineI
           `RCS_MACHINE_ID=${quote(data.machineId)}`,
           `AGENT_TYPE=${quote(data.agentType)}`,
           ...(data.agentType === "claude-code" ? ['CLAUDE_CODE_CLI_PATH="$(command -v claude)"'] : []),
-          `bun ./acp-runtime.js ${engine.command}`,
         ].join(" ")
       : null;
+  const command =
+    launchEnvironment && engine
+      ? `chmod +x ./acp-runtime && ${launchEnvironment} ./acp-runtime ${engine.command}`
+      : null;
+  const jsCommand = launchEnvironment && engine ? `${launchEnvironment} bun ./acp-runtime.js ${engine.command}` : null;
   return (
     <AppPage busy={loading}>
       <article className="mx-auto w-full max-w-3xl space-y-6">
@@ -55,21 +65,11 @@ export function MachineConnectionGuide({ machineId, organizationId }: { machineI
               <h2 className="text-lg font-semibold">{t("guide.installTitle")}</h2>
               <p>{t("guide.installHint")}</p>
               <div className="flex flex-wrap gap-4">
-                {[
-                  { name: "Bun", url: "https://bun.sh/" },
-                  { name: "Node.js", url: "https://nodejs.org/en/download" },
-                  ...(engine ? [engine] : []),
-                ].map((link) => (
-                  <a
-                    key={link.url}
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
-                  >
-                    {link.name}
+                {engine && (
+                  <a href={engine.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                    {engine.name}
                   </a>
-                ))}
+                )}
               </div>
               {data.agentType === "opencode" && (
                 <div className="space-y-2">
@@ -101,20 +101,41 @@ export function MachineConnectionGuide({ machineId, organizationId }: { machineI
             </section>
             <section className="space-y-3">
               <h2 className="text-lg font-semibold">{t("guide.downloadTitle")}</h2>
-              <Button asChild>
-                <a href="/web/registry/acp-runtime.js" download="acp-runtime.js">
-                  {t("guide.download")}
-                </a>
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                {platforms.map(([platform, label]) => (
+                  <Button key={platform} asChild variant="outline">
+                    <a href={`/web/registry/acp-runtime/${platform}`} download="acp-runtime">
+                      {t("guide.download", { platform: label })}
+                    </a>
+                  </Button>
+                ))}
+                <Button asChild variant="outline">
+                  <a href="/web/registry/acp-runtime.js" download="acp-runtime.js">
+                    {t("guide.downloadJs")}
+                  </a>
+                </Button>
+              </div>
               <p>{t("guide.workspaceHint")}</p>
+              <p>
+                {t("guide.jsHint")}{" "}
+                <a href="https://bun.sh/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  Bun
+                </a>
+              </p>
             </section>
             <section className="space-y-3">
               <h2 className="text-lg font-semibold">{t("guide.startTitle")}</h2>
               <p>{t("guide.startHint")}</p>
               {command ? (
-                <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-sm">
-                  <code>{command}</code>
-                </pre>
+                <>
+                  <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-sm">
+                    <code>{command}</code>
+                  </pre>
+                  <p>{t("guide.jsStartHint")}</p>
+                  <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-sm">
+                    <code>{jsCommand}</code>
+                  </pre>
+                </>
               ) : (
                 <p role="alert">{t("guide.unsupportedEngine")}</p>
               )}

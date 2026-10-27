@@ -520,6 +520,8 @@ Registry 只保留一套 Machine 注册流程：
 
 不再存在 Sandbox 专用 ACP 注册分支，也不再使用 `sandbox:<sandbox_id>` 作为 remote node ID。
 
+人工接入的连接指引使用已认证控制台接口：`GET /web/registry/machines/:id/connection-parameters` 经 Machine 可见性校验后返回平台地址、机器 ID 和引擎类型，不返回密钥；`GET /web/registry/acp-runtime/:platform` 仅接受 `linux-x64`、`linux-arm64`、`darwin-x64`、`darwin-arm64`，下载 `dist/acp-runtime/acp-runtime-<platform>` 独立可执行文件；`GET /web/registry/acp-runtime.js` 下载 `dist/acp-runtime/acp-runtime.js` 通用 JS bundle。缺少对应产物时返回 503。独立程序内置 Bun，JS bundle 需要目标机器已有 Bun；引擎由目标机器安装，注册协议与生命周期不变。
+
 ## 8. 可靠性与安全
 
 ### 8.1 失败处理
