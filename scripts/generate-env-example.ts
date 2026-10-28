@@ -2,7 +2,7 @@
  * 部署环境变量模板生成器与漂移门禁。
  *
  * **为什么模板改成生成物**：模板过去手写，相对声明面已整体过期——`SKILL_DIR`、`WORKSPACE_ROOT`、
- * `YJS_MAX_CLIENTS`、`LANGFUSE_*`、`HERMES_*`、`GOTENBERG_URL`、`ACPX_G_URL`、`PLUGIN_MARKET_REGISTRY_*`
+ * `YJS_MAX_CLIENTS`、`LANGFUSE_*`、`GOTENBERG_URL`、`ACPX_G_URL`、`PLUGIN_MARKET_REGISTRY_*`
  * 在任何受版本控制的模板里都查不到，缺一个键就意味着该旋钮在部署时只能靠代码默认值。手写补全会继续漂移，
  * 所以各份模板都改为同一次渲染的产物，由 `--check` 按字节守住。
  *
@@ -16,7 +16,7 @@
  * 编排插值键（如端口）都不在此列，统一写进主服务自己的 `.env`。键集合由生成器从 `docker/` 的目录与主服务编排
  * 发现，与应用声明面无键集包含关系。
  * 两条渲染不变量由 `scripts/__tests__/env-example-generator.test.ts` 守护：键行恒为注释行
- * （`HERMES_PLATFORMS` 一类键的空串与未设置语义不同，留成有效空行会改变行为）；密钥类键不写任何取值，连样例
+ * （空串与未设置语义不同的键，留成有效空行会改变行为）；密钥类键不写任何取值，连样例
  * 也不写。
  */
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";

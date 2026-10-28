@@ -127,10 +127,6 @@ const WEB_OPENAPI_TAGS = [
     description: "知识库与知识资源管理。",
   },
   {
-    name: "Channels",
-    description: "IM 通道绑定与消息路由配置。",
-  },
-  {
     name: "Registry",
     description: "机器注册表管理，包括机器列表、详情与事件历史查询。",
   },

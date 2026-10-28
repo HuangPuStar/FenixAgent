@@ -21,7 +21,6 @@ import {
   createWebModelGatewayRoutes,
   createWebPeriTaskDetailsRoutes,
 } from "@fenix/model-management/server";
-import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
 import { createApiKnowledgeBaseRoutes, createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import {
   createApiWorkspaceRoutes,
@@ -59,7 +58,6 @@ import { authenticateRequest, authGuardPlugin } from "../plugins/auth";
 import { logError } from "../plugins/logger";
 import { systemApiAuthPlugin } from "../plugins/system-api-auth";
 import {
-  environmentLookup,
   resolveSecretReference,
   userAgentPreferences,
   userModelPreferences,
@@ -108,7 +106,6 @@ export function createTestWebRoutes(): readonly AnyElysia[] {
     createWebSidebarConfigRoutes(),
     createWebAgentSitesRoutes({ authGuardPlugin }),
     createWebAgentGenerationRoutes({ authGuardPlugin }),
-    createWebChannelsRoutes({ authGuardPlugin, environmentLookup }),
     createWebFsRoutes({ authGuardPlugin }),
     createWebFileEventsRoutes({ authenticateRequest }),
     createWebRegistryRoutes({ authGuardPlugin }),

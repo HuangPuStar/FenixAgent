@@ -6,7 +6,7 @@
 
 1. **统一主运行时**：主服务进程全栈统一 [TypeScript](https://www.typescriptlang.org)，前后端共享类型定义。[Bun](https://bun.sh) 同时承载 HTTP 服务、WebSocket、静态文件分发和脚本执行，消除 Node.js/Bun 混用带来的工具链碎片化。Plugin 子进程（opencode、claude-code 等）按自身需求选择运行时，通过 ACP 协议与主服务通信。
 2. **Schema 驱动**：数据库结构、API 校验、前端表单——三者共享 [Zod](https://zod.dev) v4 Schema 定义。改一处 Schema，全链路类型安全。禁止在 route 内联声明请求体结构。
-3. **渐进式复杂度**：核心路径走最小依赖（[Elysia](https://elysiajs.com) + [Drizzle](https://orm.drizzle.team) + [React](https://react.dev)），高级能力按需引入（[Redis](https://redis.io) 缓存、Hermes 推送、RagFlow 检索）。不强依赖外部中间件，保持启动流程可控。
+3. **渐进式复杂度**：核心路径走最小依赖（[Elysia](https://elysiajs.com) + [Drizzle](https://orm.drizzle.team) + [React](https://react.dev)），高级能力按需引入（[Redis](https://redis.io) 缓存、RagFlow 检索）。不强依赖外部中间件，保持启动流程可控。
 4. **协议优先**：Agent 间通信走 ACP（Agent Communication Protocol），而非临时约定。ACP 定义 Agent 注册、会话管理、工具调用的标准契约，使 opencode、claude-code 等异构 runtime 能统一接入。ACP 是项目早期确立的内部协议，先于行业标准（如 A2A）存在，其设计深度耦合 session 模型、relay 桥接和权限系统，因此保持自研而非迁移到外部协议。
 5. **静态优于动态**：前端路由走文件系统生成（TanStack Router file-based），UI 图标走本地打包（`@lobehub/icons`），禁止 CDN 外链字体。构建产物自包含，无运行时外部依赖。
 6. **插件隔离**：plugin 类 workspace 包（opencode、claude-code、ccb）通过 `@fenix/plugin-sdk` 与核心系统交互，不直接依赖核心内部模块。plugin 运行时通过子进程 spawn，崩溃不拖垮主服务。

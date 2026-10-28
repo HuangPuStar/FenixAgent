@@ -7,7 +7,7 @@ import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 //
 // 壳里**没有标题区与动作**：页面级 `AppPage` + `AppHeader`（含「新建工作流」按钮）由包内页面渲染——标题区的
 // 动作需要页面的弹窗状态，壳不做取数也不持有页面状态（前端规范 §2.7；同目录 `mcp.tsx` 的 tab 说明记了同一条
-// 口径，`channels.tsx` / `skills.tsx` 等 12 个路由都是这一形态）。
+// 口径，`skills.tsx` 等其余面板路由都是这一形态）。
 const WorkflowListPage = lazy(() =>
   import("@fenix/resource-workflow-v2/web").then((m) => ({ default: m.WorkflowListPage })),
 );

@@ -12,7 +12,6 @@
     "@fenix/identity": "workspace:*",
     "@fenix/model-management": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
-    "@fenix/resource-channel": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-machine": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",

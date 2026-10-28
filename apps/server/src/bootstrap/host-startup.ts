@@ -10,7 +10,6 @@ import {
 } from "@fenix/model-management/server";
 import type { BootstrapResult } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
-import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   bindMachineAgentConfigPort,
@@ -50,7 +49,7 @@ import { runCriticalStartupSequence } from "./startup-sequence";
  *
  * **启动**（`startHostRuntime`）：DB → 模块装配 → 模型网关是 §3.1 钉下的关键序列（`initModelGateway` 里的
  * `ensureSystemAdmin` / 沙盒崩溃恢复是宿主进程级动作，不是任何模块的贡献），随后才是
- * 「启动前取数端口 → 沙盒默认池 → Core runtime → 调度器 → builtin 同步 → 自定义节点工具 → Hermes → RagFlow
+ * 「启动前取数端口 → 沙盒默认池 → Core runtime → 调度器 → builtin 同步 → 自定义节点工具 → RagFlow
  * 体检 → 巡检定时器 → 空闲监视」。其中「启动前取数端口」必须晚于 `wirePermissions`（agent-config / skill /
  * mcp / model-management 四个模块那时才装配完成），且晚于模型网关凭证解析器就绪。
  *
@@ -58,8 +57,8 @@ import { runCriticalStartupSequence } from "./startup-sequence";
  * `db/data-migration-runner.ts`，必须在 DDL 迁移之后、新版本进程启动之前跑一次；它「早于 builtin 同步」
  * 这一时序要求因此由发布顺序保证，而不是由本文件的启动序保证。
  *
- * **关闭**（`shutdownHostRuntime`）：与启动严格反向冻结——先停接受新工作的（runtime drain / 调度器 /
- * Hermes），再停巡检定时器，最后关连接、缓存与 DB；每一步都有独立超时，超时只记日志不阻断后续步骤。
+ * **关闭**（`shutdownHostRuntime`）：与启动严格反向冻结——先停接受新工作的（runtime drain / 调度器），
+ * 再停巡检定时器，最后关连接、缓存与 DB；每一步都有独立超时，超时只记日志不阻断后续步骤。
  *
  * 日志模块名沿用 `rcs`（与 `main.ts` 的入口日志同名）：启动/关闭是同一个进程生命周期，输出里区分「来自哪个
  * 文件」没有诊断价值。
@@ -269,21 +268,6 @@ async function runStartupSteps(
   await initCustomToolsRegistry();
   startupLog.info("Custom tools registry initialized");
 
-  // Initialize Hermes client if configured
-  //
-  // Hermes 两项都是「声明键」：它们有唯一消费方（channel 模块），1.7 C 块把它们从宿主 schema 迁到
-  // channel 模块的 `envDefinitions`。因此这里经 `readDeclaredEnv` 从合并 env 取值，而不是直读宿主
-  // 字段或 `process.env`——校验已在 `loadServerEnv` 用声明方的 schema 完成，迁移前后本行的语义与类型
-  // 都不变（键还没迁出时读的是宿主 schema 的值，迁出后读的是模块声明的值）。
-  //
-  // 原来这里写 `process.env.HERMES_URL ?? (config as any).channels?.hermesUrl`：后半个分支既是 `as any`
-  // （CLAUDE.md 禁令），也是死代码——`AppConfig` 上没有 `channels` 字段，`??` 永远不会取到它。
-  const hermesUrl = readDeclaredEnv<string | undefined>(env, "HERMES_URL");
-  if (hermesUrl) {
-    // 平台清单是**部署配置值**（不是环境变量名）：包侧不读 process.env，由宿主在这里下发。
-    initHermesClient(hermesUrl, { platforms: readDeclaredEnv<string | undefined>(env, "HERMES_PLATFORMS") });
-  }
-
   // Verify RagFlow connectivity (non-blocking — logs warning on failure)
   const ragflowHealth = await checkRagFlowHealth();
   if (ragflowHealth.ok) {
@@ -308,8 +292,6 @@ export async function shutdownHostRuntime(agentRuntime: AgentRuntimeHandles): Pr
   const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
   const runtimeDrain = agentRuntime.shutdown();
   schedulerService.stop();
-  const hermesClient = getHermesClient();
-  await withShutdownDeadline(hermesClient?.stop() ?? Promise.resolve(), "hermes", deadline);
   agentRuntime.stopIdleMonitor();
   agentRuntime.closeAllRelayConnections();
   agentRuntime.closeAllAcpConnections();

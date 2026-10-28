@@ -293,13 +293,6 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "DELETE /agent-sites/agent-configs/:agentConfigId/sites/:siteAppId",
     "ALL /agent-sites/apps/:id/api/*",
     "POST /agent-generation",
-    // channel
-    "GET /channels/providers",
-    "GET /channels/hermes/status",
-    "GET /channels/bindings",
-    "POST /channels/bindings",
-    "DELETE /channels/bindings/:id",
-    "PATCH /channels/bindings/:id",
     // machine（`/file-events` 是 WS 升级，method 记为 WS）
     "GET /environments/:id/fs/tree",
     "GET /environments/:id/fs",

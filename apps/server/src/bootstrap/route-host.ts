@@ -3,7 +3,6 @@ import { authenticateRequest, authGuardPlugin } from "../plugins/auth";
 import { logError } from "../plugins/logger";
 import { systemApiAuthPlugin } from "../plugins/system-api-auth";
 import {
-  environmentLookup,
   resolveSecretReference,
   userAgentPreferences,
   userModelPreferences,
@@ -15,7 +14,7 @@ import {
  *
  * 这些字段是资源包路由工厂需要、而只有宿主能提供的端口：会话守卫与显式认证入口（认证状态的真相来源
  * 在 `plugins/auth`；Elysia 的 macro / state 是实例作用域的，父实例无法向已构造的子实例回填）、系统
- * API 守卫、Environment 归属查询与校验、身份族 `user_config` 上的两个偏好端口、读宿主 env 的密钥引用
+ * API 守卫、Environment 归属校验、身份族 `user_config` 上的两个偏好端口、读宿主 env 的密钥引用
  * 解析。字段类型在 platform-sdk 侧全是 `unknown`，收窄由各包在自己的 `src/server/assembly.ts` 做一次。
  *
  * Environment 归属校验的真相在 agent-runtime，Host 负责注入；`logError` 随协议路由迁入，
@@ -27,7 +26,6 @@ export const serverRouteHost: ServerRouteHost = {
   authGuardPlugin,
   systemApiGuardPlugin: systemApiAuthPlugin,
   authenticateRequest,
-  environmentLookup,
   userAgentPreferences,
   userModelPreferences,
   resolveSecretReference,

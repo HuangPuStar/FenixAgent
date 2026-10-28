@@ -245,8 +245,6 @@ export interface ServerRouteHost {
   readonly systemApiGuardPlugin: unknown;
   /** 请求级认证结果解析；站点代理等不走 `sessionAuth` 宏的入口用它区分「未登录」与「已登录但无权限」。 */
   readonly authenticateRequest: unknown;
-  /** Environment 归属查询端口；该表的 owner 是 `@fenix/agent-runtime`。 */
-  readonly environmentLookup: unknown;
   /** Agent 级用户偏好读写端口；`user_config` 表的 owner 是 `@fenix/identity`。 */
   readonly userAgentPreferences: unknown;
   /** Model 级用户偏好读写端口；与 Agent 级共用 `user_config` 表。 */

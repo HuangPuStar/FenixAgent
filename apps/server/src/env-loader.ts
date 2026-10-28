@@ -46,7 +46,7 @@ function assertNoHostKeyOverride(
  * （第三方缺陷以外的 `any` 一律禁止）。
  *
  * 路线 A 下 `envDefinitions` 只承担「启动期校验 + 汇总」，值仍由宿主经 `bootstrap/module-configs.ts`
- * 手工投影成模块配置；本函数是宿主侧消费点（例如 `bootstrap/host-startup.ts` 的 Hermes 网关地址）
+ * 手工投影成模块配置；本函数是宿主侧消费点（例如 `bootstrap/host-startup.ts` 的 Hindsight 令牌）
  * 读取声明键的通道。
  */
 export function readDeclaredEnv<T>(env: ServerEnv, key: string): T {
