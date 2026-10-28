@@ -56,6 +56,16 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 
 覆盖写：`POST /uploads` 带 `fileId`，Facade 先读当前元数据，用 `currentVersionId` + `metadataRevision` 做乐观并发校验；覆盖写不允许改名或移动。
 
+## 搜索
+
+CloudDrive 的 `/v1/search` 按 **chunk** 返回命中：同一文件可能有多条，`snippet` 是整段 chunk 原文（约 700–3000 字符），没有高亮标记或裁剪。Fenix 的 `/web/cloud-drive/search` 在服务端做三件事：
+
+1. **按文件聚合**：`fileId` 相同的结果合并为一条，保持上游相关性顺序；默认 20 个文件、最多 50 个（`limit` 可调小，服务端不放大到 100）。
+2. **片段裁剪**：每个文件最多 3 段，每段围绕命中词截取约 220 字符并折叠空白；`matches` 返回 UTF-16 `[start, end)` 区间，正文是纯文本，HTML 由前端渲染层转义。没有命中词时只返回一段开头摘要、`matches` 为空（标题/路径命中的文件不刷出多段无关正文）。
+3. **元数据补齐**：上游只给 `fileId` + `path`，服务端对实际展示的文件并发 `GET /v1/files/:id`（6 并发、2 秒总时限）补名称 / 父目录 / 大小 / 更新时间；单个文件失败只回退到路径派生名称，不影响搜索。
+
+响应仍是 `{ success, data: { items, nextCursor, fileCount, matchCount } }`；`items` 保留旧的 `snippet`、`location`、`completeness`、`stale` 与版本字段，新增 `name` / `parentId` / `kind` / `sizeBytes` / `updatedAt` / `snippets` / `matchCount`。控制台把最多 3 段片段合并为一段（两行内），段间用「·」分隔。`nextCursor` 仍是上游 chunk 游标，控制台不分页，聚合结果以首屏为准。搜索仍是最终一致的；非文本文件与转换未完成的文件没有片段。
+
 ## 错误映射
 
 | 上游 | Fenix |

@@ -73,7 +73,7 @@ Fenix 后端 ──Authorization: Bearer <master key>
 - **上传**：`web/lib/upload.ts` 的 `runChunkedUpload` 负责 4 MiB 切片、以服务端 `offset` 续传、网络/限流退避重试与 410 重建会话；React 队列（`web/hooks/use-cloud-drive-uploads.ts`）串行执行多文件、逐文件进度、失败重试与取消（取消会 `abandon` 会话）。队列以右下角浮层展示：全部完成后延迟 2s 自动隐藏，失败条目保持到重试或清除，新任务出现时重新显示。
 - **下载**：同源锚点直连 `GET /files/:id/content`，文件名由服务端 `Content-Disposition` 决定，不经前端 blob。
 - **变更**：新建目录 / 改名 / 移动 / 删除 / 恢复都走既有端点；`expectedMetadataRevision` 只在恢复时由前端携带（取自回收站条目）。
-- **搜索**：`POST /search` 手动触发；命中项没有 `parentId`，页面先 `GET /files/:id` 再逐级回溯目录名重建面包屑后跳转。
+- **搜索**：`POST /search` 手动触发；上游按 chunk 返回命中，服务端把同一文件聚合成一条、截取带上下文的纯文本片段并返回 UTF-16 高亮区间（每文件最多 3 段，默认 20 个文件、上限 50）。为补齐名称 / 父目录 / 大小 / 更新时间，只对实际展示的文件并发读取元数据（6 并发、2 秒总时限，失败回退路径派生值）；页面点击文件名或「打开所在目录」仍先 `GET /files/:id` 再逐级回溯目录名重建面包屑。
 - **错误**：服务端信封 `message` 优先上屏，字典只在 message 为空时兜底；上传会话 410/404 停止续传。
 
 ## 5. TUS 上传代理
@@ -132,6 +132,7 @@ Content-Disposition: attachment; filename="<ASCII fallback>"; filename*=UTF-8''<
 3. 单一超时旋钮：读与写共用 `CLOUDDRIVE_TIMEOUT_MS`。
 4. 没有声明 `dependencyServices`：CloudDrive 的编排不在本仓，preflight 不探活它。
 5. 首版页面未接入：URL 深链（目录层级是页面内状态，刷新回根目录）、覆盖写上传（`fileId`）、历史版本浏览、拖拽上传与多选批量操作。这些能力对应的服务端端点已就绪，接 UI 不需要改协议。
+6. 搜索的元数据补齐是展示性数据：最多 50 个文件、2 秒总时限；超时或单文件读取失败时回退到路径派生名称，`sizeBytes` / `updatedAt` 为 null。片段来自转换产物，非文本文件与转换未完成的文件没有片段。
 
 ## 10. 验证
 
