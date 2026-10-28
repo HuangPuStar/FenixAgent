@@ -80,6 +80,7 @@ type StubResponse = { status: number; body: unknown };
 const ME_URL = "/web/cloud-drive/me";
 const FILES_URL = "/web/cloud-drive/files";
 const TRASH_URL = "/web/cloud-drive/trash";
+const SEARCH_URL = "/web/cloud-drive/search";
 
 const ME_SUCCESS: StubResponse = {
   status: 200,
@@ -129,6 +130,11 @@ function jsonResponse({ status, body }: StubResponse): Response {
 let listResponses: StubResponse[] = [];
 let listCalls = 0;
 let trashCalls = 0;
+let searchCalls = 0;
+let searchResponse: StubResponse = {
+  status: 200,
+  body: { success: true, data: { items: [], nextCursor: null, fileCount: 0, matchCount: 0 } },
+};
 let restoreFetch: () => void;
 let restoreConsoleError: () => void;
 const consoleErrorCalls: unknown[][] = [];
@@ -148,6 +154,10 @@ function stubFetch(): () => void {
       trashCalls += 1;
       return jsonResponse({ status: 200, body: { success: true, data: { items: [] } } });
     }
+    if (method === "POST" && url === SEARCH_URL) {
+      searchCalls += 1;
+      return jsonResponse(searchResponse);
+    }
     throw new Error(`用例未登记的请求：${method} ${url}`);
   }) as typeof fetch;
   return () => {
@@ -162,6 +172,11 @@ beforeEach(() => {
   listResponses = [];
   listCalls = 0;
   trashCalls = 0;
+  searchCalls = 0;
+  searchResponse = {
+    status: 200,
+    body: { success: true, data: { items: [], nextCursor: null, fileCount: 0, matchCount: 0 } },
+  };
   consoleErrorCalls.length = 0;
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => {
@@ -297,5 +312,82 @@ describe("云盘页面的加载 / 空 / 失败状态", () => {
     expect(text()).toContain(TEXT.states.emptyTrash);
     expect(text()).toContain(TEXT.states.emptyTrashHint);
     expect(text()).not.toContain(TEXT.states.emptyFolder);
+  });
+
+  // 业务意图：提交搜索后页面切到紧凑结果视图（不是文件表格），计数、路径与高亮都来自新响应。
+  test("提交搜索后渲染紧凑结果与匹配计数", async () => {
+    listResponses = [EMPTY_PAGE];
+    searchResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: {
+          items: [
+            {
+              fileId: "file-report",
+              name: "季度报告.txt",
+              path: "/工作/季度报告.txt",
+              parentId: "dir-work",
+              kind: "file",
+              sizeBytes: 4096,
+              updatedAt: "2026-10-28T10:00:00Z",
+              snippets: [
+                {
+                  text: "quarterly report content",
+                  matches: [{ start: 10, end: 16 }],
+                  leadingEllipsis: false,
+                  trailingEllipsis: false,
+                },
+                {
+                  text: "annual report summary",
+                  matches: [{ start: 7, end: 13 }],
+                  leadingEllipsis: false,
+                  trailingEllipsis: false,
+                },
+              ],
+              matchCount: 2,
+              location: { page: 1, block: null },
+              completeness: { status: "ready", missingTextPages: [] },
+              stale: false,
+              currentVersionId: "version-1",
+              returnedVersionId: "version-1",
+              newerVersionStatus: null,
+              snippet: "quarterly report content",
+            },
+          ],
+          nextCursor: null,
+          fileCount: 1,
+          matchCount: 2,
+        },
+      },
+    };
+
+    await render();
+
+    const input = container.querySelector("#cloud-drive-search") as HTMLInputElement;
+    const setValue = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value")?.set;
+    expect(input).not.toBeNull();
+    expect(setValue).toBeDefined();
+    // happy-dom 下 React 走 input 事件 polyfill：按既有做法用「聚焦 → 原型 setter → keydown」触发表单状态。
+    act(() => {
+      input.focus();
+      setValue?.call(input, "report");
+      input.dispatchEvent(new win.KeyboardEvent("keydown", { key: "t", bubbles: true }));
+    });
+    await settle();
+    expect(input.value).toBe("report");
+
+    const form = container.querySelector('form[role="search"]') as HTMLFormElement;
+    await act(async () => {
+      form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    expect(searchCalls).toBe(1);
+    expect(text()).toContain("About 1 files, 2 matches");
+    expect(text()).toContain("季度报告.txt");
+    expect(text()).toContain("Home / 工作");
+    expect(container.querySelectorAll("li")).toHaveLength(1);
+    expect(container.querySelectorAll("mark")).toHaveLength(2);
   });
 });

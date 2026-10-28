@@ -16,7 +16,7 @@ import type {
   CloudDriveFilePage,
   CloudDriveMutation,
   CloudDrivePrincipal,
-  CloudDriveSearchPage,
+  CloudDriveSearchResultPage,
   CloudDriveTrashEntry,
   CloudDriveUpload,
   CloudDriveUploadResult,
@@ -75,7 +75,7 @@ export const cloudDriveApi = {
 
   /** 关键词搜索（最终一致）。 */
   search: (body: SearchCloudDriveBody) =>
-    request<CloudDriveSearchPage>("/web/cloud-drive/search", { method: "POST", body }),
+    request<CloudDriveSearchResultPage>("/web/cloud-drive/search", { method: "POST", body }),
 
   /** 创建 TUS 上传会话。 */
   beginUpload: (body: BeginCloudDriveUploadBody) =>

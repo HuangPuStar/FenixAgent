@@ -77,7 +77,8 @@
   "search": {
     "placeholder": "搜索文件内容",
     "searching": "搜索中…",
-    "resultCount": "{{count}} 条结果",
+    "summary": "约 {{files}} 个文件，{{matches}} 处匹配",
+    "summaryNoMatches": "约 {{files}} 个文件",
     "stale": "旧版本",
     "locationFailed": "无法打开所在目录：{{message}}"
   },

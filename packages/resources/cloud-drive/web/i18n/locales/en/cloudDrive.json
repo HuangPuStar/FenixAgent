@@ -77,7 +77,8 @@
   "search": {
     "placeholder": "Search file contents",
     "searching": "Searching…",
-    "resultCount": "{{count}} results",
+    "summary": "About {{files}} files, {{matches}} matches",
+    "summaryNoMatches": "About {{files}} files",
     "stale": "Older version",
     "locationFailed": "Could not open the folder: {{message}}"
   },

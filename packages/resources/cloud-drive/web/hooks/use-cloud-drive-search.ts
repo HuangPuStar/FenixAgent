@@ -9,8 +9,8 @@ import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { cloudDriveApi } from "../api/cloud-drive";
 
-/** 每页条数；服务端允许 1-100，50 在首屏密度与请求量之间取中。 */
-const SEARCH_LIMIT = 50;
+/** 每页文件数；服务端上限 50，20 个文件足够紧凑列表一屏扫完。 */
+const SEARCH_LIMIT = 20;
 
 export function useCloudDriveSearch() {
   // 结果带上查询词：手动 `run` 不取消上一个在途请求，慢响应回来时页面据此丢弃过期结果。

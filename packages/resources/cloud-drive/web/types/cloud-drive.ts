@@ -66,23 +66,46 @@ export interface CloudDriveTrashEntry {
   file: CloudDriveFile;
 }
 
-/** 搜索命中。 */
-export interface CloudDriveSearchHit {
+/** 片段内的命中区间；单位是 UTF-16 code unit，`[start, end)`。 */
+export interface CloudDriveSearchSnippetMatch {
+  start: number;
+  end: number;
+}
+
+/** 纯文本片段；高亮由渲染层按 `matches` 切分，正文不含 HTML。 */
+export interface CloudDriveSearchSnippet {
+  text: string;
+  matches: CloudDriveSearchSnippetMatch[];
+  leadingEllipsis: boolean;
+  trailingEllipsis: boolean;
+}
+
+/** 搜索命中的单个文件（服务端已把同一文件的多个 chunk 合并）。 */
+export interface CloudDriveSearchFileResult {
   fileId: string;
+  name: string;
   path: string;
-  snippet: string;
+  parentId: string | null;
+  kind: CloudDriveKind;
+  sizeBytes: number | null;
+  updatedAt: string | null;
+  snippets: CloudDriveSearchSnippet[];
+  matchCount: number;
   location: { page: number | null; block: string | null };
   completeness: { status: string | null; missingTextPages: unknown };
   stale: boolean;
   currentVersionId: string | null;
   returnedVersionId: string | null;
   newerVersionStatus: string | null;
+  snippet: string;
 }
 
-/** 搜索结果一页。 */
-export interface CloudDriveSearchPage {
-  items: CloudDriveSearchHit[];
+/** 搜索结果一页（按文件聚合）。 */
+export interface CloudDriveSearchResultPage {
+  items: CloudDriveSearchFileResult[];
   nextCursor: string | null;
+  fileCount: number;
+  matchCount: number;
 }
 
 /** 当前主体与配额（上限 / 已用 / 上传预留）。 */
