@@ -119,7 +119,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     // 个人云盘模块配置：四个键都是本模块声明的部署键，宿主只做透传。基址与 master key 未配置时
     // 是 `undefined`，包侧按「未启用」返回 503（CloudDrive 是可选外部依赖，不阻断主服务启动）。
     "cloud-drive": {
-      baseUrl: readDeclaredEnv<string | undefined>(env, "CLOUDRIVE_BASE_URL"),
+      baseUrl: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_BASE_URL"),
       masterKey: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_MASTER_KEY"),
       keyId: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_KEY_ID"),
       timeoutMs: readDeclaredEnv<number>(env, "CLOUDDRIVE_TIMEOUT_MS"),
