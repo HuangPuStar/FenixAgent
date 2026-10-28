@@ -1,8 +1,11 @@
 import type {
   CloudDriveAbandonResult,
+  CloudDriveConversionJob,
   CloudDriveFile,
   CloudDriveFilePage,
+  CloudDriveMarkdownPage,
   CloudDriveMutation,
+  CloudDrivePreviewManifest,
   CloudDrivePrincipal,
   CloudDriveSearchPage,
   CloudDriveTrashPage,
@@ -24,6 +27,24 @@ export interface CloudDriveGateway {
   listFiles(subject: string, input: ListFilesInput, signal?: AbortSignal): Promise<CloudDriveFilePage>;
   getFile(subject: string, fileId: string, signal?: AbortSignal): Promise<CloudDriveFile>;
   listVersions(subject: string, fileId: string, signal?: AbortSignal): Promise<CloudDriveVersionPage>;
+  getMarkdown(
+    subject: string,
+    fileId: string,
+    input: MarkdownInput,
+    signal?: AbortSignal,
+  ): Promise<Omit<CloudDriveMarkdownPage, "conversionStatus" | "truncated">>;
+  getPreview(
+    subject: string,
+    fileId: string,
+    signal?: AbortSignal,
+  ): Promise<Omit<CloudDrivePreviewManifest, "conversionStatus">>;
+  openPreviewPage(subject: string, fileId: string, input: PreviewPageInput, signal?: AbortSignal): Promise<Response>;
+  requestConversion(
+    subject: string,
+    fileId: string,
+    input: RequestConversionInput,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveConversionJob>;
   openContent(subject: string, fileId: string, input: ContentInput, signal?: AbortSignal): Promise<Response>;
   createDirectory(subject: string, input: CreateDirectoryInput, signal?: AbortSignal): Promise<CloudDriveMutation>;
   moveFile(subject: string, fileId: string, input: MoveFileInput, signal?: AbortSignal): Promise<CloudDriveMutation>;
@@ -63,6 +84,25 @@ export interface ContentInput {
   readonly versionId?: string;
   /** 单个字节区间（`bytes=start-end`）；上游不支持多段与后缀区间。 */
   readonly range?: string;
+}
+
+export interface MarkdownInput {
+  /** 上一页返回的 `next_cursor`；省略表示第一页。 */
+  readonly cursor?: string;
+}
+
+export interface PreviewPageInput {
+  /** 页号，从 1 开始。 */
+  readonly page: number;
+  /**
+   * 上游必须收到 `version_id`，缺失会按 404 处理。
+   * 该值由 Facade 从元数据 `currentVersionId` 补齐，不能依赖调用方总是传入。
+   */
+  readonly versionId: string;
+}
+
+export interface RequestConversionInput {
+  readonly idempotencyKey: string;
 }
 
 export interface CreateDirectoryInput {

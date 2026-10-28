@@ -1,8 +1,11 @@
 import type {
   CloudDriveAbandonResult,
+  CloudDriveConversionJob,
   CloudDriveFile,
   CloudDriveFilePage,
+  CloudDriveMarkdownPage,
   CloudDriveMutation,
+  CloudDrivePreviewManifest,
   CloudDrivePrincipal,
   CloudDriveSearchPage,
   CloudDriveTrashPage,
@@ -12,10 +15,13 @@ import type {
 } from "../schemas/cloud-drive.schema";
 import type {
   WireAbandonResult,
+  WireConversionJob,
   WireFile,
   WireFilePage,
+  WireMarkdown,
   WireMe,
   WireMutation,
+  WirePreview,
   WireSearchPage,
   WireTrashPage,
   WireUpload,
@@ -72,6 +78,23 @@ export function toCloudDriveVersionPage(wire: WireVersionPage): CloudDriveVersio
       conversionStatus: version.conversion_status ?? null,
     })),
   };
+}
+
+/** markdown 一页；`conversionStatus` 与截断标记由 Facade 结合元数据补齐。 */
+export function toCloudDriveMarkdownPage(
+  wire: WireMarkdown,
+): Omit<CloudDriveMarkdownPage, "conversionStatus" | "truncated"> {
+  return { content: wire.markdown, nextCursor: wire.next_cursor ?? null, versionId: wire.version_id };
+}
+
+/** 页清单只保留页号：上游 `url` 含内部路径，浏览器一律经 `/web` 取图。 */
+export function toCloudDrivePreviewManifest(wire: WirePreview): Omit<CloudDrivePreviewManifest, "conversionStatus"> {
+  const pages = [...new Set(wire.pages.map((page) => page.page))].sort((left, right) => left - right);
+  return { versionId: wire.version_id, pageCount: pages.length, pages };
+}
+
+export function toCloudDriveConversionJob(wire: WireConversionJob): CloudDriveConversionJob {
+  return { jobId: wire.id, state: wire.state, sourceVersionId: wire.source_version_id };
 }
 
 export function toCloudDriveTrashPage(wire: WireTrashPage): CloudDriveTrashPage {

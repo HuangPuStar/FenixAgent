@@ -61,6 +61,29 @@ export const WireVersionPageSchema = z.object({
   ),
 });
 
+/** `GET /v1/files/{id}/markdown`：转换产物的 markdown，按游标分页（约 64KiB/页）。 */
+export const WireMarkdownSchema = z.object({
+  file_id: z.string(),
+  version_id: z.string(),
+  markdown: z.string(),
+  next_cursor: NullableString,
+  completeness: z.record(z.string(), z.unknown()).nullish(),
+});
+
+/** `GET /v1/preview/{id}`：栅格页清单；`url` 含页号与 `version_id`，Fenix 不直接下发。 */
+export const WirePreviewSchema = z.object({
+  version_id: z.string(),
+  pages: z.array(z.object({ page: z.number(), url: z.string() })),
+  completeness: z.record(z.string(), z.unknown()).nullish(),
+});
+
+/** `POST /v1/files/{id}/conversions`：重新转换任务。 */
+export const WireConversionJobSchema = z.object({
+  id: z.string(),
+  state: z.string(),
+  source_version_id: z.string(),
+});
+
 /** `GET /v1/trash`。 */
 export const WireTrashPageSchema = z.object({
   items: z.array(
@@ -159,3 +182,6 @@ export type WireMutation = z.infer<typeof WireMutationSchema>;
 export type WireUpload = z.infer<typeof WireUploadSchema>;
 export type WireUploadResult = z.infer<typeof WireUploadResultSchema>;
 export type WireAbandonResult = z.infer<typeof WireAbandonResultSchema>;
+export type WireMarkdown = z.infer<typeof WireMarkdownSchema>;
+export type WirePreview = z.infer<typeof WirePreviewSchema>;
+export type WireConversionJob = z.infer<typeof WireConversionJobSchema>;

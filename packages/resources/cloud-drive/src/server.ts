@@ -23,8 +23,11 @@ export type {
   CreateDirectoryInput,
   DeleteFileInput,
   ListFilesInput,
+  MarkdownInput,
   MoveFileInput,
   PatchUploadInput,
+  PreviewPageInput,
+  RequestConversionInput,
   RestoreTrashInput,
   SearchInput,
 } from "./server/client/cloud-drive-gateway";
@@ -45,6 +48,11 @@ export type {
   UploadChunkCommand,
 } from "./server/facades/cloud-drive-facade";
 export { createCloudDriveFacade } from "./server/facades/cloud-drive-facade";
+export type {
+  CloudDrivePreviewPageContent,
+  MarkdownCommand,
+  PreviewPageCommand,
+} from "./server/facades/cloud-drive-preview";
 export type { CloudDriveFailure, CloudDriveResult } from "./server/facades/cloud-drive-result";
 export type { CloudDriveRouteDependencies, SessionAuthContext } from "./server/routes/dependencies";
 export { createWebCloudDriveRoutes } from "./server/routes/web/cloud-drive";

@@ -218,6 +218,75 @@ describe("CloudDrive 出站 client", () => {
     expect(await new Response(content.body).text()).toBe("abc");
   });
 
+  // markdown 分页：游标进查询串，正文/版本/下一页游标按 Fenix DTO 返回（不是上游 snake_case 行）。
+  test("读取 markdown 页时透传 cursor 并映射正文与版本", async () => {
+    let capturedUrl = "";
+    const client = clientWith(async (input) => {
+      capturedUrl = String(input);
+      return jsonResponse({
+        file_id: "file-1",
+        version_id: "version-1",
+        markdown: "# hello",
+        next_cursor: "cursor-2",
+        completeness: { status: "ready" },
+      });
+    });
+
+    const page = await client.getMarkdown("user-a", "file-1", { cursor: "cursor-1" });
+
+    expect(page).toEqual({ content: "# hello", nextCursor: "cursor-2", versionId: "version-1" });
+    expect(capturedUrl).toBe("http://clouddrive.test/v1/files/file-1/markdown?cursor=cursor-1");
+  });
+
+  // 页清单只保留页号与版本：上游页图 URL 属于内部路径，不能进入浏览器契约。
+  test("页清单丢弃上游 url 并只返回版本与页号", async () => {
+    const client = clientWith(async () =>
+      jsonResponse({
+        version_id: "version-9",
+        pages: [
+          { page: 2, url: "/v1/preview/file-1/pages/2?version_id=version-9" },
+          { page: 1, url: "/v1/preview/file-1/pages/1?version_id=version-9" },
+        ],
+        completeness: { status: "ready" },
+      }),
+    );
+
+    const preview = await client.getPreview("user-a", "file-1");
+
+    expect(preview).toEqual({ versionId: "version-9", pageCount: 2, pages: [1, 2] });
+  });
+
+  // 页图请求必须带 version_id：上游缺省版本会返回 404；响应流保持未消费状态交给路由透传。
+  test("页图请求带 version_id 并返回 PNG 流", async () => {
+    let capturedUrl = "";
+    let accept = "";
+    const client = clientWith(async (input, init) => {
+      capturedUrl = String(input);
+      accept = new Headers(init?.headers).get("accept") ?? "";
+      return new Response("png", { status: 200, headers: { "content-type": "image/png" } });
+    });
+
+    const response = await client.openPreviewPage("user-a", "file-1", { page: 2, versionId: "version-3" });
+
+    expect(capturedUrl).toBe("http://clouddrive.test/v1/preview/file-1/pages/2?version_id=version-3");
+    expect(accept).toBe("image/png");
+    expect(await new Response(response.body).text()).toBe("png");
+  });
+
+  // 重新转换只发送服务端生成的幂等键，不把并发值或主体带进请求体。
+  test("重新转换发送 idempotency_key 并映射任务摘要", async () => {
+    let body: Record<string, unknown> | undefined;
+    const client = clientWith(async (_input, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({ id: "job-1", state: "queued", source_version_id: "version-1" });
+    });
+
+    const job = await client.requestConversion("user-a", "file-1", { idempotencyKey: "key-1" });
+
+    expect(job).toEqual({ jobId: "job-1", state: "queued", sourceVersionId: "version-1" });
+    expect(body).toEqual({ idempotency_key: "key-1" });
+  });
+
   // 诊断事件只保留调用元数据：不能出现 headers/body/master key，且失败必须带上游状态与业务 code。
   test("诊断事件不含认证材料且失败时带状态与 code", async () => {
     const events: CloudDriveDiagnostic[] = [];

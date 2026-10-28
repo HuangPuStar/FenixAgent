@@ -1,12 +1,6 @@
 import type * as z from "zod/v4";
 import type { CloudDriveModuleConfig } from "../config";
-import {
-  CloudDriveError,
-  invalidResponseError,
-  notConfiguredError,
-  transportError,
-  upstreamError,
-} from "./cloud-drive-error";
+import { notConfiguredError } from "./cloud-drive-error";
 import type {
   BeginUploadInput,
   CloudDriveGateway,
@@ -14,24 +8,22 @@ import type {
   CreateDirectoryInput,
   DeleteFileInput,
   ListFilesInput,
+  MarkdownInput,
   MoveFileInput,
   PatchUploadInput,
+  PreviewPageInput,
+  RequestConversionInput,
   RestoreTrashInput,
   SearchInput,
 } from "./cloud-drive-gateway";
 import {
-  createTimeoutSignal,
-  parseJsonText,
-  parseWire,
-  readBoundedText,
-  readTusHeaders,
-  SUBJECT_PATTERN,
-} from "./cloud-drive-http";
-import {
   toCloudDriveAbandonResult,
+  toCloudDriveConversionJob,
   toCloudDriveFile,
   toCloudDriveFilePage,
+  toCloudDriveMarkdownPage,
   toCloudDriveMutation,
+  toCloudDrivePreviewManifest,
   toCloudDrivePrincipal,
   toCloudDriveSearchPage,
   toCloudDriveTrashPage,
@@ -40,17 +32,29 @@ import {
   toCloudDriveVersionPage,
 } from "./cloud-drive-mappers";
 import {
+  type CloudDriveDiagnostic,
+  type CloudDriveDiagnosticHandler,
+  type CloudDriveFetch,
+  CloudDriveTransport,
+  type JsonRequest,
+} from "./cloud-drive-transport";
+import {
   WireAbandonResultSchema,
+  WireConversionJobSchema,
   WireFilePageSchema,
   WireFileResponseSchema,
+  WireMarkdownSchema,
   WireMeSchema,
   WireMutationSchema,
+  WirePreviewSchema,
   WireSearchPageSchema,
   WireTrashPageSchema,
   WireUploadResultSchema,
   WireUploadSchema,
   WireVersionPageSchema,
 } from "./cloud-drive-wire";
+
+export type { CloudDriveDiagnostic, CloudDriveDiagnosticHandler, CloudDriveFetch };
 
 /** 解析后的出站配置：基址与 master key 必填。 */
 export interface CloudDriveClientConfig {
@@ -59,21 +63,6 @@ export interface CloudDriveClientConfig {
   readonly keyId?: string;
   readonly timeoutMs: number;
 }
-
-/** 诊断事件；只含调用元数据，**不含** headers、body、master key 或下载票据。 */
-export interface CloudDriveDiagnostic {
-  readonly operation: string;
-  readonly subject: string;
-  readonly durationMs: number;
-  readonly outcome: "ok" | "error";
-  readonly status?: number;
-  readonly code?: string;
-}
-
-export type CloudDriveDiagnosticHandler = (diagnostic: CloudDriveDiagnostic) => void;
-
-/** fetch 的窄签名：`typeof fetch` 还带 `preconnect` 等静态成员，注入实现时无需伪造它们。 */
-export type CloudDriveFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export interface CloudDriveClientOptions {
   readonly config: CloudDriveClientConfig;
@@ -98,25 +87,19 @@ export function resolveCloudDriveClientConfig(config: CloudDriveModuleConfig): C
 /**
  * CloudDrive REST 客户端。
  *
- * 无状态、可安全地按请求创建；所有认证头都在 {@link CloudDriveClient.baseHeaders} 一处生成，调用方
- * 无法覆盖 `Authorization` / `X-On-Behalf-Of`。超时与错误分类语义见 `cloud-drive-http` 与
- * `cloud-drive-error`。
+ * 无状态、可安全地按请求创建；认证头、超时、错误分类与响应形状校验全部在
+ * {@link CloudDriveTransport}（所有出站请求的唯一通道）。本类只负责端点路径与线上形状 → Fenix DTO
+ * 的映射。
  */
 export class CloudDriveClient implements CloudDriveGateway {
-  private readonly baseUrl: string;
-  private readonly masterKey: string;
-  private readonly keyId: string | undefined;
-  private readonly timeoutMs: number;
-  private readonly fetchImpl: CloudDriveFetch;
-  private readonly onDiagnostic: CloudDriveDiagnosticHandler | undefined;
+  private readonly transport: CloudDriveTransport;
 
   constructor(options: CloudDriveClientOptions) {
-    this.baseUrl = options.config.baseUrl.replace(/\/+$/, "");
-    this.masterKey = options.config.masterKey;
-    this.keyId = options.config.keyId;
-    this.timeoutMs = options.config.timeoutMs;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
-    this.onDiagnostic = options.onDiagnostic;
+    this.transport = new CloudDriveTransport({
+      ...options.config,
+      fetchImpl: options.fetchImpl,
+      onDiagnostic: options.onDiagnostic,
+    });
   }
 
   async getMe(subject: string, signal?: AbortSignal) {
@@ -157,6 +140,61 @@ export class CloudDriveClient implements CloudDriveGateway {
       WireVersionPageSchema,
     );
     return toCloudDriveVersionPage(wire);
+  }
+
+  async getMarkdown(subject: string, fileId: string, input: MarkdownInput, signal?: AbortSignal) {
+    const wire = await this.jsonRequest(
+      subject,
+      "getMarkdown",
+      {
+        method: "GET",
+        path: `/v1/files/${encodeURIComponent(fileId)}/markdown`,
+        query: { cursor: input.cursor },
+        signal,
+      },
+      WireMarkdownSchema,
+    );
+    return toCloudDriveMarkdownPage(wire);
+  }
+
+  async getPreview(subject: string, fileId: string, signal?: AbortSignal) {
+    const wire = await this.jsonRequest(
+      subject,
+      "getPreview",
+      { method: "GET", path: `/v1/preview/${encodeURIComponent(fileId)}`, signal },
+      WirePreviewSchema,
+    );
+    return toCloudDrivePreviewManifest(wire);
+  }
+
+  /** 打开页图流；上游必须收到 `version_id`，缺失会返回 404。 */
+  async openPreviewPage(
+    subject: string,
+    fileId: string,
+    input: PreviewPageInput,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    return this.transport.openStream(subject, "openPreviewPage", {
+      path: `/v1/preview/${encodeURIComponent(fileId)}/pages/${encodeURIComponent(String(input.page))}`,
+      query: { version_id: input.versionId },
+      accept: "image/png",
+      signal,
+    });
+  }
+
+  async requestConversion(subject: string, fileId: string, input: RequestConversionInput, signal?: AbortSignal) {
+    const wire = await this.jsonRequest(
+      subject,
+      "requestConversion",
+      {
+        method: "POST",
+        path: `/v1/files/${encodeURIComponent(fileId)}/conversions`,
+        body: { idempotency_key: input.idempotencyKey },
+        signal,
+      },
+      WireConversionJobSchema,
+    );
+    return toCloudDriveConversionJob(wire);
   }
 
   async createDirectory(subject: string, input: CreateDirectoryInput, signal?: AbortSignal) {
@@ -310,173 +348,35 @@ export class CloudDriveClient implements CloudDriveGateway {
 
   /** 读取上传进度（TUS HEAD：状态与 offset 在响应头里，没有 body）。 */
   async statUpload(subject: string, uploadId: string, signal?: AbortSignal) {
-    return this.tusRequest(subject, "statUpload", uploadId, { method: "HEAD", signal });
+    return this.transport.tusRequest(subject, "statUpload", uploadId, { method: "HEAD", signal });
   }
 
   /** 转发一片 TUS 分片；`Content-Length` 按实际字节数强制发送，调用方无法省略。 */
   async patchUpload(subject: string, uploadId: string, input: PatchUploadInput, signal?: AbortSignal) {
-    return this.tusRequest(subject, "patchUpload", uploadId, {
+    return this.transport.tusRequest(subject, "patchUpload", uploadId, {
       method: "PATCH",
       signal,
       chunk: input,
     });
   }
 
-  /**
-   * 打开文件内容流。
-   *
-   * 超时只覆盖到响应头：大文件传输本身不应被请求超时打断；调用方的 `AbortSignal`（客户端断开）仍会
-   * 中止整个请求。
-   */
+  /** 打开文件内容流；超时只覆盖到响应头。 */
   async openContent(subject: string, fileId: string, input: ContentInput, signal?: AbortSignal): Promise<Response> {
-    const startedAt = Date.now();
-    const timeout = createTimeoutSignal(signal, this.timeoutMs);
-    let status: number | undefined;
-    let code: string | undefined;
-    try {
-      const headers = this.baseHeaders(subject);
-      headers.Accept = "*/*";
-      if (input.range) headers.Range = input.range;
-      const response = await this.fetchImpl(
-        this.url(
-          `/v1/files/${encodeURIComponent(fileId)}/content`,
-          input.versionId ? { version_id: input.versionId } : undefined,
-        ),
-        { method: "GET", headers, signal: timeout.signal },
-      );
-      status = response.status;
-      if (!response.ok) throw upstreamError(response.status, parseJsonText(await readBoundedText(response)));
-      if (!response.body) throw invalidResponseError();
-      return response;
-    } catch (error) {
-      const failure = failureOf(error, timeout);
-      code = failure.code;
-      throw failure;
-    } finally {
-      // 只停计时器：下载流可能持续数分钟，客户端断开（外部 signal）仍要中止上游连接。
-      timeout.clearTimeout();
-      this.report({ operation: "openContent", subject, status, code, durationMs: Date.now() - startedAt });
-    }
+    return this.transport.openStream(subject, "openContent", {
+      path: `/v1/files/${encodeURIComponent(fileId)}/content`,
+      query: input.versionId ? { version_id: input.versionId } : undefined,
+      accept: "*/*",
+      range: input.range,
+      signal,
+    });
   }
 
-  /** TUS HEAD/PATCH 的共同实现：认证头 + 进度头 + 统一错误分类。 */
-  private async tusRequest(
-    subject: string,
-    operation: "statUpload" | "patchUpload",
-    uploadId: string,
-    request: { readonly method: "HEAD" | "PATCH"; readonly signal?: AbortSignal; readonly chunk?: PatchUploadInput },
-  ) {
-    const startedAt = Date.now();
-    const timeout = createTimeoutSignal(request.signal, this.timeoutMs);
-    let status: number | undefined;
-    let code: string | undefined;
-    try {
-      const headers = this.baseHeaders(subject);
-      const init: RequestInit = { method: request.method, headers, signal: timeout.signal };
-      if (request.chunk) {
-        headers["Tus-Resumable"] = "1.0.0";
-        headers["Upload-Offset"] = String(request.chunk.offset);
-        headers["Content-Type"] = "application/offset+octet-stream";
-        headers["Content-Length"] = String(request.chunk.chunk.byteLength);
-        init.body = request.chunk.chunk;
-      }
-      const response = await this.fetchImpl(this.url(`/v1/tus/${encodeURIComponent(uploadId)}`), init);
-      status = response.status;
-      if (!response.ok) throw upstreamError(response.status, parseJsonText(await readBoundedText(response)));
-      return { uploadId, ...readTusHeaders(response) };
-    } catch (error) {
-      const failure = failureOf(error, timeout);
-      code = failure.code;
-      throw failure;
-    } finally {
-      timeout.clear();
-      this.report({ operation, subject, status, code, durationMs: Date.now() - startedAt });
-    }
-  }
-
-  /**
-   * JSON 请求的统一入口：构造认证头、计时、错误分类与上游形状校验只在这里发生一次。
-   *
-   * 计时覆盖到响应体读完为止：JSON 响应很小，body 卡住同样属于失败。
-   */
-  private async jsonRequest<TSchema extends z.ZodType>(
+  private jsonRequest<TSchema extends z.ZodType>(
     subject: string,
     operation: string,
-    request: {
-      readonly method: string;
-      readonly path: string;
-      readonly query?: Record<string, string | undefined>;
-      readonly body?: unknown;
-      readonly signal?: AbortSignal;
-    },
+    request: JsonRequest,
     schema: TSchema,
   ): Promise<z.output<TSchema>> {
-    const startedAt = Date.now();
-    const timeout = createTimeoutSignal(request.signal, this.timeoutMs);
-    let status: number | undefined;
-    let code: string | undefined;
-    try {
-      const headers = this.baseHeaders(subject);
-      headers.Accept = "application/json";
-      const hasBody = request.body !== undefined;
-      if (hasBody) headers["Content-Type"] = "application/json";
-      const response = await this.fetchImpl(this.url(request.path, request.query), {
-        method: request.method,
-        headers,
-        body: hasBody ? JSON.stringify(request.body) : undefined,
-        signal: timeout.signal,
-      });
-      status = response.status;
-      if (!response.ok) {
-        throw upstreamError(response.status, parseJsonText(await readBoundedText(response)));
-      }
-      const text = await response.text();
-      timeout.clear();
-      const payload = parseJsonText(text);
-      if (payload === undefined) throw invalidResponseError();
-      return parseWire(schema, payload);
-    } catch (error) {
-      const failure = failureOf(error, timeout);
-      code = failure.code;
-      throw failure;
-    } finally {
-      timeout.clear();
-      this.report({ operation, subject, status, code, durationMs: Date.now() - startedAt });
-    }
+    return this.transport.jsonRequest(subject, operation, request, schema);
   }
-
-  /** 认证头：master key 与主体断言只在这里出现，调用方无法覆盖。 */
-  private baseHeaders(subject: string): Record<string, string> {
-    if (!SUBJECT_PATTERN.test(subject)) {
-      throw new CloudDriveError("invalid", "CLOUD_DRIVE_SUBJECT_INVALID", "当前用户标识不适用于 CloudDrive");
-    }
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.masterKey}`,
-      "X-On-Behalf-Of": subject,
-    };
-    if (this.keyId) headers["X-Key-Id"] = this.keyId;
-    return headers;
-  }
-
-  private url(path: string, query?: Record<string, string | undefined>): string {
-    const url = new URL(`${this.baseUrl}${path}`);
-    for (const [key, value] of Object.entries(query ?? {})) {
-      if (value !== undefined && value !== "") url.searchParams.set(key, value);
-    }
-    return url.toString();
-  }
-
-  private report(event: Omit<CloudDriveDiagnostic, "outcome">): void {
-    if (!this.onDiagnostic) return;
-    try {
-      this.onDiagnostic({ ...event, outcome: event.code ? "error" : "ok" });
-    } catch {
-      // 诊断回调是旁路：日志实现出错不得改变请求结果。
-    }
-  }
-}
-
-/** 已是 CloudDriveError 就原样返回，否则按网络/超时归类。 */
-function failureOf(error: unknown, timeout: { didTimeout(): boolean }): CloudDriveError {
-  return error instanceof CloudDriveError ? error : transportError(error, timeout.didTimeout());
 }

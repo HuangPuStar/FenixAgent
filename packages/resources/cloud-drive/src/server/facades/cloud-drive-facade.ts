@@ -2,9 +2,12 @@ import { CloudDriveError, invalidRequestError } from "../client/cloud-drive-erro
 import type { CloudDriveGateway } from "../client/cloud-drive-gateway";
 import type {
   CloudDriveAbandonResult,
+  CloudDriveConversionJob,
   CloudDriveFile,
   CloudDriveFilePage,
+  CloudDriveMarkdownPage,
   CloudDriveMutation,
+  CloudDrivePreviewManifest,
   CloudDrivePrincipal,
   CloudDriveSearchResultPage,
   CloudDriveTrashPage,
@@ -15,6 +18,15 @@ import type {
 } from "../schemas/cloud-drive.schema";
 import { enrichSearchFileMetadata } from "../search/search-metadata";
 import { aggregateSearchHits } from "../search/search-result";
+import {
+  type CloudDrivePreviewPageContent,
+  type MarkdownCommand,
+  openPreviewPage,
+  type PreviewPageCommand,
+  readMarkdownPage,
+  readPreviewManifest,
+  retryConversion as requestConversionRetry,
+} from "./cloud-drive-preview";
 import { type CloudDriveResult, cloudDriveFail, cloudDriveFailureFrom, cloudDriveOk } from "./cloud-drive-result";
 
 /**
@@ -113,6 +125,20 @@ export interface CloudDriveFacade {
   listFiles(actor: CloudDriveActor, command: ListFilesCommand): Promise<CloudDriveResult<CloudDriveFilePage>>;
   getFile(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveFile>>;
   listVersions(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveVersionPage>>;
+  getMarkdown(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: MarkdownCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveMarkdownPage>>;
+  getPreview(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDrivePreviewManifest>>;
+  openPreviewPage(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: PreviewPageCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDrivePreviewPageContent>>;
+  retryConversion(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveConversionJob>>;
   openContent(
     actor: CloudDriveActor,
     fileId: string,
@@ -189,6 +215,28 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
 
   listVersions(actor: CloudDriveActor, fileId: string) {
     return this.run(actor, "listVersions", (gateway, subject) => gateway.listVersions(subject, fileId));
+  }
+
+  getMarkdown(actor: CloudDriveActor, fileId: string, command: MarkdownCommand, signal?: AbortSignal) {
+    return this.run(actor, "getMarkdown", (gateway, subject) =>
+      readMarkdownPage(gateway, subject, fileId, command, signal),
+    );
+  }
+
+  getPreview(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "getPreview", (gateway, subject) => readPreviewManifest(gateway, subject, fileId));
+  }
+
+  openPreviewPage(actor: CloudDriveActor, fileId: string, command: PreviewPageCommand, signal?: AbortSignal) {
+    return this.run(actor, "openPreviewPage", (gateway, subject) =>
+      openPreviewPage(gateway, subject, fileId, command, signal),
+    );
+  }
+
+  retryConversion(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "retryConversion", (gateway, subject) =>
+      requestConversionRetry(gateway, subject, fileId, this.newIdempotencyKey()),
+    );
   }
 
   openContent(actor: CloudDriveActor, fileId: string, command: ContentCommand, signal?: AbortSignal) {

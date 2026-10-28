@@ -89,6 +89,30 @@ export const CloudDriveVersionPageSchema = z.object({
   items: z.array(CloudDriveVersionSchema),
 });
 
+/** 转换产物的 markdown 一页；上游按约 64KiB 分页，`nextCursor` 非空时前端应继续取下一页。 */
+export const CloudDriveMarkdownSchema = z.object({
+  content: z.string().describe("本页 markdown 正文。"),
+  nextCursor: z.string().nullable().describe("下一页游标；没有更多时为 null。"),
+  versionId: z.string().describe("正文所属的版本 ID；切换版本后旧游标不可复用。"),
+  conversionStatus: z.string().nullable().describe("文件当前转换状态；未知时为 null。"),
+  truncated: z.boolean().describe("本页是否因单次响应上限被截断（仅防御上游分页契约漂移，正常为 false）。"),
+});
+
+/** 栅格预览清单；页号从 1 开始且连续。 */
+export const CloudDrivePreviewSchema = z.object({
+  versionId: z.string().describe("页图所属的版本 ID；页图请求必须回传它。"),
+  pageCount: z.number().int().nonnegative().describe("可预览页数。"),
+  pages: z.array(z.number().int().positive()).describe("页号列表，按升序排列。"),
+  conversionStatus: z.string().nullable().describe("文件当前转换状态；未知时为 null。"),
+});
+
+/** 重新转换任务摘要；任务本身只能通过轮询文件元数据观察进展。 */
+export const CloudDriveConversionJobSchema = z.object({
+  jobId: z.string().describe("转换任务 ID（仅用于排查，不能用于上游操作查询）。"),
+  state: z.string().describe("任务状态，如 queued / processing / failed。"),
+  sourceVersionId: z.string().describe("被转换的源版本 ID。"),
+});
+
 /** 回收站条目；`file` 是根条目的当前（已删除）元数据。 */
 export const CloudDriveTrashEntrySchema = z.object({
   id: CloudDriveResourceIdSchema,
@@ -255,6 +279,22 @@ export const CloudDriveContentQuerySchema = z.object({
   versionId: z.string().max(200).optional().describe("下载指定历史版本；省略表示当前版本。"),
 });
 
+/** `GET /files/:id/markdown` 的查询参数。 */
+export const CloudDriveMarkdownQuerySchema = z.object({
+  cursor: z.string().max(4096).optional().describe("上一页返回的 nextCursor。"),
+});
+
+/** `GET /files/:id/preview/pages/:page` 的路径参数；页号从 1 开始。 */
+export const CloudDrivePreviewPageParamsSchema = z.object({
+  id: CloudDriveResourceIdSchema,
+  page: z.coerce.number().int().positive().describe("页号（从 1 开始）。"),
+});
+
+/** `GET /files/:id/preview/pages/:page` 的查询参数。省略时使用元数据的 currentVersionId。 */
+export const CloudDrivePreviewPageQuerySchema = z.object({
+  versionId: z.string().min(1).max(200).optional().describe("页图所属版本；省略表示当前版本。"),
+});
+
 /** 下载接口透传的请求头。CloudDrive 只支持单个字节区间，多段 Range 会返回 416。 */
 export const CloudDriveContentHeadersSchema = z.object({
   range: z.string().max(200).optional().describe("单个字节区间，如 bytes=0-1023；不支持多段与后缀区间。"),
@@ -321,6 +361,10 @@ export const CLOUD_DRIVE_RECOMMENDED_CHUNK_BYTES = 4 * 1024 * 1024;
 export const CloudDriveMeResponseSchema = WebOkSchema(CloudDrivePrincipalSchema).describe("个人云盘主体与配额。");
 export const CloudDriveFilePageResponseSchema = WebOkSchema(CloudDriveFilePageSchema).describe("目录列表一页。");
 export const CloudDriveFileResponseSchema = WebOkSchema(CloudDriveFileSchema).describe("单个条目元数据。");
+export const CloudDriveMarkdownResponseSchema = WebOkSchema(CloudDriveMarkdownSchema).describe("markdown 预览一页。");
+export const CloudDrivePreviewResponseSchema = WebOkSchema(CloudDrivePreviewSchema).describe("栅格预览页清单。");
+export const CloudDriveConversionJobResponseSchema =
+  WebOkSchema(CloudDriveConversionJobSchema).describe("重新转换任务摘要。");
 export const CloudDriveVersionPageResponseSchema =
   WebOkSchema(CloudDriveVersionPageSchema).describe("文件历史版本列表。");
 export const CloudDriveTrashPageResponseSchema = WebOkSchema(CloudDriveTrashPageSchema).describe("回收站条目列表。");
@@ -341,6 +385,9 @@ export type CloudDriveFile = z.infer<typeof CloudDriveFileSchema>;
 export type CloudDriveFilePage = z.infer<typeof CloudDriveFilePageSchema>;
 export type CloudDriveVersion = z.infer<typeof CloudDriveVersionSchema>;
 export type CloudDriveVersionPage = z.infer<typeof CloudDriveVersionPageSchema>;
+export type CloudDriveMarkdownPage = z.infer<typeof CloudDriveMarkdownSchema>;
+export type CloudDrivePreviewManifest = z.infer<typeof CloudDrivePreviewSchema>;
+export type CloudDriveConversionJob = z.infer<typeof CloudDriveConversionJobSchema>;
 export type CloudDriveTrashEntry = z.infer<typeof CloudDriveTrashEntrySchema>;
 export type CloudDriveTrashPage = z.infer<typeof CloudDriveTrashPageSchema>;
 export type CloudDriveSearchHit = z.infer<typeof CloudDriveSearchHitSchema>;

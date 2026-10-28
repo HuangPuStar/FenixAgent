@@ -14,6 +14,7 @@ import {
 } from "../../schemas/cloud-drive.schema";
 import { actorFromStore, type CloudDriveRouteDependencies } from "../dependencies";
 import { registerCloudDriveMutationRoutes } from "./cloud-drive-mutations";
+import { registerCloudDrivePreviewRoutes } from "./cloud-drive-preview";
 import {
   respondToWeb,
   respondUnauthorized,
@@ -25,14 +26,15 @@ import {
 import { registerCloudDriveUploadRoutes } from "./cloud-drive-uploads";
 
 /**
- * `/web/cloud-drive/*` 路由工厂（16 个端点）。
+ * `/web/cloud-drive/*` 路由工厂（20 个端点）。
  *
  * 分工：本文件只做协议适配（参数校验、状态码、下载流的响应头透传），业务编排在 Facade，出站 HTTP
  * 在 client。所有端点都声明 `sessionAuth: true` 并从 `store.authContext` 投影 actor——请求体与查询串
  * **没有**用户标识字段，也就没有「客户端指定 subject」的入口。
  *
  * 端点为 kebab-case 且以资源为中心（`files` / `directories` / `trash` / `uploads`），非 CRUD 动作走
- * 子路径 POST（`.../:id/finalize`、`.../:id/abandon`、`.../:id/restore`）。
+ * 子路径 POST（`.../:id/finalize`、`.../:id/abandon`、`.../:id/restore`、`.../:id/conversions`）。
+ * 预览类端点（markdown / preview / preview/pages/:page）在 `cloud-drive-preview.ts`。
  */
 
 /** 仅声明本模块处理函数会返回的错误状态；守卫自己的 401 不在此列（避免被响应 schema 校验）。 */
@@ -64,6 +66,7 @@ export function createWebCloudDriveRoutes(deps: CloudDriveRouteDependencies) {
   });
 
   registerReadRoutes(app, deps.facade);
+  registerCloudDrivePreviewRoutes(app, deps.facade);
   registerCloudDriveMutationRoutes(app, deps.facade);
   registerCloudDriveUploadRoutes(app, deps.facade);
   return app;
