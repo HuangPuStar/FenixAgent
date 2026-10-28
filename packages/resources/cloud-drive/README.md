@@ -86,3 +86,9 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 ## 单测
 
 `src/__tests__/` 用注入的 `fetch` 与内存 Gateway 覆盖：认证头与 subject 隔离、上游错误映射、超时、master key 不出现在错误/日志、Facade 的先读后写编排、路由鉴权与错误信封、TUS 的 header/offset 语义。测试不引入 `mock.module()`。
+
+## 真实联调
+
+1. 架构事实：[`docs/arch/30-cloud-drive.md`](../../../docs/arch/30-cloud-drive.md)。
+2. 本地联调与验收步骤：[`docs/operations/cloud-drive-local-smoke.md`](../../../docs/operations/cloud-drive-local-smoke.md)。
+3. 可复用脚本：`scripts/cloud-drive-local-smoke.ts`（默认跳过，`CLOUD_DRIVE_SMOKE=1` 才运行；只访问 Fenix `/web/*`，不读取 master key）。

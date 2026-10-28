@@ -9,6 +9,7 @@
 | [Workflow V2 部署](./workflow-deployment.md) | 平台与上游双仓交付、画布子路径构建、容器组网、配置、迁移、初始化、验收与回滚边界。 |
 | [公共 Git（Forgejo）](./common-git.md) | 公共 Git 模块的启用：连接配置、四枚环境变量、启动顺序、共享 PostgreSQL 的库创建、排障与回滚边界。 |
 | [工单（Tickets）](./tickets.md) | 工单模块的启用（`ce-tickets.json` 与浏览器产物）、组织工单开通、关闭与回滚约束，以及 202 / 409 / 503 的排障口径。 |
+| [CloudDrive 本地联调](./cloud-drive-local-smoke.md) | 用真实 CloudDrive 跑通个人云盘代理与双用户隔离验收：独立库、启动 env、脚本用法、预期结果与清理。 |
 | [升级](./upgrade.md) | 镜像与代码升级步骤，DDL 迁移与数据迁移的先后关系与失败判定，以及可回滚与不可回滚的边界。 |
 | [迁移](./migration.md) | `db:generate` / `db:migrate` / 数据迁移入口的实际命令与前置条件，以及本仓已有的不可逆迁移案例。 |
 | [备份与恢复](./backup-and-restore.md) | 需要备份的对象与它们的真实落点、恢复顺序，以及本仓当前还没有备份脚本时的人工口径。 |
