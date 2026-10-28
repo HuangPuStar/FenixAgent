@@ -63,6 +63,7 @@
     "canceled": "Canceled",
     "retry": "Retry",
     "cancel": "Cancel",
+    "close": "Hide upload panel",
     "clearFinished": "Clear finished",
     "duplicate": "{{name}} is already uploading",
     "failedWith": "Upload failed: {{message}}",

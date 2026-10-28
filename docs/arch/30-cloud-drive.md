@@ -70,7 +70,7 @@ Fenix 后端 ──Authorization: Bearer <master key>
 入口：侧栏「云盘」（`web/contribution.ts`，core 组 order 50）→ 宿主路由壳 `apps/web/src/routes/agent/_panel/cloud-drive.tsx`（懒加载 + Suspense）→ `CloudDrivePage`。目录层级是页面内状态（首版无 URL 深链）；`web/index.ts` 是浏览器安全入口，字典经 `web/i18n` 子路径登记到宿主 `cloudDrive` 命名空间。
 
 - **列表 / 面包屑**：`GET /files`，游标分页「加载更多」；空态、失败态（`role="alert"` + 重试）与加载骨架分开呈现。
-- **上传**：`web/lib/upload.ts` 的 `runChunkedUpload` 负责 4 MiB 切片、以服务端 `offset` 续传、网络/限流退避重试与 410 重建会话；React 队列（`web/hooks/use-cloud-drive-uploads.ts`）串行执行多文件、逐文件进度、失败重试与取消（取消会 `abandon` 会话）。
+- **上传**：`web/lib/upload.ts` 的 `runChunkedUpload` 负责 4 MiB 切片、以服务端 `offset` 续传、网络/限流退避重试与 410 重建会话；React 队列（`web/hooks/use-cloud-drive-uploads.ts`）串行执行多文件、逐文件进度、失败重试与取消（取消会 `abandon` 会话）。队列以右下角浮层展示：全部完成后延迟 2s 自动隐藏，失败条目保持到重试或清除，新任务出现时重新显示。
 - **下载**：同源锚点直连 `GET /files/:id/content`，文件名由服务端 `Content-Disposition` 决定，不经前端 blob。
 - **变更**：新建目录 / 改名 / 移动 / 删除 / 恢复都走既有端点；`expectedMetadataRevision` 只在恢复时由前端携带（取自回收站条目）。
 - **搜索**：`POST /search` 手动触发；命中项没有 `parentId`，页面先 `GET /files/:id` 再逐级回溯目录名重建面包屑后跳转。

@@ -381,14 +381,15 @@ export function CloudDrivePage() {
             )}
           </>
         )}
-
-        <CloudDriveUploadPanel
-          tasks={uploads.tasks}
-          onRetry={uploads.retry}
-          onCancel={uploads.cancel}
-          onClearFinished={uploads.clearFinished}
-        />
       </div>
+
+      {/* 上传浮层固定在右下角，不参与内容区布局；挂在内容容器之外避免出现两份。 */}
+      <CloudDriveUploadPanel
+        tasks={uploads.tasks}
+        onRetry={uploads.retry}
+        onCancel={uploads.cancel}
+        onClearFinished={uploads.clearFinished}
+      />
 
       <CloudDriveNameDialog
         open={nameDialogOpen}

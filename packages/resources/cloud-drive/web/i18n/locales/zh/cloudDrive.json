@@ -63,6 +63,7 @@
     "canceled": "已取消",
     "retry": "重试",
     "cancel": "取消",
+    "close": "隐藏上传面板",
     "clearFinished": "清除已完成",
     "duplicate": "{{name}} 正在上传",
     "failedWith": "上传失败：{{message}}",
