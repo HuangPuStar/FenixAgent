@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "cloudDrive": "云盘"
+  },
+  "page": {
+    "title": "云盘",
+    "subtitle": "存放在 CloudDrive 中的个人文件",
+    "quotaUsage": "已用 {{used}} / {{limit}}",
+    "quotaReserved": "上传中预留 {{reserved}}",
+    "quotaUnavailable": "暂时无法获取存储用量"
+  },
+  "views": {
+    "files": "文件",
+    "trash": "回收站"
+  },
+  "breadcrumb": {
+    "label": "面包屑导航",
+    "root": "根目录"
+  },
+  "actions": {
+    "upload": "上传",
+    "newFolder": "新建文件夹",
+    "refresh": "刷新",
+    "download": "下载",
+    "rename": "重命名",
+    "move": "移动",
+    "delete": "删除",
+    "restore": "恢复",
+    "retry": "重试",
+    "save": "保存",
+    "create": "创建",
+    "moveHere": "移动到此处",
+    "openLocation": "打开所在目录",
+    "clearSearch": "清除搜索",
+    "loadMore": "加载更多",
+    "search": "搜索"
+  },
+  "columns": {
+    "name": "名称",
+    "size": "大小",
+    "updatedAt": "更新时间",
+    "actions": "操作",
+    "originalPath": "原路径"
+  },
+  "states": {
+    "loading": "加载中…",
+    "emptyFolder": "这个文件夹是空的",
+    "emptyFolderHint": "上传文件或新建文件夹开始使用。",
+    "noSearchResults": "没有匹配的文件",
+    "noSearchResultsHint": "换一个关键词试试。搜索结果可能滞后于最近的写入。",
+    "emptyTrash": "回收站是空的",
+    "emptyTrashHint": "删除的文件会出现在这里，并可以恢复。",
+    "loadFailed": "加载失败",
+    "searchHint": "搜索会匹配文件内容，结果是最终一致的。"
+  },
+  "upload": {
+    "title": "上传",
+    "queued": "排队中",
+    "uploading": "上传中 {{percent}}%",
+    "finalizing": "保存中…",
+    "done": "已上传",
+    "failed": "上传失败",
+    "canceled": "已取消",
+    "retry": "重试",
+    "cancel": "取消",
+    "clearFinished": "清除已完成",
+    "duplicate": "{{name}} 正在上传",
+    "failedWith": "上传失败：{{message}}",
+    "success": "{{name}} 已上传"
+  },
+  "trash": {
+    "deletedAt": "删除于 {{date}}",
+    "restoreSuccess": "{{name}} 已恢复",
+    "restoreFailed": "恢复失败：{{message}}"
+  },
+  "search": {
+    "placeholder": "搜索文件内容",
+    "searching": "搜索中…",
+    "resultCount": "{{count}} 条结果",
+    "stale": "旧版本",
+    "locationFailed": "无法打开所在目录：{{message}}"
+  },
+  "dialogs": {
+    "newFolderTitle": "新建文件夹",
+    "nameLabel": "名称",
+    "namePlaceholder": "未命名",
+    "renameTitle": "重命名",
+    "moveTitle": "移动“{{name}}”",
+    "moveHint": "选择目标文件夹。",
+    "moveRoot": "根目录",
+    "moveUp": "上一级",
+    "deleteTitle": "移入回收站？",
+    "deleteDescription": "“{{name}}”将被移入回收站，之后可以恢复。",
+    "confirmDelete": "移入回收站",
+    "loadingFolders": "正在加载文件夹…",
+    "foldersEmpty": "没有子文件夹",
+    "foldersLoadFailed": "无法加载文件夹：{{message}}",
+    "createFailed": "无法创建文件夹：{{message}}",
+    "renameFailed": "无法重命名：{{message}}",
+    "moveFailed": "无法移动：{{message}}",
+    "deleteFailed": "无法移入回收站：{{message}}",
+    "createSuccess": "文件夹已创建",
+    "renameSuccess": "已重命名",
+    "moveSuccess": "已移动",
+    "deleteSuccess": "已移入回收站"
+  },
+  "validation": {
+    "nameRequired": "请输入名称",
+    "nameInvalid": "名称不能包含 / 或 \\，也不能是“.”或“..”",
+    "nameTooLong": "名称不能超过 255 个字符"
+  },
+  "errors": {
+    "notConfigured": "当前服务器未配置 CloudDrive。",
+    "unavailable": "CloudDrive 暂时不可用，请稍后重试。",
+    "timeout": "CloudDrive 响应超时。",
+    "rateLimited": "请求过于频繁，请稍后再试。",
+    "conflict": "条目已变化或目标已存在，请刷新后重试。",
+    "notFound": "条目已不存在。",
+    "payloadTooLarge": "文件超出存储配额或大小上限。",
+    "invalidInput": "请求被拒绝，请检查名称或目标位置。",
+    "uploadGone": "上传会话已结束，请重新上传该文件。",
+    "uploadNotFound": "上传会话已不存在。",
+    "network": "网络异常，请检查连接后重试。",
+    "unauthorized": "登录状态已失效，请重新登录。",
+    "unknown": "操作失败。"
+  },
+  "a11y": {
+    "quotaProgress": "存储用量",
+    "selectFiles": "选择要上传的文件",
+    "uploadProgress": "{{name}} 的上传进度",
+    "openFolder": "打开 {{name}}",
+    "fileList": "当前文件夹中的文件",
+    "searchResults": "搜索结果",
+    "viewSwitch": "切换视图"
+  }
+}
