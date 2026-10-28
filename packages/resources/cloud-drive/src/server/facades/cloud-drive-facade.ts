@@ -286,8 +286,19 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
     });
   }
 
-  getUploadStatus(actor: CloudDriveActor, uploadId: string) {
-    return this.runUpload(actor, "getUploadStatus", (gateway, subject) => gateway.statUpload(subject, uploadId));
+  async getUploadStatus(actor: CloudDriveActor, uploadId: string) {
+    const result = await this.run(actor, "getUploadStatus", (gateway, subject) =>
+      gateway.statUpload(subject, uploadId),
+    );
+    if (!result.ok && result.error.kind === "not-found") {
+      return cloudDriveFail("not-found", "CLOUD_DRIVE_UPLOAD_NOT_FOUND", "上传会话不存在或已结束");
+    }
+    // CloudDrive 对已 finalize / 已放弃的会话返回 OPERATION_PENDING（409）：会话存在但不可续传。
+    // 前端应停止轮询并继续 finalize（幂等）或重新创建，而不是把它当成上游故障。
+    if (!result.ok && result.error.kind === "conflict") {
+      return cloudDriveFail("gone", "CLOUD_DRIVE_UPLOAD_GONE", "上传会话已结束或不可续传");
+    }
+    return result;
   }
 
   uploadChunk(actor: CloudDriveActor, uploadId: string, command: UploadChunkCommand, signal?: AbortSignal) {

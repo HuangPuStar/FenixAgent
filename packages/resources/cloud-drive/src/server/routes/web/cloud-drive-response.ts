@@ -21,6 +21,7 @@ const STATUS_BY_KIND: Record<CloudDriveFailureKind, number> = {
   unavailable: 503,
   "rate-limited": 429,
   unprocessable: 422,
+  gone: 410,
   upstream: 502,
 };
 
@@ -34,6 +35,7 @@ export const WEB_ERROR_RESPONSES = {
   404: WebErrSchema,
   409: WebErrSchema,
   413: WebErrSchema,
+  410: WebErrSchema,
   416: WebErrSchema,
   422: WebErrSchema,
   429: WebErrSchema,

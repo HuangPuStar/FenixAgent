@@ -19,6 +19,7 @@ export type CloudDriveFailureKind =
   | "unavailable"
   | "rate-limited"
   | "unprocessable"
+  | "gone"
   | "upstream";
 
 /** 上游明确属于「冲突」的 code；`OPERATION_PENDING` 也归此类（请求未被受理，重试前需先收敛前序操作）。 */

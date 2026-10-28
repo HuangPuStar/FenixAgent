@@ -50,7 +50,7 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 3. 响应体返回最新 `{ uploadId, offset, length }`，同时设置 `Upload-Offset` / `Upload-Length` 响应头；
 4. 全部写完后 `POST /uploads/:id/finalize`；失败或取消时 `POST /uploads/:id/abandon`。
 5. TUS 地址由 `CLOUDDRIVE_BASE_URL` + `/v1/tus/{uploadId}` 构造，**不使用**上游返回的 `upload_url`（demo 栈的主机名是 `drive.localhost`，浏览器/容器内未必可达）。
-6. 会话被 finalize 消费后再 `GET /uploads/:id` 会得到 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND`，前端应停止轮询而不是当作故障重试。
+6. 会话被 finalize / abandon 消费后，`GET /uploads/:id` 返回 410 `CLOUD_DRIVE_UPLOAD_GONE`（上游对已消费会话的 TUS HEAD 是 409 `OPERATION_PENDING`）；跨用户或不存在的会话返回 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND`。前端应停止轮询，而不是当作上游故障重试。
 
 分片建议 **4 MiB**（`CLOUD_DRIVE_RECOMMENDED_CHUNK_BYTES`）：CloudDrive 单请求上限 64 MiB，宿主全站 body 上限 108 MiB。
 
@@ -68,7 +68,8 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 | `INVALID_ARGUMENT` / `INVALID_PATH` / HTTP 422 | 422 `CLOUD_DRIVE_INVALID_INPUT`（用户输入问题，不是上游故障） |
 | `RATE_LIMITED` / HTTP 429 | 429 `CLOUD_DRIVE_RATE_LIMITED` |
 | 网络失败 / 超时 | 503 `CLOUD_DRIVE_UNAVAILABLE` / `CLOUD_DRIVE_TIMEOUT` |
-| 上传会话的 404（已消费 / 不存在 / 跨用户） | 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND` |
+| 上传会话不存在 / 跨用户（上游 404） | 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND` |
+| 上传会话已结束 / 不可续传（上游 HEAD 409 `OPERATION_PENDING`） | 410 `CLOUD_DRIVE_UPLOAD_GONE` |
 | 其余 | 502 |
 
 `OPERATION_PENDING` 取 409 而不是 202：请求没有被受理，202 会误导前端以为操作已经开始。上游未列出 code（如 `INVALID_ARGUMENT` / `INVALID_PATH`）同样按「其余 → 502」处理；若后续需要把用户输入错误区分成 400/422，改 `client/cloud-drive-error.ts` 一处即可。

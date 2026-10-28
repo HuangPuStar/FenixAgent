@@ -272,6 +272,25 @@ describe("CloudDrive /web 路由", () => {
     expect(limited.status).toBe(429);
   });
 
+  // 已结束的上传会话（上游 409 OPERATION_PENDING）返回 410，前端应停止轮询。
+  test("已结束的上传会话返回 410", async () => {
+    const app = createApp(
+      fakeGateway({
+        statUpload: async () => {
+          throw new CloudDriveError("conflict", "CLOUD_DRIVE_CONFLICT", "目标已存在或文件已变化，请刷新后重试");
+        },
+      }),
+    );
+
+    const response = await request(app, "/cloud-drive/uploads/upload-1");
+
+    expect(response.status).toBe(410);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "CLOUD_DRIVE_UPLOAD_GONE", message: "上传会话已结束或不可续传" },
+    });
+  });
+
   // 上游 NOT_FOUND 映射 404，响应体保持 /web 失败信封。
   test("上游不存在映射为 404 信封", async () => {
     const app = createApp(

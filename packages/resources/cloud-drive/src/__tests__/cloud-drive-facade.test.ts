@@ -239,6 +239,23 @@ describe("CloudDrive Facade", () => {
     });
   });
 
+  // 已 finalize 的会话上游返回 OPERATION_PENDING：会话存在但不可续传，用 410 表达。
+  test("已结束的上传会话映射为 gone", async () => {
+    const gateway = fakeGateway({
+      statUpload: async () => {
+        throw new CloudDriveError("conflict", "CLOUD_DRIVE_CONFLICT", "目标已存在或文件已变化，请刷新后重试");
+      },
+    });
+
+    const result = await facadeWith(gateway).getUploadStatus(USER_A, "upload-1");
+
+    expect(result.ok ? null : result.error).toEqual({
+      kind: "gone",
+      code: "CLOUD_DRIVE_UPLOAD_GONE",
+      message: "上传会话已结束或不可续传",
+    });
+  });
+
   // 未配置 CloudDrive 时统一给 503 类失败，而不是抛异常打断请求处理。
   test("网关解析失败（未配置）收敛为 not-configured", async () => {
     const facade = createCloudDriveFacade({
