@@ -4,8 +4,8 @@
 
 ## 定位与 owner
 
-- **本包拥有**：`/web/cloud-drive/*` 的 16 条服务端路由、出站 HTTP client（认证头、超时、错误分类）与协议模型（`src/server/schemas/cloud-drive.schema.ts`）。
-- **不属本包**：用户认证与组织上下文（宿主 `apps/server` 的会话守卫）、CloudDrive 的空间 provisioner / master key 轮换（CloudDrive 部署）、前端页面（后续 owner 在同一分支补 `web/`）。
+- **本包拥有**：`/web/cloud-drive/*` 的 16 条服务端路由、出站 HTTP client（认证头、超时、错误分类）、协议模型（`src/server/schemas/cloud-drive.schema.ts`）与控制台页面（`web/`：文件浏览、上传队列、回收站、搜索）。
+- **不属本包**：用户认证与组织上下文（宿主 `apps/server` 的会话守卫）、CloudDrive 的空间 provisioner / master key 轮换（CloudDrive 部署）。
 - **装配面**：`fenix.module.ts` 的 `id: "cloud-drive"` / `kind: "resource"` / `dependsOn: []` / `capabilities: ["resource.cloud-drive"]`；一条 `slot: "web"` 路由贡献。它是资源装配图里的叶子，不依赖其它资源模块。
 - **无状态**：没有 Repository、Domain Service、`create()` 组合根或任何 DB 句柄。写入幂等由 CloudDrive 的 `idempotency_key` 表达，Fenix 侧每次写操作生成新 key。
 
@@ -86,6 +86,8 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 ## 单测
 
 `src/__tests__/` 用注入的 `fetch` 与内存 Gateway 覆盖：认证头与 subject 隔离、上游错误映射、超时、master key 不出现在错误/日志、Facade 的先读后写编排、路由鉴权与错误信封、TUS 的 header/offset 语义。测试不引入 `mock.module()`。
+
+前端单测在 `web/__tests__/`：上传编排（切片 / 续传 offset / 410 重建 / finalize 409 重试）、页面的加载-空-失败-重试状态、en/zh 字典与占位符对称、浏览器安全入口守卫。
 
 ## 真实联调
 
