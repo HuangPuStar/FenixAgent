@@ -153,6 +153,31 @@ export interface CloudDriveUploadResult {
   status: string;
 }
 
+/** 转换产物的 markdown 一页。 */
+export interface CloudDriveMarkdownPage {
+  content: string;
+  nextCursor: string | null;
+  versionId: string;
+  conversionStatus: string | null;
+  /** 服务端因单次响应上限截断；正常不会出现。 */
+  truncated: boolean;
+}
+
+/** 栅格预览清单；页图请求必须带 `versionId`。 */
+export interface CloudDrivePreviewManifest {
+  versionId: string;
+  pageCount: number;
+  pages: number[];
+  conversionStatus: string | null;
+}
+
+/** 重新转换任务摘要。 */
+export interface CloudDriveConversionJob {
+  jobId: string;
+  state: string;
+  sourceVersionId: string;
+}
+
 /** 面包屑节点；`id === null` 表示根目录。 */
 export interface CloudDriveBreadcrumb {
   id: string | null;

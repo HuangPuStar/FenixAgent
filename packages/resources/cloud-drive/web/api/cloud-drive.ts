@@ -12,9 +12,12 @@ import { request, UPLOAD_TIMEOUT_MS, unwrap } from "@fenix/web-runtime/api/reque
 import type { CloudDriveUploadPort } from "../lib/upload";
 import type {
   BeginCloudDriveUploadBody,
+  CloudDriveConversionJob,
   CloudDriveFile,
   CloudDriveFilePage,
+  CloudDriveMarkdownPage,
   CloudDriveMutation,
+  CloudDrivePreviewManifest,
   CloudDrivePrincipal,
   CloudDriveSearchResultPage,
   CloudDriveTrashEntry,
@@ -37,7 +40,12 @@ export const cloudDriveApi = {
     request<CloudDriveFilePage>("/web/cloud-drive/files", { method: "GET", query }),
 
   /** 单个条目元数据。 */
-  getFile: (id: string) => request<CloudDriveFile>("/web/cloud-drive/files/:id", { method: "GET", params: { id } }),
+  getFile: (id: string, options: { signal?: AbortSignal } = {}) =>
+    request<CloudDriveFile>("/web/cloud-drive/files/:id", {
+      method: "GET",
+      params: { id },
+      signal: options.signal,
+    }),
 
   /** 文件历史版本。 */
   listVersions: (id: string) =>
@@ -45,6 +53,43 @@ export const cloudDriveApi = {
       method: "GET",
       params: { id },
     }),
+
+  /**
+   * markdown 预览的一页。
+   *
+   * `cursor` 原样回传上一页的 `nextCursor`；未转换时后端返回 404 `CLOUD_DRIVE_PREVIEW_NOT_READY`，
+   * 调用方应轮询元数据而不是重试同一游标。
+   */
+  getMarkdown: (id: string, query: { cursor?: string } = {}, options: { signal?: AbortSignal } = {}) =>
+    request<CloudDriveMarkdownPage>("/web/cloud-drive/files/:id/markdown", {
+      method: "GET",
+      params: { id },
+      query,
+      signal: options.signal,
+    }),
+
+  /** 栅格预览页清单（PDF / 图片）。Office 走 markdown，不调用这里。 */
+  getPreview: (id: string, options: { signal?: AbortSignal } = {}) =>
+    request<CloudDrivePreviewManifest>("/web/cloud-drive/files/:id/preview", {
+      method: "GET",
+      params: { id },
+      signal: options.signal,
+    }),
+
+  /** 重新请求转换（失败重试）；正在转换或已就绪时后端返回 409。 */
+  retryConversion: (id: string) =>
+    request<CloudDriveConversionJob>("/web/cloud-drive/files/:id/conversions", {
+      method: "POST",
+      params: { id },
+    }),
+
+  /**
+   * 页图地址：必须带 `versionId`，否则上游按 404 处理。
+   *
+   * 与下载一样用同源相对路径，由 `<img>` 直接加载（cookie 自动携带），不经 `request()`。
+   */
+  previewPageUrl: (id: string, page: number, versionId: string) =>
+    `/web/cloud-drive/files/${encodeURIComponent(id)}/preview/pages/${page}?versionId=${encodeURIComponent(versionId)}`,
 
   /** 新建目录。 */
   createDirectory: (body: CreateCloudDriveDirectoryBody) =>

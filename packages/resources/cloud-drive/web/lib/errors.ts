@@ -24,6 +24,11 @@ const ERROR_KEY_BY_CODE: Readonly<Record<string, string>> = {
   CLOUD_DRIVE_INVALID_INPUT: "errors.invalidInput",
   CLOUD_DRIVE_UPLOAD_GONE: "errors.uploadGone",
   CLOUD_DRIVE_UPLOAD_NOT_FOUND: "errors.uploadNotFound",
+  CLOUD_DRIVE_PREVIEW_NOT_READY: "errors.previewNotReady",
+  CLOUD_DRIVE_PREVIEW_FAILED: "errors.previewFailed",
+  CLOUD_DRIVE_PREVIEW_PAGE_NOT_FOUND: "errors.previewPageNotFound",
+  CLOUD_DRIVE_CONVERSION_IN_PROGRESS: "errors.conversionInProgress",
+  CLOUD_DRIVE_CONVERSION_NOT_NEEDED: "errors.conversionNotNeeded",
   NETWORK_ERROR: "errors.network",
   UNAUTHORIZED: "errors.unauthorized",
 };

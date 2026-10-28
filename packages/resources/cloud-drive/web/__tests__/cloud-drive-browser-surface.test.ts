@@ -48,6 +48,13 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
+  ["@radix-ui/react-tooltip", "无样式原语（chat/primitives/message 经 ui/tooltip 传递依赖）"],
+  ["@radix-ui/react-separator", "无样式原语（chat/primitives/message 经 ui/separator 传递依赖）"],
+  // markdown 预览复用 chat 的 MessageResponse：streamdown 与数学插件都只在渲染正文时加载。
+  ["streamdown", "markdown 渲染器（MessageResponse 的惰性边界，纯浏览器）"],
+  ["@streamdown/math", "streamdown 数学插件（ui-spec 插件配置动态加载，KaTeX 随需下载）"],
+  ["katex", "数学排版样式与 JS（仅 CSS 为静态叶子，JS 由插件惰性加载）"],
+  ["zod", "ui-spec 协议校验（纯函数，chat 预览链路传递依赖）"],
   ["class-variance-authority", "类名变体工具（ui/button 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（ui-components/lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（ui-components/lib/cn 传递依赖），纯函数"],

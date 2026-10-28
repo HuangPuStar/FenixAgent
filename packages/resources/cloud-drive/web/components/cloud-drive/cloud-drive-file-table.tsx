@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@fenix/ui-components/ui/table";
-import { Download, FolderInput, Pencil, Trash2 } from "lucide-react";
+import { Download, Eye, FolderInput, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cloudDriveApi } from "../../api/cloud-drive";
 import { CLOUD_DRIVE_NS } from "../../i18n/namespace";
@@ -23,6 +23,7 @@ interface CloudDriveFileTableProps {
   loading: boolean;
   locale: string;
   onOpenDirectory: (file: CloudDriveFile) => void;
+  onPreview: (file: CloudDriveFile) => void;
   onRename: (file: CloudDriveFile) => void;
   onMove: (file: CloudDriveFile) => void;
   onDelete: (file: CloudDriveFile) => void;
@@ -34,6 +35,7 @@ export function CloudDriveFileTable({
   loading,
   locale,
   onOpenDirectory,
+  onPreview,
   onRename,
   onMove,
   onDelete,
@@ -80,9 +82,15 @@ export function CloudDriveFileTable({
                       {file.name}
                     </button>
                   ) : (
-                    <span className="truncate" title={file.name}>
+                    <button
+                      type="button"
+                      onClick={() => onPreview(file)}
+                      aria-label={t("a11y.previewFile", { name: file.name })}
+                      title={file.name}
+                      className="truncate rounded-sm text-left transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
                       {file.name}
-                    </span>
+                    </button>
                   )}
                 </div>
               </TableCell>
@@ -92,6 +100,17 @@ export function CloudDriveFileTable({
               <TableCell className="text-text-muted">{formatDateTime(file.updatedAt, { locale })}</TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-0.5">
+                  {file.kind === "file" && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onPreview(file)}
+                      aria-label={t("actions.preview")}
+                      title={t("actions.preview")}
+                    >
+                      <Eye aria-hidden />
+                    </Button>
+                  )}
                   {file.kind === "file" && (
                     <Button asChild variant="ghost" size="icon-sm">
                       <a

@@ -23,6 +23,7 @@ import { CloudDriveDeleteDialog } from "../components/cloud-drive/cloud-drive-de
 import { CloudDriveFileTable } from "../components/cloud-drive/cloud-drive-file-table";
 import { CloudDriveMoveDialog } from "../components/cloud-drive/cloud-drive-move-dialog";
 import { CloudDriveNameDialog } from "../components/cloud-drive/cloud-drive-name-dialog";
+import { CloudDrivePreviewDialog } from "../components/cloud-drive/cloud-drive-preview-dialog";
 import { CloudDriveQuota } from "../components/cloud-drive/cloud-drive-quota";
 import { CloudDriveSearchPanel } from "../components/cloud-drive/cloud-drive-search-panel";
 import { CloudDriveTrashPanel } from "../components/cloud-drive/cloud-drive-trash-panel";
@@ -68,6 +69,7 @@ export function CloudDrivePage() {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [previewFile, setPreviewFile] = useState<CloudDriveFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -362,6 +364,7 @@ export function CloudDrivePage() {
               loading={files.loading}
               locale={locale}
               onOpenDirectory={openDirectory}
+              onPreview={(file) => setPreviewFile(file)}
               onRename={(file) => setDialog({ kind: "rename", file })}
               onMove={(file) => setDialog({ kind: "move", file })}
               onDelete={(file) => setDialog({ kind: "delete", file })}
@@ -420,6 +423,14 @@ export function CloudDrivePage() {
           if (!open) closeDialog();
         }}
         onConfirm={confirmDelete}
+      />
+
+      <CloudDrivePreviewDialog
+        open={previewFile !== null}
+        file={previewFile}
+        onOpenChange={(open) => {
+          if (!open) setPreviewFile(null);
+        }}
       />
     </AppPage>
   );

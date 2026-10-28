@@ -33,7 +33,8 @@
     "openLocation": "Go to folder",
     "clearSearch": "Clear search",
     "loadMore": "Load more",
-    "search": "Search"
+    "search": "Search",
+    "preview": "Preview"
   },
   "columns": {
     "name": "Name",
@@ -82,6 +83,35 @@
     "stale": "Older version",
     "locationFailed": "Could not open the folder: {{message}}"
   },
+  "preview": {
+    "title": "File preview",
+    "description": "Previews are produced by Cloud Drive asynchronously; closing the dialog does not delete them.",
+    "loading": "Loading preview…",
+    "empty": "This file is empty.",
+    "processing": "Converting the file…",
+    "processingHint": "Conversion runs asynchronously in the cloud and usually takes seconds to tens of seconds.",
+    "conversionTimeout": "Conversion timed out. Try again later.",
+    "conversionFailed": "Conversion did not finish. You can try converting again.",
+    "retry": "Retry",
+    "retryConversion": "Convert again",
+    "retryingConversion": "Starting conversion…",
+    "unsupportedTitle": "Preview is not supported for this type",
+    "unsupportedHint": "Download the file and open it in a local app.",
+    "download": "Download",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "truncated": "The content is long; only the first part is shown.",
+    "pageNav": "Preview pages",
+    "pageInput": "Page number",
+    "pageOf": "Page {{page}} of {{total}}",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "fitWidth": "Fit width",
+    "actualSize": "Actual size",
+    "pageAlt": "{{name}}, page {{page}} preview",
+    "imageFailed": "The page image failed to load and may be out of date.",
+    "errorTitle": "Preview unavailable"
+  },
   "dialogs": {
     "newFolderTitle": "New folder",
     "nameLabel": "Name",
@@ -122,6 +152,11 @@
     "invalidInput": "The request was rejected. Check the name or location.",
     "uploadGone": "The upload session has ended. Upload the file again.",
     "uploadNotFound": "The upload session no longer exists.",
+    "previewNotReady": "The file is not converted yet. Please wait.",
+    "previewFailed": "The file cannot be converted for preview.",
+    "previewPageNotFound": "The preview page does not exist or has expired.",
+    "conversionInProgress": "The file is being converted. Please wait.",
+    "conversionNotNeeded": "The file is already converted.",
     "network": "Network error. Check your connection and try again.",
     "unauthorized": "Your session has expired. Sign in again.",
     "unknown": "Something went wrong."
@@ -131,6 +166,7 @@
     "selectFiles": "Choose files to upload",
     "uploadProgress": "Upload progress for {{name}}",
     "openFolder": "Open {{name}}",
+    "previewFile": "Preview {{name}}",
     "fileList": "Files in this folder",
     "searchResults": "Search results",
     "viewSwitch": "Switch view"
