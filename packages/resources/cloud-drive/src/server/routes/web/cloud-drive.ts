@@ -8,7 +8,7 @@ import {
   CloudDriveFileResponseSchema,
   CloudDriveListFilesQuerySchema,
   CloudDriveMeResponseSchema,
-  CloudDriveSearchPageResponseSchema,
+  CloudDriveSearchResultPageResponseSchema,
   CloudDriveVersionPageResponseSchema,
   SearchCloudDriveBodySchema,
 } from "../../schemas/cloud-drive.schema";
@@ -194,27 +194,32 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
 
   app.post(
     "/cloud-drive/search",
-    async ({ store, body, error }: WebRouteContext) => {
+    async ({ store, body, error, request }: WebRouteContext) => {
       const actor = actorFromStore(store);
       if (!actor) return respondUnauthorized(error);
       const payload = body as { query: string; cursor?: string; limit?: number };
       return respondToWeb(
-        await facade.search(actor, {
-          query: payload.query,
-          cursor: payload.cursor,
-          limit: payload.limit,
-        }),
+        await facade.search(
+          actor,
+          {
+            query: payload.query,
+            cursor: payload.cursor,
+            limit: payload.limit,
+          },
+          request?.signal,
+        ),
         error,
       );
     },
     {
       sessionAuth: true,
       body: SearchCloudDriveBodySchema,
-      response: { 200: CloudDriveSearchPageResponseSchema, ...WEB_ERROR_RESPONSES },
+      response: { 200: CloudDriveSearchResultPageResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "搜索个人云盘",
-        description: "按关键词搜索当前用户的文件内容。搜索是最终一致的，刚写入的文件可能短暂搜不到。",
+        description:
+          "按关键词搜索当前用户的文件内容，按文件聚合命中片段并返回纯文本高亮区间。搜索是最终一致的，刚写入的文件可能短暂搜不到。",
       },
     },
   );

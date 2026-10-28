@@ -11,6 +11,7 @@ import {
   jsonInit,
   makeFile,
   makeMutation,
+  makeSearchHit,
 } from "./cloud-drive-fixtures";
 
 const AUTH: SessionAuthContext = { userId: "user-a", organizationId: "org-1" };
@@ -392,5 +393,59 @@ describe("CloudDrive /web 路由", () => {
     expect(move.data.operationId).toBe("op-move");
     expect(remove.data.operationId).toBe("op-delete");
     expect(restore.data.operationId).toBe("op-restore");
+  });
+
+  // 搜索响应是文件级聚合：同一文件多个 chunk 合并、片段保持纯文本、内部字段不外泄。
+  test("搜索返回文件级聚合与纯文本片段", async () => {
+    const app = createApp(
+      fakeGateway({
+        search: async () => ({
+          items: [
+            makeSearchHit({ snippet: "report <script>alert(1)</script> first" }),
+            makeSearchHit({ snippet: "report second paragraph" }),
+          ],
+          nextCursor: null,
+        }),
+        getFile: async () => makeFile({ name: "季度报告.txt", parentId: null, sizeBytes: 4096 }),
+      }),
+    );
+
+    const response = await request(app, "/cloud-drive/search", jsonInit("POST", { query: "report" }));
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as {
+      success: true;
+      data: {
+        fileCount: number;
+        matchCount: number;
+        items: Array<{
+          name: string;
+          snippets: Array<{ text: string; matches: Array<{ start: number; end: number }> }>;
+          snippet: string;
+        }>;
+      };
+    };
+    expect(body.success).toBe(true);
+    expect(body.data.fileCount).toBe(1);
+    expect(body.data.matchCount).toBe(2);
+    expect(body.data.items[0]?.name).toBe("季度报告.txt");
+    expect(body.data.items[0]?.snippets).toHaveLength(2);
+    expect(body.data.items[0]?.snippet).toBe(body.data.items[0]?.snippets[0]?.text);
+    expect(body.data.items[0]?.snippet).toContain("<script>");
+    expect(JSON.stringify(body)).not.toContain("artifact_set_id");
+    expect(JSON.stringify(body)).not.toContain("master");
+  });
+
+  // 空白搜索词在协议层直接 400，不会触达上游。
+  test("空白搜索词返回 400 信封", async () => {
+    const app = createApp(fakeGateway({}));
+
+    const response = await request(app, "/cloud-drive/search", jsonInit("POST", { query: "   " }));
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "请求参数不合法" },
+    });
   });
 });

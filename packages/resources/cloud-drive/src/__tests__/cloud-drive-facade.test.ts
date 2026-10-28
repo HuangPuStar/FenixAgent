@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { CloudDriveError, notConfiguredError } from "../server/client/cloud-drive-error";
 import type { CloudDriveGateway } from "../server/client/cloud-drive-gateway";
 import { createCloudDriveFacade } from "../server/facades/cloud-drive-facade";
-import { fakeGateway, makeFile, makeMutation, makeUpload } from "./cloud-drive-fixtures";
+import { fakeGateway, makeFile, makeMutation, makeSearchHit, makeUpload } from "./cloud-drive-fixtures";
 
 const USER_A = { userId: "user-a" };
 const USER_B = { userId: "user-b" };
@@ -344,5 +344,113 @@ describe("CloudDrive Facade", () => {
 
     expect(keys).toHaveLength(2);
     expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  // 搜索结果按文件聚合、补齐元数据，并且 search/getFile 都只使用当前会话主体。
+  test("搜索聚合命中、补齐元数据并保持 actor 隔离", async () => {
+    const searched: string[] = [];
+    const read: string[] = [];
+    let searchInput: { query: string; limit?: number; cursor?: string } | undefined;
+    const gateway = fakeGateway({
+      search: async (subject, input) => {
+        searched.push(subject);
+        searchInput = input;
+        return {
+          items: [makeSearchHit({ snippet: "report one, report two" }), makeSearchHit({ snippet: "report three" })],
+          nextCursor: "cursor-1",
+        };
+      },
+      getFile: async (subject, fileId) => {
+        read.push(`${subject}:${fileId}`);
+        return makeFile({
+          id: fileId,
+          name: "季度报告.txt",
+          parentId: "dir-1",
+          sizeBytes: 4096,
+          updatedAt: "2026-10-28T10:00:00Z",
+        });
+      },
+    });
+
+    const result = await facadeWith(gateway).search(USER_A, { query: " report ", limit: 20 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(searched).toEqual(["user-a"]);
+    expect(read).toEqual(["user-a:file-1"]);
+    expect(searchInput).toEqual({ query: "report", cursor: undefined, limit: 100 });
+    expect(result.data.fileCount).toBe(1);
+    expect(result.data.matchCount).toBe(3);
+    expect(result.data.nextCursor).toBe("cursor-1");
+    const item = result.data.items[0];
+    expect(item?.name).toBe("季度报告.txt");
+    expect(item?.parentId).toBe("dir-1");
+    expect(item?.sizeBytes).toBe(4096);
+    expect(item?.snippets).toHaveLength(2);
+    expect(item?.snippet).toBe(item?.snippets[0]?.text);
+    expect(item?.snippets[0]?.matches.length).toBe(2);
+  });
+
+  // 元数据补齐失败（索引与数据库最终一致窗口内文件已删除）必须软回退，不拖垮整次搜索。
+  test("元数据读取失败时回退到路径派生名称", async () => {
+    const gateway = fakeGateway({
+      search: async () => ({
+        items: [makeSearchHit({ path: "/docs/fallback.txt", snippet: "fallback report" })],
+        nextCursor: null,
+      }),
+      getFile: async () => {
+        throw new CloudDriveError("not-found", "NOT_FOUND", "文件不存在或无权访问");
+      },
+    });
+
+    const result = await facadeWith(gateway).search(USER_A, { query: "report" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.items[0]?.name).toBe("fallback.txt");
+    expect(result.data.items[0]?.parentId).toBeNull();
+    expect(result.data.items[0]?.sizeBytes).toBeNull();
+    expect(result.data.items[0]?.snippets).toHaveLength(1);
+  });
+
+  // 空白搜索词在触达上游前拒绝，避免把一次无意义请求放大成整页结果。
+  test("空白搜索词被拒绝且不调用网关", async () => {
+    let called = false;
+    const gateway = fakeGateway({
+      search: async () => {
+        called = true;
+        return { items: [], nextCursor: null };
+      },
+    });
+
+    const result = await facadeWith(gateway).search(USER_A, { query: "   " });
+
+    expect(called).toBe(false);
+    expect(result.ok ? null : result.error.code).toBe("CLOUD_DRIVE_QUERY_REQUIRED");
+  });
+
+  // 默认只返回 20 个文件：元数据补齐也只针对实际展示的文件，避免一次搜索放大上游请求。
+  test("默认文件数受限且只补齐展示文件的元数据", async () => {
+    const reads: string[] = [];
+    const gateway = fakeGateway({
+      search: async () => ({
+        items: Array.from({ length: 25 }, (_, index) =>
+          makeSearchHit({ fileId: `file-${index}`, path: `/file-${index}.txt` }),
+        ),
+        nextCursor: null,
+      }),
+      getFile: async (_subject, fileId) => {
+        reads.push(fileId);
+        return makeFile({ id: fileId, name: `${fileId}.txt` });
+      },
+    });
+
+    const result = await facadeWith(gateway).search(USER_A, { query: "report" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.items).toHaveLength(20);
+    expect(result.data.fileCount).toBe(20);
+    expect(reads).toHaveLength(20);
   });
 });

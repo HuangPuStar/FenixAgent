@@ -126,10 +126,61 @@ export const CloudDriveSearchHitSchema = z.object({
   newerVersionStatus: z.string().nullable().describe("更新版本的转换状态；无更新版本时为 null。"),
 });
 
-/** 搜索结果一页。最终一致：刚写入的文件可能暂时搜不到。 */
+/** 搜索结果一页（上游 chunk 级）。最终一致：刚写入的文件可能暂时搜不到。 */
 export const CloudDriveSearchPageSchema = z.object({
   items: z.array(CloudDriveSearchHitSchema),
   nextCursor: z.string().nullable().describe("下一页游标；没有更多时为 null。"),
+});
+
+/** 片段内的命中区间；`end` 大于 `start`，单位是 UTF-16 code unit。 */
+export const CloudDriveSearchSnippetMatchSchema = z
+  .object({
+    start: z.number().int().nonnegative().describe("命中起点（含）。"),
+    end: z.number().int().nonnegative().describe("命中终点（不含）。"),
+  })
+  .refine((value) => value.end > value.start, "命中区间的 end 必须大于 start");
+
+/** 纯文本片段；高亮由前端按 `matches` 渲染，服务端不返回 HTML。 */
+export const CloudDriveSearchSnippetSchema = z.object({
+  text: z.string().describe("片段正文（已折叠空白）。"),
+  matches: z.array(CloudDriveSearchSnippetMatchSchema).describe("命中区间，按出现顺序且互不重叠。"),
+  leadingEllipsis: z.boolean().describe("片段是否从原文中间开始（前端补前导省略号）。"),
+  trailingEllipsis: z.boolean().describe("片段是否在原文中间结束（前端补尾部省略号）。"),
+});
+
+/** 聚合后的单个文件结果：一个文件一条，片段最多 3 段。 */
+export const CloudDriveSearchFileResultSchema = z.object({
+  fileId: z.string().describe("命中文件 ID。"),
+  name: z.string().describe("文件展示名；元数据不可用时从 path 末段派生。"),
+  path: z.string().describe("命中文件的业务路径。"),
+  parentId: CloudDriveResourceIdSchema.nullable().describe("父目录 ID；元数据不可用时为 null。"),
+  kind: CloudDriveKindSchema.describe("条目类型；搜索索引只包含文件。"),
+  sizeBytes: z.number().int().nonnegative().nullable().describe("文件字节数；元数据不可用时为 null。"),
+  updatedAt: z.string().nullable().describe("更新时间（RFC3339）；元数据不可用时为 null。"),
+  snippets: z.array(CloudDriveSearchSnippetSchema).max(3).describe("命中片段，最多 3 段。"),
+  matchCount: z.number().int().nonnegative().describe("该文件的命中位置数。"),
+  location: z.object({
+    page: z.number().nullable().describe("页码；无页码信息时为 null。"),
+    block: z.string().nullable().describe("块标识；无块信息时为 null。"),
+  }),
+  completeness: z.object({
+    status: z.string().nullable().describe("产物完整度状态。"),
+    missingTextPages: z.unknown().nullable().describe("缺失文本的页码列表（上游原样返回）。"),
+  }),
+  stale: z.boolean().describe("命中版本是否已落后于当前版本。"),
+  currentVersionId: z.string().nullable().describe("文件当前版本 ID。"),
+  returnedVersionId: z.string().nullable().describe("命中所在的版本 ID。"),
+  newerVersionStatus: z.string().nullable().describe("更新版本的转换状态；无更新版本时为 null。"),
+  /** 兼容字段：第一段片段的纯文本，等价于 `snippets[0]?.text`。 */
+  snippet: z.string().describe("第一段片段的纯文本；无片段时为空串。"),
+});
+
+/** 搜索结果一页（文件级聚合）。 */
+export const CloudDriveSearchResultPageSchema = z.object({
+  items: z.array(CloudDriveSearchFileResultSchema),
+  nextCursor: z.string().nullable().describe("下一页游标；没有更多时为 null。"),
+  fileCount: z.number().int().nonnegative().describe("本页文件数。"),
+  matchCount: z.number().int().nonnegative().describe("本页命中位置总数（约数）。"),
 });
 
 /** 当前主体与配额。 */
@@ -232,11 +283,16 @@ export const RestoreCloudDriveTrashBodySchema = z.object({
   name: CloudDriveFileNameSchema.optional().describe("恢复后的名称；省略表示原名。"),
 });
 
-/** 搜索。 */
+/** 搜索。`limit` 是文件数（不是上游 chunk 数），服务端实际最多返回 50 个文件。 */
 export const SearchCloudDriveBodySchema = z.object({
-  query: z.string().min(1).max(1000).describe("搜索词。"),
+  query: z
+    .string()
+    .min(1)
+    .max(1000)
+    .refine((value) => value.trim().length > 0, "搜索词不能为空")
+    .describe("搜索词。"),
   cursor: z.string().max(4096).optional().describe("上一页返回的 nextCursor。"),
-  limit: z.number().int().min(1).max(100).optional().describe("每页条数，1-100，默认 20。"),
+  limit: z.number().int().min(1).max(100).optional().describe("返回文件数，1-100；服务端上限 50，默认 20。"),
 });
 
 /**
@@ -268,7 +324,9 @@ export const CloudDriveFileResponseSchema = WebOkSchema(CloudDriveFileSchema).de
 export const CloudDriveVersionPageResponseSchema =
   WebOkSchema(CloudDriveVersionPageSchema).describe("文件历史版本列表。");
 export const CloudDriveTrashPageResponseSchema = WebOkSchema(CloudDriveTrashPageSchema).describe("回收站条目列表。");
-export const CloudDriveSearchPageResponseSchema = WebOkSchema(CloudDriveSearchPageSchema).describe("搜索结果一页。");
+export const CloudDriveSearchResultPageResponseSchema = WebOkSchema(CloudDriveSearchResultPageSchema).describe(
+  "搜索结果一页（按文件聚合）。",
+);
 export const CloudDriveMutationResponseSchema = WebOkSchema(CloudDriveMutationSchema).describe("变更动作的结果。");
 export const CloudDriveUploadResponseSchema = WebOkSchema(CloudDriveUploadSchema).describe("已创建的上传会话。");
 export const CloudDriveUploadStatusResponseSchema =
@@ -287,6 +345,10 @@ export type CloudDriveTrashEntry = z.infer<typeof CloudDriveTrashEntrySchema>;
 export type CloudDriveTrashPage = z.infer<typeof CloudDriveTrashPageSchema>;
 export type CloudDriveSearchHit = z.infer<typeof CloudDriveSearchHitSchema>;
 export type CloudDriveSearchPage = z.infer<typeof CloudDriveSearchPageSchema>;
+export type CloudDriveSearchSnippetMatch = z.infer<typeof CloudDriveSearchSnippetMatchSchema>;
+export type CloudDriveSearchSnippet = z.infer<typeof CloudDriveSearchSnippetSchema>;
+export type CloudDriveSearchFileResult = z.infer<typeof CloudDriveSearchFileResultSchema>;
+export type CloudDriveSearchResultPage = z.infer<typeof CloudDriveSearchResultPageSchema>;
 export type CloudDrivePrincipal = z.infer<typeof CloudDrivePrincipalSchema>;
 export type CloudDriveMutation = z.infer<typeof CloudDriveMutationSchema>;
 export type CloudDriveUpload = z.infer<typeof CloudDriveUploadSchema>;

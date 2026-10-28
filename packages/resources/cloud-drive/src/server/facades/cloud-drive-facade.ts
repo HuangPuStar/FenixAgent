@@ -6,13 +6,15 @@ import type {
   CloudDriveFilePage,
   CloudDriveMutation,
   CloudDrivePrincipal,
-  CloudDriveSearchPage,
+  CloudDriveSearchResultPage,
   CloudDriveTrashPage,
   CloudDriveUpload,
   CloudDriveUploadResult,
   CloudDriveUploadStatus,
   CloudDriveVersionPage,
 } from "../schemas/cloud-drive.schema";
+import { enrichSearchFileMetadata } from "../search/search-metadata";
+import { aggregateSearchHits } from "../search/search-result";
 import { type CloudDriveResult, cloudDriveFail, cloudDriveFailureFrom, cloudDriveOk } from "./cloud-drive-result";
 
 /**
@@ -84,6 +86,14 @@ export interface SearchCommand {
   readonly limit?: number;
 }
 
+/** 上游按 chunk 返回命中；固定取满一页再聚合，避免单个大文件占满结果。 */
+const SEARCH_UPSTREAM_LIMIT = 100;
+/** 控制台默认展示的文件数：紧凑列表一屏可扫完，也把元数据补齐请求限制在可接受范围。 */
+const SEARCH_DEFAULT_FILES = 20;
+/** 单次搜索返回的文件数硬上限（即使调用方请求更多）。 */
+const SEARCH_MAX_FILES = 50;
+const SEARCH_MAX_SNIPPETS_PER_FILE = 3;
+
 export interface BeginUploadCommand {
   readonly fileId?: string;
   readonly parentId?: string | null;
@@ -125,7 +135,11 @@ export interface CloudDriveFacade {
     trashId: string,
     command: RestoreTrashCommand,
   ): Promise<CloudDriveResult<CloudDriveMutation>>;
-  search(actor: CloudDriveActor, command: SearchCommand): Promise<CloudDriveResult<CloudDriveSearchPage>>;
+  search(
+    actor: CloudDriveActor,
+    command: SearchCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveSearchResultPage>>;
   beginUpload(actor: CloudDriveActor, command: BeginUploadCommand): Promise<CloudDriveResult<CloudDriveUpload>>;
   getUploadStatus(actor: CloudDriveActor, uploadId: string): Promise<CloudDriveResult<CloudDriveUploadStatus>>;
   uploadChunk(
@@ -246,10 +260,28 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
     });
   }
 
-  search(actor: CloudDriveActor, command: SearchCommand) {
-    return this.run(actor, "search", (gateway, subject) =>
-      gateway.search(subject, { query: command.query, cursor: command.cursor, limit: command.limit }),
-    );
+  search(actor: CloudDriveActor, command: SearchCommand, signal?: AbortSignal) {
+    return this.run(actor, "search", async (gateway, subject) => {
+      const query = command.query.trim();
+      if (!query) throw invalidRequestError("CLOUD_DRIVE_QUERY_REQUIRED", "搜索词不能为空");
+      const maxFiles = Math.min(Math.max(command.limit ?? SEARCH_DEFAULT_FILES, 1), SEARCH_MAX_FILES);
+      const page = await gateway.search(
+        subject,
+        { query, cursor: command.cursor, limit: SEARCH_UPSTREAM_LIMIT },
+        signal,
+      );
+      const aggregated = aggregateSearchHits(page.items, query, {
+        maxFiles,
+        maxSnippetsPerFile: SEARCH_MAX_SNIPPETS_PER_FILE,
+      });
+      const items = await enrichSearchFileMetadata(gateway, subject, aggregated.items, signal);
+      return {
+        items,
+        nextCursor: page.nextCursor,
+        fileCount: items.length,
+        matchCount: items.reduce((total, file) => total + file.matchCount, 0),
+      };
+    });
   }
 
   async beginUpload(actor: CloudDriveActor, command: BeginUploadCommand) {

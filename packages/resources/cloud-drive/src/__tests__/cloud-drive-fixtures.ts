@@ -4,6 +4,7 @@ import type { SessionAuthContext } from "../server/routes/dependencies";
 import type {
   CloudDriveFile,
   CloudDriveMutation,
+  CloudDriveSearchHit,
   CloudDriveUpload,
   CloudDriveUploadStatus,
 } from "../server/schemas/cloud-drive.schema";
@@ -61,6 +62,22 @@ export function makeUpload(overrides: Partial<CloudDriveUpload> = {}): CloudDriv
 
 export function makeUploadStatus(overrides: Partial<CloudDriveUploadStatus> = {}): CloudDriveUploadStatus {
   return { uploadId: "upload-1", offset: 0, length: 10, ...overrides };
+}
+
+/** 上游 chunk 级搜索命中；同一文件的多条命中由 `fileId` 相同表达。 */
+export function makeSearchHit(overrides: Partial<CloudDriveSearchHit> = {}): CloudDriveSearchHit {
+  return {
+    fileId: "file-1",
+    path: "/docs/report.txt",
+    snippet: "quarterly report content",
+    location: { page: 1, block: "p1-b01" },
+    completeness: { status: "ready", missingTextPages: [] },
+    stale: false,
+    currentVersionId: "version-1",
+    returnedVersionId: "version-1",
+    newerVersionStatus: null,
+    ...overrides,
+  };
 }
 
 /** 默认未实现的 Gateway：用例只覆盖自己用到的方法。 */
