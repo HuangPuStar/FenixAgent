@@ -26,6 +26,7 @@
   ],
   "web": [
     "agent-config",
+    "cloud-drive",
     "identity",
     "knowledge",
     "mcp",

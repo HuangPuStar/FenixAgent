@@ -16,8 +16,9 @@ import { z } from "zod/v4";
  * 不声明 `create`：本模块没有进程级单例（没有 DB 句柄、连接池或后台任务），路由工厂与 client 都是
  * 无状态函数/按请求构造，硬造一个 `createXxxModule()` 只会多一条与 `./server` 重复的公开面。
  *
- * 不声明 `web`：本阶段只交付服务端（前端页面由后续 owner 在同一分支补齐）。manifest 的 `web` 是
- * 浏览器入口声明符，提前写一个不存在的入口会让 WebShell 生成器产出悬空导入。
+ * 声明 `web`：浏览器入口是**说明符字符串**（WebShell 生成器只做 AST 静态读取、不执行 manifest），
+ * 取值必须是字面量并指向本包 `exports["./web/contribution"]`。载荷（页面、导航图标、i18n）只存在于
+ * 该入口导出的值里，不会沿 registry 进入服务端装配图——server 侧拿到的只有这一条字符串。
  *
  * `envDefinitions` 的归属判据：四个键只被本包消费，宿主 `apps/server/src/env.ts` 不得重复声明
  * （`assertNoHostKeyOverride` 会在启动期拒绝同名）。两个地址/密钥键是**可选**的，与 Agent Sites
@@ -29,6 +30,10 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.cloud-drive"],
+  web: {
+    id: "cloud-drive",
+    contribution: "@fenix/resource-cloud-drive/web/contribution",
+  },
   contributions: [
     {
       id: "cloud-drive.web",
