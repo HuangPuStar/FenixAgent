@@ -1,4 +1,3 @@
-import { WebErrSchema } from "@fenix/platform-sdk";
 import type { AnyElysia } from "elysia";
 import type { CloudDriveFacade } from "../../facades/cloud-drive-facade";
 import {
@@ -14,6 +13,7 @@ import {
   respondToWeb,
   respondUnauthorized,
   statusForFailure,
+  WEB_ERROR_RESPONSES,
   type WebRouteContext,
   webData,
   webError,
@@ -21,15 +21,6 @@ import {
 
 /** CloudDrive 的 HTTP 服务端硬上限是 64 MiB（`WithMaxRequestBodySize`）；超过它的分片必然被拒。 */
 const MAX_UPLOAD_CHUNK_BYTES = 64 * 1024 * 1024;
-
-const ERROR_RESPONSES = {
-  400: WebErrSchema,
-  404: WebErrSchema,
-  409: WebErrSchema,
-  413: WebErrSchema,
-  502: WebErrSchema,
-  503: WebErrSchema,
-} as const;
 
 /**
  * 上传代理（TUS）的五个端点。
@@ -69,7 +60,7 @@ export function registerCloudDriveUploadRoutes(app: AnyElysia, facade: CloudDriv
     {
       sessionAuth: true,
       body: BeginCloudDriveUploadBodySchema,
-      response: { 200: CloudDriveUploadResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveUploadResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "创建上传会话",
@@ -89,7 +80,7 @@ export function registerCloudDriveUploadRoutes(app: AnyElysia, facade: CloudDriv
     {
       sessionAuth: true,
       params: CloudDriveUploadParamsSchema,
-      response: { 200: CloudDriveUploadStatusResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveUploadStatusResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "查询上传进度",
@@ -144,7 +135,7 @@ export function registerCloudDriveUploadRoutes(app: AnyElysia, facade: CloudDriv
       // 原始分片必须保持字节不变：一旦被 Elysia 解析，request.arrayBuffer() 将拿不到 body。
       parse: "none",
       params: CloudDriveUploadParamsSchema,
-      response: { 200: CloudDriveUploadStatusResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveUploadStatusResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "上传一个分片",
@@ -164,7 +155,7 @@ export function registerCloudDriveUploadRoutes(app: AnyElysia, facade: CloudDriv
     {
       sessionAuth: true,
       params: CloudDriveUploadParamsSchema,
-      response: { 200: CloudDriveUploadResultResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveUploadResultResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "提交上传",
@@ -183,7 +174,7 @@ export function registerCloudDriveUploadRoutes(app: AnyElysia, facade: CloudDriv
     {
       sessionAuth: true,
       params: CloudDriveUploadParamsSchema,
-      response: { 200: CloudDriveAbandonResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveAbandonResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "放弃上传",

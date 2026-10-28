@@ -1,3 +1,4 @@
+import { WebErrSchema } from "@fenix/platform-sdk";
 import type { CloudDriveFailureKind } from "../../client/cloud-drive-error";
 import type { CloudDriveFailure, CloudDriveResult } from "../../facades/cloud-drive-result";
 
@@ -18,8 +19,27 @@ const STATUS_BY_KIND: Record<CloudDriveFailureKind, number> = {
   conflict: 409,
   "payload-too-large": 413,
   unavailable: 503,
+  "rate-limited": 429,
+  unprocessable: 422,
   upstream: 502,
 };
+
+/**
+ * 各端点声明的错误响应模型（OpenAPI 与响应校验共用一份）。
+ *
+ * 不含 401：守卫在进入处理函数前就可能短路，它的响应形状属于宿主，不归本包声明。
+ */
+export const WEB_ERROR_RESPONSES = {
+  400: WebErrSchema,
+  404: WebErrSchema,
+  409: WebErrSchema,
+  413: WebErrSchema,
+  416: WebErrSchema,
+  422: WebErrSchema,
+  429: WebErrSchema,
+  502: WebErrSchema,
+  503: WebErrSchema,
+} as const;
 
 /** Elysia 的 `error` 装饰器：按状态码构造响应。 */
 export type WebErrorResponder = (status: number, body: unknown) => unknown;

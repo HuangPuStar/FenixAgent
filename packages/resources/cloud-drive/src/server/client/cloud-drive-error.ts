@@ -17,6 +17,8 @@ export type CloudDriveFailureKind =
   | "conflict"
   | "payload-too-large"
   | "unavailable"
+  | "rate-limited"
+  | "unprocessable"
   | "upstream";
 
 /** 上游明确属于「冲突」的 code；`OPERATION_PENDING` 也归此类（请求未被受理，重试前需先收敛前序操作）。 */
@@ -27,6 +29,9 @@ const TOO_LARGE_CODES = new Set(["QUOTA_EXCEEDED", "UPLOAD_TOO_LARGE"]);
 
 /** 依赖不可用：可以退避重试，但先要排除部署配置问题。 */
 const UNAVAILABLE_CODES = new Set(["DEPENDENCY_UNAVAILABLE", "SPACE_PROVISIONER_UNAVAILABLE"]);
+
+/** 用户输入不合法：上游用 422 表达，不能显示成「上游故障」。 */
+const UNPROCESSABLE_CODES = new Set(["INVALID_ARGUMENT", "INVALID_PATH"]);
 
 /** CloudDrive 调用失败；`kind` 由协议层原样映射成 HTTP 状态。 */
 export class CloudDriveError extends Error {
@@ -121,6 +126,17 @@ export function upstreamError(status: number, payload: unknown): CloudDriveError
   }
   if (UNAVAILABLE_CODES.has(upstreamCode) || status === 503) {
     return new CloudDriveError("unavailable", "CLOUD_DRIVE_UNAVAILABLE", "CloudDrive 暂不可用，请稍后重试", details);
+  }
+  if (upstreamCode === "RATE_LIMITED" || status === 429) {
+    return new CloudDriveError(
+      "rate-limited",
+      "CLOUD_DRIVE_RATE_LIMITED",
+      "CloudDrive 请求过于频繁，请稍后重试",
+      details,
+    );
+  }
+  if (UNPROCESSABLE_CODES.has(upstreamCode) || status === 422) {
+    return new CloudDriveError("unprocessable", "CLOUD_DRIVE_INVALID_INPUT", "请求参数不合法", details);
   }
   return new CloudDriveError("upstream", "CLOUD_DRIVE_UPSTREAM_ERROR", "CloudDrive 调用失败", details);
 }

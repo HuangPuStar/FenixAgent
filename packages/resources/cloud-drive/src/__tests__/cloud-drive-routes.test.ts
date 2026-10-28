@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readJson } from "@fenix/platform-sdk/testing";
 import { CloudDriveError } from "../server/client/cloud-drive-error";
-import type { CloudDriveContent, CloudDriveGateway } from "../server/client/cloud-drive-gateway";
-import { createCloudDriveFacade } from "../server/facades/cloud-drive-facade";
+import type { CloudDriveGateway } from "../server/client/cloud-drive-gateway";
+import { type CloudDriveContent, createCloudDriveFacade } from "../server/facades/cloud-drive-facade";
 import type { SessionAuthContext } from "../server/routes/dependencies";
 import { createWebCloudDriveRoutes } from "../server/routes/web/cloud-drive";
 import {
@@ -27,8 +27,13 @@ function request(app: ReturnType<typeof createApp>, path: string, init?: Request
   return app.handle(new Request(`http://localhost${path}`, init));
 }
 
-function content(body: string, status = 200, headers: Record<string, string> = {}): CloudDriveContent {
-  return new Response(body, { status, headers });
+function content(
+  body: string,
+  fileName = "report.txt",
+  status = 200,
+  headers: Record<string, string> = {},
+): CloudDriveContent {
+  return { response: new Response(body, { status, headers }), fileName };
 }
 
 describe("CloudDrive /web 路由", () => {
@@ -116,16 +121,17 @@ describe("CloudDrive /web 路由", () => {
     let range: string | undefined;
     const app = createApp(
       fakeGateway({
+        getFile: async () => makeFile({ name: "报告 2026.txt" }),
         openContent: async (_subject, _fileId, input) => {
           range = input.range;
-          return content("abc", 206, {
+          return content("abc", "报告 2026.txt", 206, {
             "content-type": "text/plain",
             "content-range": "bytes 0-2/10",
             "content-length": "3",
             "content-disposition": "attachment",
             "set-cookie": "internal=1",
             "x-upstream-only": "secret",
-          });
+          }).response;
         },
       }),
     );
@@ -137,7 +143,9 @@ describe("CloudDrive /web 路由", () => {
     expect(range).toBe("bytes=0-2");
     expect(response.status).toBe(206);
     expect(response.headers.get("content-range")).toBe("bytes 0-2/10");
-    expect(response.headers.get("content-disposition")).toBe("attachment");
+    expect(response.headers.get("content-disposition")).toBe(
+      `attachment; filename="__ 2026.txt"; filename*=UTF-8''%E6%8A%A5%E5%91%8A%202026.txt`,
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-upstream-only")).toBeNull();
     expect(await response.text()).toBe("abc");
@@ -150,7 +158,7 @@ describe("CloudDrive /web 路由", () => {
       fakeGateway({
         openContent: async () => {
           called = true;
-          return content("abc");
+          return content("abc").response;
         },
       }),
     );
@@ -219,6 +227,49 @@ describe("CloudDrive /web 路由", () => {
       success: false,
       error: { code: "CLOUD_DRIVE_LENGTH_REQUIRED", message: "分片请求必须携带 Content-Length" },
     });
+  });
+
+  // 上传会话已消费（上游 HEAD 404）必须是明确的业务 404，而不是上游故障。
+  test("上传会话已消费返回 404 业务码", async () => {
+    const app = createApp(
+      fakeGateway({
+        statUpload: async () => {
+          throw new CloudDriveError("not-found", "NOT_FOUND", "文件不存在或无权访问");
+        },
+      }),
+    );
+
+    const response = await request(app, "/cloud-drive/uploads/upload-1");
+
+    expect(response.status).toBe(404);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "CLOUD_DRIVE_UPLOAD_NOT_FOUND", message: "上传会话不存在或已结束" },
+    });
+  });
+
+  // 上游输入错误与限流必须分别映射为 422 / 429，不能显示成 502 上游故障。
+  test("上游输入错误与限流映射为 422 和 429", async () => {
+    const invalidApp = createApp(
+      fakeGateway({
+        createDirectory: async () => {
+          throw new CloudDriveError("unprocessable", "CLOUD_DRIVE_INVALID_INPUT", "请求参数不合法");
+        },
+      }),
+    );
+    const limitedApp = createApp(
+      fakeGateway({
+        getMe: async () => {
+          throw new CloudDriveError("rate-limited", "CLOUD_DRIVE_RATE_LIMITED", "CloudDrive 请求过于频繁，请稍后重试");
+        },
+      }),
+    );
+
+    const invalid = await request(invalidApp, "/cloud-drive/directories", jsonInit("POST", { name: "docs" }));
+    const limited = await request(limitedApp, "/cloud-drive/me");
+
+    expect(invalid.status).toBe(422);
+    expect(limited.status).toBe(429);
   });
 
   // 上游 NOT_FOUND 映射 404，响应体保持 /web 失败信封。

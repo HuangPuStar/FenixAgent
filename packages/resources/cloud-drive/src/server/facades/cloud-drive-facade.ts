@@ -1,5 +1,5 @@
 import { CloudDriveError, invalidRequestError } from "../client/cloud-drive-error";
-import type { CloudDriveContent, CloudDriveGateway } from "../client/cloud-drive-gateway";
+import type { CloudDriveGateway } from "../client/cloud-drive-gateway";
 import type {
   CloudDriveAbandonResult,
   CloudDriveFile,
@@ -39,6 +39,17 @@ import { type CloudDriveResult, cloudDriveFail, cloudDriveFailureFrom, cloudDriv
 /** 会话派生主体；只允许 `userId`，路由不得从请求体或查询串构造它。 */
 export interface CloudDriveActor {
   readonly userId: string;
+}
+
+/**
+ * 下载结果：上游响应 + 文件名。
+ *
+ * 文件名单独取（先 `GET /v1/files/{id}`）是因为 CloudDrive 的 `Content-Disposition` 只有裸
+ * `attachment`，没有文件名；前端另存时只能靠它。代价是每次下载多一次元数据请求（~50ms）。
+ */
+export interface CloudDriveContent {
+  readonly response: Response;
+  readonly fileName: string;
 }
 
 export interface ListFilesCommand {
@@ -167,9 +178,17 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
   }
 
   openContent(actor: CloudDriveActor, fileId: string, command: ContentCommand, signal?: AbortSignal) {
-    return this.run(actor, "openContent", (gateway, subject) =>
-      gateway.openContent(subject, fileId, { versionId: command.versionId, range: command.range }, signal),
-    );
+    return this.run(actor, "openContent", async (gateway, subject) => {
+      const file = await gateway.getFile(subject, fileId);
+      if (file.kind !== "file") throw invalidRequestError("CLOUD_DRIVE_NOT_A_FILE", "目录不能下载内容");
+      const response = await gateway.openContent(
+        subject,
+        fileId,
+        { versionId: command.versionId, range: command.range },
+        signal,
+      );
+      return { response, fileName: file.name };
+    });
   }
 
   createDirectory(actor: CloudDriveActor, command: CreateDirectoryCommand) {
@@ -268,11 +287,11 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
   }
 
   getUploadStatus(actor: CloudDriveActor, uploadId: string) {
-    return this.run(actor, "getUploadStatus", (gateway, subject) => gateway.statUpload(subject, uploadId));
+    return this.runUpload(actor, "getUploadStatus", (gateway, subject) => gateway.statUpload(subject, uploadId));
   }
 
   uploadChunk(actor: CloudDriveActor, uploadId: string, command: UploadChunkCommand, signal?: AbortSignal) {
-    return this.run(actor, "uploadChunk", (gateway, subject) => {
+    return this.runUpload(actor, "uploadChunk", (gateway, subject) => {
       if (!Number.isInteger(command.offset) || command.offset < 0) {
         throw invalidRequestError("CLOUD_DRIVE_OFFSET_INVALID", "Upload-Offset 必须是非负整数");
       }
@@ -284,11 +303,29 @@ class DefaultCloudDriveFacade implements CloudDriveFacade {
   }
 
   finalizeUpload(actor: CloudDriveActor, uploadId: string) {
-    return this.run(actor, "finalizeUpload", (gateway, subject) => gateway.finalizeUpload(subject, uploadId));
+    return this.runUpload(actor, "finalizeUpload", (gateway, subject) => gateway.finalizeUpload(subject, uploadId));
   }
 
   abandonUpload(actor: CloudDriveActor, uploadId: string) {
-    return this.run(actor, "abandonUpload", (gateway, subject) => gateway.abandonUpload(subject, uploadId));
+    return this.runUpload(actor, "abandonUpload", (gateway, subject) => gateway.abandonUpload(subject, uploadId));
+  }
+
+  /**
+   * 上传会话类操作的统一收口。
+   *
+   * CloudDrive 对「会话已消费 / 不存在 / 不属于当前主体」都返回 404；对前端而言这三种情况都只能
+   * 重新创建上传，因此统一成可识别的 `CLOUD_DRIVE_UPLOAD_NOT_FOUND`，而不是泛化的「文件不存在」。
+   */
+  private async runUpload<T>(
+    actor: CloudDriveActor,
+    operation: string,
+    task: (gateway: CloudDriveGateway, subject: string) => Promise<T>,
+  ): Promise<CloudDriveResult<T>> {
+    const result = await this.run(actor, operation, task);
+    if (!result.ok && result.error.kind === "not-found") {
+      return cloudDriveFail("not-found", "CLOUD_DRIVE_UPLOAD_NOT_FOUND", "上传会话不存在或已结束");
+    }
+    return result;
   }
 
   /** 统一入口：actor 校验、网关解析、结果收敛；任何分支都不向路由抛异常。 */

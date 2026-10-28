@@ -1,4 +1,3 @@
-import { WebErrSchema } from "@fenix/platform-sdk";
 import type { AnyElysia } from "elysia";
 import type { CloudDriveFacade } from "../../facades/cloud-drive-facade";
 import {
@@ -11,18 +10,7 @@ import {
   RestoreCloudDriveTrashBodySchema,
 } from "../../schemas/cloud-drive.schema";
 import { actorFromStore } from "../dependencies";
-import { respondToWeb, respondUnauthorized, type WebRouteContext } from "./cloud-drive-response";
-
-/** 与读路径共用同一组错误状态声明（守卫的 401 刻意不声明，避免被响应 schema 校验）。 */
-const ERROR_RESPONSES = {
-  400: WebErrSchema,
-  404: WebErrSchema,
-  409: WebErrSchema,
-  413: WebErrSchema,
-  416: WebErrSchema,
-  502: WebErrSchema,
-  503: WebErrSchema,
-} as const;
+import { respondToWeb, respondUnauthorized, WEB_ERROR_RESPONSES, type WebRouteContext } from "./cloud-drive-response";
 
 /**
  * 变更路径：建目录、改名/移动、删除、回收站列表与恢复。
@@ -47,7 +35,7 @@ export function registerCloudDriveMutationRoutes(app: AnyElysia, facade: CloudDr
     {
       sessionAuth: true,
       body: CreateCloudDriveDirectoryBodySchema,
-      response: { 200: CloudDriveMutationResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveMutationResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "新建目录",
@@ -71,7 +59,7 @@ export function registerCloudDriveMutationRoutes(app: AnyElysia, facade: CloudDr
       sessionAuth: true,
       params: CloudDriveFileParamsSchema,
       body: MoveCloudDriveFileBodySchema,
-      response: { 200: CloudDriveMutationResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveMutationResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "改名或移动文件/目录",
@@ -91,7 +79,7 @@ export function registerCloudDriveMutationRoutes(app: AnyElysia, facade: CloudDr
     {
       sessionAuth: true,
       params: CloudDriveFileParamsSchema,
-      response: { 200: CloudDriveMutationResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveMutationResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "删除文件或目录",
@@ -109,7 +97,7 @@ export function registerCloudDriveMutationRoutes(app: AnyElysia, facade: CloudDr
     },
     {
       sessionAuth: true,
-      response: { 200: CloudDriveTrashPageResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveTrashPageResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "列出回收站",
@@ -137,7 +125,7 @@ export function registerCloudDriveMutationRoutes(app: AnyElysia, facade: CloudDr
       sessionAuth: true,
       params: CloudDriveTrashParamsSchema,
       body: RestoreCloudDriveTrashBodySchema,
-      response: { 200: CloudDriveMutationResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveMutationResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "从回收站恢复",

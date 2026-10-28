@@ -24,7 +24,7 @@ export interface CloudDriveGateway {
   listFiles(subject: string, input: ListFilesInput, signal?: AbortSignal): Promise<CloudDriveFilePage>;
   getFile(subject: string, fileId: string, signal?: AbortSignal): Promise<CloudDriveFile>;
   listVersions(subject: string, fileId: string, signal?: AbortSignal): Promise<CloudDriveVersionPage>;
-  openContent(subject: string, fileId: string, input: ContentInput, signal?: AbortSignal): Promise<CloudDriveContent>;
+  openContent(subject: string, fileId: string, input: ContentInput, signal?: AbortSignal): Promise<Response>;
   createDirectory(subject: string, input: CreateDirectoryInput, signal?: AbortSignal): Promise<CloudDriveMutation>;
   moveFile(subject: string, fileId: string, input: MoveFileInput, signal?: AbortSignal): Promise<CloudDriveMutation>;
   deleteFile(
@@ -52,13 +52,6 @@ export interface CloudDriveGateway {
   finalizeUpload(subject: string, uploadId: string, signal?: AbortSignal): Promise<CloudDriveUploadResult>;
   abandonUpload(subject: string, uploadId: string, signal?: AbortSignal): Promise<CloudDriveAbandonResult>;
 }
-
-/**
- * 文件内容响应：上游 `Response` 本身。
- *
- * 只作为 Facade → 路由的传输载体；路由按白名单重建响应头，不会把上游的 set-cookie 等头带出去。
- */
-export type CloudDriveContent = Response;
 
 export interface ListFilesInput {
   readonly parentId?: string;

@@ -9,7 +9,6 @@ import {
 } from "./cloud-drive-error";
 import type {
   BeginUploadInput,
-  CloudDriveContent,
   CloudDriveGateway,
   ContentInput,
   CreateDirectoryInput,
@@ -329,12 +328,7 @@ export class CloudDriveClient implements CloudDriveGateway {
    * 超时只覆盖到响应头：大文件传输本身不应被请求超时打断；调用方的 `AbortSignal`（客户端断开）仍会
    * 中止整个请求。
    */
-  async openContent(
-    subject: string,
-    fileId: string,
-    input: ContentInput,
-    signal?: AbortSignal,
-  ): Promise<CloudDriveContent> {
+  async openContent(subject: string, fileId: string, input: ContentInput, signal?: AbortSignal): Promise<Response> {
     const startedAt = Date.now();
     const timeout = createTimeoutSignal(signal, this.timeoutMs);
     let status: number | undefined;

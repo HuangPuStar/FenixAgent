@@ -1,4 +1,3 @@
-import { WebErrSchema } from "@fenix/platform-sdk";
 import { type AnyElysia, Elysia } from "elysia";
 import type { CloudDriveFacade } from "../../facades/cloud-drive-facade";
 import {
@@ -19,6 +18,7 @@ import {
   respondToWeb,
   respondUnauthorized,
   statusForFailure,
+  WEB_ERROR_RESPONSES,
   type WebRouteContext,
   webError,
 } from "./cloud-drive-response";
@@ -36,16 +36,6 @@ import { registerCloudDriveUploadRoutes } from "./cloud-drive-uploads";
  */
 
 /** 仅声明本模块处理函数会返回的错误状态；守卫自己的 401 不在此列（避免被响应 schema 校验）。 */
-const ERROR_RESPONSES = {
-  400: WebErrSchema,
-  404: WebErrSchema,
-  409: WebErrSchema,
-  413: WebErrSchema,
-  416: WebErrSchema,
-  502: WebErrSchema,
-  503: WebErrSchema,
-} as const;
-
 /** 下载响应透传的头部白名单；其余（尤其 set-cookie）一律丢弃。 */
 const CONTENT_HEADERS = [
   "content-type",
@@ -90,7 +80,7 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
     },
     {
       sessionAuth: true,
-      response: { 200: CloudDriveMeResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveMeResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "获取个人云盘主体与配额",
@@ -115,7 +105,7 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
     {
       sessionAuth: true,
       query: CloudDriveListFilesQuerySchema,
-      response: { 200: CloudDriveFilePageResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveFilePageResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "列出目录内容",
@@ -134,7 +124,7 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
     {
       sessionAuth: true,
       params: CloudDriveFileParamsSchema,
-      response: { 200: CloudDriveFileResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveFileResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "获取文件或目录元数据",
@@ -153,7 +143,7 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
     {
       sessionAuth: true,
       params: CloudDriveFileParamsSchema,
-      response: { 200: CloudDriveVersionPageResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveVersionPageResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "列出文件历史版本",
@@ -180,11 +170,13 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
       }
       const headers = new Headers();
       for (const name of CONTENT_HEADERS) {
-        const value = result.data.headers.get(name);
+        const value = result.data.response.headers.get(name);
         if (value) headers.set(name, value);
       }
+      // 上游只给裸 `attachment`，文件名由 Fenix 补（RFC 5987 + ASCII fallback），前端另存才有名字。
+      headers.set("content-disposition", attachmentDisposition(result.data.fileName));
       // 二进制响应不回 `/web/*` 信封：状态码、Content-Range 与字节流本身就是契约。
-      return new Response(result.data.body, { status: result.data.status, headers });
+      return new Response(result.data.response.body, { status: result.data.response.status, headers });
     },
     {
       sessionAuth: true,
@@ -218,7 +210,7 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
     {
       sessionAuth: true,
       body: SearchCloudDriveBodySchema,
-      response: { 200: CloudDriveSearchPageResponseSchema, ...ERROR_RESPONSES },
+      response: { 200: CloudDriveSearchPageResponseSchema, ...WEB_ERROR_RESPONSES },
       detail: {
         tags: ["CloudDrive"],
         summary: "搜索个人云盘",
@@ -226,6 +218,22 @@ function registerReadRoutes(app: AnyElysia, facade: CloudDriveFacade): void {
       },
     },
   );
+}
+
+/** RFC 5987 的 ext-value：`encodeURIComponent` 不转义 `'()*`，这里逐个补上。 */
+function encodeRfc5987(value: string): string {
+  return encodeURIComponent(value).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+/**
+ * 下载响应头：`attachment` 语义不变，补充真实文件名。
+ *
+ * 同时给 ASCII fallback（老客户端）与 `filename*=UTF-8''...`（RFC 5987，中文/空格安全）；fallback 里的
+ * 引号与反斜杠会被替换，避免构造出可截断的 header 值。
+ */
+function attachmentDisposition(fileName: string): string {
+  const ascii = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_") || "download";
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRfc5987(fileName)}`;
 }
 
 /** Elysia 的 query 值可能是数组；只取第一个字符串。 */

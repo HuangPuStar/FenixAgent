@@ -18,7 +18,6 @@ export { CloudDriveClient, resolveCloudDriveClientConfig } from "./server/client
 export { CloudDriveError, type CloudDriveFailureKind } from "./server/client/cloud-drive-error";
 export type {
   BeginUploadInput,
-  CloudDriveContent,
   CloudDriveGateway,
   ContentInput,
   CreateDirectoryInput,
@@ -34,6 +33,7 @@ export { getCloudDriveConfig } from "./server/config";
 export type {
   BeginUploadCommand,
   CloudDriveActor,
+  CloudDriveContent,
   CloudDriveFacade,
   CloudDriveFacadeOptions,
   ContentCommand,

@@ -105,6 +105,10 @@ describe("CloudDrive 出站 client", () => {
       [413, "UPLOAD_TOO_LARGE", "payload-too-large"],
       [503, "DEPENDENCY_UNAVAILABLE", "unavailable"],
       [503, "SPACE_PROVISIONER_UNAVAILABLE", "unavailable"],
+      [422, "INVALID_ARGUMENT", "unprocessable"],
+      [422, "INVALID_PATH", "unprocessable"],
+      [422, "SOMETHING_ELSE", "unprocessable"],
+      [429, "RATE_LIMITED", "rate-limited"],
       [500, "INTERNAL_ERROR", "upstream"],
     ];
 

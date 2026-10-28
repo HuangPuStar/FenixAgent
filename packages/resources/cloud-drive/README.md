@@ -28,7 +28,7 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 | GET | `/cloud-drive/files?parentId=&cursor=` | 目录列表，游标分页 |
 | GET | `/cloud-drive/files/:id` | 元数据 |
 | GET | `/cloud-drive/files/:id/versions` | 历史版本 |
-| GET | `/cloud-drive/files/:id/content` | 流式下载，透传单段 Range 与内容头 |
+| GET | `/cloud-drive/files/:id/content` | 流式下载，透传单段 Range 与内容头；`Content-Disposition` 带真实文件名 |
 | POST | `/cloud-drive/directories` | 新建目录 |
 | PATCH | `/cloud-drive/files/:id/location` | 改名 / 移动（`parentId: null` = 根目录） |
 | DELETE | `/cloud-drive/files/:id` | 移入回收站 |
@@ -49,6 +49,8 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 2. 对 `/uploads/:id` 发 `PATCH`，`Content-Type: application/offset+octet-stream` 由服务端固定，`Content-Length` 必须存在（CloudDrive 拒绝 chunked），`Upload-Offset` 取自 `GET /uploads/:id`；
 3. 响应体返回最新 `{ uploadId, offset, length }`，同时设置 `Upload-Offset` / `Upload-Length` 响应头；
 4. 全部写完后 `POST /uploads/:id/finalize`；失败或取消时 `POST /uploads/:id/abandon`。
+5. TUS 地址由 `CLOUDDRIVE_BASE_URL` + `/v1/tus/{uploadId}` 构造，**不使用**上游返回的 `upload_url`（demo 栈的主机名是 `drive.localhost`，浏览器/容器内未必可达）。
+6. 会话被 finalize 消费后再 `GET /uploads/:id` 会得到 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND`，前端应停止轮询而不是当作故障重试。
 
 分片建议 **4 MiB**（`CLOUD_DRIVE_RECOMMENDED_CHUNK_BYTES`）：CloudDrive 单请求上限 64 MiB，宿主全站 body 上限 108 MiB。
 
@@ -63,7 +65,10 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 | `PATH_CONFLICT` / `VERSION_CONFLICT` / `IDEMPOTENCY_CONFLICT` / `OPERATION_PENDING` / HTTP 409 | 409（请求未被受理；重试前先刷新元数据或轮询操作） |
 | `QUOTA_EXCEEDED` / `UPLOAD_TOO_LARGE` / HTTP 413 | 413 |
 | `DEPENDENCY_UNAVAILABLE` / `SPACE_PROVISIONER_UNAVAILABLE` / HTTP 503 | 503 |
+| `INVALID_ARGUMENT` / `INVALID_PATH` / HTTP 422 | 422 `CLOUD_DRIVE_INVALID_INPUT`（用户输入问题，不是上游故障） |
+| `RATE_LIMITED` / HTTP 429 | 429 `CLOUD_DRIVE_RATE_LIMITED` |
 | 网络失败 / 超时 | 503 `CLOUD_DRIVE_UNAVAILABLE` / `CLOUD_DRIVE_TIMEOUT` |
+| 上传会话的 404（已消费 / 不存在 / 跨用户） | 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND` |
 | 其余 | 502 |
 
 `OPERATION_PENDING` 取 409 而不是 202：请求没有被受理，202 会误导前端以为操作已经开始。上游未列出 code（如 `INVALID_ARGUMENT` / `INVALID_PATH`）同样按「其余 → 502」处理；若后续需要把用户输入错误区分成 400/422，改 `client/cloud-drive-error.ts` 一处即可。
@@ -75,7 +80,7 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 - `CLOUDDRIVE_BASE_URL`：CloudDrive REST 基址（http/https）；未配置 = 未启用，返回 503。
 - `CLOUDDRIVE_MASTER_KEY`：master key（`secret: true`）；与基址同时配置才启用。
 - `CLOUDDRIVE_KEY_ID`：可选，随请求发送 `X-Key-Id`。
-- `CLOUDDRIVE_TIMEOUT_MS`：出站超时，默认 30000；下载只在等待响应头阶段计时。
+- `CLOUDDRIVE_TIMEOUT_MS`：出站超时，默认 **120000**；冷启动首次写操作实测可达约 65s、finalize 含异步提交，30s 会把正常写入误判为超时。下载只在等待响应头阶段计时，长传输不受该值限制。
 
 ## 单测
 

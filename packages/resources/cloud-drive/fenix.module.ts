@@ -76,11 +76,12 @@ export const moduleManifest = {
     {
       moduleId: "cloud-drive",
       key: "CLOUDDRIVE_TIMEOUT_MS",
-      schema: z.coerce.number().int().positive().default(30000),
-      defaultValue: 30000,
+      schema: z.coerce.number().int().positive().default(120000),
+      defaultValue: 120000,
       secret: false,
       restartRequired: true,
-      description: "CloudDrive 出站请求超时（毫秒），默认 30000；下载只在等待响应头阶段计时，避免把长传输误判为超时。",
+      description:
+        "CloudDrive 出站请求超时（毫秒），默认 120000；冷启动首次写操作实测可达约 65s，finalize 含异步提交，30s 会把正常写入误判为超时。下载只在等待响应头阶段计时，避免把长传输误判为超时。",
     },
   ],
 } satisfies ModuleManifest;

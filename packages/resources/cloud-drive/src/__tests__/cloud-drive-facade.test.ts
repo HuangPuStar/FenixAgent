@@ -183,6 +183,62 @@ describe("CloudDrive Facade", () => {
     expect(result.ok ? null : result.error.code).toBe("CLOUD_DRIVE_REVISION_REQUIRED");
   });
 
+  // 下载需要文件名：先读元数据再生效内容流，两步都走同一个 subject。
+  test("下载先取元数据再打开内容流并返回文件名", async () => {
+    const calls: string[] = [];
+    const gateway = fakeGateway({
+      getFile: async (subject, fileId) => {
+        calls.push(`getFile:${subject}:${fileId}`);
+        return makeFile({ name: "报告 2026.txt" });
+      },
+      openContent: async (subject, fileId) => {
+        calls.push(`openContent:${subject}:${fileId}`);
+        return new Response("abc", { status: 200, headers: { "content-type": "text/plain" } });
+      },
+    });
+
+    const result = await facadeWith(gateway).openContent(USER_A, "file-1", { range: "bytes=0-2" });
+
+    expect(calls).toEqual(["getFile:user-a:file-1", "openContent:user-a:file-1"]);
+    expect(result.ok && result.data.fileName).toBe("报告 2026.txt");
+    expect(result.ok ? await new Response(result.data.response.body).text() : "").toBe("abc");
+  });
+
+  // 目录没有内容可读：在本地拒绝，避免一次注定失败的上游内容请求。
+  test("目录下载被拒绝且不打开内容流", async () => {
+    let opened = false;
+    const gateway = fakeGateway({
+      getFile: async () => makeFile({ kind: "directory", currentVersionId: null }),
+      openContent: async () => {
+        opened = true;
+        return new Response("abc");
+      },
+    });
+
+    const result = await facadeWith(gateway).openContent(USER_A, "dir-1", {});
+
+    expect(opened).toBe(false);
+    expect(result.ok ? null : result.error.kind).toBe("invalid");
+    expect(result.ok ? null : result.error.code).toBe("CLOUD_DRIVE_NOT_A_FILE");
+  });
+
+  // 上传会话已消费/不存在统一成可识别业务码（CloudDrive 对三种情况都返回 404）。
+  test("上传会话 404 映射为 CLOUD_DRIVE_UPLOAD_NOT_FOUND", async () => {
+    const gateway = fakeGateway({
+      statUpload: async () => {
+        throw new CloudDriveError("not-found", "NOT_FOUND", "文件不存在或无权访问");
+      },
+    });
+
+    const result = await facadeWith(gateway).getUploadStatus(USER_A, "upload-1");
+
+    expect(result.ok ? null : result.error).toEqual({
+      kind: "not-found",
+      code: "CLOUD_DRIVE_UPLOAD_NOT_FOUND",
+      message: "上传会话不存在或已结束",
+    });
+  });
+
   // 未配置 CloudDrive 时统一给 503 类失败，而不是抛异常打断请求处理。
   test("网关解析失败（未配置）收敛为 not-configured", async () => {
     const facade = createCloudDriveFacade({
