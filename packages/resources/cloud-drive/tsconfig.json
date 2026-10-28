@@ -1,0 +1,22 @@
+{
+  // 包内类型检查入口：自包含，不 extends 包外 tsconfig（理由见 `packages/resources/memory/tsconfig.json` 文件头）。
+  // 本阶段只有服务端代码，没有 `web/`；前端 owner 落地页面时再补 web 相关 include 与依赖。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": ["fenix.module.ts", "src/**/*.ts"]
+}
