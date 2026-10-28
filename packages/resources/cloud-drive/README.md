@@ -4,7 +4,7 @@
 
 ## 定位与 owner
 
-- **本包拥有**：`/web/cloud-drive/*` 的 16 条服务端路由、出站 HTTP client（认证头、超时、错误分类）、协议模型（`src/server/schemas/cloud-drive.schema.ts`）与控制台页面（`web/`：文件浏览、上传队列、回收站、搜索）。
+- **本包拥有**：`/web/cloud-drive/*` 的 20 条服务端路由、出站 HTTP client（认证头、超时、错误分类）、协议模型（`src/server/schemas/cloud-drive.schema.ts`）与控制台页面（`web/`：文件浏览、上传队列、回收站、搜索、预览）。
 - **不属本包**：用户认证与组织上下文（宿主 `apps/server` 的会话守卫）、CloudDrive 的空间 provisioner / master key 轮换（CloudDrive 部署）。
 - **装配面**：`fenix.module.ts` 的 `id: "cloud-drive"` / `kind: "resource"` / `dependsOn: []` / `capabilities: ["resource.cloud-drive"]`；一条 `slot: "web"` 路由贡献。它是资源装配图里的叶子，不依赖其它资源模块。
 - **无状态**：没有 Repository、Domain Service、`create()` 组合根或任何 DB 句柄。写入幂等由 CloudDrive 的 `idempotency_key` 表达，Fenix 侧每次写操作生成新 key。
@@ -29,6 +29,10 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 | GET | `/cloud-drive/files/:id` | 元数据 |
 | GET | `/cloud-drive/files/:id/versions` | 历史版本 |
 | GET | `/cloud-drive/files/:id/content` | 流式下载，透传单段 Range 与内容头；`Content-Disposition` 带真实文件名 |
+| GET | `/cloud-drive/files/:id/markdown?cursor=` | 转换产物的 markdown 一页（游标分页） |
+| GET | `/cloud-drive/files/:id/preview` | 栅格预览页清单（页数 / 页号 / 版本） |
+| GET | `/cloud-drive/files/:id/preview/pages/:page?versionId=` | 栅格页图 PNG（版本必填，缺省用当前版本） |
+| POST | `/cloud-drive/files/:id/conversions` | 重新排队转换（失败重试；服务端生成幂等键） |
 | POST | `/cloud-drive/directories` | 新建目录 |
 | PATCH | `/cloud-drive/files/:id/location` | 改名 / 移动（`parentId: null` = 根目录） |
 | DELETE | `/cloud-drive/files/:id` | 移入回收站 |
@@ -41,7 +45,7 @@ Fenix 后端 ──Authorization: Bearer <master key> + X-On-Behalf-Of: <Fenix u
 | POST | `/cloud-drive/uploads/:id/finalize` | 提交 |
 | POST | `/cloud-drive/uploads/:id/abandon` | 放弃 |
 
-除二进制下载与分片上传外，响应统一 `{ success: true, data }` / `{ success: false, error: { code, message } }`。
+除二进制下载、页图与分片上传外，响应统一 `{ success: true, data }` / `{ success: false, error: { code, message } }`。
 
 ## 上传（TUS 代理）
 
@@ -66,6 +70,19 @@ CloudDrive 的 `/v1/search` 按 **chunk** 返回命中：同一文件可能有�
 
 响应仍是 `{ success, data: { items, nextCursor, fileCount, matchCount } }`；`items` 保留旧的 `snippet`、`location`、`completeness`、`stale` 与版本字段，新增 `name` / `parentId` / `kind` / `sizeBytes` / `updatedAt` / `snippets` / `matchCount`。控制台把最多 3 段片段合并为一段（两行内），段间用「·」分隔。`nextCursor` 仍是上游 chunk 游标，控制台不分页，聚合结果以首屏为准。搜索仍是最终一致的；非文本文件与转换未完成的文件没有片段。
 
+## 预览
+
+预览读取的是 CloudDrive 的**异步转换产物**，不是按需渲染：
+
+- `GET /files/:id/markdown?cursor=`：文本/Office 的 markdown，上游约 64KiB/页，`nextCursor` 非空时继续。服务端先读元数据再取正文，把「产物未生成」的 404 翻译成 `CLOUD_DRIVE_PREVIEW_NOT_READY`，`failed` / `blocked` 翻译成 422 `CLOUD_DRIVE_PREVIEW_FAILED`。单次响应上限 **256KiB**（`truncated: true`，游标保留；仅防御上游分页契约漂移）。
+- `GET /files/:id/preview`：栅格页清单 `{ versionId, pageCount, pages }`。PDF/图片可用；Office 因缺 kkfileview 返回 503，应改用 markdown。
+- `GET /files/:id/preview/pages/:page?versionId=`：页图 PNG。**版本必传**（缺省时服务端用元数据 `currentVersionId` 补齐）；上游缺 `version_id` 一律 404，不支持 Range。透传 `Content-Type / Content-Length / ETag / Last-Modified`；显式版本 `cache-control: private, max-age=300, immutable`，补齐当前版本时 `no-store`，避免跨版本命中。
+- `POST /files/:id/conversions`：失败/未完成转换重新排队，`idempotency_key` 由服务端生成；进行中或已就绪返回 409。上游没有任务查询端点（`GET /v1/operations/{job}` 实测 404），进度只能轮询文件元数据。
+
+前端类型策略：md/txt/log/csv/doc·docx/xls·xlsx/ppt·pptx 走 markdown；pdf 与 png/jpg/jpeg/webp/bmp/tif/tiff/gif 走栅格；其它类型提示下载。转换中轮询元数据（退避、30s 预算、关闭即取消）；Office 不请求栅格，栅格 503 时若扩展名属于 Office 仍回退 markdown。
+
+已知限制：转换上限 100MiB / 500 页 / 64MiB 输出，预览 100MiB；`preview` 与 `anydoc` 串行；图片没有 OCR（缺 paddleocr），不要承诺文字提取。
+
 ## 错误映射
 
 | 上游 | Fenix |
@@ -80,6 +97,9 @@ CloudDrive 的 `/v1/search` 按 **chunk** 返回命中：同一文件可能有�
 | 网络失败 / 超时 | 503 `CLOUD_DRIVE_UNAVAILABLE` / `CLOUD_DRIVE_TIMEOUT` |
 | 上传会话不存在 / 跨用户（上游 404） | 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND` |
 | 上传会话已结束 / 不可续传（上游 HEAD 409 `OPERATION_PENDING`） | 410 `CLOUD_DRIVE_UPLOAD_GONE` |
+| 预览产物未生成（上游 404） | 404 `CLOUD_DRIVE_PREVIEW_NOT_READY`；转换 failed/blocked 时为 422 `CLOUD_DRIVE_PREVIEW_FAILED` |
+| 页图 404（页号越界 / 版本不存在） | 404 `CLOUD_DRIVE_PREVIEW_PAGE_NOT_FOUND` |
+| 重新转换进行中 / 已就绪 | 409 `CLOUD_DRIVE_CONVERSION_IN_PROGRESS` / `CLOUD_DRIVE_CONVERSION_NOT_NEEDED` |
 | 其余 | 502 |
 
 `OPERATION_PENDING` 取 409 而不是 202：请求没有被受理，202 会误导前端以为操作已经开始。上游未列出 code（如 `INVALID_ARGUMENT` / `INVALID_PATH`）同样按「其余 → 502」处理；若后续需要把用户输入错误区分成 400/422，改 `client/cloud-drive-error.ts` 一处即可。
@@ -95,9 +115,9 @@ CloudDrive 的 `/v1/search` 按 **chunk** 返回命中：同一文件可能有�
 
 ## 单测
 
-`src/__tests__/` 用注入的 `fetch` 与内存 Gateway 覆盖：认证头与 subject 隔离、上游错误映射、超时、master key 不出现在错误/日志、Facade 的先读后写编排、路由鉴权与错误信封、TUS 的 header/offset 语义。测试不引入 `mock.module()`。
+`src/__tests__/` 用注入的 `fetch` 与内存 Gateway 覆盖：认证头与 subject 隔离、上游错误映射、超时、master key 不出现在错误/日志、Facade 的先读后写编排、路由鉴权与错误信封、TUS 的 header/offset 语义，以及预览的未就绪/失败映射、markdown 截断、页图版本与缓存头、重新转换的 409 边界。测试不引入 `mock.module()`。
 
-前端单测在 `web/__tests__/`：上传编排（切片 / 续传 offset / 410 重建 / finalize 409 重试）、页面的加载-空-失败-重试状态、en/zh 字典与占位符对称、浏览器安全入口守卫。
+前端单测在 `web/__tests__/`：上传编排（切片 / 续传 offset / 410 重建 / finalize 409 重试）、页面的加载-空-失败-重试状态、预览类型矩阵与 markdown 分页聚合、预览面板的页图版本与错误态、en/zh 字典与占位符对称、浏览器安全入口守卫。
 
 ## 真实联调
 

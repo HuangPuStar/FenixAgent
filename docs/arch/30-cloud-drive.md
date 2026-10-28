@@ -42,7 +42,7 @@ Fenix 后端 ──Authorization: Bearer <master key>
 
 ## 4. 协议面
 
-16 条 `/web/cloud-drive/*` 路由（`routes/web/`）：
+20 条 `/web/cloud-drive/*` 路由（`routes/web/`）：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -51,6 +51,10 @@ Fenix 后端 ──Authorization: Bearer <master key>
 | GET | `/files/:id` | 元数据 |
 | GET | `/files/:id/versions` | 历史版本 |
 | GET | `/files/:id/content` | 流式下载，单段 Range，带文件名 |
+| GET | `/files/:id/markdown?cursor=` | 转换产物的 markdown 一页，游标分页 |
+| GET | `/files/:id/preview` | 栅格预览页清单（页数 / 页号 / 版本） |
+| GET | `/files/:id/preview/pages/:page?versionId=` | 栅格页图 PNG（版本必填，缺省用当前版本） |
+| POST | `/files/:id/conversions` | 重新排队转换（失败重试） |
 | POST | `/directories` | 新建目录 |
 | PATCH | `/files/:id/location` | 改名 / 移动（`parentId: null` = 根目录） |
 | DELETE | `/files/:id` | 移入回收站 |
@@ -63,7 +67,7 @@ Fenix 后端 ──Authorization: Bearer <master key>
 | POST | `/uploads/:id/finalize` | 提交 |
 | POST | `/uploads/:id/abandon` | 放弃 |
 
-除二进制下载与分片上传外，响应统一 `{ success: true, data }` / `{ success: false, error: { code, message } }`。DTO 在上游边界重写为 camelCase，并丢弃 `owner_id` / `space_id` / `native_*` / `reserved_location` / `operation_id` 等内部字段。
+除二进制下载、页图与分片上传外，响应统一 `{ success: true, data }` / `{ success: false, error: { code, message } }`。DTO 在上游边界重写为 camelCase，并丢弃 `owner_id` / `space_id` / `native_*` / `reserved_location` / `operation_id` 等内部字段。
 
 ### 4.1 控制台页面（`web/`）
 
@@ -72,6 +76,7 @@ Fenix 后端 ──Authorization: Bearer <master key>
 - **列表 / 面包屑**：`GET /files`，游标分页「加载更多」；空态、失败态（`role="alert"` + 重试）与加载骨架分开呈现。
 - **上传**：`web/lib/upload.ts` 的 `runChunkedUpload` 负责 4 MiB 切片、以服务端 `offset` 续传、网络/限流退避重试与 410 重建会话；React 队列（`web/hooks/use-cloud-drive-uploads.ts`）串行执行多文件、逐文件进度、失败重试与取消（取消会 `abandon` 会话）。队列以右下角浮层展示：全部完成后延迟 2s 自动隐藏，失败条目保持到重试或清除，新任务出现时重新显示。
 - **下载**：同源锚点直连 `GET /files/:id/content`，文件名由服务端 `Content-Disposition` 决定，不经前端 blob。
+- **预览**：文件行「预览」动作或点击文件名打开对话框（`CloudDrivePreviewDialog`）。文本/Office 走 markdown 并循环游标（一次最多 8 页 / 512KiB，可继续加载）；PDF/图片走页清单 + 页图，支持翻页、页码输入与适应宽度；其它类型提示下载。转换中显示进度并轮询元数据（退避、30s 预算、关闭即取消）；失败提供「重新转换」；404/413/429/503/502 都有可读文案与重试。
 - **变更**：新建目录 / 改名 / 移动 / 删除 / 恢复都走既有端点；`expectedMetadataRevision` 只在恢复时由前端携带（取自回收站条目）。
 - **搜索**：`POST /search` 手动触发；上游按 chunk 返回命中，服务端把同一文件聚合成一条、截取带上下文的纯文本片段并返回 UTF-16 高亮区间（每文件最多 3 段，默认 20 个文件、上限 50）。为补齐名称 / 父目录 / 大小 / 更新时间，只对实际展示的文件并发读取元数据（6 并发、2 秒总时限，失败回退路径派生值）；页面点击文件名或「打开所在目录」仍先 `GET /files/:id` 再逐级回溯目录名重建面包屑。
 - **错误**：服务端信封 `message` 优先上屏，字典只在 message 为空时兜底；上传会话 410/404 停止续传。
@@ -96,7 +101,18 @@ Content-Disposition: attachment; filename="<ASCII fallback>"; filename*=UTF-8''<
 - 只接受单段 `bytes=start-` / `bytes=start-end`；多段、后缀区间在 Fenix 侧返回 416，避免上游 422 被映射成上游故障。
 - 超时只覆盖到响应头；客户端断开（`request.signal`）会中止上游连接。
 
-## 7. 错误映射
+## 7. 预览
+
+CloudDrive 的预览是**异步转换产物**，不是按需渲染：
+
+1. `GET /files/:id` 的 `conversion.status` 为 `queued / processing / ready / partial / blocked / failed`；`ready` 之前 `/v1/files/{id}/markdown` 恒为 404。`GET /v1/operations/{conversion_job}` 实测 404，进度只能轮询文件元数据。
+2. **markdown**（`GET /files/:id/markdown`）：文本与 Office 的通用通路，上游约 64KiB/页，`nextCursor` 非空时继续取。Fenix 单次响应上限 256KiB（只防御上游分页契约漂移，触发时 `truncated: true`，游标保留）；Fenix 先读元数据再取正文，把「产物未生成」的 404 翻译成 `CLOUD_DRIVE_PREVIEW_NOT_READY`，转换失败/阻塞翻译成 422 `CLOUD_DRIVE_PREVIEW_FAILED`。
+3. **栅格**（`GET /files/:id/preview` + `preview/pages/:page`）：PDF 与图片可用，首次页图惰性渲染。上游页图**必须**带 `version_id`，缺失一律 404；Facade 在缺省时用元数据 `currentVersionId` 补齐。页图响应透传 `Content-Type / Content-Length / ETag / Last-Modified`，显式版本允许 `private, max-age=300, immutable`，用当前版本补齐时 `no-store`（URL 不含版本，缓存会跨版本命中）。
+4. **重新转换**（`POST /files/:id/conversions`）：服务端生成 `idempotency_key`，返回 `{ jobId, state, sourceVersionId }`；正在转换或已就绪返回 409。任务状态只能通过轮询元数据观察。
+5. **限制**：转换上限 100MiB / 500 页 / 64MiB 输出，栅格预览 100MiB；`preview` 与 `anydoc` 串行。Office 栅格依赖不可用时上游返回 503（缺 kkfileview），因此 Office 在前端**默认走 markdown**，不请求栅格。图片 OCR 不可用（缺 paddleocr），不要承诺从图片提取文字。
+6. 错误语义无法只靠上游状态区分：503 同时表示「Office 栅格缺失」与「文本转换依赖故障」，所以策略由扩展名决定；跨用户与已删除仍是 404。
+
+## 8. 错误映射
 
 | 上游 | Fenix |
 | --- | --- |
@@ -109,12 +125,15 @@ Content-Disposition: attachment; filename="<ASCII fallback>"; filename*=UTF-8''<
 | `RATE_LIMITED` / 429 | 429 `CLOUD_DRIVE_RATE_LIMITED` |
 | 上传会话 404 | 404 `CLOUD_DRIVE_UPLOAD_NOT_FOUND` |
 | 上传会话已结束（HEAD 409） | 410 `CLOUD_DRIVE_UPLOAD_GONE` |
+| 预览产物未生成（markdown/preview 上游 404） | 404 `CLOUD_DRIVE_PREVIEW_NOT_READY`（转换 failed/blocked 时为 422 `CLOUD_DRIVE_PREVIEW_FAILED`） |
+| 页图 404（页号越界 / 版本不存在） | 404 `CLOUD_DRIVE_PREVIEW_PAGE_NOT_FOUND` |
+| 重新转换时任务进行中 / 已就绪 | 409 `CLOUD_DRIVE_CONVERSION_IN_PROGRESS` / `CLOUD_DRIVE_CONVERSION_NOT_NEEDED` |
 | 网络失败 / 超时 | 503 `CLOUD_DRIVE_UNAVAILABLE` / `CLOUD_DRIVE_TIMEOUT` |
 | 其余 | 502 |
 
 分类只在 `client/cloud-drive-error.ts` 做一次；`kind → HTTP` 的对应表只在 `routes/web/cloud-drive-response.ts` 出现一次。
 
-## 8. 部署与超时
+## 9. 部署与超时
 
 四个键在模块 `envDefinitions` 声明，宿主只做投影：
 
@@ -125,7 +144,7 @@ Content-Disposition: attachment; filename="<ASCII fallback>"; filename*=UTF-8''<
 
 基址与密钥同时配置才启用；未配置时服务照常启动，`/web/cloud-drive/*` 返回 503 `CLOUD_DRIVE_NOT_CONFIGURED`。超时默认 120s 的依据：真实环境冷启动首次写操作约 65s，finalize 含异步提交；30s 会把正常写入误判为超时。读操作通常约 50ms，共用同一上限只影响失败判定时间。下载只在等待响应头阶段计时。
 
-## 9. 已知边界
+## 10. 已知边界
 
 1. 没有暴露 CloudDrive 操作状态查询（`GET /v1/operations/{id}`）；变更返回非 `committed` 状态时前端只能刷新元数据。
 2. 搜索最终一致；写入后立即搜索可能为空。
@@ -133,8 +152,12 @@ Content-Disposition: attachment; filename="<ASCII fallback>"; filename*=UTF-8''<
 4. 没有声明 `dependencyServices`：CloudDrive 的编排不在本仓，preflight 不探活它。
 5. 首版页面未接入：URL 深链（目录层级是页面内状态，刷新回根目录）、覆盖写上传（`fileId`）、历史版本浏览、拖拽上传与多选批量操作。这些能力对应的服务端端点已就绪，接 UI 不需要改协议。
 6. 搜索的元数据补齐是展示性数据：最多 50 个文件、2 秒总时限；超时或单文件读取失败时回退到路径派生名称，`sizeBytes` / `updatedAt` 为 null。片段来自转换产物，非文本文件与转换未完成的文件没有片段。
+7. 预览依赖转换完成，未就绪只能轮询元数据（上游没有任务查询端点）；前端轮询预算 30s，超时后由用户重试。
+8. 图片只有栅格页图，没有 OCR 文字提取（缺 paddleocr）；Office 的栅格预览不可用（缺 kkfileview），只能走 markdown。
+9. markdown 预览一次最多聚合 8 页 / 512KiB，更多内容需用户点「加载更多」；页图按需惰性渲染，首张可能有等待。
 
-## 10. 验证
+## 11. 验证
 
-- 单测：`packages/resources/cloud-drive/src/__tests__/`（client 错误映射/超时/TUS、Facade actor 隔离与编排、路由鉴权/信封/下载头）。
+- 单测：`packages/resources/cloud-drive/src/__tests__/`（client 错误映射/超时/TUS/预览端点、Facade actor 隔离与编排、路由鉴权/信封/下载头/页图版本与缓存头）。
+- 前端单测：`web/__tests__/`（预览类型矩阵、markdown 分页聚合、轮询退避、面板状态与页图 URL）。
 - 真实联调：`scripts/cloud-drive-local-smoke.ts`，步骤与验收口径见 [运维文档](../operations/cloud-drive-local-smoke.md)。
