@@ -116,6 +116,14 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       ragflowRequestTimeoutMs: config.ragflowRequestTimeoutMs,
       gotenbergUrl: config.gotenbergUrl,
     },
+    // 个人云盘模块配置：四个键都是本模块声明的部署键，宿主只做透传。基址与 master key 未配置时
+    // 是 `undefined`，包侧按「未启用」返回 503（CloudDrive 是可选外部依赖，不阻断主服务启动）。
+    "cloud-drive": {
+      baseUrl: readDeclaredEnv<string | undefined>(env, "CLOUDRIVE_BASE_URL"),
+      masterKey: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_MASTER_KEY"),
+      keyId: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_KEY_ID"),
+      timeoutMs: readDeclaredEnv<number>(env, "CLOUDDRIVE_TIMEOUT_MS"),
+    },
     // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
     memory: { hindsightMcpUrl: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_MCP_URL") },
     // 插件市场模块配置：npm 私有源五键全部**直接透传**模块声明值，不经宿主 config。

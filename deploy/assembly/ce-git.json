@@ -6,6 +6,7 @@
   "resources": [
     "agent-config",
     "channel",
+    "cloud-drive",
     "knowledge",
     "machine",
     "mcp",

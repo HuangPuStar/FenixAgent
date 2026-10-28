@@ -34,6 +34,7 @@ const EXPECTED_SERVER_MODULES = [
   ["skill", "resource"],
   ["agent-config", "resource"],
   ["channel", "resource"],
+  ["cloud-drive", "resource"],
   ["machine", "resource"],
   ["model-management", "resource"],
   ["observer", "resource"],
