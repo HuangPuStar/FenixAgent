@@ -20,6 +20,13 @@ export interface PromptTurnStartOptions {
   session: AgentSession;
   sessionId?: string;
   prepareNewSession?: () => Promise<void>;
+  /**
+   * 逐会话 MCP 条目，随 `session/new|load` 下发。
+   *
+   * 只由 IM 链路使用：入口凭据按 conversation 签发，不能放进环境级 `.mcp.json`（同环境实例会共享身份）。
+   * 结构由调用方生成，这里只负责透传。
+   */
+  mcpServers?: readonly Record<string, unknown>[];
   signal?: AbortSignal;
   /** Bounded handshake timeout; configurable for deterministic regression coverage. */
   handshakeTimeoutMs?: number;
@@ -225,7 +232,7 @@ function createPromptTurnWithLease(
 /** Only an explicit matching session/new or session/load acknowledgement permits a prompt. */
 export async function startPromptTurn(
   options: PromptTurnStartOptions,
-): Promise<{ turn: PromptTurn; session: AgentSession }> {
+): Promise<{ turn: PromptTurn; session: AgentSession; sessionId: string }> {
   const { session, signal } = options;
   signal?.throwIfAborted();
   if (!options.sessionId && options.prepareNewSession) {
@@ -302,7 +309,10 @@ export async function startPromptTurn(
           jsonrpc: "2.0",
           id: rpcId,
           method: options.sessionId ? "session/load" : "session/new",
-          params: options.sessionId ? { sessionId: options.sessionId } : {},
+          params: {
+            ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+            ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
+          },
         } as unknown as EngineRelayMessage);
         if (sending) void sending.catch((error) => settle(error));
       } catch (error) {
@@ -314,6 +324,7 @@ export async function startPromptTurn(
     return {
       turn: createPromptTurnWithLease(session, sessionId, signal, options.onExecutionFinished, sessionLease),
       session,
+      sessionId,
     };
   } catch (error) {
     // An unacknowledged load may still be executing; its session remains fenced until runtime stop.

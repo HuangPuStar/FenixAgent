@@ -10,6 +10,13 @@ import {
 } from "@fenix/model-management/server";
 import type { BootstrapResult } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
+import {
+  bindChannelAgentConfigLookup,
+  bindImSessionPort,
+  markInterruptedImDeliveriesFailed,
+  startImEventMaintenance,
+  stopImEventMaintenance,
+} from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   bindMachineAgentConfigPort,
@@ -32,6 +39,8 @@ import { initDb, client as pgClient } from "../db";
 import { findDeprecatedEnvVars } from "../env";
 import { readDeclaredEnv, type ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
+import { createChannelImSessionPort } from "../services/channel-im-session-port";
+import { createChannelAgentConfigLookup } from "../services/channel-module-ports";
 import { initCoreRuntime } from "../services/core-bootstrap";
 import { machineAgentConfigPort } from "../services/machine-agent-config-port";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
@@ -229,8 +238,14 @@ async function runStartupSteps(
   // `@fenix/resource-machine → @fenix/agent-config` 的移除条件），改由这里绑上 owner 的实现。位置必须
   // 在这里：`wireHostRuntime` 刻意不导入 agent-config，而本文件本来就持有它的入口。
   bindMachineAgentConfigPort(machineAgentConfigPort);
+  // Channel 的 Agent 配置可用性端口：校验的是「通道所有者」的 use 权限（IM 消息以所有者身份执行），
+  // 因此必须晚于 agent-config 装配、由宿主构造 owner 视角的 actor。位置与上面三个端口同批。
+  bindChannelAgentConfigLookup(createChannelAgentConfigLookup());
+  // Channel 的 IM 会话端口：冷启动要确保专属实例、打开 ACP 会话并发送一次唤醒 prompt，全部属于
+  // Agent 运行时的数据面；channel 包只声明端口，实现在本宿主 `services/channel-im-session-port.ts`。
+  bindImSessionPort(createChannelImSessionPort());
   startupLog.info(
-    "Pre-launch ports bound (agent launch spec / agent config lookup / machine labels / model labels / machine agent config)",
+    "Pre-launch ports bound (agent launch spec / agent config lookup / machine labels / model labels / machine agent config / channel agent config / channel IM session)",
   );
 
   // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
@@ -285,6 +300,14 @@ async function runStartupSteps(
     startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
   }
   agentRuntime.startIdleMonitor();
+
+  // IM 入站的事件投递只保证进程内：先把上一进程遗留的 received/delivered 标记失败（不重放），再启动
+  // 未读正文的 TTL 清理。放在全部模块装配之后，确保 channel 模块的 DB 句柄与配置已就绪。
+  const interrupted = await markInterruptedImDeliveriesFailed();
+  if (interrupted > 0) {
+    startupLog.info(`Marked ${interrupted} interrupted IM channel events as failed (reason=restart)`);
+  }
+  startImEventMaintenance();
 }
 
 /** 逆序关闭全部宿主运行态；调用方负责进程退出。 */
@@ -297,6 +320,7 @@ export async function shutdownHostRuntime(agentRuntime: AgentRuntimeHandles): Pr
   agentRuntime.closeAllAcpConnections();
   // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
   stopFileWsSweep();
+  stopImEventMaintenance();
   closeAllFileWsConnections();
   await withShutdownDeadline(runtimeDrain, "runtimes", deadline);
   // 装配释放的时机：晚于 runtime drain（在途会话先结束，避免模块在仍有调用时空转），早于 cache 与 DB

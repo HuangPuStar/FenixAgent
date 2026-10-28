@@ -253,6 +253,13 @@
       "when": 1793158328893,
       "tag": "0035_channel-remove-hermes-binding",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793170122928,
+      "tag": "0036_channel-langbot-tables",
+      "breakpoints": true
     }
   ]
 }

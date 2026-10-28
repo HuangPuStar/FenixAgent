@@ -25,6 +25,7 @@
   ],
   "web": [
     "agent-config",
+    "channel",
     "identity",
     "knowledge",
     "mcp",

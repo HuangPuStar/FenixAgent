@@ -80,10 +80,12 @@ export interface StopInstanceOutcome {
   readonly error?: string;
 }
 
-/** `startPromptTurn` 的结果：本轮 turn 与它所在的会话。 */
+/** `startPromptTurn` 的结果：本轮 turn、它所在的会话，以及确认后的 ACP 会话 ID。 */
 export interface PromptTurnStartResult {
   readonly turn: PromptTurn;
   readonly session: AgentSession;
+  /** `session/new` 或 `session/load` 确认的会话 ID；IM 链路据此回写 conversation。 */
+  readonly sessionId: string;
 }
 
 /**

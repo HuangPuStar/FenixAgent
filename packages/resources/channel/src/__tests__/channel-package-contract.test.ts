@@ -1,6 +1,5 @@
-// Channel 包的移除回归：Hermes 通道实现（Hermes 客户端、ACP 事件桥、通道绑定路由与页面）已删除，
-// 包内只保留 IM 通道的表定义与模块描述符。这条用例把「移除后应当仍然成立」的两件事钉住：
-// 目标表仍在、旧绑定表与它那套对外面不再回来。
+// Channel 包的交付面回归：Hermes 通道实现已删除，包内保留 IM 通道表定义、模块描述符与服务端控制面。
+// 这条用例钉住三件事：目标表仍在、旧绑定表不再回来、控制面的对外出口与部署声明是可预期的。
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -11,8 +10,8 @@ import { getTableName } from "drizzle-orm";
 
 const PKG_ROOT = join(import.meta.dir, "../..");
 
-describe("Channel 包在移除 Hermes 后的交付面", () => {
-  // IMChannel 的两张目标表必须继续由本包持有：它们的定义是后续通道能力重建的起点。
+describe("Channel 包的交付面", () => {
+  // IMChannel 的两张目标表必须继续由本包持有：它们的定义是通道能力的起点。
   test("继续导出 im_channel / im_channel_route 两张目标表", () => {
     expect(getTableName(schema.imChannel)).toBe("im_channel");
     expect(getTableName(schema.imChannelRoute)).toBe("im_channel_route");
@@ -24,25 +23,57 @@ describe("Channel 包在移除 Hermes 后的交付面", () => {
     expect(readFileSync(join(PKG_ROOT, "db/schema.ts"), "utf8")).not.toMatch(/pgTable\(\s*"channel_binding"/);
   });
 
-  // 对外面只剩表定义与模块描述符：server / web 出口随 Hermes 实现一起删除，重建时再按需新增。
-  test("package.json 只保留根、db 与 module 三个出口", () => {
+  // 对外面 = 根、db、module、server 四个服务端出口 + 浏览器面的页面入口、路由壳贡献、字典与纯逻辑模块。
+  // 浏览器面单独开窄出口，避免宿主登记字典时把页面图拉进首屏。
+  test("package.json 出口覆盖服务端面与浏览器面", () => {
     const manifest = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
       exports?: Record<string, string>;
     };
-    expect(Object.keys(manifest.exports ?? {}).sort()).toEqual([".", "./db", "./module"]);
+    expect(Object.keys(manifest.exports ?? {}).sort()).toEqual([
+      ".",
+      "./db",
+      "./module",
+      "./server",
+      "./web",
+      "./web/contribution",
+      "./web/i18n",
+      "./web/lib/channel-page-state",
+    ]);
   });
 
-  // 模块描述符不得残留 Hermes 时代的装配声明（网关环境变量、路由贡献、运行期工厂）。
-  test("模块描述符不再声明 envDefinitions / contributions / create", () => {
+  // 模块必须以资源模块身份装配控制面、数据面入站与 MCP 入口，并把 LangBot 配置声明在自己名下（宿主 env 不得有同名键）。
+  test("模块描述符声明控制面、数据面与 MCP 路由以及 LangBot 环境变量", () => {
     expect(moduleManifest).toMatchObject({
       id: "channel",
       kind: "resource",
       dependsOn: [],
       capabilities: ["resource.channel"],
     });
-    expect("envDefinitions" in moduleManifest).toBe(false);
-    expect("contributions" in moduleManifest).toBe(false);
-    expect("create" in moduleManifest).toBe(false);
-    expect("web" in moduleManifest).toBe(false);
+    expect(moduleManifest.contributions?.map((item) => item.id)).toEqual([
+      "channel.web-langbot",
+      "channel.hooks-langbot",
+      "channel.mcp-im",
+    ]);
+    expect(moduleManifest.contributions?.map((item) => item.slot)).toEqual(["web", "app", "app"]);
+    expect(moduleManifest.web).toEqual({
+      id: "channel",
+      contribution: "@fenix/resource-channel/web/contribution",
+    });
+    expect(moduleManifest.envDefinitions?.map((item) => item.key).sort()).toEqual([
+      "IM_EVENT_TEXT_TTL_HOURS",
+      "IM_TOKEN_SECRET",
+      "LANGBOT_API_KEY",
+      "LANGBOT_BASE_URL",
+    ]);
+    expect(moduleManifest.create).toBeFunction();
+  });
+
+  // 密钥必须在内核声明层就被标记为 secret：日志与部署清单据此决定是否展示值。
+  test("LangBot API Key 与 IM token 密钥标记为 secret", () => {
+    const secrets = (moduleManifest.envDefinitions ?? [])
+      .filter((item) => item.secret)
+      .map((item) => item.key)
+      .sort();
+    expect(secrets).toEqual(["IM_TOKEN_SECRET", "LANGBOT_API_KEY"]);
   });
 });

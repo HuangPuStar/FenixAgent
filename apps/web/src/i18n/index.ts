@@ -62,6 +62,7 @@ import {
   settingsResources,
 } from "@fenix/identity/web/i18n";
 import { MODELS_NS, modelManagementResources } from "@fenix/model-management/web/i18n";
+import { CHANNELS_NS, channelsResources } from "@fenix/resource-channel/web/i18n";
 import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n";
 import { MACHINE_NS, machineResources } from "@fenix/resource-machine/web/i18n";
 import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
@@ -148,6 +149,7 @@ const packageResources = {
     [TRACE_NS]: traceResources.en,
     [WORKFLOW_NS]: workflowResources.en,
     [KNOWLEDGE_NS]: knowledgeResources.en,
+    [CHANNELS_NS]: channelsResources.en,
     [MACHINE_NS]: machineResources.en,
     [HINDSIGHT_NS]: hindsightResources.en,
     [PROD_VIEWS_NS]: prodViewsResources.en,
@@ -173,6 +175,7 @@ const packageResources = {
     [TRACE_NS]: traceResources.zh,
     [WORKFLOW_NS]: workflowResources.zh,
     [KNOWLEDGE_NS]: knowledgeResources.zh,
+    [CHANNELS_NS]: channelsResources.zh,
     [MACHINE_NS]: machineResources.zh,
     [HINDSIGHT_NS]: hindsightResources.zh,
     [PROD_VIEWS_NS]: prodViewsResources.zh,

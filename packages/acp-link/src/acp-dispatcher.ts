@@ -17,6 +17,11 @@ import {
 } from "./json-rpc.js";
 import type { ContentBlock, PermissionResponsePayload } from "./types.js";
 
+/** ACP `mcpServers` 由平台服务端生成；这里只校验数组边界，条目结构由 SDK 与 Agent 校验。 */
+function readMcpServers(value: unknown): acp.McpServer[] {
+  return Array.isArray(value) ? (value as acp.McpServer[]) : [];
+}
+
 /**
  * ACP 消息分发器。接收 JSON-RPC 请求，调用 ClientSideConnection SDK，
  * 通过 send 回调返回 JSON-RPC 响应/通知。
@@ -227,7 +232,7 @@ export class AcpDispatcher {
     this.send({ type: "status", payload: { connected: false } });
   }
 
-  private async handleNewSession(id: number | string, _params: Record<string, unknown>): Promise<void> {
+  private async handleNewSession(id: number | string, params: Record<string, unknown>): Promise<void> {
     if (!this.state.connection) {
       this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
@@ -235,7 +240,7 @@ export class AcpDispatcher {
     try {
       const result = await this.state.connection.newSession({
         cwd: this.workspace,
-        mcpServers: [],
+        mcpServers: readMcpServers(params.mcpServers),
       });
       this.state.sessionId = result.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
@@ -379,7 +384,10 @@ export class AcpDispatcher {
     }
   }
 
-  private async handleLoadSession(id: number | string, params: { sessionId: string; cwd?: string }): Promise<void> {
+  private async handleLoadSession(
+    id: number | string,
+    params: { sessionId: string; cwd?: string; mcpServers?: unknown },
+  ): Promise<void> {
     if (!this.state.connection) {
       this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
@@ -392,7 +400,7 @@ export class AcpDispatcher {
       const result = await this.state.connection.loadSession({
         sessionId: params.sessionId,
         cwd: this.workspace,
-        mcpServers: [],
+        mcpServers: readMcpServers(params.mcpServers),
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);

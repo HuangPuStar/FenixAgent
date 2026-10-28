@@ -22,5 +22,16 @@
     "workflow-v2",
     "git"
   ],
-  "web": ["agent-config", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task", "workflow"]
+  "web": [
+    "agent-config",
+    "channel",
+    "identity",
+    "knowledge",
+    "mcp",
+    "memory",
+    "model-management",
+    "skill",
+    "task",
+    "workflow"
+  ]
 }
