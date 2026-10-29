@@ -75,14 +75,6 @@ export * from "./chat/timeline/ToolCallGroup";
 export * from "./chat/timeline/ToolCallRow";
 export * from "./chat/timeline/tool-json-block";
 export type * from "./chat/types";
-export type { UISpec, UISpecElement } from "./chat/ui-spec/spec";
-// `UI_SPEC_PLUGINS` 刻意不经 barrel 转出：它含数学插件，静态转出会把 KaTeX 拉进入口 chunk
-// （2026-10-15 实测 `index.html` 出现 `modulepreload katex-*.js`）。消费方只有 `message.tsx`，
-// 它在自己的惰性边界里动态取该常量；语言标识仍从 `spec.ts` 转出，保持既有引用路径可用。
-export { UI_SPEC_LANGUAGE } from "./chat/ui-spec/spec";
-export { UISpecBlock } from "./chat/ui-spec/UISpecBlock";
-export { type UISpecHostContext, UISpecHostProvider, useUISpecHost } from "./chat/ui-spec/UISpecHostContext";
-export { UISpecView } from "./chat/ui-spec/UISpecView";
 export * from "./chat/view/ChatQuoteMessage";
 export * from "./chat/view/ChatView";
 export * from "./chat/view/CitationLink";

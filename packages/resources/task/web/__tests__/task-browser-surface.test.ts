@@ -89,6 +89,10 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["react-hook-form", "表单状态库（ui-components 与 TaskForm 传递使用），浏览器安全"],
   ["recharts", "图表渲染（ui/chart 传递依赖；ui-components 的 dependencies），浏览器安全"],
   ["streamdown", "流式 Markdown 渲染（chat/primitives/message 传递依赖），浏览器安全"],
+  [
+    "@peri-code/sdk",
+    "OpenUI 围栏切分与画布渲染（chat/primitives/message 与 chat/openui 传递依赖；openui 出口为纯 TS + React，渲染器经动态 import 懒加载），浏览器安全",
+  ],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   [
     "react-file-icon",

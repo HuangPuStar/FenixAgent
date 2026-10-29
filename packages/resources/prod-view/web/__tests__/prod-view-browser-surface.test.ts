@@ -91,6 +91,10 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["radix-ui", "Radix 聚合包（ui/sheet、ui/progress 传递依赖），只重导出各原语"],
   ["recharts", "图表渲染（ui/chart 与 model-management 用量页传递依赖），纯浏览器实现"],
   ["streamdown", "流式 Markdown 渲染（ui-components chat 层传递依赖）"],
+  [
+    "@peri-code/sdk",
+    "OpenUI 围栏切分与画布渲染（ui-components chat 层传递依赖；openui 出口为纯 TS + React，渲染器经动态 import 懒加载），浏览器安全",
+  ],
   // 经 agent-config 编辑器 → knowledge / memory 面板传递进入（这两个包的守卫另有其自身的收敛项）
   ["dompurify", "HTML 消毒（knowledge 资源预览与分块详情传递依赖），纯浏览器实现"],
   ["mammoth", "docx 转 HTML（knowledge 资源预览传递依赖），纯浏览器实现"],

@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { createChatKatexPlugin } from "../chat/ui-spec/math-plugin";
+import { createChatKatexPlugin } from "../chat/primitives/math-plugin";
 import {
   KATEX_AUTO_RENDER_DELIMITERS,
   KATEX_ERROR_COLOR,
@@ -118,20 +118,23 @@ describe("KaTeX 策略单一来源", () => {
     expect(forkedUsages("singleDollarTextMath", "KATEX_SINGLE_DOLLAR_TEXT_MATH")).toEqual([]);
   });
 
-  // KaTeX 本体不得被 eager 模块静态引入：barrel / 消息组件都必须走动态导入（2026-10-15 实测过静态可达）
+  // KaTeX 本体不得被 eager 模块静态引入：barrel / 消息 Markdown 边界都必须走动态导入（2026-10-15 实测过静态可达）
   test("聊天链路经动态导入到达 KaTeX", () => {
     const message = readFileSync(join(WEB_ROOT, "chat/primitives/message.tsx"), "utf8");
-    const plugins = readFileSync(join(WEB_ROOT, "chat/ui-spec/plugins.ts"), "utf8");
+    const markdown = readFileSync(join(WEB_ROOT, "chat/primitives/message-markdown.tsx"), "utf8");
+    const plugins = readFileSync(join(WEB_ROOT, "chat/primitives/message-plugins.ts"), "utf8");
     const barrels = [
       readFileSync(join(WEB_ROOT, "index.ts"), "utf8"),
       readFileSync(join(WEB_ROOT, "chat/index.ts"), "utf8"),
     ];
 
-    expect(stripComments(message)).toContain('import("../ui-spec/plugins")');
-    expect(stripComments(message)).not.toMatch(/^import \{[^}]*UI_SPEC_PLUGINS/m);
+    expect(stripComments(markdown)).toContain('import("../primitives/message-plugins")');
+    expect(stripComments(markdown)).not.toMatch(/^import \{[^}]*MESSAGE_PLUGINS/m);
+    // 消息组件只做围栏切分与选择，不得自己持有插件常量
+    expect(stripComments(message)).not.toContain("MESSAGE_PLUGINS");
     // barrel 不得转出插件常量（它含数学插件，静态转出会把 KaTeX 拉进入口 chunk）；
     // 注释里说明「为什么不再转出」是允许的，故先剥注释再断言
-    for (const barrel of barrels) expect(stripComments(barrel)).not.toContain("UI_SPEC_PLUGINS");
+    for (const barrel of barrels) expect(stripComments(barrel)).not.toContain("MESSAGE_PLUGINS");
     // 插件模块本身（惰性 chunk）里也不得有 `katex` 的静态值导入，KaTeX 只能经 `@streamdown/math` 与动态导入到达
     expect(plugins).not.toMatch(/^import .*from "katex/m);
     // 样式表触发点必须留着：聊天侧没有别的 `loadKatexStyles()` 调用，漏掉会让公式退回浏览器默认排版

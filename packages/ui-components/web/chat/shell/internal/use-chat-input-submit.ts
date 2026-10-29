@@ -109,6 +109,11 @@ export function useChatInputSubmit({
   // 缓存用户首次发送的 prompt，等 activeSessionId 就绪后自动发送
   const pendingSendRef = useRef<PendingSend | null>(null);
   const pendingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 直发在途标记：同步置位，覆盖 `isLoading` 投影更新前的重复提交（例如快速双击 OpenUI 按钮）。
+  // 只约束直发；入队路径不受影响。
+  const directSendInFlightRef = useRef(false);
+  // 最近一次直发的落定 promise：pending 补发遇到在途直发时排到它之后，既避免并发也不丢消息。
+  const directSendSettledRef = useRef<Promise<void>>(Promise.resolve());
 
   // Reset scene prompt flag when session changes
   useEffect(() => {
@@ -140,11 +145,25 @@ export function useChatInputSubmit({
       onEnqueuePrompt?.(pending.blocks, pending.draftText);
       return;
     }
-    onSendPrompt(pending.blocks).catch((err) => {
-      console.error("[ChatInterface] Pending send failed:", err);
-      // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
-      onNotice?.({ level: "error", message: sendPromptFailedMessage });
-    });
+    const sendPending = () => {
+      // 直发在途时排到它落定之后重试：pending 消息本身不丢，也不与新的直发并发。
+      if (directSendInFlightRef.current) {
+        void directSendSettledRef.current.then(sendPending);
+        return;
+      }
+      directSendInFlightRef.current = true;
+      const settled = onSendPrompt(pending.blocks)
+        .catch((err) => {
+          console.error("[ChatInterface] Pending send failed:", err);
+          // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
+          onNotice?.({ level: "error", message: sendPromptFailedMessage });
+        })
+        .finally(() => {
+          directSendInFlightRef.current = false;
+        });
+      directSendSettledRef.current = settled;
+    };
+    sendPending();
   }, [activeSessionId, onSendPrompt, onEnqueuePrompt, onNotice, sendPromptFailedMessage, clearPendingSend]);
 
   // 组件卸载或 contextKey 变化时清理 pending prompt（避免内存泄漏 / 错误发送）
@@ -234,12 +253,21 @@ export function useChatInputSubmit({
         return;
       }
 
-      try {
-        await onSendPrompt(contentBlocks);
-      } catch (error) {
-        console.error("[ChatInterface] Failed to send prompt:", error);
-        onNotice?.({ level: "error", message: sendPromptFailedMessage });
-      }
+      // 同步守卫：第一次直发落定前，后续提交直接丢弃（`isLoading` 投影更新存在延迟）。
+      if (directSendInFlightRef.current) return;
+      directSendInFlightRef.current = true;
+      const settled = (async () => {
+        try {
+          await onSendPrompt(contentBlocks);
+        } catch (error) {
+          console.error("[ChatInterface] Failed to send prompt:", error);
+          onNotice?.({ level: "error", message: sendPromptFailedMessage });
+        } finally {
+          directSendInFlightRef.current = false;
+        }
+      })();
+      directSendSettledRef.current = settled;
+      await settled;
     },
     [
       isLoading,
