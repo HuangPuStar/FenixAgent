@@ -1,0 +1,76 @@
+# docker/langbot/ —— LangBot IM 网关（channel 模块使用；上游源码不改动）
+#
+# 权威文档：docs/arch/30-langbot-channel-gateway.md（集成契约）、
+#           docs/operations/docker-topology.md §6（依赖目录契约）。
+#
+# 独立项目启动：
+#   cp docker/langbot/.env.example docker/langbot/.env    # 填 LANGBOT_API_KEY
+#   docker compose -f docker/langbot/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_LANGBOT=true。
+#
+# 网络：只有核心 langbot 接入 fenix-server（主服务按 LANGBOT_BASE_URL=http://langbot:5300 访问它，
+# 它按 http://rcs:3000/hooks/langbot/<channelId> 回调主服务）；插件运行时只在项目默认网络内。
+# 宿主端口只绑回环，供管理员打开 WebUI 与本地源码运行（bun run dev）使用。
+#
+# 镜像定版：rockchin/langbot:v4.11.2（2026-10-22 发布；amd64 + arm64 多架构）。
+# 官方编排另含 box（沙箱执行，需挂 docker.sock）与 2280-2285 反向连接端口，本目录刻意不启用：
+# Box 会扩大攻击面，反向连接端口只在特定 IM 适配器下才需要，按 README「可选项」单独追加。
+
+name: langbot
+
+services:
+
+    langbot:
+        image: rockchin/langbot:v4.11.2
+        container_name: fenix-langbot
+        restart: unless-stopped
+        networks:
+            - default
+            - fenix-server
+        ports:
+            # 回环：WebUI 与 Service API（主服务经容器网络访问，不依赖这条映射）。
+            - "127.0.0.1:${LANGBOT_HTTP_PORT:-5300}:5300"
+        environment:
+            TZ: ${TZ:-Asia/Shanghai}
+            # Service API 与内置 MCP Server 的全局密钥；主服务用同一值调用 /api/v1/**。
+            # 注意：LangBot 会把生效配置持久化到 /app/data/config.yaml，密钥随 data 目录落盘，见 README。
+            API__GLOBAL_API_KEY: ${LANGBOT_API_KEY:?LANGBOT_API_KEY 未设置：请在 docker/langbot/.env 配置（openssl rand -hex 32）}
+            # IM 平台回调与 http_bot 入站地址的前缀；生产必须是外部可达的 HTTPS 源。
+            API__WEBHOOK_PREFIX: ${LANGBOT_PUBLIC_BASE_URL:-http://127.0.0.1:5300}
+            # 插件运行时地址。服务名固定为 langbot_plugin_runtime，不能改成 container_name。
+            PLUGIN__RUNTIME_WS_URL: ws://langbot_plugin_runtime:5400/control/ws
+            # 本编排不启用 Box 沙箱。技能管理与只读资源仍可用；执行类工具与 stdio MCP 不可用。
+            BOX__ENABLED: "false"
+        volumes:
+            # 配置（config.yaml）、SQLite（langbot.db）、插件与日志都在这里。
+            - ./data:/app/data
+        healthcheck:
+            # 镜像内没有 curl，用镜像自带的 python 探测核心进程的 /healthz。
+            test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5300/healthz', timeout=3).getcode()==200 else 1)"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+
+    langbot_plugin_runtime:
+        image: rockchin/langbot:v4.11.2
+        container_name: fenix-langbot-plugin-runtime
+        restart: unless-stopped
+        command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
+        environment:
+            TZ: ${TZ:-Asia/Shanghai}
+        volumes:
+            # 与核心共享同一份插件目录与产物缓存；两个路径必须与官方编排一致。
+            - ./data/plugins:/app/data/plugins
+            - ./data/plugin-runtime:/app/data/plugin-runtime
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5400/healthz', timeout=3).getcode()==200 else 1)"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+
+networks:
+    # 由主服务项目创建；本目录只引用（契约 §6 规则 3）。主服务项目未启动时本目录起不来。
+    fenix-server:
+        external: true

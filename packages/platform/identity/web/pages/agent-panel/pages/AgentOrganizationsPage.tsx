@@ -418,6 +418,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
         onDeleteOrganization={() => setDeleteOpen(true)}
       />
       <OrganizationsDialogs
+        organizationId={selectedOrgId ?? undefined}
         createOpen={createOpen}
         formName={formName}
         formSlug={formSlug}

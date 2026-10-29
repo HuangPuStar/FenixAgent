@@ -40,3 +40,4 @@ export * from "./hooks/use-artifacts-files";
 export * from "./hooks/use-file-tree-events";
 export * from "./hooks/use-file-uploads";
 export * from "./lib/normalize-to-user-path";
+export * from "./pages/machine-connection-guide";

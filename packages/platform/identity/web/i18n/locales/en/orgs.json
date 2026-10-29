@@ -113,8 +113,7 @@
     "agentName": "Engine Type",
     "agentNamePlaceholder": "Select engine type",
     "resultTitle": "Machine Created",
-    "resultDesc": "Share the following information with the machine administrator. Set the environment variables on the client before starting acp-runtime.",
-    "initCommand": "Init Command"
+    "resultDesc": "Open the connection guide and follow the instructions to connect this machine."
   },
   "editMachineDialog": {
     "title": "Edit Machine",
@@ -159,5 +158,6 @@
   "orgSwitchFailed": "Failed to switch organization: {{message}}",
   "nav": {
     "organizations": "Organizations"
-  }
+  },
+  "machineGuide": "Connection guide"
 }

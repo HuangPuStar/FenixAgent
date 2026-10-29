@@ -42,6 +42,7 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Link } from "@tanstack/react-router";
 import {
   Check,
   Copy,
@@ -256,6 +257,16 @@ function MachineRow({ machine, props }: { machine: MachineView; props: Organizat
             </span>
           ))}
       </div>
+      <Button asChild variant="ghost" size="sm">
+        <Link
+          to="/agent/machine/connection-guide"
+          search={{ machineId: machine.id, organizationId: props.selectedOrgId ?? undefined }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t("machineGuide")}
+        </Link>
+      </Button>
       <div className="flex items-center gap-0.5 opacity-20 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <Button
           variant="ghost"

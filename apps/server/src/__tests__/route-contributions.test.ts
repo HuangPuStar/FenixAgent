@@ -339,6 +339,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "PATCH /registry/machines/:id",
     "DELETE /registry/machines/:id",
     "GET /registry/machines/:id/events",
+    "GET /registry/acp-runtime.js",
+    "GET /registry/acp-runtime/:platform",
+    "GET /registry/machines/:id/connection-parameters",
     // model-management
     "GET /model-gateway/:providerId/usage",
     "GET /agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail",

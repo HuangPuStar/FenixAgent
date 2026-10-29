@@ -114,6 +114,7 @@ export default defineConfig({
         {
           text: "全局概览",
           items: [
+            { text: "架构拓扑总览", link: "/arch/00-topology" },
             { text: "总体架构", link: "/arch/tech-stack-overview" },
             { text: "后端技术栈", link: "/arch/tech-stack-backend" },
             { text: "前端技术栈", link: "/arch/tech-stack-frontend" },
@@ -137,6 +138,12 @@ export default defineConfig({
             { text: "Agent 输出可视化（四条路径定位）", link: "/arch/27-agent-output-visualization" },
             { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },
             { text: "文件系统", link: "/arch/12-files" },
+          ],
+        },
+        {
+          text: "消息通道",
+          items: [
+            { text: "LangBot IM 网关", link: "/arch/30-langbot-channel-gateway" },
           ],
         },
         {

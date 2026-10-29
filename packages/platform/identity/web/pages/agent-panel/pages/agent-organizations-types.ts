@@ -43,7 +43,7 @@ export interface MachineView {
 export interface MachineRegistryPort {
   /** 分页查询机器注册列表 */
   list(query?: { limit?: number }): Promise<ApiResponse<{ items: MachineView[] }>>;
-  /** 预注册机器，返回固定 machine id 与下发用的初始化命令 */
+  /** 预注册机器，返回固定 machine id。 */
   create(body: { name: string; labels?: string[]; agentName?: string }): Promise<ApiResponse<MachineCreateResult>>;
   /** 更新机器展示信息（名称 / 标签 / 引擎） */
   update(
@@ -70,7 +70,6 @@ export interface MachineFormState {
 export interface MachineCreateResult {
   id: string;
   name: string;
-  initCommand: string;
 }
 
 export interface OrganizationsWorkspaceProps {
@@ -110,6 +109,7 @@ export interface OrganizationsWorkspaceProps {
 }
 
 export interface OrganizationsDialogsProps {
+  organizationId?: string;
   createOpen: boolean;
   formName: string;
   formSlug: string;
