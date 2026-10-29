@@ -250,10 +250,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   // OpenUI 按钮动作：`open_url` 交给浏览器，其余动作按用户消息走同一条提交链路
   // （无会话懒创建、运行中入队、失败回执都由 `useChatInputSubmit` 处理，这里不绕过它）。
+  // 可用性与输入岛一致：只读、会话未就绪或 turn 运行中都禁用；`send` 入口再同步校验一次，
+  // 避免 handler 在状态切换的同一帧里被已渲染的按钮触发。
   const openUIAction = useMemo<OpenUIActionHandler>(
     () => ({
-      enabled: !isLoading,
+      enabled: !isLoading && !readonly && sessionReady,
       send: (event) => {
+        if (readonly || !sessionReady || isLoading) return;
         if (event.type === "open_url") {
           openExternalUrl(event.params.url);
           return;
@@ -262,7 +265,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         if (text) void handleChatInputSubmit({ text });
       },
     }),
-    [isLoading, handleChatInputSubmit],
+    [isLoading, readonly, sessionReady, handleChatInputSubmit],
   );
 
   // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。

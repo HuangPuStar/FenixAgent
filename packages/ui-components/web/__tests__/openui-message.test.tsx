@@ -6,17 +6,20 @@
 // happy-dom 骨架沿用 `chat-math-rendering.test.tsx`；OpenUI 主题桥在模块求值时调用
 // `getComputedStyle` 与 `MutationObserver`，因此这两个全局必须一并注入并成对还原。
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import type { OpenUIActionEvent } from "@peri-code/sdk/openui";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
-import { act, type ReactNode } from "react";
+import { act, lazy, type ReactNode, Suspense } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import { initReactI18next } from "react-i18next/initReactI18next";
 import { type OpenUIActionHandler, OpenUIActionProvider } from "../chat/openui/action-context";
+import { OpenUIChunkErrorBoundary } from "../chat/openui/openui-block";
 import { MessageResponse } from "../chat/primitives/message";
+import { type ChatInputSubmitOptions, useChatInputSubmit } from "../chat/shell/internal/use-chat-input-submit";
+import type { ChatInputMessage } from "../chat/types";
 import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
@@ -219,5 +222,151 @@ describe("OpenUI 按钮动作", () => {
       button?.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+  });
+});
+
+describe("OpenUI 渲染器 chunk 加载失败", () => {
+  // chunk 在求值期拒绝时，静态图里的 boundary 必须就地回退原文，而不是把错误抛到消息级边界
+  test("懒加载 chunk 失败时渲染原文兜底", async () => {
+    const RejectingChunk = lazy(() => Promise.reject(new Error("chunk load failed")));
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const host = win.document.createElement("div") as unknown as HTMLElement;
+    win.document.body.appendChild(host as unknown as Parameters<typeof win.document.body.appendChild>[0]);
+    const root = createRoot(host);
+    mounted.push(root);
+
+    try {
+      act(() => {
+        root.render(
+          <OpenUIChunkErrorBoundary fallback={<div>原始正文兜底</div>}>
+            <Suspense fallback={<div>加载中</div>}>
+              <RejectingChunk />
+            </Suspense>
+          </OpenUIChunkErrorBoundary>,
+        );
+      });
+
+      const fallback = await waitFor(host, '[data-openui-fallback="chunk-load-error"]');
+      expect(fallback.textContent).toBe("原始正文兜底");
+      expect(host.textContent).not.toContain("加载中");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+/** 可控 promise：用于让直发停在「在途」状态，观察第二次提交是否被守卫拦下。 */
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const BASE_SUBMIT_OPTIONS: ChatInputSubmitOptions = {
+  isLoading: false,
+  activeSessionId: "session-a",
+  onCreateSession: async () => "session-a",
+  onSendPrompt: async () => {},
+  imagePrepareFailedMessage: "image-failed",
+  sessionCreateFailedMessage: "session-failed",
+  sendPromptFailedMessage: "send-failed",
+};
+
+/** 极简 hook 宿主：把最新的 `submit` 交给测试，不渲染任何 DOM。 */
+function SubmitHarness({
+  options,
+  capture,
+}: {
+  options: Partial<ChatInputSubmitOptions>;
+  capture: (submit: (message: ChatInputMessage) => Promise<void>) => void;
+}) {
+  const submit = useChatInputSubmit({ ...BASE_SUBMIT_OPTIONS, ...options });
+  capture(submit);
+  return null;
+}
+
+/** 建一个只挂 harness 的 root，返回触发提交的句柄。 */
+async function mountSubmitHarness(options: Partial<ChatInputSubmitOptions>): Promise<{
+  submit: (message: ChatInputMessage) => Promise<void>;
+  host: HTMLElement;
+}> {
+  const host = win.document.createElement("div") as unknown as HTMLElement;
+  win.document.body.appendChild(host as unknown as Parameters<typeof win.document.body.appendChild>[0]);
+  const root = createRoot(host);
+  mounted.push(root);
+  let submit: ((message: ChatInputMessage) => Promise<void>) | null = null;
+  await act(async () => {
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <SubmitHarness
+          capture={(next) => {
+            submit = next;
+          }}
+          options={options}
+        />
+      </I18nextProvider>,
+    );
+  });
+  if (!submit) throw new Error("submit 未挂载");
+  return { submit, host };
+}
+
+describe("OpenUI 动作的重复直发保护", () => {
+  // 快速双击时第二次提交必须被同步守卫丢弃：第一次直发落定前不能再调用 onSendPrompt
+  test("直发在途时第二次提交不再发送", async () => {
+    const deferred = createDeferred();
+    let sends = 0;
+    const { submit } = await mountSubmitHarness({
+      onSendPrompt: () => {
+        sends += 1;
+        return deferred.promise;
+      },
+    });
+
+    await act(async () => {
+      void submit({ text: "第一次" });
+      void submit({ text: "第二次" });
+      await Promise.resolve();
+    });
+    expect(sends).toBe(1);
+
+    await act(async () => {
+      deferred.resolve();
+      await deferred.promise;
+    });
+    await flush();
+
+    await act(async () => {
+      await submit({ text: "第三次" });
+    });
+    expect(sends).toBe(2);
+  });
+
+  // 入队路径不受直发守卫影响：turn 运行中连续提交两次都应该入队
+  test("入队路径不被直发守卫拦截", async () => {
+    const enqueued: string[] = [];
+    let sends = 0;
+    const { submit } = await mountSubmitHarness({
+      isLoading: true,
+      queueSubmitActive: true,
+      onEnqueuePrompt: (_blocks, draft) => {
+        enqueued.push(draft);
+        return true;
+      },
+      onSendPrompt: async () => {
+        sends += 1;
+      },
+    });
+
+    await act(async () => {
+      void submit({ text: "入队一" });
+      void submit({ text: "入队二" });
+      await Promise.resolve();
+    });
+
+    expect(enqueued).toEqual(["入队一", "入队二"]);
+    expect(sends).toBe(0);
   });
 });

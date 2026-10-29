@@ -99,7 +99,7 @@ OpenUI Lang 是一行一条语句的声明式程序，宿主用 `@peri-code/sdk`
 
 - 用户输入的表单值**不会自动出现在对话里**，必须在同一 `Card` 内放一个 `Button(..., @ToAssistant("..."))` 提交。
 - 表单值随用户消息发送，由模型按消息内容解释；它不是宿主状态，也不是授权凭据。
-- `Button` 不带 action 时，点击等价于 `@ToAssistant(label)`。
+- 每个 `Button` 都必须提供 action（`@ToAssistant("...")` 或 `@OpenUrl("...")`）；没有 action 的程序校验失败，整块回退为原文。
 
 ## 布局与数据约束
 
