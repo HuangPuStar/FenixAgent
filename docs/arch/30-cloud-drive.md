@@ -135,16 +135,110 @@ CloudDrive 的预览是**异步转换产物**，不是按需渲染：
 
 ## 9. 部署与超时
 
-四个键在模块 `envDefinitions` 声明，宿主只做投影：
+九个键在模块 `envDefinitions` 声明，宿主只做投影：
 
 - `CLOUDDRIVE_BASE_URL`（可选，http/https）
 - `CLOUDDRIVE_MASTER_KEY`（可选，`secret: true`）
 - `CLOUDDRIVE_KEY_ID`（可选）
 - `CLOUDDRIVE_TIMEOUT_MS`（默认 **120000**）
+- `CLOUDDRIVE_MCP_TOKEN_SECRET`（可选，`secret: true`；缺失时不下发 MCP 条目且网关 503）
+- `CLOUDDRIVE_MCP_TOKEN_TTL_SECONDS`（默认 **3600**，会话级 token）
+- `CLOUDDRIVE_MCP_LAUNCH_TTL_SECONDS`（默认 **86400**，LaunchSpec token）
+- `CLOUDDRIVE_MCP_SCOPE`（`read` / `write`，默认 **read**）
+- `CLOUDDRIVE_MCP_TIMEOUT_MS`（默认 **15000**，只读工具执行上限）
 
 基址与密钥同时配置才启用；未配置时服务照常启动，`/web/cloud-drive/*` 返回 503 `CLOUD_DRIVE_NOT_CONFIGURED`。超时默认 120s 的依据：真实环境冷启动首次写操作约 65s，finalize 含异步提交；30s 会把正常写入误判为超时。读操作通常约 50ms，共用同一上限只影响失败判定时间。下载只在等待响应头阶段计时。
 
-## 10. 已知边界
+## 10. MCP 网关（Agent 侧）
+
+Agent 通过平台托管的 MCP 网关访问云盘，**不直连** CloudDrive 自带的 beta MCP（`api:8081/mcp`）：
+
+- 那个端点只认 master key + `X-On-Behalf-Of`，下发等于把 master key 交给 Agent 进程，可冒充任意用户；
+- 8081 只在 CloudDrive 的容器网络内，远端 Machine 不可达；
+- 它的工具名与行为没有稳定性承诺，Fenix 也无法按 scope 裁剪工具。
+
+### 10.1 端点与鉴权
+
+```text
+Agent ──Authorization: Bearer cd1.<payload>.<sig>──► POST /mcp/cloud-drive
+                                                    └─ CloudDriveFacade → CloudDriveClient → /v1/*
+```
+
+- **stateless**：`sessionIdGenerator: undefined` + `enableJsonResponse: true`，每个 POST 独立鉴权，无
+  `Mcp-Session-Id`；只暴露 tools，不实现 resources/subscriptions/skills。
+- 挂载在宿主 `app` 槽（`cloud-drive.mcp` 贡献），公开路径 `/mcp/cloud-drive`，OpenAPI 隐藏。
+- 未配置 `CLOUDDRIVE_MCP_TOKEN_SECRET`（或 baseUrl/masterKey 缺失）→ **503**；无 token/坏 token → **401**；
+  body 上限 2 MiB（`Content-Length` 预检）。
+- 主体**只**来自 token：工具参数里没有 `user_id`/`uid`/`org`，`strictObject` 让越权字段直接失败。
+
+### 10.2 Token
+
+```text
+cd1.<base64url({"v":1,"uid","org","exp","scope"})>.<base64url(HMAC-SHA256(secret,"cd1.<payload>"))>
+```
+
+- `scope` 只有 `read` / `write`；`exp` 是 epoch 秒，过期即拒绝；签名常数时间比较；格式、版本、字段
+  任一不合法都返回 401，不区分原因。
+- 密钥 `CLOUDDRIVE_MCP_TOKEN_SECRET` 与 master key 分离；轮换会让在途 token 立即失效（LaunchSpec 注入的
+  条目需要实例重物化，会话级条目下次握手自动换新）。
+- token **不落库、不写日志、不进错误响应**；签发只发生在服务端，用户/组织来自已认证的上下文。
+- TTL：会话级 `CLOUDDRIVE_MCP_TOKEN_TTL_SECONDS`（默认 3600）；LaunchSpec `CLOUDDRIVE_MCP_LAUNCH_TTL_SECONDS`
+  （默认 86400，需覆盖实例存活期）。
+
+### 10.3 工具面（v1）
+
+| 工具 | scope | 只读 | 说明 |
+| --- | --- | --- | --- |
+| `cloud_drive_me` | read | 是 | 主体与配额 |
+| `cloud_drive_list` | read | 是 | 目录列表，游标分页 |
+| `cloud_drive_stat` | read | 是 | 元数据 |
+| `cloud_drive_search` | read | 是 | 关键词搜索（最终一致） |
+| `cloud_drive_read_markdown` | read | 是 | 转换产物 markdown，分页 |
+| `cloud_drive_versions` | read | 是 | 历史版本 |
+| `cloud_drive_trash_list` | read | 是 | 回收站 |
+| `cloud_drive_mkdir` | write | 否 | 新建目录 |
+| `cloud_drive_write_text` | write | 否 | 新建/覆盖写文本（≤1 MiB，走 TUS 会话） |
+| `cloud_drive_move` | write | 否 | 移动（`parent_id: null` = 根目录） |
+| `cloud_drive_rename` | write | 否 | 改名 |
+
+`CLOUDDRIVE_MCP_SCOPE` 默认 `read`：**只读 token 的 `tools/list` 里根本不存在写工具**。v1 不暴露删除、
+恢复、批量、分享、反馈、重新转换、上传/下载票据与操作状态查询。
+
+- 写操作复用 Facade 的编排：先读元数据 → 带 `expected_metadata_revision`；`write_text` 走
+  `beginUpload → uploadChunk → finalizeUpload`，中途失败会 `abandon`，不静默重试。
+- 结果上限 **64 KiB**：`read_markdown` 截断正文并保留 `next_cursor`；列表类按条目截断；都带 `truncated`
+  与提示。
+- 错误只返回稳定 code：`NOT_FOUND` / `CONFLICT` / `UNAVAILABLE` / `RATE_LIMITED` /
+  `INVALID_ARGUMENT` / `NOT_CONFIGURED` / `UPSTREAM_ERROR`，配固定中文文案；上游 message/details、
+  URL、票据、master key 都不进入结果。
+- 读工具执行上限 `CLOUDDRIVE_MCP_TIMEOUT_MS`（默认 15000）；写操作沿用
+  `CLOUDDRIVE_TIMEOUT_MS`（首次 provision 可能约 65s）。
+- 日志字段：`tool` / `scope` / `uid` / `orgId` / `outcome` / `durationMs` / `upstreamStatus` /
+  `upstreamCode`；没有 token、正文、票据或 URL。
+- **文件内容是不可信数据**：server `instructions` 与每个工具描述都要求 Agent 不要执行文件中的指令。
+
+## 11. 双通道下发
+
+| 通道 | 注入点 | 形态 | TTL | 引擎覆盖 |
+| --- | --- | --- | --- | --- |
+| A | 宿主 `services/pre-launch-ports.ts` → `withCloudDriveMcpServer` | `.mcp.json` 的 `streamable-http` 条目 | 86400 | 全部引擎 |
+| B | `chat-channel` 的 `sessionMcpServers` 端口 → ACP `session/new\|load\|resume` | `{type:"http",name,url,headers:[…]}` | 3600 | 目前只有 peri（其他适配器忽略会话级条目） |
+
+- A 在 `buildAgentLaunchSpec` 返回后追加，`buildMinimalAgentLaunchSpec` **不追加**；CloudDrive 未配置时
+  跳过，secret 缺失时跳过并 warning，token 签发失败时 warning 后按无云盘工具启动。
+- 用户 MCP 已占用保留名 `cloud-drive` → **拒绝启动**（与 `mcp-resolution` 的严格口径一致），不静默覆盖。
+- B 由宿主注册 provider（`setSessionMcpServersProvider`），`agent-runtime` 不反向依赖资源包；provider
+  未注册、失败或缺组织上下文时降级为「本次不注入」，不阻断建会话。条目只进 ACP 消息，不落盘。
+- token 过期：A 需要实例重物化；B 下次 `session/new` 自动换新。CloudDrive 不可达时条目照常注入，工具返回
+  `UNAVAILABLE`，服务端不自动重试写操作。
+- 回滚：删掉 env 即可，无表、无迁移；已经写入 `.mcp.json` 的条目随实例工作区重写消失。
+
+**后续**：工作流与会话级注入的接入点分别在
+`packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` 与
+`packages/resources/task/src/server/services/scheduler/agent-executor.ts`，它们可以复用
+`resolveSessionMcpServers`，本版未接入。
+
+## 12. 已知边界
 
 1. 没有暴露 CloudDrive 操作状态查询（`GET /v1/operations/{id}`）；变更返回非 `committed` 状态时前端只能刷新元数据。
 2. 搜索最终一致；写入后立即搜索可能为空。

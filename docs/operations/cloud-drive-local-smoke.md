@@ -36,6 +36,8 @@ DATABASE_URL='postgres://<user>:<password>@127.0.0.1:5432/fenix_clouddrive_smoke
 | `CLOUDDRIVE_MASTER_KEY` | `$(cat ~/.config/clouddrive/fenix.key)`（写入 env 文件，不打印） |
 | `CLOUDDRIVE_KEY_ID` | `demo` |
 | `CLOUDDRIVE_TIMEOUT_MS` | `180000`（联调可高于默认 120000） |
+| `CLOUDDRIVE_MCP_TOKEN_SECRET` | `openssl rand -hex 32`（MCP 网关与冒烟脚本共用；不打印） |
+| `CLOUDDRIVE_MCP_SCOPE` | `write`（要验证写工具时；默认 `read`） |
 
 ```bash
 cd .worktrees/feat-clouddrive
@@ -62,6 +64,22 @@ bun run scripts/cloud-drive-local-smoke.ts
 3. 结束时打印 Markdown 结果表、两个用户邮箱与用户 ID。
 
 复用已有会话时可提供 `CLOUD_DRIVE_SMOKE_COOKIE_A` / `CLOUD_DRIVE_SMOKE_COOKIE_B`（完整 Cookie 头）。
+
+### 4.1 MCP 网关冒烟
+
+MCP 网关（`/mcp/cloud-drive`）的冒烟脚本 `scripts/cloud-drive-mcp-smoke.ts` 同样默认跳过。它**自己签发**
+两个用户的 token，不需要浏览器会话，但要求目标进程与脚本共享 `CLOUDDRIVE_MCP_TOKEN_SECRET`：
+
+```bash
+set -a; . /tmp/clouddrive-smoke.env; set +a
+CLOUD_DRIVE_MCP_SMOKE=1 FENIX_BASE_URL=http://127.0.0.1:3101 bun run scripts/cloud-drive-mcp-smoke.ts
+```
+
+覆盖 `initialize`、`tools/list` 的 scope 过滤、`me`/`list`/`search`/`stat`/`versions`/`trash_list`、
+`mkdir`/`write_text`、`read_markdown`（轮询转换产物），以及双用户隔离（B 用 A 的 fileId → `NOT_FOUND`）。
+token 不打印；测试用户与文件保留在云盘，按需清理。
+
+写工具要求服务端 `CLOUDDRIVE_MCP_SCOPE=write`；默认 `read` 时脚本的写步骤会失败（这是预期行为）。
 
 ## 5. 清理
 
