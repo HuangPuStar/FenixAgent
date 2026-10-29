@@ -18,6 +18,7 @@ import {
   buildAdapterConfig,
   CUSTOM_ADAPTER_ID,
   findBuiltinAdapter,
+  pickChangedAdapterConfig,
 } from "./adapter-catalog";
 import { AdapterIcon } from "./adapter-icons";
 
@@ -104,7 +105,8 @@ export function BotFormDialog(props: BotFormDialogProps) {
         );
         return;
       }
-      config = built.config;
+      // 创建要补齐 manifest 默认值；编辑只提交改过的键，否则会把 LangBot 上的现有开关重置回默认。
+      config = mode === "create" ? built.config : pickChangedAdapterConfig(built.config, fieldValues);
     } else {
       const parsed = parseBotConfigJson(configText);
       if (!parsed.ok) {

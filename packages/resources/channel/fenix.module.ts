@@ -6,8 +6,9 @@ import { z } from "zod/v4";
  * Channel 资源模块描述符。
  *
  * 本包持有 IM 通道的持久化定义（出口 `@fenix/resource-channel/db`）、LangBot 控制面与数据面服务层、
- * `/web/channels/langbot`（控制面）、`/hooks/langbot/:channelId`（数据面入站）与 `/mcp/im`（Agent
- * 工具与订阅）路由（出口 `@fenix/resource-channel/server`）。前端页面随后续任务落地。
+ * `/web/channels/langbot`（控制面）、`/hooks/langbot/:channelId`（数据面入站）、`/mcp/im`（Agent
+ * 工具与订阅）与 `/api/system/channels`（系统管理面）路由（出口 `@fenix/resource-channel/server`），
+ * 以及通道页面、admin 页面与 i18n（出口 `@fenix/resource-channel/web`）。
  *
  * `dependsOn: []`：本包是叶子模块，装配上不要求任何其它资源模块同批启用。跨包外键的列对象只在
  * `db/schema.ts` 的组装期导入（§6.1 例外），不构成装配边；`agent_config` 的可见性判定经宿主注入的

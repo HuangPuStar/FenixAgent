@@ -231,8 +231,8 @@ export function booleanFieldValue(field: AdapterField, values: Readonly<Record<s
 /**
  * 把表单值收敛为适配器配置：文本/密钥/枚举只提交填写项（枚举未选时用缺省值），布尔与隐式字段始终提交。
  *
- * 编辑模式下配置不会回显，空字段必须省略而不是提交空串；服务端会把提交的配置与 LangBot
- * 上的现有值合并，所以这里不能为了「保留旧值」而省略布尔默认值。
+ * 空字段必须省略而不是提交空串；创建模式依赖这里补齐 manifest 默认值。编辑模式不能直接用它的
+ * `config`，要用 {@link pickChangedAdapterConfig} 只保留用户改过的键（LangBot 侧按合并语义更新）。
  */
 export function buildAdapterConfig(
   definition: AdapterDefinition,
@@ -262,4 +262,21 @@ export function buildAdapterConfig(
   }
 
   return { config, missing };
+}
+
+/**
+ * 编辑模式只保留用户实际改过的键。
+ *
+ * LangBot 的 PUT 会把提交的 config 与远端现有值合并；把目录默认值一并提交会把用户在 LangBot
+ * 侧改过的开关重置回默认，而 `fieldValues` 里没有出现过的键正是用户未操作的部分。
+ */
+export function pickChangedAdapterConfig(
+  config: Readonly<Record<string, unknown>>,
+  values: Readonly<Record<string, string | boolean>>,
+): Record<string, unknown> {
+  const changed: Record<string, unknown> = {};
+  for (const key of Object.keys(values)) {
+    if (key in config) changed[key] = config[key];
+  }
+  return changed;
 }

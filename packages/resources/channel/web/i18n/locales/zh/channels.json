@@ -24,7 +24,7 @@
       "deleteFailedWith": "删除失败：{{message}}"
     },
     "bots": {
-      "create": "创建连接消息",
+      "create": "创建消息连接",
       "emptyTitle": "还没有通道",
       "emptyDescription": "创建一个 LangBot Bot 后，它的 IM 聊天就可以交给平台 Agent。",
       "status": {

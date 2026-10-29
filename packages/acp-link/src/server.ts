@@ -25,6 +25,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
+import { readPlatformMcpServers } from "./mcp-servers.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import { ServerRelayRouter } from "./server-relay-router.js";
@@ -1288,11 +1289,6 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  /** ACP `mcpServers` 由平台服务端生成；这里只校验数组边界，条目结构由 SDK 与 Agent 校验。 */
-  function readMcpServers(value: unknown): acp.McpServer[] {
-    return Array.isArray(value) ? (value as acp.McpServer[]) : [];
-  }
-
   async function handleNewSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
@@ -1305,7 +1301,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const sessionCwd = (params.cwd as string) || cwd;
       const result = await state.connection.newSession({
         cwd: sessionCwd,
-        mcpServers: readMcpServers(params.mcpServers),
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
 
       bindSession(ws, result.sessionId);
@@ -1404,7 +1400,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const result = await state.connection.loadSession({
         sessionId,
         cwd: sessionCwd,
-        mcpServers: readMcpServers(params.mcpServers),
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
 
       state.modelState = extractModelState(result.configOptions);

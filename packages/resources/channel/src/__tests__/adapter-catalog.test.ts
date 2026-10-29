@@ -6,6 +6,7 @@ import {
   BUILTIN_ADAPTERS,
   buildAdapterConfig,
   findBuiltinAdapter,
+  pickChangedAdapterConfig,
 } from "../../web/pages/agent-panel/components/adapter-catalog";
 
 const onebot = findBuiltinAdapter("onebot-v11")!;
@@ -86,5 +87,16 @@ describe("LangBot 适配器目录", () => {
       "enable-webhook": false,
       "enable-stream-reply": false,
     });
+  });
+
+  // 编辑模式只提交用户改过的键：LangBot 按合并语义更新，补默认值会重置用户在 LangBot 侧改过的开关。
+  test("编辑模式只保留用户改过的配置键", () => {
+    const touched = { client_id: "id", markdown_card: false };
+    const built = buildAdapterConfig(dingtalk, touched);
+
+    expect(pickChangedAdapterConfig(built.config, {})).toEqual({});
+    expect(pickChangedAdapterConfig(built.config, touched)).toEqual(touched);
+    // 隐式字段没有输入控件，never 出现在 fieldValues 里，因此也不会被提交。
+    expect(pickChangedAdapterConfig(built.config, { client_id: "id" })).toEqual({ client_id: "id" });
   });
 });

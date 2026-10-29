@@ -15,12 +15,8 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
+import { readPlatformMcpServers } from "./mcp-servers.js";
 import type { ContentBlock, PermissionResponsePayload } from "./types.js";
-
-/** ACP `mcpServers` 由平台服务端生成；这里只校验数组边界，条目结构由 SDK 与 Agent 校验。 */
-function readMcpServers(value: unknown): acp.McpServer[] {
-  return Array.isArray(value) ? (value as acp.McpServer[]) : [];
-}
 
 /**
  * ACP 消息分发器。接收 JSON-RPC 请求，调用 ClientSideConnection SDK，
@@ -74,14 +70,15 @@ export class AcpDispatcher {
 
     const msg = raw as Record<string, unknown>;
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
-      console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
+      // 请求体可能带 `mcpServers[].headers` 里的会话 Bearer，日志只记录方法与 id。
+      console.log("[acp-dispatcher] ← rpc:", msg.method, msg.id);
       await this.handleRequest(msg as unknown as JsonRpcRequest);
       return;
     }
 
     // 处理 JSON-RPC 通知（有 method 但无 id），如 session/update
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id === undefined) {
-      console.log("[acp-dispatcher] ← notification:", JSON.stringify(raw).slice(0, 500));
+      console.log("[acp-dispatcher] ← notification:", msg.method);
       if (msg.method === ACP_METHOD.SESSION_CANCEL) {
         await this.cancellations.cancel(undefined, msg.params as { sessionId?: string } | undefined);
       } else {
@@ -240,7 +237,7 @@ export class AcpDispatcher {
     try {
       const result = await this.state.connection.newSession({
         cwd: this.workspace,
-        mcpServers: readMcpServers(params.mcpServers),
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
       this.state.sessionId = result.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
@@ -400,7 +397,7 @@ export class AcpDispatcher {
       const result = await this.state.connection.loadSession({
         sessionId: params.sessionId,
         cwd: this.workspace,
-        mcpServers: readMcpServers(params.mcpServers),
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
