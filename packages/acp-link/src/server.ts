@@ -1108,6 +1108,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
+    await waitForAgentCapabilities(state);
     if (!state.agentCapabilities?.sessionCapabilities?.delete) {
       sendMsg(ws, createErrorResponse(id, -32601, "session/delete is not supported by agent"));
       return;
@@ -1127,6 +1128,30 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   }
 
   // --- Agent lifecycle handlers ---
+
+  /** initialize 等待上限：超过即按当前已知能力处理，避免请求无限挂起。 */
+  const AGENT_INIT_WAIT_TIMEOUT_MS = 10_000;
+
+  /** 能力未知不等于不支持：冷启动时 session/* 可能先于 initialize 完成到达，需等初始化落定再判能力。 */
+  async function waitForAgentCapabilities(clientState: RuntimeState): Promise<void> {
+    const inFlight = connecting;
+    if (clientState.agentCapabilities !== null || inFlight === null) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        inFlight,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, AGENT_INIT_WAIT_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (error) {
+      // 失败由 startAgent 清理连接并广播错误，这里只保证请求继续走原有错误响应。
+      console.warn("wait for agent capabilities failed:", error instanceof Error ? error.message : typeof error);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
 
   async function handleConnect(ws: AcpWs): Promise<void> {
     if (!clients.has(ws) || stopped) return;
@@ -1312,6 +1337,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    await waitForAgentCapabilities(state);
     if (!state.agentCapabilities?.sessionCapabilities?.list) {
       sendMsg(ws, createErrorResponse(id, -32000, "Listing sessions is not supported by this agent"));
       return;
@@ -1360,6 +1386,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    await waitForAgentCapabilities(state);
     if (!state.agentCapabilities?.loadSession) {
       sendMsg(ws, createErrorResponse(id, -32000, "Loading sessions is not supported by this agent"));
       return;
@@ -1410,6 +1437,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    await waitForAgentCapabilities(state);
     if (!state.agentCapabilities?.sessionCapabilities?.resume) {
       sendMsg(ws, createErrorResponse(id, -32000, "Resuming sessions is not supported by this agent"));
       return;
