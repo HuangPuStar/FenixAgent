@@ -108,6 +108,14 @@ export const ChatView = React.memo(
     }, [hiddenCount, loadEarlier, onLoadEarlierHistory]);
     // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
     const renderBlocks = useMemo(() => buildChatRenderBlocks(visibleEntries), [visibleEntries]);
+    // plan 由 ChatStatusPanel 展示、不进时间线；它落在末尾时不能算作活动链的末条条目，否则链会误折叠。
+    const lastRenderableEntry = useMemo(() => {
+      for (let index = visibleEntries.length - 1; index >= 0; index -= 1) {
+        const entry = visibleEntries[index];
+        if (entry.type !== "plan") return entry;
+      }
+      return;
+    }, [visibleEntries]);
     const hasMessages = renderBlocks.length > 0;
     // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
     const hasUserMessages = useMemo(() => visibleEntries.some((e) => e.type === "user_message"), [visibleEntries]);
@@ -164,7 +172,7 @@ export const ChatView = React.memo(
                         key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
                         items={block.items}
                         isLoading={isLoading}
-                        lastEntry={visibleEntries.at(-1)}
+                        lastEntry={lastRenderableEntry}
                         afterMessage={followsAssistantMessage}
                         sessionId={sessionId}
                         envId={envId}

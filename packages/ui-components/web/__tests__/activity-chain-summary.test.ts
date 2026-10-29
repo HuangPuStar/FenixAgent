@@ -93,8 +93,12 @@ describe("活动链运行态判定", () => {
     expect(isActivityChainActive([group(tool("a", "read-file")), stale], true)).toBe(false);
   });
 
-  // 仅加载中但末项已是工具时，工具已终态即可折叠。
-  test("加载中但末项为终态工具时视为已结束", () => {
-    expect(isActivityChainActive([thought("t1", "思考"), group(tool("a", "read-file"))], true)).toBe(false);
+  // 工具刚完成、下一个条目尚未到达时本轮仍在加载，链必须保持展开。
+  test("加载中且末条条目是本链内的终态工具时视为运行中", () => {
+    const completed = tool("a", "read-file");
+
+    expect(isActivityChainActive([thought("t1", "思考"), group(completed)], true, completed)).toBe(true);
+    // 末条条目属于别的链时，本链仍按已结束处理。
+    expect(isActivityChainActive([thought("t1", "思考"), group(completed)], true, tool("b", "grep"))).toBe(false);
   });
 });
