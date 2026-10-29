@@ -45,6 +45,35 @@ describe("translateSimpleAction", () => {
     }
   });
 
+  // 会话级 MCP 只注入 create/load/resume 的握手参数；其它动作即使传了也不能带。
+  test("injects session-scoped mcp servers only into session handshakes", () => {
+    const mcpServers = [
+      {
+        type: "http",
+        name: "cloud-drive",
+        url: "http://fenix.local/mcp/cloud-drive",
+        headers: [{ name: "Authorization", value: "Bearer token" }],
+      },
+    ];
+
+    expect(translateSimpleAction({ action: "create_session" }, "/workspace", 1, { mcpServers })).toMatchObject({
+      method: "session/new",
+      params: { cwd: "/workspace", mcpServers },
+    });
+    expect(
+      translateSimpleAction({ action: "load_session", sessionId: "ses-1" }, "/workspace", 2, { mcpServers }),
+    ).toMatchObject({ method: "session/load", params: { sessionId: "ses-1", cwd: "/workspace", mcpServers } });
+    expect(
+      translateSimpleAction({ action: "resume_session", sessionId: "ses-1" }, "/workspace", 3, { mcpServers }),
+    ).toMatchObject({ method: "session/resume", params: { sessionId: "ses-1", cwd: "/workspace", mcpServers } });
+    expect(translateSimpleAction({ action: "send_prompt", content: [] }, "/workspace", 4, { mcpServers })).toEqual({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "session/prompt",
+      params: { content: [], sessionId: undefined },
+    });
+  });
+
   // respond_permission 必须以 JSON-RPC 响应形态发送（id = requestId，result 携带 outcome），
   // 与 acp-link client.respondToPermission 对齐：acp-link server/dispatcher 只解析
   // "result" in msg 的响应，旧 session/permission 请求形态会落 Method not found（C5 修复）
