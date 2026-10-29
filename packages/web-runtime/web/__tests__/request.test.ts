@@ -65,7 +65,7 @@ describe("request helpers", () => {
     };
 
     const { request } = await import("@fenix/web-runtime/api/request");
-    const result = await request<{ models: string[] }>("/web/config/providers/actions/fetch-models", {
+    const result = await request<{ models: string[] }>("/web/config/providers/provider-id/fetch-models", {
       method: "POST",
       query: { name: "anthropic" },
       body: {},
@@ -103,7 +103,7 @@ describe("request helpers", () => {
 
     try {
       await unwrap(
-        request<{ models: string[] }>("/web/config/providers/actions/fetch-models", {
+        request<{ models: string[] }>("/web/config/providers/provider-id/fetch-models", {
           method: "POST",
           query: { name: "anthropic" },
           body: {},

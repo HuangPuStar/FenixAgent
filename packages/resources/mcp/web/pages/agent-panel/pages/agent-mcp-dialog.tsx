@@ -18,6 +18,7 @@ import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import { createKeyValueRow, KeyValueEditor, type KeyValueRow, toEntries } from "./agent-mcp-key-value-editor";
 import {
   buildMcpPayload,
+  createMcpBatch,
   type KeyValueEntry,
   McpImportError,
   parseMcpJson,
@@ -141,21 +142,12 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
           if (error instanceof McpImportError) throw new Error(t(error.key));
           throw error;
         }
-        const createdNames: string[] = [];
-        try {
-          for (const entry of entries) {
-            await unwrap(mcpApi.create(entry.name, entry.config));
-            createdNames.push(entry.name);
-          }
-        } catch (error) {
-          await Promise.allSettled(createdNames.map((name) => unwrap(mcpApi.del(name))));
-          throw error;
-        }
+        await createMcpBatch(entries);
         return { importedCount: entries.length };
       }
 
       const payload = buildMcpPayload(form);
-      await (server ? unwrap(mcpApi.update(server.name, payload)) : unwrap(mcpApi.create(form.name, payload)));
+      await (server ? unwrap(mcpApi.update(server.id, payload)) : unwrap(mcpApi.create(form.name, payload)));
       return { importedCount: null };
     },
     {

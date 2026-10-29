@@ -243,6 +243,32 @@ describe("SkillFacade 写入与补偿", () => {
     expect(rowWrites).toEqual([{ resourceId: "skill-1", description: "新" }]);
   });
 
+  // 局部更新通过 ID 定位并保留未提供的正文、描述与文档元数据。
+  test("updateById 保留未提交的文档字段", async () => {
+    mkdirSync(join(skillRoot, "org-1", "demo"), { recursive: true });
+    writeFileSync(
+      skillContentPath("org-1", "demo"),
+      "---\nname: demo\ndescription: old-description\nlicense: MIT\n---\n\n# Old Body\n",
+    );
+    const descriptions: unknown[] = [];
+    let currentDescription = "old-description";
+    const { facade } = buildFacade({
+      service: {
+        findById: async () => scopedSkill({ description: currentDescription }),
+        update: async ({ data }) => {
+          descriptions.push(data.description);
+          currentDescription = data.description ?? currentDescription;
+          return true;
+        },
+      },
+    });
+    await facade.updateById(actor, "skill-1", { description: "new-description" });
+    expect(readContent("org-1", "demo")).toContain("# Old Body");
+    expect(readContent("org-1", "demo")).toContain("license: MIT");
+    await facade.updateById(actor, "skill-1", { content: "# New Body" });
+    expect(descriptions).toEqual(["new-description", "new-description"]);
+  });
+
   // 资源行写入失败（并发删除、数据库故障）时恢复文件内容：不会出现"文件已改、行说旧值"的错位。
   test("update 资源行写入失败时恢复文件内容", async () => {
     mkdirSync(join(skillRoot, "org-1", "demo"), { recursive: true });

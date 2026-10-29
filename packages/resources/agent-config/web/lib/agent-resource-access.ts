@@ -16,16 +16,10 @@ export interface AgentResourceLike {
   organizationName?: string;
 }
 
-/**
- * 资源的跨组织稳定键。
- *
- * 新授权视图不再提供 `resourceAccess.resourceKey`，因此按 `${scope.organizationId}/${id}` 自行推导：
- * 二者缺一都无法保证跨组织唯一，此时退回 `name`（资源名在同一组织内唯一）。
- */
+/** 资源管理操作使用数据库 ID，缺失时拒绝名称回退。 */
 export function getAgentKey(agent: AgentResourceLike) {
-  const organizationId = agent.scope?.organizationId;
-  if (organizationId && agent.id) return `${organizationId}/${agent.id}`;
-  return agent.name;
+  if (!agent.id) throw new Error("Agent resource ID is required");
+  return agent.id;
 }
 
 /** 详情读取使用的查找键，语义与 {@link getAgentKey} 相同。 */

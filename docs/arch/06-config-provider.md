@@ -37,4 +37,4 @@ AgentConfig 通过 `modelId` 引用一个 Model。spawn 时 LaunchSpecBuilder �
 
 ## 跨组织共享
 
-Provider 和 Model 支持 `publicReadable` 公开可读。跨组织引用时通过 resourceKey（`来源组织ID/资源UUID`）标识，路由层自动解析。
+控制台管理、探测与下载通过数据库 ID 定位并由 Facade 校验访问权限；名称不承担管理接口的资源键职责。运行时的领域引用保持既有约定。完整 REST 路径见 [配置系统](./06-config.md#控制台资源接口)。

@@ -138,7 +138,7 @@ describe("round44 Skill 配置路由", () => {
     let receivedName = "";
     installSkillModuleStub({
       facade: {
-        readDetail: async (_actor, nameOrKey) => {
+        readDetailById: async (_actor, nameOrKey) => {
           receivedName = nameOrKey;
           return authorizedSkillDetail({ content: "# demo" });
         },
@@ -160,7 +160,7 @@ describe("round44 Skill 配置路由", () => {
     let queried = false;
     installSkillModuleStub({
       facade: {
-        readDetail: async () => {
+        readDetailById: async () => {
           queried = true;
           return authorizedSkillDetail();
         },
@@ -175,7 +175,7 @@ describe("round44 Skill 配置路由", () => {
 
   // 不可见与不存在返回同一个 404：区分两者会让名称成为跨组织探测面。
   test("详情不存在时返回 404", async () => {
-    installSkillModuleStub({ facade: { readDetail: async () => undefined } });
+    installSkillModuleStub({ facade: { readDetailById: async () => undefined } });
 
     const response = await request("/config/skills/missing");
 
@@ -188,7 +188,7 @@ describe("round44 Skill 配置路由", () => {
     installSkillModuleStub({
       facade: {
         // 归属范围缺 organizationId（个人资源形状）：组织资源的归档路径无法推导。
-        get: async () => ({ ...authorizedSkill(), scope: { ownerUserId: "user-1", visibility: "private" } }),
+        getById: async () => ({ ...authorizedSkill(), scope: { ownerUserId: "user-1", visibility: "private" } }),
       },
     });
 
@@ -199,7 +199,7 @@ describe("round44 Skill 配置路由", () => {
 
   // 不可见或不存在时不构建归档，直接映射为 404。
   test("下载不存在技能返回 404", async () => {
-    installSkillModuleStub({ facade: { get: async () => undefined } });
+    installSkillModuleStub({ facade: { getById: async () => undefined } });
 
     const response = await request("/config/skills/missing/download");
 
@@ -268,20 +268,20 @@ describe("round44 Skill 配置路由", () => {
     expect(await readJson(response)).toMatchObject({ data: { name: "demo", scope: { visibility: "public" } } });
   });
 
-  // 更新缺少内容时不得调用写入链路。
-  test("更新缺少内容返回 400", async () => {
-    const response = await jsonRequest("/config/skills/demo", "PUT", { data: { description: "d" } });
+  // 空 PATCH 不得调用写入链路。
+  test("更新没有字段返回 400", async () => {
+    const response = await jsonRequest("/config/skills/demo", "PATCH", { data: {} });
 
     expect(response.status).toBe(400);
-    expect(JSON.stringify(await readJson(response))).toContain("Missing required field: data.content");
+    expect(JSON.stringify(await readJson(response))).toContain("Missing fields to update");
   });
 
   // 更新以路径参数为定位键，并把可选的公开受众一并交给 Facade。
-  test("更新按路径名称写入", async () => {
+  test("更新按路径 ID 写入", async () => {
     let received: { nameOrKey?: string; publicReadable?: boolean } = {};
     installSkillModuleStub({
       facade: {
-        update: async (_actor, nameOrKey, _data, options) => {
+        updateById: async (_actor, nameOrKey, _data, options) => {
           received = {
             nameOrKey,
             ...(options?.publicReadable === undefined ? {} : { publicReadable: options.publicReadable }),
@@ -291,7 +291,7 @@ describe("round44 Skill 配置路由", () => {
       },
     });
 
-    const response = await jsonRequest("/config/skills/renamed", "PUT", {
+    const response = await jsonRequest("/config/skills/renamed", "PATCH", {
       data: { description: "新描述", content: "# 新内容", publicReadable: false },
     });
 
@@ -300,19 +300,39 @@ describe("round44 Skill 配置路由", () => {
     expect(await readJson(response)).toMatchObject({ data: { name: "renamed" } });
   });
 
+  // PATCH 允许单独修改描述或正文，缺省字段不能被协议层补成空值。
+  test("PATCH 只传递显式提供的字段", async () => {
+    const received: unknown[] = [];
+    installSkillModuleStub({
+      facade: {
+        updateById: async (_actor, _id, data) => {
+          received.push(data);
+          return authorizedSkill();
+        },
+      },
+    });
+    const description = await jsonRequest("/config/skills/skill-1", "PATCH", {
+      data: { description: "new description" },
+    });
+    const content = await jsonRequest("/config/skills/skill-1", "PATCH", { data: { content: "new content" } });
+    expect(description.status).toBe(200);
+    expect(content.status).toBe(200);
+    expect(received).toEqual([{ description: "new description" }, { content: "new content" }]);
+  });
+
   // 公开受众走独立入口：协议层不经过内容写入路径，也就不会重写 SKILL.md。
   test("公开受众更新走独立入口", async () => {
     let received: { nameOrKey?: string; publicReadable?: boolean } = {};
     installSkillModuleStub({
       facade: {
-        setPublicReadable: async (_actor, nameOrKey, publicReadable) => {
+        setPublicReadableById: async (_actor, nameOrKey, publicReadable) => {
           received = { nameOrKey, publicReadable };
           return authorizedSkill({ visibility: "public" });
         },
       },
     });
 
-    const response = await jsonRequest("/config/skills/demo/access", "PUT", { publicReadable: true });
+    const response = await jsonRequest("/config/skills/demo/access", "PATCH", { publicReadable: true });
 
     expect(response.status).toBe(200);
     expect(received).toEqual({ nameOrKey: "demo", publicReadable: true });
@@ -323,7 +343,7 @@ describe("round44 Skill 配置路由", () => {
   test("删除不存在技能返回 404", async () => {
     installSkillModuleStub({
       facade: {
-        remove: async () => {
+        removeById: async () => {
           throw new NotFoundError("Skill 'missing' not found");
         },
       },
@@ -340,7 +360,7 @@ describe("round44 Skill 配置路由", () => {
     let removed = "";
     installSkillModuleStub({
       facade: {
-        remove: async (_actor, nameOrKey) => {
+        removeById: async (_actor, nameOrKey) => {
           removed = nameOrKey;
         },
       },
