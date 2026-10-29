@@ -243,6 +243,30 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
     }
   }
 
+  /**
+   * 读取远端 Bot 的现有适配器配置，供部分更新时合并。
+   *
+   * LangBot 的 PUT 是整体替换 `adapter_config`，而编辑表单只回填用户填写的字段；
+   * 先读回再合并，避免留空的密钥被覆盖。没有 RESOURCE_MANAGE 时上游会返回掩码字符串，
+   * 这种情况必须报错而不是拿掩码去覆盖真实密钥。
+   */
+  async function readAdapterConfig(botUuid: string): Promise<Record<string, unknown>> {
+    const data = await call({
+      method: "GET",
+      path: `platform/bots/${encodeSegment(botUuid)}`,
+      botNotFound: true,
+    });
+    if (typeof data !== "object" || data === null) throw badResponse();
+    const bot = (data as { bot?: unknown }).bot;
+    if (typeof bot !== "object" || bot === null) throw badResponse();
+    const config = (bot as { adapter_config?: unknown }).adapter_config;
+    if (config === undefined || config === null) return {};
+    if (typeof config !== "object" || Array.isArray(config)) {
+      throw new ChannelControlError("LANGBOT_REJECTED", 502, "LangBot 未返回可合并的适配器配置");
+    }
+    return { ...(config as Record<string, unknown>) };
+  }
+
   return {
     async status() {
       const healthy = await probe(new URL("/healthz", base));
@@ -278,10 +302,21 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
       const data = await call({
         method: "POST",
         path: "platform/bots",
-        body: { name: input.name, adapter: input.adapter, config: input.config },
+        // 上游字段名是 adapter_config；发送 config 会被 BOT_FIELDS 白名单丢掉，触发 NOT NULL 500。
+        // 新建的 Bot 默认 enable=false，适配器不会启动、通道永远收不到消息，所以创建时就显式启用。
+        body: { name: input.name, adapter: input.adapter, adapter_config: input.config, enable: true },
       });
       const uuid = typeof data === "object" && data !== null ? (data as { uuid?: unknown }).uuid : undefined;
       if (typeof uuid !== "string" || uuid.length === 0) throw badResponse();
+
+      try {
+        // 上游 create 只 load 不 run；再 PUT 一次才会 remove→load→run，适配器这时才真正连接 IM。
+        await call({ method: "PUT", path: `platform/bots/${encodeSegment(uuid)}`, body: { enable: true } });
+      } catch (error) {
+        // 启动失败时远端已经留下这行 Bot，补偿删除，避免重试时出现同名孤儿。
+        await call({ method: "DELETE", path: `platform/bots/${encodeSegment(uuid)}` }).catch(() => undefined);
+        throw error;
+      }
       return uuid;
     },
 
@@ -290,7 +325,9 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
       const body: Record<string, unknown> = {};
       if (input.name !== undefined) body.name = input.name;
       if (input.adapter !== undefined) body.adapter = input.adapter;
-      if (input.config !== undefined) body.config = input.config;
+      if (input.config !== undefined) {
+        body.adapter_config = { ...(await readAdapterConfig(botUuid)), ...input.config };
+      }
       await call({ method: "PUT", path: `platform/bots/${encodeSegment(botUuid)}`, body, botNotFound: true });
     },
 

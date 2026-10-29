@@ -9,7 +9,6 @@
     "tabs": {
       "label": "Message channel views",
       "bots": "Channels",
-      "routes": "Routes",
       "diagnostics": "Diagnostics"
     },
     "common": {
@@ -30,17 +29,9 @@
       "deleteFailedWith": "Failed to delete: {{message}}"
     },
     "bots": {
-      "create": "Create channel",
+      "create": "Create message connection",
       "emptyTitle": "No channels yet",
       "emptyDescription": "Create a LangBot Bot and its IM chats can be handled by platform Agents.",
-      "table": {
-        "name": "Name",
-        "adapter": "Adapter",
-        "status": "Channel status",
-        "routes": "Routes",
-        "createdAt": "Created at",
-        "actions": "Actions"
-      },
       "status": {
         "connected": "Connected",
         "disconnected": "Disconnected",
@@ -49,6 +40,13 @@
       "missingInLangbot": "This Bot no longer exists in LangBot",
       "noBotUuid": "The platform record has no Bot UUID, so this action is unavailable",
       "routeCount": "{{total}}",
+      "tree": {
+        "expand": "Expand routes for {{name}}",
+        "collapse": "Collapse routes for {{name}}",
+        "addRoute": "Connect agent",
+        "routesEmpty": "No agent is listening",
+        "agent": "Agent configuration"
+      },
       "testSend": "Test send",
       "edit": "Edit",
       "delete": "Delete",
@@ -63,7 +61,7 @@
         "name": "Name",
         "namePlaceholder": "For example: support bot",
         "adapter": "Adapter",
-        "adapterPlaceholder": "For example: telegram, feishu",
+        "adapterPlaceholder": "Select an adapter",
         "config": "Adapter configuration (JSON)",
         "configHint": "The configuration is passed through to LangBot only. The platform never stores or echoes it; inspect it in the LangBot WebUI after creation.",
         "configEditHint": "Configuration is replaced as a whole when editing: leave it empty to keep the existing LangBot configuration, or provide the complete JSON.",
@@ -80,7 +78,11 @@
         "addSecret": "Add secret field",
         "removeSecret": "Remove",
         "secretIncomplete": "Secret fields need both a name and a value",
-        "noChanges": "There are no changes to save"
+        "noChanges": "There are no changes to save",
+        "customAdapter": "Adapter ID",
+        "customAdapterPlaceholder": "For example: qq-bot",
+        "customHint": "Plugin adapters are provided by LangBot plugins; enter their configuration as JSON.",
+        "fieldRequired": "Enter {{field}}"
       },
       "test": {
         "title": "Test send",
@@ -94,16 +96,49 @@
         "submit": "Send",
         "success": "Test message sent",
         "required": "Enter a target ID and text"
+      },
+      "adapters": {
+        "telegram": "Telegram",
+        "lark": "Lark / Feishu",
+        "slack": "Slack",
+        "discord": "Discord",
+        "wecom": "WeCom",
+        "wecombot": "WeComBot",
+        "dingtalk": "DingTalk",
+        "kook": "KOOK",
+        "qqofficial": "QQ Official API",
+        "onebot": "OneBot v11",
+        "custom": "Other (plugin adapter)"
+      },
+      "fields": {
+        "token": "Bot Token",
+        "appId": "App ID",
+        "appSecret": "App Secret",
+        "botToken": "Bot Token",
+        "signingSecret": "Signing Secret",
+        "clientId": "Client ID",
+        "clientSecret": "Client Secret",
+        "corpid": "Corp ID",
+        "secret": "App Secret",
+        "botId": "Bot ID (BotId)",
+        "botSecret": "Bot Secret",
+        "appid": "AppID",
+        "accessToken": "Access Token",
+        "wsUrl": "WebSocket URL",
+        "selfId": "Bot self ID (optional)",
+        "connectionMode": "Connection mode",
+        "connectionModeReverseWs": "Reverse WebSocket (OneBot connects in)",
+        "connectionModeForwardWs": "Forward WebSocket",
+        "encodingAesKey": "EncodingAESKey",
+        "markdownCard": "Markdown card",
+        "cardAutoLayout": "Card auto layout",
+        "enableMarkdownRendering": "Markdown rendering",
+        "enableStreamReply": "Streaming reply",
+        "enableWebhook": "Webhook mode",
+        "socketMode": "Socket Mode"
       }
     },
     "routes": {
-      "create": "New route",
-      "emptyTitle": "No routes yet",
-      "emptyDescription": "Routes decide which Agent handles a chat. When no exact route matches, the wildcard route for the same chat type is used.",
-      "noChannelsTitle": "No channels available",
-      "noChannelsDescription": "Routes belong to a channel; create a channel first.",
-      "goToBots": "Create a channel",
-      "groupAdd": "Add route",
       "wildcard": "Wildcard",
       "chatTypePerson": "Direct",
       "chatTypeGroup": "Group",
@@ -113,12 +148,6 @@
       "disable": "Disable",
       "disableTitle": "Disable route",
       "disableDescription": "Once disabled, inbound messages from this chat are no longer routed to this Agent until you enable it again.",
-      "table": {
-        "chat": "Chat",
-        "agent": "Agent configuration",
-        "enabled": "Status",
-        "actions": "Actions"
-      },
       "deleteTitle": "Delete route",
       "deleteDescription": "After deletion, the chat's next inbound message will match routes again.",
       "created": "Route created",

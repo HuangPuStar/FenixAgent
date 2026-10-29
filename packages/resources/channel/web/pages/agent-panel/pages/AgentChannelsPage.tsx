@@ -7,9 +7,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChannelBotsView } from "./channel-bots-view";
 import { ChannelDiagnosticsView } from "./channel-diagnostics-view";
-import { ChannelRoutesView } from "./channel-routes-view";
 
-const CHANNELS_TABS = ["bots", "routes", "diagnostics"] as const;
+const CHANNELS_TABS = ["bots", "diagnostics"] as const;
 type ChannelsTab = (typeof CHANNELS_TABS)[number];
 
 function isChannelsTab(value: string): value is ChannelsTab {
@@ -17,10 +16,11 @@ function isChannelsTab(value: string): value is ChannelsTab {
 }
 
 /**
- * 消息通道页：通道 / 路由 / 诊断三个视图共用一页。
+ * 消息通道页：通道树与诊断两个视图共用一页。
  *
- * 三个视图各自取数、各自维护弹窗状态，容器只负责页签与执行身份提示——通道配置、路由规则和
- * 会话映射的刷新节奏互不相同，合成一个请求只会让某一块的失败拖垮整页。
+ * 路由挂在通道下作为树的子行，不再单独成页签：一条路由离开它的通道就没有意义，分成两页会让用户
+ * 在 channelId 之间来回对照。诊断取的是另一套数据（连通性与会话映射），仍独立取数，避免它的失败
+ * 拖垮通道树。
  */
 export function AgentChannelsPage() {
   const { t } = useTranslation(NS.CHANNELS);
@@ -44,14 +44,10 @@ export function AgentChannelsPage() {
       >
         <TabsList aria-label={t("langbot.tabs.label")}>
           <TabsTrigger value="bots">{t("langbot.tabs.bots")}</TabsTrigger>
-          <TabsTrigger value="routes">{t("langbot.tabs.routes")}</TabsTrigger>
           <TabsTrigger value="diagnostics">{t("langbot.tabs.diagnostics")}</TabsTrigger>
         </TabsList>
         <TabsContent value="bots">
           <ChannelBotsView />
-        </TabsContent>
-        <TabsContent value="routes">
-          <ChannelRoutesView onGoToBots={() => setTab("bots")} />
         </TabsContent>
         <TabsContent value="diagnostics">
           <ChannelDiagnosticsView />

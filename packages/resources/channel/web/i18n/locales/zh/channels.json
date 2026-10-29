@@ -9,7 +9,6 @@
     "tabs": {
       "label": "消息通道视图",
       "bots": "通道",
-      "routes": "路由",
       "diagnostics": "诊断"
     },
     "common": {
@@ -30,17 +29,9 @@
       "deleteFailedWith": "删除失败：{{message}}"
     },
     "bots": {
-      "create": "创建通道",
+      "create": "创建连接消息",
       "emptyTitle": "还没有通道",
       "emptyDescription": "创建一个 LangBot Bot 后，它的 IM 聊天就可以交给平台 Agent。",
-      "table": {
-        "name": "名称",
-        "adapter": "适配器",
-        "status": "通道状态",
-        "routes": "路由数",
-        "createdAt": "创建时间",
-        "actions": "操作"
-      },
       "status": {
         "connected": "已连接",
         "disconnected": "未连接",
@@ -49,6 +40,13 @@
       "missingInLangbot": "LangBot 中已不存在该 Bot",
       "noBotUuid": "平台记录缺少 Bot UUID，无法执行该操作",
       "routeCount": "{{total}} 条",
+      "tree": {
+        "expand": "展开 {{name}} 的路由",
+        "collapse": "收起 {{name}} 的路由",
+        "addRoute": "对接智能体",
+        "routesEmpty": "没有智能体在收听",
+        "agent": "Agent 配置"
+      },
       "testSend": "测试发送",
       "edit": "编辑",
       "delete": "删除",
@@ -63,7 +61,7 @@
         "name": "名称",
         "namePlaceholder": "例如：客服机器人",
         "adapter": "适配器",
-        "adapterPlaceholder": "例如：telegram、feishu",
+        "adapterPlaceholder": "请选择适配器",
         "config": "适配器配置（JSON）",
         "configHint": "配置只透传给 LangBot，平台不落库也不回显；创建后请到 LangBot WebUI 查看。",
         "configEditHint": "编辑时配置整体替换：留空表示保持 LangBot 上的现有配置；填写时必须提供完整 JSON。",
@@ -80,7 +78,11 @@
         "addSecret": "添加密钥字段",
         "removeSecret": "移除",
         "secretIncomplete": "密钥字段的字段名与值都必须填写",
-        "noChanges": "没有需要保存的变更"
+        "noChanges": "没有需要保存的变更",
+        "customAdapter": "适配器 ID",
+        "customAdapterPlaceholder": "例如：qq-bot",
+        "customHint": "插件适配器由 LangBot 插件提供，配置需要手写 JSON。",
+        "fieldRequired": "请填写 {{field}}"
       },
       "test": {
         "title": "测试发送",
@@ -94,16 +96,49 @@
         "submit": "发送",
         "success": "测试消息已发送",
         "required": "请填写目标 ID 与文本"
+      },
+      "adapters": {
+        "telegram": "Telegram",
+        "lark": "飞书 / Lark",
+        "slack": "Slack",
+        "discord": "Discord",
+        "wecom": "企业微信",
+        "wecombot": "企业微信智能机器人",
+        "dingtalk": "钉钉",
+        "kook": "KOOK",
+        "qqofficial": "QQ 官方 API",
+        "onebot": "OneBot v11",
+        "custom": "其他（插件适配器）"
+      },
+      "fields": {
+        "token": "Bot Token",
+        "appId": "App ID",
+        "appSecret": "App Secret",
+        "botToken": "Bot Token",
+        "signingSecret": "Signing Secret",
+        "clientId": "Client ID",
+        "clientSecret": "Client Secret",
+        "corpid": "企业 ID（CorpID）",
+        "secret": "应用 Secret",
+        "botId": "机器人 ID（BotId）",
+        "botSecret": "机器人密钥（Secret）",
+        "appid": "AppID",
+        "accessToken": "Access Token",
+        "wsUrl": "WebSocket 地址",
+        "selfId": "Bot 自身 ID（可选）",
+        "connectionMode": "连接方式",
+        "connectionModeReverseWs": "反向 WebSocket（OneBot 连入）",
+        "connectionModeForwardWs": "正向 WebSocket",
+        "encodingAesKey": "EncodingAESKey",
+        "markdownCard": "Markdown 卡片",
+        "cardAutoLayout": "卡片自动布局",
+        "enableMarkdownRendering": "Markdown 渲染",
+        "enableStreamReply": "流式回复",
+        "enableWebhook": "Webhook 模式",
+        "socketMode": "Socket Mode"
       }
     },
     "routes": {
-      "create": "新建路由",
-      "emptyTitle": "还没有路由",
-      "emptyDescription": "路由决定某个聊天交给哪个 Agent；未命中精确路由时使用同聊天类型的通配路由。",
-      "noChannelsTitle": "还没有可用的通道",
-      "noChannelsDescription": "路由必须挂在某个通道下；请先创建通道。",
-      "goToBots": "去创建通道",
-      "groupAdd": "添加路由",
       "wildcard": "通配",
       "chatTypePerson": "私聊",
       "chatTypeGroup": "群聊",
@@ -113,12 +148,6 @@
       "disable": "停用",
       "disableTitle": "停用路由",
       "disableDescription": "停用后该聊天的入站消息不再交给此路由的 Agent，直到重新启用。",
-      "table": {
-        "chat": "聊天",
-        "agent": "Agent 配置",
-        "enabled": "状态",
-        "actions": "操作"
-      },
       "deleteTitle": "删除路由",
       "deleteDescription": "删除后该聊天的下一次入站消息会重新匹配路由。",
       "created": "路由已创建",

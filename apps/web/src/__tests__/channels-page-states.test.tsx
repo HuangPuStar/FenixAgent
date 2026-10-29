@@ -71,19 +71,25 @@ function findButton(host: HTMLElement, label: string): HTMLButtonElement | undef
   return Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes(label));
 }
 
+/** 每个用例只关心自己那条请求；默认三个端点都返回空列表。 */
+function defaultHandler(url: string): Response {
+  if (url.includes("/web/config/agents")) return jsonResponse({ success: true, data: { agents: [] } });
+  return jsonResponse({ success: true, data: [] });
+}
+
 describe("消息通道页状态接线", () => {
   let host: HTMLDivElement;
   let root: Root;
   let fetchCalls = 0;
-  let handler: () => Response | Promise<Response>;
+  let handler: (url: string) => Response | Promise<Response>;
   let originalConsoleError: typeof console.error;
 
   beforeEach(() => {
     fetchCalls = 0;
-    handler = () => jsonResponse({ success: true, data: [] });
-    globalThis.fetch = (async () => {
+    handler = defaultHandler;
+    globalThis.fetch = (async (input: string | URL | Request) => {
       fetchCalls += 1;
-      return handler();
+      return handler(String(input));
     }) as unknown as typeof fetch;
     // 失败路径会把后端错误原文打到 console.error；用例只关心界面，静音以免刷屏。
     originalConsoleError = console.error;
@@ -121,11 +127,12 @@ describe("消息通道页状态接线", () => {
 
   // 业务意图：首屏请求未落地时必须显示骨架（`aria-busy`），不能先渲染「还没有通道」让用户误以为数据被清空。
   test("首屏请求进行中：渲染加载骨架", async () => {
-    let resolveFetch: ((response: Response) => void) | null = null;
-    const pending = new Promise<Response>((resolve) => {
-      resolveFetch = resolve;
+    let resolveBots: ((response: Response) => void) | null = null;
+    const pendingBots = new Promise<Response>((resolve) => {
+      resolveBots = resolve;
     });
-    handler = () => pending;
+    // 只挂起通道列表：Response 的 body 只能读一次，三路请求共用同一个实例会互相消费掉。
+    handler = (url) => (url.includes("/channels/langbot/bots") ? pendingBots : defaultHandler(url));
 
     await act(async () => {
       root.render(
@@ -138,8 +145,8 @@ describe("消息通道页状态接线", () => {
     expect(host.querySelector("[aria-busy='true']")).not.toBeNull();
 
     await act(async () => {
-      resolveFetch?.(jsonResponse({ success: true, data: [] }));
-      await pending;
+      resolveBots?.(jsonResponse({ success: true, data: [] }));
+      await pendingBots;
     });
     await flush();
     expect(host.textContent).toContain(TEXT.bots.emptyTitle);
@@ -176,7 +183,8 @@ describe("消息通道页状态接线", () => {
     });
     await flush();
 
-    expect(fetchCalls).toBe(callsBeforeRetry + 1);
+    // 合并视图一次刷新会并发取通道与路由，重试必须把两条列表请求都重新发出。
+    expect(fetchCalls).toBe(callsBeforeRetry + 2);
   });
 
   // 业务意图：403 是持久状态，显示无权限说明且不给重试（重试只会再失败一次）。
@@ -190,10 +198,30 @@ describe("消息通道页状态接线", () => {
     expect(findButton(host, TEXT.common.retry)).toBeUndefined();
   });
 
-  // 业务意图：拿到数据后渲染表格；Bot 名称与适配器是用户核对通道是否接对的第一眼信息。
-  test("有通道：渲染通道表格", async () => {
-    handler = () =>
-      jsonResponse({
+  // 业务意图：拿到数据后渲染通道树；父行必须能一眼核对通道是否接对，子行要能看到路由归属。
+  test("有通道：渲染通道树与路由子行", async () => {
+    handler = (url) => {
+      if (url.includes("/web/config/agents")) {
+        return jsonResponse({ success: true, data: { agents: [{ id: "agent-1", name: "客服 Agent" }] } });
+      }
+      if (url.includes("/channels/langbot/routes")) {
+        return jsonResponse({
+          success: true,
+          data: [
+            {
+              id: "route-1",
+              channelId: "channel-1",
+              chatType: "group",
+              chatId: "chat-1",
+              agentConfigId: "agent-1",
+              enabled: true,
+              createdAt: "2026-10-01T00:00:00.000Z",
+              updatedAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      return jsonResponse({
         success: true,
         data: [
           {
@@ -210,12 +238,14 @@ describe("消息通道页状态接线", () => {
           },
         ],
       });
+    };
 
     await renderPage();
 
-    expect(host.querySelector("table")).not.toBeNull();
+    expect(host.querySelector("button[aria-expanded='true']")).not.toBeNull();
     expect(host.textContent).toContain("客服机器人");
     expect(host.textContent).toContain(TEXT.bots.status.connected);
-    expect(host.textContent).toContain("2");
+    expect(host.textContent).toContain("chat-1");
+    expect(host.textContent).toContain("客服 Agent");
   });
 });

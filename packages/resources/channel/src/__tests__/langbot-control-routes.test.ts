@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Elysia } from "elysia";
 import { ChannelControlError } from "../server/contracts";
 import { createLangBotWebRoutes } from "../server/routes/web/langbot";
 import { createChannelTestContext, makeChannel, makeConversation, resetChannelModule } from "./fixtures";
@@ -105,6 +106,32 @@ describe("LangBot 控制面路由", () => {
     });
 
     const response = await request(`${BASE}/bots`);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: { code: "LANGBOT_UNREACHABLE", message: "LangBot 不可达或请求超时" },
+    });
+  });
+
+  // 装配后宿主的全局 onError 先于本路由执行且命中即返回：领域错误仍必须在路由层落成 503 与失败信封。
+  test("宿主全局错误处理器存在时仍保留领域状态码与信封", async () => {
+    createChannelTestContext({
+      client: {
+        listBots: async () => {
+          throw new ChannelControlError("LANGBOT_UNREACHABLE", 503, "LangBot 不可达或请求超时");
+        },
+      },
+    });
+
+    const host = new Elysia()
+      .onError({ as: "global" }, ({ set }) => {
+        set.status = 500;
+        return { error: { type: "INTERNAL_ERROR", message: "Internal server error" } };
+      })
+      .use(route);
+
+    const response = await host.handle(new Request(`http://localhost${BASE}/bots`));
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({

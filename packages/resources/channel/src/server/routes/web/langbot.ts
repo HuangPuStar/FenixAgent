@@ -62,10 +62,23 @@ function requireActor(context: RouteContext): ActorContext {
   return actor;
 }
 
-/** 执行 handler 并包成 `/web` 成功信封。 */
+/**
+ * 执行 handler 并包成 `/web` 成功信封。
+ *
+ * 领域错误在这里就地转成状态码与失败信封，而不是靠本路由的 `onError`：宿主把错误处理器注册为
+ * `as: "global"`，装配后它先于本插件执行且命中即返回，本插件的 `onError` 在进程里永远不会跑
+ * （只有直接挂载本路由的单测会走到）。在 helper 里 catch 让两种装配方式得到同一份契约。
+ */
 async function run<T>(context: RouteContext, handler: (actor: ActorContext) => Promise<T>) {
-  const actor = requireActor(context);
-  return { success: true as const, data: await handler(actor) };
+  try {
+    const actor = requireActor(context);
+    return { success: true as const, data: await handler(actor) };
+  } catch (error) {
+    if (error instanceof ChannelControlError) {
+      return context.status(error.status, errorBody(error.code, error.message));
+    }
+    throw error;
+  }
 }
 
 /** 需要 201 的创建端点：领域层给出成功状态码，协议层只负责把它落到响应上。 */
@@ -73,10 +86,17 @@ async function runCreated<T>(
   context: RouteContext,
   handler: (actor: ActorContext) => Promise<{ status: number; data: T }>,
 ) {
-  const actor = requireActor(context);
-  const result = await handler(actor);
-  const body = { success: true as const, data: result.data };
-  return result.status === 200 ? body : context.status(result.status, body);
+  try {
+    const actor = requireActor(context);
+    const result = await handler(actor);
+    const body = { success: true as const, data: result.data };
+    return result.status === 200 ? body : context.status(result.status, body);
+  } catch (error) {
+    if (error instanceof ChannelControlError) {
+      return context.status(error.status, errorBody(error.code, error.message));
+    }
+    throw error;
+  }
 }
 
 export function createLangBotWebRoutes(deps: ChannelWebRouteDependencies) {
@@ -84,7 +104,7 @@ export function createLangBotWebRoutes(deps: ChannelWebRouteDependencies) {
     .use(deps.authGuardPlugin)
     .onError(({ code, error, status }) => {
       // 先认本包的结构化错误：它的 `code` 字段会被 Elysia 误当作内建错误类型，若先判 `code` 分支会被
-      // 默认处理器接管并返回纯文本。
+      // 默认处理器接管并返回纯文本。装配后宿主全局处理器先跑，本块只覆盖直接挂载本路由的场景。
       if (error instanceof ChannelControlError) return status(error.status, errorBody(error.code, error.message));
       if (code === "VALIDATION") return status(400, errorBody("INVALID_INPUT", "请求参数不合法"));
       // 未匹配路由交给 Elysia 的默认 404，不要把它包装成 500。

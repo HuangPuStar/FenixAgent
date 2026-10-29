@@ -352,3 +352,79 @@ describe("回复切片", () => {
     expect(Array.from(chunks[0]!)).toHaveLength(2);
   });
 });
+
+describe("LangBot Bot 写入契约", () => {
+  /** 记录上游收到的请求，用来断言字段名而不只是「调用成功」。 */
+  function createRecordingFetch(responses: Response[]) {
+    const requests: Array<{ url: string; method: string; body: string | null }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return responses[requests.length - 1] ?? Response.json({ code: 0, data: null });
+    };
+    return { fetcher, requests };
+  }
+
+  // 业务意图：上游字段名是 adapter_config；发成 config 会被它的 BOT_FIELDS 白名单丢弃并报 500。
+  // 创建后必须再 PUT 一次 enable：上游 create 只加载不启动，适配器不会连接 IM。
+  test("创建时启用 Bot，更新时合并现有配置", async () => {
+    const fetch = createRecordingFetch([
+      Response.json({ code: 0, data: { uuid: "bot-1" } }),
+      Response.json({ code: 0, data: null }),
+      Response.json({
+        code: 0,
+        data: { bot: { adapter_config: { token: "old-token", markdown_card: true } } },
+      }),
+      Response.json({ code: 0, data: null }),
+    ]);
+    const client = createLangBotClient({
+      baseUrl: "http://langbot.test/api/v1",
+      apiKey: "test-api-key",
+      fetcher: fetch.fetcher,
+    });
+
+    const botUuid = await client.createBot({
+      name: "测试",
+      adapter: "telegram-omni",
+      config: { token: "secret-token" },
+    });
+    await client.updateBot(botUuid, { name: "测试二", config: { token: "next-token" } });
+
+    expect(fetch.requests.map((request) => request.method)).toEqual(["POST", "PUT", "GET", "PUT"]);
+    expect(fetch.requests[0]!.url).toBe("http://langbot.test/api/v1/platform/bots");
+    expect(JSON.parse(fetch.requests[0]!.body ?? "{}")).toEqual({
+      name: "测试",
+      adapter: "telegram-omni",
+      adapter_config: { token: "secret-token" },
+      enable: true,
+    });
+    expect(JSON.parse(fetch.requests[1]!.body ?? "{}")).toEqual({ enable: true });
+    expect(JSON.parse(fetch.requests[3]!.body ?? "{}")).toEqual({
+      name: "测试二",
+      // PUT 整体替换 adapter_config：未填写的 markdown_card 必须从远端读回后保留。
+      adapter_config: { token: "next-token", markdown_card: true },
+    });
+  });
+
+  // 业务意图：创建后启动失败时远端已留下 Bot 行，必须补偿删除，避免平台重试产生同名孤儿。
+  test("创建后启动失败会删除远端 Bot", async () => {
+    const fetch = createRecordingFetch([
+      Response.json({ code: 0, data: { uuid: "bot-2" } }),
+      Response.json({ code: -1, msg: "bot apply failed" }, { status: 500 }),
+      Response.json({ code: 0, data: null }),
+    ]);
+    const client = createLangBotClient({
+      baseUrl: "http://langbot.test/api/v1",
+      apiKey: "test-api-key",
+      fetcher: fetch.fetcher,
+    });
+
+    await expect(
+      client.createBot({ name: "坏配置", adapter: "telegram-omni", config: { token: "x" } }),
+    ).rejects.toThrow();
+    expect(fetch.requests.map((request) => request.method)).toEqual(["POST", "PUT", "DELETE"]);
+  });
+});
