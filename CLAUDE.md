@@ -118,7 +118,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 ### API 与数据模型边界
 
 - `/web/*` 服务控制台前端，默认响应 `{ success, data }` 或 `{ success: false, error }`。
-- `/api/*` 服务外部系统和 API Key 调用方，优先保证向后兼容。
+- 外部资源 API 使用 `/api/v{version}/*` 版本化路径，响应统一为 `{ success: true, data }` 或 `{ success: false, error: { code, message } }`，保证向后兼容；特殊接口遵循各自协议。
 - ACP、MCP、hooks、skills 等内部协议能力使用独立前缀，不得混入 `/web` 或 `/api`。
 - 新接口默认补齐 OpenAPI 的 `detail`、`params`、`query`、`headers`、`body` 和 `response`。
 - 协议 DTO、领域对象、数据库记录和前端 ViewModel 在边界处独立转换；前端类型必须对应后端真实返回，禁止增加“幻影字段”。
@@ -131,7 +131,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 3. 路径参数只放稳定资源标识与层级，不用名称或展示名定位已有资源；筛选、分页、排序与开关放 query。分页统一 `page` / `pageSize`，排序统一 `sortBy` / `sortOrder`。
 4. 非 CRUD 动作使用资源子路径 `POST /资源/:id/动作`，如 `POST /web/agent-configs/:id/publish`；不通过请求体 `action` 字段把多种业务行为塞进一个接口。天然多消息类型的 WebSocket、事件流按各自协议处理。
 5. AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 管理接口：集合 GET/POST，单资源 `/:id` GET/PATCH/DELETE；重启、探测等操作使用资源子路径 POST。ID 为数据库资源 ID；默认 Agent/模型偏好接口保留原契约。
-6. `/web` 与 `/api` 必须复用同一个 Resource Facade，不能分别实现业务规则；接口变更同步请求与响应 schema、调用方、测试和 OpenAPI。更完整的响应、错误与兼容性要求见后端开发规范 §7。
+6. `/web` 与外部 API 复用领域能力，分别维护接口契约；Web 的变更不得破坏已发布 API 的兼容性。接口变更同步请求与响应 schema、调用方、测试和 OpenAPI。更完整的响应、错误与兼容性要求见后端开发规范 §7。
 
 ### 前端边界与体验
 

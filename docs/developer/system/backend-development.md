@@ -131,7 +131,7 @@ packages/resources/<resource>/
 - 只创建有真实用例的目录与抽象；不因模板而生成空目录、空 Facade 或空 migration。
 - `web/` 与 `src/` 物理就近，通过 subpath export 隔离：**根入口只导出后端能力**，浏览器能力经 `./web` 导出。从根入口 re-export 服务端模块会把 Node 依赖打进浏览器 bundle。
 - 同一个表或同一类资源的业务操作内聚在本模块，不复制到别包，也不按 SQL 动作拆散。
-- 资源模块**不得新增或扩展 `/api/*` 外部 API**；已发布的 `/api` 路由是薄协议 adapter，变更需独立评审与消费者盘点。
+- 资源模块可按已确认的外部契约提供版本化 `/api/*` 薄协议 adapter。
 
 ### 2.3 平台模块与 Runtime
 
@@ -361,19 +361,19 @@ DDL 迁移与数据迁移必须分离：结构变更走 `drizzle/`，存量数�
 | 前缀 | 消费者 | 约束 |
 | --- | --- | --- |
 | `/web/*` | 控制台前端与可同步升级的第一方调用方 | 第一方控制面，可随 server/web 同步升级，不作为公开合同 |
-| `/api/*` | 外部程序、SDK、OpenAI-compatible 客户端 | 已发布的稳定协议面，只做认证、DTO 与错误映射 |
+| `/api/v{version}/*` | 外部程序、SDK、OpenAI-compatible 客户端 | 版本化外部契约，如 `/api/v1/agents`；只做认证、DTO 与错误映射；普通接口使用统一包装体，OpenAI-compatible 接口使用原生协议 |
+| `/api/system/*`、`/api/auth/*` | 系统管理、控制台认证调用方 | 独立契约，从普通外部 OpenAPI 文档排除 |
 | `/acp/*`、`/mcp/*`、`/hooks/*`、WS/SSE | 协议桥接 | 独立协议契约，不作为第二套资源业务 API |
 
 - 设计、命名、鉴权与兼容性判断前，先明确接口属于哪一类。`/web` 允许更贴近页面交互与控制面板场景，`/api` 的返回结构不随前端页面实现细节摆动。
-- `/api` 与 `/web` 必须调用**同一个** Resource Facade，不得存在第二套业务实现。
+- `/web` 与外部 API 复用领域能力，分别维护接口契约；Web 的变更不得破坏已发布 API 的兼容性。
 - 内部协议路由不放进 `web/`、`api/` 目录，使用独立前缀；默认 `detail.hide: true`，仅在确有文档消费方时公开。
 
 ### 7.2 设计规则
 
 - API 功能单一明确。不通过 `action` 字段在一个接口里分支多种业务行为；只有明确要求或天然多消息类型（WebSocket、事件流）才允许。
 - `/web` 返回 `{ success: true, data }` 或 `{ success: false, error }`；无业务数据时也返回 `{ success: true, data: ... }`，避免同类接口结构不一致。配置聚合型 `action` 接口保持既有风格，新增接口不默认沿用。
-- `/api` 不跟随 `/web` 使用 envelope，保持「成功返回裸对象或列表对象、失败返回 `{ error }`」，避免内部控制台规范误伤对外兼容性；列表返回 `{ items, total, page, pageSize }` 而非裸数组。
-- 错误响应统一返回含 `code` 与 `message` 的 `error` 对象，不返回裸字符串或结构不固定的对象。
+- 外部资源 API 使用 `/api/v{version}/*` 版本化路径，响应统一为 `{ success: true, data }` 或 `{ success: false, error: { code, message } }`，保证向后兼容；特殊接口遵循各自协议。
 
 ### 7.3 路由设计
 
@@ -459,7 +459,7 @@ DDL 迁移与数据迁移必须分离：结构变更走 `drizzle/`，存量数�
 - schema 变更是否在 owner 包内完成，并连同 `drizzle/` 完整产物提交。
 - 数据修复是否走了数据迁移且幂等可重试，而非写进 DDL。
 - 模块配置是否经 `getModuleConfig()` 读取，是否误读了 `process.env`。
-- `/web` 与 `/api` 是否按用途分层且复用同一 Facade。
+- `/web` 与外部 API 是否复用领域能力、分别维护契约，Web 变更是否保持已发布 API 的兼容性。
 - 新接入的外部能力是否做到抽象、可替换、低耦合，并由配置驱动选择实现。
 - 新表与新字段是否满足 §6.1 的主标识、时间字段、租户字段与枚举约束。
 - 注释、日志、测试、i18n 与架构文档是否同步更新。

@@ -223,12 +223,15 @@ apps/server/src/
 | 前缀 | 消费者 | 规则 |
 | --- | --- | --- |
 | `/web/*` | CE 官方 Web 与可同步升级的第一方内部调用方 | 第一方控制面；可随 server/web 同步升级，不作为公开 OpenAPI 合同 |
-| `/api/*` | 外部程序、SDK 与 OpenAI-compatible 客户端 | 已发布的稳定协议面；只做认证、DTO 和错误映射，并调用与 `/web` 相同的 Resource Facade |
+| `/api/v{version}/*` | 外部程序、SDK 与 OpenAI-compatible 客户端 | 版本化外部契约，如 `/api/v1/agents`；协议层只做认证、DTO 和错误映射，应用入口独立维护版本契约 |
+| `/api/system/*`、`/api/auth/*` | 系统管理、控制台认证调用方 | 独立契约，从普通外部 API 文档排除 |
 | `/acp/*`、`/mcp/*`、`/hooks/*`、WS/SSE | 协议/内部桥接 | 独立协议契约，不作为第二套资源业务 API |
 
 非 CRUD 动作使用资源动作后缀，如 `POST /web/agent-configs/:id/run`、`POST /web/agent-configs/:id/publish`。动作始终进入资源 services 层，再经端口调用 runtime。
 
-资源模块不得新增或扩展 `/api/*` 外部 API。`/web/*` 允许 session、服务账号或受控内部 API Key 等认证方式，但只有 CE 官方 Web 和可同步升级的内部调用方可以依赖其契约；第三方、用户脚本和 SDK 必须使用版本化的 `/api/*`。当前已经发布的 `/api/agents` CRUD、Instance connect 与 OpenAI-compatible endpoint 属于外部合同，保留为调用同一 Facade 的薄协议 adapter，不是第二套业务实现；其变更或退役必须经独立评审、消费者盘点和迁移窗口，资源模块不得复制这些 route。
+资源模块可按已确认的外部契约提供版本化 `/api/*` 薄协议 adapter，宿主只聚合路由。`/web` 与外部 API 复用领域能力，分别维护接口契约；Web 的变更不得破坏已发布 API 的兼容性。`/web/*` 允许 session、服务账号或受控内部 API Key 等认证方式，但只有 CE 官方 Web 和可同步升级的内部调用方可以依赖其契约；第三方、用户脚本和 SDK 使用版本化的 `/api/*`。
+
+外部资源 API 使用 `/api/v{version}/*` 版本化路径，响应统一为 `{ success: true, data }` 或 `{ success: false, error: { code, message } }`，保证向后兼容；特殊接口遵循各自协议。
 
 ### 3.2 服务与 repository
 
@@ -490,7 +493,7 @@ packages/resources/agent-config/db/data-migrations/
 1. `apps/server` 只保留进程入口、协议聚合、认证 adapter、OpenAPI、通用错误/CORS/static/logger、环境变量、应用基础设施初始化边界和通用关闭编排；不得枚举具体业务模块或承载领域规则。
 2. `apps/web` 只保留最终 Shell、登录与全局 Provider、品牌/布局/导航容器、错误边界和薄 TanStack route adapter；资源页面、API client、hook、组件和 i18n 归所属模块 `./web`。
 3. 资源 Web 流程覆盖 loading、empty、error、retry、无权限、成功反馈和可访问性；前端可见性不是服务端授权替代品。
-4. 已发布 `/api/*`、内部 `/web/*`、ACP/MCP/hooks/WS/SSE 只有薄协议 adapter，不存在第二套业务实现；稳定消费者合同未经独立评审不得改变。
+4. `/web`、外部 API 与独立协议采用薄协议 adapter，分别维护应用契约并复用领域能力；Web 的变更不得破坏已发布 API 的兼容性。
 
 ### 10.6 DB、配置、装配与交付
 
