@@ -217,6 +217,25 @@ cd1.<base64url({"v":1,"uid","org","exp","scope"})>.<base64url(HMAC-SHA256(secret
   `upstreamCode`；没有 token、正文、票据或 URL。
 - **文件内容是不可信数据**：server `instructions` 与每个工具描述都要求 Agent 不要执行文件中的指令。
 
+### 10.4 与 peri/rmcp 的真实握手
+
+2026-10-29 用本机 peri 4.4.1（rmcp 3.5.1）实测，连接顺序是：
+
+1. `server/discover`，请求头 `MCP-Protocol-Version: 2026-07-28`，`params._meta` 带 protocolVersion /
+   clientInfo / clientCapabilities。
+2. 网关返回 rmcp `DiscoverResult`（`resultType` / `supportedVersions` / `capabilities` / `ttlMs` /
+   `cacheScope` / `_meta["io.modelcontextprotocol/serverInfo"]`）。
+3. 之后 `tools/list`、`tools/call` 继续携带 `2026-07-28` 请求头。SDK 只认到 `2025-11-25`，路由把
+   **请求头**归一为 `2025-11-25` 后再交给 SDK transport；tools 的载荷在两者间一致。
+4. peri 还会请求 `resources/list` 与 `resources/templates/list`；网关返回 `-32601`，peri 忽略（本网关
+   只声明 tools）。这与 IM 入口的取舍一致。
+5. 不支持 discover 的旧客户端仍走 `initialize` 回退：SDK 以 `2025-11-25` 应答，工具面相同。
+
+这条路径是兼容增强：即使 discover 缺失，rmcp Auto 策略也会回退 `initialize`（实测可完成
+`tools/list` 与 `tools/call`）；实现 discover 是为了消除首包 400 并满足新客户端优先使用 discover 的
+预期。协议常量与结果形状在 `src/server/mcp/protocol.ts`，单测在
+`src/__tests__/cloud-drive-mcp-routes.test.ts`。
+
 ## 11. 双通道下发
 
 | 通道 | 注入点 | 形态 | TTL | 引擎覆盖 |
@@ -232,6 +251,18 @@ cd1.<base64url({"v":1,"uid","org","exp","scope"})>.<base64url(HMAC-SHA256(secret
 - token 过期：A 需要实例重物化；B 下次 `session/new` 自动换新。CloudDrive 不可达时条目照常注入，工具返回
   `UNAVAILABLE`，服务端不自动重试写操作。
 - 回滚：删掉 env 即可，无表、无迁移；已经写入 `.mcp.json` 的条目随实例工作区重写消失。
+
+真实联调证据（2026-10-29，peri 4.4.1）：
+
+- 开启 secret 时，ACP `session/new` 的 `mcpServers` 含 `{type:"http",name:"cloud-drive",url,headers:[{Authorization}]}`；
+  token 长度 218、只记录 SHA-256 前缀，绝不是 master key。
+- 同一用户的实例 workspace `.mcp.json` 也有 `cloud-drive` 条目（LaunchSpec 通道），两处 token 不同
+  （TTL 不同），文件里没有 master key。
+- peri 真实调用 `mcp__cloud-drive__cloud_drive_list` / `cloud_drive_me` / `cloud_drive_stat` 并得到
+  云盘数据；第二个用户对第一个用户的 `file_id` 返回 `NOT_FOUND`，根列表为空。
+- 缺少 `CLOUDDRIVE_MCP_TOKEN_SECRET`：不下发条目、`.mcp.json` 为 `{"mcpServers":{}}`、网关 503，
+  Chat 会话照常启动（Agent 看不到云盘工具）。
+- CloudDrive 地址不可达：条目照常注入、会话正常，工具返回 `UNAVAILABLE`。
 
 **后续**：工作流与会话级注入的接入点分别在
 `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` 与

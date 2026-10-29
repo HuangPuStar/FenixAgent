@@ -116,6 +116,73 @@ describe("CloudDrive MCP 路由", () => {
     }
   });
 
+  // peri/rmcp 的首个请求是 server/discover；必须返回 rmcp DiscoverResult，且不泄漏凭据。
+  test("server/discover 返回 rmcp 协商结果", async () => {
+    const issued = await token();
+    const response = await post(
+      createApp(),
+      { jsonrpc: "2.0", id: 0, method: "server/discover", params: { _meta: { protocolVersion: "2026-07-28" } } },
+      { token: issued },
+    );
+    const body = (await response.json()) as {
+      result: {
+        resultType: string;
+        supportedVersions: string[];
+        capabilities: Record<string, unknown>;
+        ttlMs: number;
+        cacheScope: string;
+        _meta: Record<string, unknown>;
+      };
+    };
+    const serialized = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expect(body.result.resultType).toBe("complete");
+    expect(body.result.supportedVersions).toEqual(["2026-07-28"]);
+    expect(body.result.capabilities).toEqual({ tools: {} });
+    expect(body.result.ttlMs).toBe(0);
+    expect(body.result.cacheScope).toBe("private");
+    expect(body.result._meta["io.modelcontextprotocol/serverInfo"]).toEqual({
+      name: "cloud-drive-mcp",
+      version: "1.0.0",
+    });
+    expect(serialized).not.toContain(issued);
+  });
+
+  // discover 通知没有 id，不产生响应体；非法 id 在协议层拒绝。
+  test("server/discover 通知返回 202，非法 id 返回 400", async () => {
+    const issued = await token();
+    const notification = await post(
+      createApp(),
+      { jsonrpc: "2.0", method: "server/discover", params: {} },
+      { token: issued },
+    );
+    const invalid = await post(
+      createApp(),
+      { jsonrpc: "2.0", id: { nested: true }, method: "server/discover", params: {} },
+      { token: issued },
+    );
+
+    expect(notification.status).toBe(202);
+    expect(invalid.status).toBe(400);
+  });
+
+  // discover 之后客户端会带 2026-07-28 请求头；SDK 只认 2025-11-25，路由必须归一后再放行。
+  test("discover 后的工具请求可携带新协议版本头", async () => {
+    const issued = await token();
+    const headers = { "mcp-protocol-version": "2026-07-28" };
+    const list = await post(createApp(), { jsonrpc: "2.0", id: 2, method: "tools/list" }, { token: issued, headers });
+    const call = await post(
+      createApp(),
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "cloud_drive_list", arguments: {} } },
+      { token: issued, headers },
+    );
+
+    expect(list.status).toBe(200);
+    expect(call.status).toBe(200);
+    expect(JSON.stringify(await call.json())).toContain("report.txt");
+  });
+
   // stateless：initialize 返回协议版本与 instructions，不建立会话。
   test("initialize 返回 serverInfo 与安全 instructions", async () => {
     const response = await post(

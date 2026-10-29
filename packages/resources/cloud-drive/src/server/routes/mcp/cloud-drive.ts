@@ -3,6 +3,11 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import Elysia from "elysia";
 import type { CloudDriveModuleConfig } from "../../config";
 import type { CloudDriveFacade } from "../../facades/cloud-drive-facade";
+import {
+  buildCloudDriveDiscoverResult,
+  CLOUD_DRIVE_MCP_PROTOCOL_VERSION,
+  CLOUD_DRIVE_MCP_SDK_PROTOCOL_VERSION,
+} from "../../mcp/protocol";
 import { createCloudDriveMcpServer } from "../../mcp/server";
 import { verifyCloudDriveMcpToken } from "../../mcp/token";
 
@@ -43,6 +48,48 @@ function isConfigured(config: CloudDriveModuleConfig): boolean {
   return Boolean(config.mcpTokenSecret?.trim() && config.baseUrl?.trim() && config.masterKey?.trim());
 }
 
+function isRpcId(value: unknown): value is string | number | null {
+  return value === null || typeof value === "string" || typeof value === "number";
+}
+
+/**
+ * 识别单条 JSON-RPC 的 `server/discover`。
+ *
+ * 用 `request.clone()` 读取：原始 Request 的 body 还要交给 SDK transport，不能被消费。只解析信封，
+ * 不读取也不记录 `_meta` 里的 clientInfo/capabilities，避免把客户端元数据写进日志。
+ */
+async function readDiscoverRequest(request: Request): Promise<{ found: boolean; id?: unknown }> {
+  if (request.method !== "POST") return { found: false };
+  let text: string;
+  try {
+    text = await request.clone().text();
+  } catch {
+    return { found: false };
+  }
+  if (!text) return { found: false };
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    return { found: false };
+  }
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return { found: false };
+  const envelope = payload as Record<string, unknown>;
+  if (envelope.jsonrpc !== "2.0" || envelope.method !== "server/discover") return { found: false };
+  return { found: true, id: envelope.id };
+}
+
+/**
+ * discover 成功后客户端会继续携带 `MCP-Protocol-Version: 2026-07-28`，而 SDK 只认到 `2025-11-25`。
+ * 网关声明的是「2026-07-28 的 tools 子集」，tools/list 与 tools/call 的载荷在两者间一致，因此只归一请求头。
+ */
+function withSdkProtocolHeader(request: Request): Request {
+  if (request.headers.get("mcp-protocol-version") !== CLOUD_DRIVE_MCP_PROTOCOL_VERSION) return request;
+  const headers = new Headers(request.headers);
+  headers.set("mcp-protocol-version", CLOUD_DRIVE_MCP_SDK_PROTOCOL_VERSION);
+  return new Request(request, { headers });
+}
+
 export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDependencies) {
   return new Elysia({ name: "mcp-cloud-drive" })
     .onError(({ code, error, status }) => {
@@ -75,6 +122,20 @@ export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDepend
           return status(413, { error: { code: "PAYLOAD_TOO_LARGE", message: "请求体过大" } });
         }
 
+        // peri/rmcp 的首个请求是 server/discover；SDK 不实现该方法。这里只接管这一条，其余方法仍走
+        // SDK，避免复制工具协议实现。
+        const discover = await readDiscoverRequest(request);
+        if (discover.found) {
+          if (discover.id === undefined) return new Response(null, { status: 202 });
+          if (!isRpcId(discover.id)) {
+            return Response.json(
+              { jsonrpc: "2.0", id: null, error: { code: -32600, message: "server/discover 需要合法的 id" } },
+              { status: 400 },
+            );
+          }
+          return Response.json({ jsonrpc: "2.0", id: discover.id, result: buildCloudDriveDiscoverResult() });
+        }
+
         const server = createCloudDriveMcpServer({
           claims,
           facade: dependencies.facade,
@@ -99,7 +160,7 @@ export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDepend
           sessionIdGenerator: undefined,
         });
         await server.connect(transport);
-        return transport.handleRequest(request);
+        return transport.handleRequest(withSdkProtocolHeader(request));
       },
       {
         detail: {
