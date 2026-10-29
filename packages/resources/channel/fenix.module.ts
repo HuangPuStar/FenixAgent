@@ -90,6 +90,16 @@ export const moduleManifest = {
       // 同样不消费 host：连接 token 是唯一凭据，不能复用会话守卫（规格 §4.4 / §9.7）。
       value: () => import("./src/server/assembly").then((assembly) => assembly.createChannelImMcpRoutes()),
     },
+    {
+      id: "channel.api-system-channels",
+      kind: "app-route",
+      slot: "api",
+      // 系统管理面（`/api/system/channels`）：admin 页面用 master key 认证，没有组织上下文，控制面的
+      // `/web/channels/langbot/*` 带组织过滤，两者不能共用一条路由。惰性构造同 `channel.web-langbot`：
+      // registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createChannelApiSystemRoutes(host)),
+    },
   ],
   create: (context) => import("./src/module").then((module) => module.createChannelModule(context)),
 } satisfies ModuleManifest;

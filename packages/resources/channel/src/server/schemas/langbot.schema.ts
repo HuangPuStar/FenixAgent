@@ -96,6 +96,11 @@ export const BotViewSchema = z.object({
   updatedAt: z.string().nullable(),
 });
 
+export const RouteInstanceViewSchema = z.object({
+  conversationId: z.string().describe("IM 会话映射 ID；实例名由它派生。"),
+  instanceName: z.string().describe("该会话对应的智能体实例名（im-<会话ID>）。"),
+});
+
 export const RouteViewSchema = z.object({
   id: z.string(),
   channelId: z.string(),
@@ -103,6 +108,9 @@ export const RouteViewSchema = z.object({
   chatId: z.string().nullable(),
   agentConfigId: z.string(),
   enabled: z.boolean(),
+  instances: z
+    .array(RouteInstanceViewSchema)
+    .describe("该路由当前服务的实例；通配路由可能对应多个聊天，停用路由为空。"),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

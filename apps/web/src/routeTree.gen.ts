@@ -23,6 +23,7 @@ import { Route as AdminPluginMarketRouteImport } from "./routes/admin/plugin-mar
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
 import { Route as AdminModelGatewayRouteImport } from "./routes/admin/model-gateway"
 import { Route as AdminLogsRouteImport } from "./routes/admin/logs"
+import { Route as AdminChannelsRouteImport } from "./routes/admin/channels"
 import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
 import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views"
@@ -118,6 +119,11 @@ const AdminModelGatewayRoute = AdminModelGatewayRouteImport.update({
 const AdminLogsRoute = AdminLogsRouteImport.update({
   id: "/logs",
   path: "/logs",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminChannelsRoute = AdminChannelsRouteImport.update({
+  id: "/channels",
+  path: "/channels",
   getParentRoute: () => AdminRoute,
 } as any)
 const AgentPanelIndexRoute = AgentPanelIndexRouteImport.update({
@@ -263,6 +269,7 @@ export interface FileRoutesByFullPath {
   "/admin": typeof AdminRouteWithChildren
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
+  "/admin/channels": typeof AdminChannelsRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
@@ -304,6 +311,7 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
+  "/admin/channels": typeof AdminChannelsRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
@@ -346,6 +354,7 @@ export interface FileRoutesById {
   "/admin": typeof AdminRouteWithChildren
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
+  "/admin/channels": typeof AdminChannelsRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
@@ -390,6 +399,7 @@ export interface FileRouteTypes {
     | "/admin"
     | "/login"
     | "/no-access"
+    | "/admin/channels"
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
@@ -431,6 +441,7 @@ export interface FileRouteTypes {
     | "/"
     | "/login"
     | "/no-access"
+    | "/admin/channels"
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
@@ -472,6 +483,7 @@ export interface FileRouteTypes {
     | "/admin"
     | "/login"
     | "/no-access"
+    | "/admin/channels"
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
@@ -619,6 +631,13 @@ declare module "@tanstack/react-router" {
       path: "/logs"
       fullPath: "/admin/logs"
       preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/channels": {
+      id: "/admin/channels"
+      path: "/channels"
+      fullPath: "/admin/channels"
+      preLoaderRoute: typeof AdminChannelsRouteImport
       parentRoute: typeof AdminRoute
     }
     "/agent/_panel/": {
@@ -807,6 +826,7 @@ declare module "@tanstack/react-router" {
 }
 
 interface AdminRouteChildren {
+  AdminChannelsRoute: typeof AdminChannelsRoute
   AdminLogsRoute: typeof AdminLogsRoute
   AdminModelGatewayRoute: typeof AdminModelGatewayRoute
   AdminPeopleRoute: typeof AdminPeopleRoute
@@ -817,6 +837,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminChannelsRoute: AdminChannelsRoute,
   AdminLogsRoute: AdminLogsRoute,
   AdminModelGatewayRoute: AdminModelGatewayRoute,
   AdminPeopleRoute: AdminPeopleRoute,

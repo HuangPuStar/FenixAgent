@@ -252,6 +252,36 @@ describe("LangBot 控制面门面", () => {
     expect(matchRoute(routes, { channelId: "channel-2", chatType: "person", chatId: "user-a" })).toBeNull();
   });
 
+  // 控制面展示的实例必须由入站匹配规则推出：精确路由只认自己的会话，通配只认没被精确认领的，停用路由为空。
+  test("路由实例由会话与匹配规则派生", async () => {
+    const channel = makeChannel();
+    const exact = makeRoute({ channelId: channel.id, chatType: "person", chatId: "user-exact" });
+    const wildcard = makeRoute({ channelId: channel.id, chatType: "person", chatId: null });
+    const disabled = makeRoute({ channelId: channel.id, chatType: "group", chatId: null, enabled: false });
+    const exactConversation = makeConversation({ channelId: channel.id, chatType: "person", chatId: "user-exact" });
+    const wildcardConversation = makeConversation({
+      channelId: channel.id,
+      chatType: "person",
+      chatId: "user-wildcard",
+    });
+    const context = createChannelTestContext({
+      channels: [channel],
+      routes: [exact, wildcard, disabled],
+      conversations: [exactConversation, wildcardConversation],
+    });
+
+    const views = await context.facade.listRoutes(admin(), {});
+    const instancesOf = (routeId: string) => new Map(views.map((view) => [view.id, view.instances])).get(routeId);
+
+    expect(instancesOf(exact.id)).toEqual([
+      { conversationId: exactConversation.id, instanceName: `im-${exactConversation.id}` },
+    ]);
+    expect(instancesOf(wildcard.id)).toEqual([
+      { conversationId: wildcardConversation.id, instanceName: `im-${wildcardConversation.id}` },
+    ]);
+    expect(instancesOf(disabled.id)).toEqual([]);
+  });
+
   // 普通成员对他人通道的所有变更入口都必须 403，且不能触发任何远端调用或写入。
   test("普通成员修改他人通道返回 403", async () => {
     const channel = makeChannel({ userId: "owner-9" });

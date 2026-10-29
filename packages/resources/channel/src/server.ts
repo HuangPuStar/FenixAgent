@@ -4,6 +4,7 @@
 // 保持为空，避免消费方把 Elysia 端点与 DB 仓储拉进浏览器包。
 
 export {
+  createChannelApiSystemRoutes,
   createChannelImMcpRoutes,
   createChannelLangBotHookRoutes,
   createChannelLangBotWebRoutes,
@@ -48,9 +49,11 @@ export {
 export type { ImChannelRow } from "./server/repositories/im-channel";
 export type { ImChannelConversationRow } from "./server/repositories/im-channel-conversation";
 export type { ImChannelRouteRow } from "./server/repositories/im-channel-route";
-export type { ChannelWebRouteDependencies } from "./server/routes/dependencies";
+export { createChannelSystemApiRoutes } from "./server/routes/api/system-channels";
+export type { ChannelSystemApiRouteDependencies, ChannelWebRouteDependencies } from "./server/routes/dependencies";
 export { createLangBotWebRoutes } from "./server/routes/web/langbot";
 export { getChannelModule, installChannelModule, resetChannelModule } from "./server/runtime";
+export * from "./server/schemas/channel-admin.schema";
 export * from "./server/schemas/langbot.schema";
 export {
   createImMcpService,
@@ -83,6 +86,17 @@ export {
   createChannelService,
 } from "./server/services/langbot/channel-service";
 export {
+  buildChannelTopology,
+  type ChannelTopologyChannel,
+  type ChannelTopologyDeps,
+  type ChannelTopologyInput,
+  type ChannelTopologyInstance,
+  type ChannelTopologyOrganization,
+  type ChannelTopologyUser,
+  loadChannelTopology,
+  readChannelStatus,
+} from "./server/services/langbot/channel-topology";
+export {
   createLangBotClient,
   type LangBotClient,
   type LangBotClientOptions,
@@ -111,6 +125,7 @@ export {
   startImEventMaintenance,
   stopImEventMaintenance,
 } from "./server/services/langbot/event-maintenance";
+export { buildImInstanceName } from "./server/services/langbot/im-instance-name";
 export {
   createImSessionBridge,
   IM_WAKE_PROMPT_TEXT,
@@ -148,7 +163,10 @@ export {
   type ChannelRouteUpdatePatch,
   createChannelRouteService,
   findActiveRoute,
+  groupInstancesByRoute,
   matchRoute,
+  type RouteInstanceConversation,
+  type RouteInstanceRef,
   type RouteMatchCandidate,
   type RouteMatchTarget,
 } from "./server/services/langbot/route-service";

@@ -40,6 +40,13 @@ export interface ImChannelRepository {
   findById(input: { channelId: string }): Promise<ImChannelRow | undefined>;
   findByIdForOrganization(input: { channelId: string; organizationId: string }): Promise<ImChannelRow | undefined>;
   findManyByOrganization(input: { organizationId: string }): Promise<ImChannelRow[]>;
+  /**
+   * 跨组织读取全部通道，按创建时间升序。
+   *
+   * 只为系统管理面（系统 API Key 保护的 `/api/system/channels`）存在：它没有组织上下文，也无法先取组织
+   * 再逐组织查询。任何用户面调用都必须走 {@link findManyByOrganization}，否则租户边界就没了。
+   */
+  findAll(): Promise<ImChannelRow[]>;
   insert(input: ImChannelInsertInput): Promise<ImChannelRow>;
   updateById(input: { channelId: string; patch: ImChannelUpdatePatch }): Promise<ImChannelRow | undefined>;
   deleteById(input: { channelId: string }): Promise<boolean>;
@@ -73,6 +80,11 @@ export function createImChannelRepository(): ImChannelRepository {
         .from(imChannel)
         .where(eq(imChannel.organizationId, input.organizationId))
         .orderBy(asc(imChannel.createdAt));
+    },
+
+    async findAll() {
+      const db = getChannelDatabase();
+      return db.select().from(imChannel).orderBy(asc(imChannel.createdAt), asc(imChannel.id));
     },
 
     async insert(input) {

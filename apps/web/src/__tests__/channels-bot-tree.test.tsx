@@ -82,6 +82,7 @@ const ROUTE = {
   chatId: "chat-1",
   agentConfigId: "agent-1",
   enabled: true,
+  instances: [],
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-01T00:00:00.000Z",
 };
@@ -198,5 +199,26 @@ describe("消息通道树", () => {
     );
     expect(iconEntry).not.toBeNull();
     expect(textEntry).toBeDefined();
+  });
+
+  // 业务意图：实例名由后端派生，子行要直出这个名称，前端不得自己拼 `im-<会话id>`。
+  test("路由带实例时：子行展示实例名", async () => {
+    serve({
+      bots: [BOT],
+      routes: [{ ...ROUTE, instances: [{ conversationId: "conv-1", instanceName: "im-conv-1" }] }],
+    });
+
+    await renderPage();
+
+    expect(host.textContent).toContain("im-conv-1");
+  });
+
+  // 业务意图：启用中但还没有会话时，要明确说出实例尚未创建，而不是留空让人以为界面漏渲染。
+  test("启用路由没有实例时：子行提示尚未创建", async () => {
+    serve({ bots: [BOT], routes: [ROUTE] });
+
+    await renderPage();
+
+    expect(host.textContent).toContain(TEXT.bots.tree.instancesEmpty);
   });
 });

@@ -32,6 +32,12 @@ export interface LangBotBot {
 
 export type LangBotChatType = "person" | "group";
 
+/** 该路由当前服务的实例；实例名由会话派生，前端不重复拼装。 */
+export interface LangBotRouteInstance {
+  conversationId: string;
+  instanceName: string;
+}
+
 /** 一行路由规则；`chatId` 为空表示该聊天类型的通配路由。 */
 export interface LangBotRoute {
   id: string;
@@ -40,6 +46,7 @@ export interface LangBotRoute {
   chatId: string | null;
   agentConfigId: string;
   enabled: boolean;
+  instances: LangBotRouteInstance[];
   createdAt: string;
   updatedAt: string;
 }

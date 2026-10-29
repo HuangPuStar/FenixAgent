@@ -7,8 +7,9 @@ import {
   getChannelAgentConfigLookup,
 } from "../ports/agent-config-lookup";
 import type { ImChannelRow } from "../repositories/im-channel";
+import type { ImChannelRouteRow } from "../repositories/im-channel-route";
 import type { ChannelService } from "../services/langbot/channel-service";
-import type { ChannelRouteService } from "../services/langbot/route-service";
+import { type ChannelRouteService, groupInstancesByRoute } from "../services/langbot/route-service";
 import type { LangBotSendMessageInput } from "../services/langbot/types";
 import {
   type BotView,
@@ -99,6 +100,15 @@ interface ActorScope {
 export function createLangBotChannelFacade(deps: LangBotChannelFacadeDeps): LangBotChannelFacadeApi {
   const { service, routes } = deps;
   const lookup = deps.agentConfigLookup ?? getChannelAgentConfigLookup;
+
+  /** 实例名由会话派生；控制面据此解释「这条路由现在实际服务哪些实例」。 */
+  async function attachInstances(rows: readonly ImChannelRouteRow[]): Promise<RouteView[]> {
+    if (rows.length === 0) return [];
+    const channelIds = [...new Set(rows.map((row) => row.channelId))];
+    const conversations = await service.listConversationsByChannels({ channelIds });
+    const grouped = groupInstancesByRoute(rows, conversations);
+    return rows.map((row) => toRouteView(row, grouped.get(row.id) ?? []));
+  }
 
   function requireScope(actor: ActorContext | null): ActorScope {
     if (!actor?.activeOrganizationId) {
@@ -211,7 +221,7 @@ export function createLangBotChannelFacade(deps: LangBotChannelFacadeDeps): Lang
         organizationId: scope.organizationId,
         channelId: query.channelId,
       });
-      return rows.map(toRouteView);
+      return attachInstances(rows);
     },
 
     async createRoute(actor, input) {
@@ -227,7 +237,9 @@ export function createLangBotChannelFacade(deps: LangBotChannelFacadeDeps): Lang
         agentConfigId: input.agentConfigId,
       });
       const row = await routes.create({ organizationId: scope.organizationId, ...input });
-      return { status: 201, data: toRouteView(row) };
+      const siblings = await routes.list({ organizationId: scope.organizationId, channelId: row.channelId });
+      const views = await attachInstances(siblings);
+      return { status: 201, data: views.find((view) => view.id === row.id) ?? toRouteView(row) };
     },
 
     async updateRoute(actor, routeId, input) {
@@ -246,7 +258,9 @@ export function createLangBotChannelFacade(deps: LangBotChannelFacadeDeps): Lang
         });
       }
       const row = await routes.update({ organizationId: scope.organizationId, routeId, patch: input });
-      return toRouteView(row);
+      const siblings = await routes.list({ organizationId: scope.organizationId, channelId: row.channelId });
+      const views = await attachInstances(siblings);
+      return views.find((view) => view.id === row.id) ?? toRouteView(row);
     },
 
     async deleteRoute(actor, routeId) {

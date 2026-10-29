@@ -215,6 +215,7 @@ describe("消息通道页状态接线", () => {
               chatId: "chat-1",
               agentConfigId: "agent-1",
               enabled: true,
+              instances: [],
               createdAt: "2026-10-01T00:00:00.000Z",
               updatedAt: "2026-10-01T00:00:00.000Z",
             },

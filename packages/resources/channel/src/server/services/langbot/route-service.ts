@@ -2,6 +2,7 @@ import type { ImChatType } from "@fenix/resource-channel/db";
 import { ChannelControlError } from "../../contracts";
 import type { ImChannelRepository } from "../../repositories/im-channel";
 import type { ImChannelRouteRepository, ImChannelRouteRow } from "../../repositories/im-channel-route";
+import { buildImInstanceName } from "./im-instance-name";
 
 /**
  * 通道路由规则：匹配语义与 CRUD 编排。
@@ -37,6 +38,41 @@ export function matchRoute<T extends RouteMatchCandidate>(routes: readonly T[], 
     candidates.find((route) => route.chatId === null) ??
     null
   );
+}
+
+export interface RouteInstanceRef {
+  readonly conversationId: string;
+  readonly instanceName: string;
+}
+
+export interface RouteInstanceConversation {
+  readonly id: string;
+  readonly channelId: string;
+  readonly chatType: ImChatType;
+  readonly chatId: string;
+}
+
+/**
+ * 反推每条路由当前服务的实例：匹配复用 matchRoute，因此列表里显示的实例就是真正在处理入站消息的那个。
+ * 没有路由认领的会话（例如路由全部停用）不产出任何条目。
+ */
+export function groupInstancesByRoute(
+  routes: readonly (RouteMatchCandidate & { readonly id: string })[],
+  conversations: readonly RouteInstanceConversation[],
+): ReadonlyMap<string, readonly RouteInstanceRef[]> {
+  const grouped = new Map<string, RouteInstanceRef[]>();
+  for (const conversation of conversations) {
+    const route = matchRoute(routes, {
+      channelId: conversation.channelId,
+      chatType: conversation.chatType,
+      chatId: conversation.chatId,
+    });
+    if (!route) continue;
+    const refs = grouped.get(route.id) ?? [];
+    refs.push({ conversationId: conversation.id, instanceName: buildImInstanceName(conversation.id) });
+    grouped.set(route.id, refs);
+  }
+  return grouped;
 }
 
 /**

@@ -2,6 +2,7 @@ import { type AgentSession, getBoundAgentRuntime, type PromptTurn } from "@fenix
 import { findOrCreateNamedApiInstance, getAgentRuntimeConfig } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
 import {
+  buildImInstanceName,
   getChannelConfig,
   IM_INBOX_RESOURCE_URI,
   type ImSessionPort,
@@ -124,7 +125,7 @@ export function createChannelImSessionPort(): ImSessionPort {
       const instance = await findOrCreateNamedApiInstance({
         environmentId,
         ownerUserId: input.ownerUserId,
-        name: `im-${input.conversationId}`,
+        name: buildImInstanceName(input.conversationId),
       });
       try {
         await runtime().ensureInstanceRuntime(instance);

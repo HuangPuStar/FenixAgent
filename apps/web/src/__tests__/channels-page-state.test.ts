@@ -7,7 +7,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LangBotBot, LangBotRoute } from "@fenix/resource-channel/web";
 import {
-  channelDisplayName,
   formatDateTime,
   groupRoutesByChannel,
   isUnauthorizedError,
@@ -40,6 +39,7 @@ function route(overrides: Partial<LangBotRoute> = {}): LangBotRoute {
     chatId: "chat-1",
     agentConfigId: "agent-1",
     enabled: true,
+    instances: [],
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     ...overrides,
@@ -155,13 +155,6 @@ describe("路由分组", () => {
     const bots = [bot({ missingInLangbot: true })];
     const groups = groupRoutesByChannel([route()], bots);
     expect(groups[0]?.missingBot).toBe(true);
-  });
-
-  // 业务意图：展示名优先用通道名，其次 Bot 名，都找不到时退回通道 ID。
-  test("通道展示名按 通道名 → Bot 名 → ID 回退", () => {
-    expect(channelDisplayName("channel-1", [bot()])).toBe("客服通道");
-    expect(channelDisplayName("channel-1", [bot({ channelName: null })])).toBe("客服机器人");
-    expect(channelDisplayName("channel-x", [bot()])).toBe("channel-x");
   });
 });
 

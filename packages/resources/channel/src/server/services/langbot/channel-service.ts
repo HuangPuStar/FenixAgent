@@ -83,6 +83,15 @@ export interface ChannelService {
     page: number;
     pageSize: number;
   }): Promise<ConversationListResult>;
+  /** 控制面派生：按通道取全部会话映射（不分页），用于解释路由当前服务的实例。 */
+  listConversationsByChannels(input: { channelIds: readonly string[] }): Promise<ImChannelConversationRow[]>;
+  /**
+   * 系统管理面派生：跨组织读取全部通道。
+   *
+   * 与 {@link listConversationsByChannels} 同因——系统 API Key 面没有组织上下文，只能全量取；用户面不得
+   * 复用这个方法（组织过滤必须留在 `listBots` 一类的组织维度入口里）。
+   */
+  listAllChannels(): Promise<ImChannelRow[]>;
 }
 
 export interface ChannelServiceDeps {
@@ -343,6 +352,14 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
         conversations.countByChannels({ channelIds }),
       ]);
       return { items, total };
+    },
+
+    listConversationsByChannels(input) {
+      return conversations.findAllByChannels(input);
+    },
+
+    listAllChannels() {
+      return channels.findAll();
     },
   };
 }

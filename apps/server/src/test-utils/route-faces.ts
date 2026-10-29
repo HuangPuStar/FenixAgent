@@ -21,6 +21,7 @@ import {
   createWebModelGatewayRoutes,
   createWebPeriTaskDetailsRoutes,
 } from "@fenix/model-management/server";
+import { createChannelSystemApiRoutes } from "@fenix/resource-channel/server";
 import { createApiKnowledgeBaseRoutes, createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import {
   createApiWorkspaceRoutes,
@@ -150,6 +151,7 @@ export function createTestApiRoutes(): readonly AnyElysia[] {
     createApiMcpRoutes({ authGuardPlugin }),
     createApiSkillsRoutes({ authGuardPlugin }),
     createApiAgentsRoutes({ authGuardPlugin }),
+    createChannelSystemApiRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
     createApiWorkspaceRoutes({ authGuardPlugin }),
     createApiModelsRoutes({ authGuardPlugin }),
     createApiSystemModelGatewayRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),

@@ -84,3 +84,47 @@ export function createStubSessionAuthGuardPlugin() {
 
 // 复位登记：替身会话是模块级状态，不复位会跨用例泄漏（症状是「单独跑通过、全量跑失败」）。
 registerStubResetter(resetTestAuth);
+
+/** 系统 API 守卫替身接受的那个 key；用例据此构造带 / 不带凭据两种请求。 */
+export const TEST_SYSTEM_API_KEY = "test-system-key";
+
+/**
+ * 系统 API 守卫替身：`/api/system/channels` 的守卫由宿主注入（见 `../server/routes/dependencies`）。
+ *
+ * 与放行的会话守卫不同，这一份**会拒绝**：它按 `Authorization: Bearer <TEST_SYSTEM_API_KEY>` 判定，缺凭据
+ * 时返回与宿主同形状的 401。理由不是要复刻鉴权策略，而是需要一条能证伪的断言——若路由漏声明
+ * `systemApiKeyAuth: true`，不带凭据的请求就会直接进处理器并返回 200，用例立刻失败。真实的 key 校验规则
+ * 仍归宿主 `systemApiAuthPlugin`，本替身不参与。
+ *
+ * 插件名刻意与宿主守卫不同：Elysia 按 plugin `name` 去重。
+ */
+export function createStubSystemApiGuardPlugin() {
+  return new Elysia({ name: "test-channel-system-api-auth" })
+    .decorate({
+      error(code: number, response: unknown) {
+        return new Response(JSON.stringify(response), {
+          status: code,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    })
+    .macro({
+      systemApiKeyAuth(enabled: boolean) {
+        if (!enabled) return {};
+        return {
+          beforeHandle: ({
+            headers,
+            error,
+          }: {
+            headers: Record<string, string | undefined>;
+            error: (code: number, response: unknown) => unknown;
+          }) => {
+            if (headers.authorization !== `Bearer ${TEST_SYSTEM_API_KEY}`) {
+              return error(401, { error: { code: "UNAUTHORIZED", message: "系统 API key 无效" } });
+            }
+            return;
+          },
+        };
+      },
+    });
+}

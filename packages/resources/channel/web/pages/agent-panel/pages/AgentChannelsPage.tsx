@@ -1,30 +1,18 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Info } from "lucide-react";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChannelBotsView } from "./channel-bots-view";
-import { ChannelDiagnosticsView } from "./channel-diagnostics-view";
-
-const CHANNELS_TABS = ["bots", "diagnostics"] as const;
-type ChannelsTab = (typeof CHANNELS_TABS)[number];
-
-function isChannelsTab(value: string): value is ChannelsTab {
-  return (CHANNELS_TABS as readonly string[]).includes(value);
-}
 
 /**
- * 消息通道页：通道树与诊断两个视图共用一页。
+ * 消息通道页：只有通道树一个能力。
  *
- * 路由挂在通道下作为树的子行，不再单独成页签：一条路由离开它的通道就没有意义，分成两页会让用户
- * 在 channelId 之间来回对照。诊断取的是另一套数据（连通性与会话映射），仍独立取数，避免它的失败
- * 拖垮通道树。
+ * 诊断（LangBot 连通性、通道/会话表）已迁到管理台的「消息通道」页：它的数据口径是全部组织，而本页的
+ * 控制面接口按 active organization 过滤，留在登录态页面上只能看到当前组织的切片，排障时会误导。
  */
 export function AgentChannelsPage() {
   const { t } = useTranslation(NS.CHANNELS);
-  const [tab, setTab] = useState<ChannelsTab>("bots");
 
   return (
     <AppPage>
@@ -35,24 +23,9 @@ export function AgentChannelsPage() {
         <p className="text-xs leading-5 text-text-muted">{t("langbot.identityNotice")}</p>
       </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          if (isChannelsTab(value)) setTab(value);
-        }}
-        className="mt-4"
-      >
-        <TabsList aria-label={t("langbot.tabs.label")}>
-          <TabsTrigger value="bots">{t("langbot.tabs.bots")}</TabsTrigger>
-          <TabsTrigger value="diagnostics">{t("langbot.tabs.diagnostics")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="bots">
-          <ChannelBotsView />
-        </TabsContent>
-        <TabsContent value="diagnostics">
-          <ChannelDiagnosticsView />
-        </TabsContent>
-      </Tabs>
+      <div className="mt-4">
+        <ChannelBotsView />
+      </div>
     </AppPage>
   );
 }

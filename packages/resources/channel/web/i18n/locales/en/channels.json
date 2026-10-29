@@ -4,13 +4,8 @@
       "channels": "Message channels"
     },
     "title": "Message channels",
-    "subtitle": "Hand IM chats to platform Agents through LangBot. This page manages the platform-side mapping; Bot pipelines stay in the LangBot WebUI.",
-    "identityNotice": "The execution identity is always the channel owner: group members and direct-message users never run Agents as themselves, but with the owner's workspace and quota.",
-    "tabs": {
-      "label": "Message channel views",
-      "bots": "Channels",
-      "diagnostics": "Diagnostics"
-    },
+    "subtitle": "Connect group chats and direct messages on messaging platforms to agents. Users can talk to them directly in the chat.",
+    "identityNotice": "Group members and direct-message users need no separate access. Their conversations are handled on behalf of the channel creator.",
     "common": {
       "refresh": "Refresh",
       "retry": "Retry",
@@ -45,7 +40,10 @@
         "collapse": "Collapse routes for {{name}}",
         "addRoute": "Connect agent",
         "routesEmpty": "No agent is listening",
-        "agent": "Agent configuration"
+        "agent": "Agent configuration",
+        "instances": "Instance",
+        "instancesEmpty": "Not created",
+        "instancesMore": "+{{count}} more"
       },
       "testSend": "Test send",
       "edit": "Edit",
@@ -171,30 +169,45 @@
         "noAgents": "No Agent configuration is available"
       }
     },
-    "diagnostics": {
-      "statusTitle": "LangBot connectivity",
+    "admin": {
+      "nav": "Channels",
+      "title": "Message channel administration",
+      "subtitle": "Inspect LangBot connectivity, channel topology and conversation instances across organizations.",
+      "loginTitle": "Enter the system admin key",
+      "loginDescription": "This page uses the system admin key (RCS_SYSTEM_API_KEYS) to read channels of every organization. The key stays in this tab only.",
+      "loginPlaceholder": "System admin key",
+      "loginSubmit": "Unlock",
+      "loginError": "The key is invalid or expired. Enter it again.",
+      "connectivityTitle": "LangBot connectivity",
       "reachable": "Reachable",
       "unreachable": "Unreachable",
       "version": "Version",
       "edition": "Edition",
       "wizard": "Setup wizard",
-      "unknown": "Unknown",
-      "conversationsTitle": "Conversation mappings",
-      "conversationsEmptyTitle": "No conversations yet",
-      "conversationsEmptyDescription": "Once a channel receives and delivers its first message, the chat's conversation mapping appears here.",
-      "channel": "Channel",
-      "chat": "Chat",
-      "session": "Session (masked)",
+      "topologyTitle": "Channel topology",
+      "botUuid": "Bot UUID",
       "agent": "Agent configuration",
+      "session": "Session (masked)",
       "lastEventAt": "Last event",
       "lastReplyAt": "Last reply",
+      "instancesEmpty": "No conversation instance",
+      "tableTitle": "Conversation instances",
+      "table": {
+        "channel": "Channel",
+        "user": "User",
+        "chat": "Chat type",
+        "chatId": "Chat ID",
+        "agent": "Agent configuration",
+        "session": "Session (masked)",
+        "instance": "Instance",
+        "lastEventAt": "Last event",
+        "lastReplyAt": "Last reply"
+      },
       "page": "Page {{page}} of {{total}}",
       "prev": "Previous",
       "next": "Next",
-      "loadFailed": "Conversation mappings failed to load",
-      "eventsTitle": "Recent events",
-      "eventsUnavailableTitle": "Event details are unavailable",
-      "eventsUnavailableDescription": "The control plane currently exposes conversation mappings only and has no event query endpoint, so event status, delivery method and ACK cannot be shown here."
+      "emptyTitle": "No message channel yet",
+      "emptyDescription": "Once any organization creates a LangBot channel, its users, channels and conversation instances show up here."
     }
   }
 }

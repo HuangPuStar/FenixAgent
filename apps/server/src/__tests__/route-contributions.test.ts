@@ -499,6 +499,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/agents",
     "PUT /api/agents/:id",
     "DELETE /api/agents/:id",
+    // channel（系统管理面：admin 页面用 master key 认证，与控制面的组织过滤面互不相关）
+    "GET /api/system/channels/",
     // machine
     "POST /api/environments/:environmentId/workspace/files",
     // model-management

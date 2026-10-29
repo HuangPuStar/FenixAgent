@@ -163,6 +163,16 @@ export function BotTreeRow(props: BotTreeRowProps) {
                         {" · "}
                         {props.agentNames.get(route.agentConfigId) ?? route.agentConfigId}
                       </p>
+                      {/* 停用路由没有在收听，说「尚未创建」会被误读成从没配置过。 */}
+                      {route.enabled ? (
+                        <p className="truncate text-xs text-text-dim">
+                          <span className="text-text-muted">{t("langbot.bots.tree.instances")}</span>
+                          {" · "}
+                          {route.instances.length > 1
+                            ? `${route.instances[0]!.instanceName} ${t("langbot.bots.tree.instancesMore", { count: route.instances.length - 1 })}`
+                            : (route.instances[0]?.instanceName ?? t("langbot.bots.tree.instancesEmpty"))}
+                        </p>
+                      ) : null}
                     </div>
 
                     <StatusBadge

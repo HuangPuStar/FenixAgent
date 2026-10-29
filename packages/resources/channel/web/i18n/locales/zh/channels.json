@@ -4,13 +4,8 @@
       "channels": "消息通道"
     },
     "title": "消息通道",
-    "subtitle": "通过 LangBot 把 IM 聊天交给平台 Agent；通道页只管平台侧映射，Bot 的流水线配置仍在 LangBot WebUI。",
-    "identityNotice": "执行身份始终是通道所有者：群成员与私聊用户不会以本人身份运行 Agent，而是使用所有者的工作区与配额。",
-    "tabs": {
-      "label": "消息通道视图",
-      "bots": "通道",
-      "diagnostics": "诊断"
-    },
+    "subtitle": "把消息平台上的群聊和私聊接入智能体，用户可以直接在聊天里对话。",
+    "identityNotice": "群成员和私聊用户不需要单独授权，对话由通道创建者代为处理。",
     "common": {
       "refresh": "刷新",
       "retry": "重试",
@@ -45,7 +40,10 @@
         "collapse": "收起 {{name}} 的路由",
         "addRoute": "对接智能体",
         "routesEmpty": "没有智能体在收听",
-        "agent": "Agent 配置"
+        "agent": "Agent 配置",
+        "instances": "实例",
+        "instancesEmpty": "尚未创建",
+        "instancesMore": "等 {{count}} 个"
       },
       "testSend": "测试发送",
       "edit": "编辑",
@@ -171,30 +169,45 @@
         "noAgents": "当前没有可选的 Agent 配置"
       }
     },
-    "diagnostics": {
-      "statusTitle": "LangBot 连通性",
+    "admin": {
+      "nav": "通道管理",
+      "title": "消息通道管理",
+      "subtitle": "跨组织查看 LangBot 连通性、通道拓扑与会话实例。",
+      "loginTitle": "输入系统管理密钥",
+      "loginDescription": "本页使用系统管理密钥（RCS_SYSTEM_API_KEYS）读取全部组织的通道，密钥只保存在当前标签页。",
+      "loginPlaceholder": "系统管理密钥",
+      "loginSubmit": "进入",
+      "loginError": "密钥无效或已失效，请重新输入",
+      "connectivityTitle": "LangBot 连通性",
       "reachable": "可达",
       "unreachable": "不可达",
       "version": "版本",
       "edition": "发行版",
       "wizard": "初始化向导",
-      "unknown": "未知",
-      "conversationsTitle": "会话映射",
-      "conversationsEmptyTitle": "还没有会话",
-      "conversationsEmptyDescription": "通道收到首条消息并成功投递后，这里会出现该聊天的会话映射。",
-      "channel": "通道",
-      "chat": "聊天",
-      "session": "会话（脱敏）",
+      "topologyTitle": "通道拓扑",
+      "botUuid": "Bot UUID",
       "agent": "Agent 配置",
+      "session": "会话（脱敏）",
       "lastEventAt": "最近事件",
       "lastReplyAt": "最近回复",
+      "instancesEmpty": "暂无会话实例",
+      "tableTitle": "会话实例",
+      "table": {
+        "channel": "通道",
+        "user": "用户",
+        "chat": "聊天类型",
+        "chatId": "聊天 ID",
+        "agent": "Agent 配置",
+        "session": "会话（脱敏）",
+        "instance": "实例名",
+        "lastEventAt": "最近事件",
+        "lastReplyAt": "最近回复"
+      },
       "page": "第 {{page}} / {{total}} 页",
       "prev": "上一页",
       "next": "下一页",
-      "loadFailed": "会话映射加载失败",
-      "eventsTitle": "最近事件",
-      "eventsUnavailableTitle": "事件明细暂不可用",
-      "eventsUnavailableDescription": "控制面当前只提供会话映射，没有事件查询接口；事件状态、投递方式与 ACK 无法在这里展示。"
+      "emptyTitle": "还没有任何消息通道",
+      "emptyDescription": "任一组织创建 LangBot 通道后，它的用户、通道与会话实例会出现在这里。"
     }
   }
 }

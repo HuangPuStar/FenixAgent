@@ -45,6 +45,8 @@ export interface ImChannelConversationRepository {
     limit: number;
     offset: number;
   }): Promise<ImChannelConversationRow[]>;
+  /** 控制面派生的全量读取：按通道取全部会话映射，不分页（数量受真实聊天数约束）。 */
+  findAllByChannels(input: { channelIds: readonly string[] }): Promise<ImChannelConversationRow[]>;
   countByChannels(input: { channelIds: readonly string[] }): Promise<number>;
   insert(input: ImChannelConversationInsertInput): Promise<ImChannelConversationRow>;
   insertIfAbsent(input: ImChannelConversationInsertInput): Promise<ImChannelConversationRow | undefined>;
@@ -108,6 +110,16 @@ export function createImChannelConversationRepository(): ImChannelConversationRe
         .orderBy(desc(imChannelConversation.createdAt), desc(imChannelConversation.id))
         .limit(input.limit)
         .offset(input.offset);
+    },
+
+    async findAllByChannels(input) {
+      if (input.channelIds.length === 0) return [];
+      const db = getChannelDatabase();
+      return db
+        .select()
+        .from(imChannelConversation)
+        .where(inArray(imChannelConversation.channelId, [...input.channelIds]))
+        .orderBy(desc(imChannelConversation.createdAt), desc(imChannelConversation.id));
     },
 
     async countByChannels(input) {

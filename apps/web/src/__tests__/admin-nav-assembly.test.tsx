@@ -16,6 +16,7 @@
 // `assembly-capabilities.test.tsx` 覆盖。
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { CHANNELS_NS, channelsResources } from "@fenix/resource-channel/web/i18n";
 import { OBSERVER_NS, observerResources } from "@fenix/resource-observer/web/i18n";
 import { TICKETS_NS, ticketsResources } from "@fenix/resource-tickets/web/i18n";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
@@ -57,8 +58,9 @@ Object.assign(globals, {
 });
 
 /**
- * 真实 i18next 实例：`common`（装配提示）＋ observer（布局与默认条目文案）＋ tickets（工单条目文案）。
- * 其它条目的字典缺席只会让它们回显键名，不影响本文件的断言（按 `href` 与提示文案判定）。
+ * 真实 i18next 实例：`common`（装配提示）＋ observer（布局与默认条目文案）＋ tickets（工单条目文案）
+ * ＋ channels（消息通道条目的跨包文案）。其它条目的字典缺席只会让它们回显键名，不影响本文件的断言
+ * （按 `href` 与提示文案判定）。
  */
 const i18n = createInstance();
 await i18n.init({
@@ -71,6 +73,7 @@ await i18n.init({
       common: zhCommon,
       [OBSERVER_NS]: observerResources.zh,
       [TICKETS_NS]: ticketsResources.zh,
+      [CHANNELS_NS]: channelsResources.zh,
     },
   },
 });
@@ -176,6 +179,9 @@ describe("管理台工单入口的装配收窄", () => {
     expect(hrefs).not.toContain("/admin/tickets");
     expect(hrefs).toContain("/admin/people");
     expect(hrefs).toContain("/admin/logs");
+    // 消息通道条目按包导出的命名空间取文案：字典登记不上时侧栏只会回显 key。
+    expect(hrefs).toContain("/admin/channels");
+    expect(text()).toContain(channelsResources.zh.langbot.admin.nav);
   });
 
   // 业务意图：手工输入 `/admin/tickets` 时显示与根守卫相同的「未启用」界面，**不挂载页面**（连懒加载子树

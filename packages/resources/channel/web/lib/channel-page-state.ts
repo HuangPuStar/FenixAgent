@@ -121,12 +121,6 @@ export function groupRoutesByChannel(
   return result;
 }
 
-/** 通道 ID 在路由分组里的展示名；找不到 Bot 时退回短 ID，避免整块显示成 UUID。 */
-export function channelDisplayName(channelId: string, bots: readonly LangBotBot[]): string {
-  const bot = bots.find((item) => item.channelId === channelId);
-  return bot ? (bot.channelName ?? bot.name) : channelId;
-}
-
 /** 时间戳展示；空值由调用方配「从未」文案，非法值原样回退以便定位后端契约漂移。 */
 export function formatDateTime(value: string | null, locale: string): string | null {
   if (!value) return null;

@@ -53,8 +53,9 @@ describe("Channel 包的交付面", () => {
       "channel.web-langbot",
       "channel.hooks-langbot",
       "channel.mcp-im",
+      "channel.api-system-channels",
     ]);
-    expect(moduleManifest.contributions?.map((item) => item.slot)).toEqual(["web", "app", "app"]);
+    expect(moduleManifest.contributions?.map((item) => item.slot)).toEqual(["web", "app", "app", "api"]);
     expect(moduleManifest.web).toEqual({
       id: "channel",
       contribution: "@fenix/resource-channel/web/contribution",

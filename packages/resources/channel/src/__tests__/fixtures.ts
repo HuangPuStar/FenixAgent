@@ -98,6 +98,9 @@ export function createInMemoryChannelRepository(initial: ImChannelRow[] = []): I
         .filter((row) => row.organizationId === organizationId)
         .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
     },
+    async findAll() {
+      return [...rows].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    },
     async insert(input) {
       const now = new Date();
       const row = makeChannel({
@@ -253,6 +256,9 @@ export function createInMemoryConversationRepository(
     },
     async findManyByChannels({ channelIds, limit, offset }) {
       return rows.filter((row) => channelIds.includes(row.channelId)).slice(offset, offset + limit);
+    },
+    async findAllByChannels({ channelIds }) {
+      return rows.filter((row) => channelIds.includes(row.channelId));
     },
     async countByChannels({ channelIds }) {
       return rows.filter((row) => channelIds.includes(row.channelId)).length;

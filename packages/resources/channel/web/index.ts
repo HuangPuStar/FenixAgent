@@ -5,6 +5,8 @@
  * `./server`，不得从这里转出。页面由宿主路由壳懒加载，页面内的组件与 API 不另开窄出口。
  */
 
+export * from "./api/admin";
 export * from "./api/langbot";
 export { CHANNELS_NS, type ChannelResources, channelsResources } from "./i18n";
+export { AdminChannelsPage } from "./pages/admin/AdminChannelsPage";
 export { AgentChannelsPage } from "./pages/agent-panel/pages/AgentChannelsPage";

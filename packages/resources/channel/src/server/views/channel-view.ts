@@ -2,6 +2,7 @@ import type { ImChannelRow } from "../repositories/im-channel";
 import type { ImChannelConversationRow } from "../repositories/im-channel-conversation";
 import type { ImChannelRouteRow } from "../repositories/im-channel-route";
 import type { BotListResult } from "../services/langbot/channel-service";
+import type { RouteInstanceRef } from "../services/langbot/route-service";
 import type { LangBotBot, LangBotStatus } from "../services/langbot/types";
 import { readBotUuid } from "../services/langbot/types";
 
@@ -43,6 +44,8 @@ export interface RouteView {
   readonly chatId: string | null;
   readonly agentConfigId: string;
   readonly enabled: boolean;
+  /** 该路由当前服务的实例；由会话映射派生，路由行本身不持有实例。 */
+  readonly instances: readonly RouteInstanceRef[];
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -132,7 +135,7 @@ export function toBotListView(result: BotListResult): BotView[] {
   return views;
 }
 
-export function toRouteView(row: ImChannelRouteRow): RouteView {
+export function toRouteView(row: ImChannelRouteRow, instances: readonly RouteInstanceRef[] = []): RouteView {
   return {
     id: row.id,
     channelId: row.channelId,
@@ -140,6 +143,7 @@ export function toRouteView(row: ImChannelRouteRow): RouteView {
     chatId: row.chatId,
     agentConfigId: row.agentConfigId,
     enabled: row.enabled,
+    instances,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
