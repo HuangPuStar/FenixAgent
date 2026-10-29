@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  type AgentInstanceRecord,
   type AgentRuntimeSessionApi,
   type AgentSession,
+  type EnvironmentRecord,
   type PromptTurn,
   type PromptTurnStartResult,
+  type RuntimeSnapshot,
 } from "@fenix/agent-runtime/runtime";
 import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
-import { resetAllStubs, stubModuleConfig } from "@fenix/platform-sdk/testing";
+import { resetAllStubs, stubDb, stubModuleConfig } from "@fenix/platform-sdk/testing";
 import { createChannelImSessionPort } from "../services/channel-im-session-port";
 
 /**
@@ -100,6 +103,86 @@ function target(rcsSessionId: string) {
   };
 }
 
+const ENVIRONMENT: EnvironmentRecord = {
+  id: "env-1",
+  name: "auto-agent1",
+  description: null,
+  workspacePath: "/tmp/workspace",
+  agentConfigId: "agent-1",
+  secret: "env-test-secret",
+  machineName: null,
+  directory: null,
+  branch: null,
+  gitRepoUrl: null,
+  workerType: "local",
+  capabilities: null,
+  status: "active",
+  username: null,
+  userId: "owner-1",
+  organizationId: "org-1",
+  autoStart: true,
+  lastPollAt: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+const INSTANCE_ROW: AgentInstanceRecord = {
+  id: "instance-im-1",
+  environmentId: ENVIRONMENT.id,
+  ownerUserId: "owner-1",
+  creationSource: "api",
+  name: `im-${CONVERSATION_ID}`,
+  isDefault: false,
+  createdByUserId: "owner-1",
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+function ensureInput() {
+  return {
+    conversationId: CONVERSATION_ID,
+    organizationId: "org-1",
+    ownerUserId: "owner-1",
+    agentConfigId: "agent-1",
+  };
+}
+
+/** 具名 api 实例经 insert 创建；只回填一行，避免本用例依赖真实 DB。 */
+function stubInstanceCreation(row: AgentInstanceRecord): void {
+  stubDb({
+    insert: () => ({
+      values: () => ({ onConflictDoNothing: () => ({ returning: async () => [row] }) }),
+    }),
+  });
+}
+
+function runtimeSnapshot(generation: number): RuntimeSnapshot {
+  return {
+    instanceUid: INSTANCE_ROW.id,
+    runtimeGeneration: generation,
+    operationId: generation,
+    state: "running",
+    currentOperation: null,
+    deleting: false,
+    lastFailure: null,
+  };
+}
+
+interface PortError extends Error {
+  readonly code?: string;
+  readonly cause?: unknown;
+}
+
+async function capturePortError(promise: Promise<unknown>): Promise<PortError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) return error;
+    throw error;
+  }
+  throw new Error("预期调用失败，但调用成功返回");
+}
+
 beforeEach(() => {
   resetAllStubs();
   // 端口在 openSession 里签发逐会话 token；密钥只用于用例，与部署无关。
@@ -171,5 +254,78 @@ describe("IM 会话端口并发冷启动", () => {
       name: "im",
       _meta: { "peri.subscriptions": { resources: ["im://inbox"] } },
     });
+  });
+});
+
+describe("IM 会话端口自动唤醒", () => {
+  // 手动停止的实例收到 IM 消息时视为唤醒意图：重启一次，并用重启后的代次返回实例信息。
+  test("实例停止时自动唤醒并返回重启后的运行代次", async () => {
+    stubInstanceCreation(INSTANCE_ROW);
+    let generation = 1;
+    const calls: string[] = [];
+    stubAgentRuntimePort({
+      createEnvironment: async () => ENVIRONMENT,
+      ensureInstanceRuntime: async () => {
+        calls.push("ensure");
+        throw Object.assign(new Error("Agent Instance is stopped"), { code: "INSTANCE_STOPPED" });
+      },
+      restartInstanceRuntime: async () => {
+        calls.push("restart");
+        generation += 1;
+      },
+      getRuntimeSnapshot: () => runtimeSnapshot(generation),
+    });
+    const port = createChannelImSessionPort();
+
+    const ref = await port.ensureInstance(ensureInput());
+
+    expect(calls).toEqual(["ensure", "restart"]);
+    expect(ref).toEqual({ instanceId: INSTANCE_ROW.id, runtimeToken: "2" });
+  });
+
+  // 唤醒失败必须带稳定码上抛并保留 cause；上层据此回「唤醒失败」而不是笼统繁忙。
+  test("自动唤醒失败时抛出 IM_WAKE_FAILED 并保留 cause", async () => {
+    stubInstanceCreation(INSTANCE_ROW);
+    const wakeFailure = new Error("sandbox unavailable");
+    stubAgentRuntimePort({
+      createEnvironment: async () => ENVIRONMENT,
+      ensureInstanceRuntime: async () => {
+        throw Object.assign(new Error("Agent Instance is stopped"), { code: "INSTANCE_STOPPED" });
+      },
+      restartInstanceRuntime: async () => {
+        throw wakeFailure;
+      },
+      getRuntimeSnapshot: () => runtimeSnapshot(1),
+    });
+    const port = createChannelImSessionPort();
+
+    const error = await capturePortError(port.ensureInstance(ensureInput()));
+
+    expect(error.code).toBe("IM_WAKE_FAILED");
+    expect(error.message).toContain("sandbox unavailable");
+    expect(error.cause).toBe(wakeFailure);
+  });
+
+  // 只有 INSTANCE_STOPPED 触发唤醒：其他启动错误保持原样，不做第二次尝试。
+  test("其他启动错误不触发唤醒", async () => {
+    stubInstanceCreation(INSTANCE_ROW);
+    let restarts = 0;
+    const startupError = new Error("spawn failed");
+    stubAgentRuntimePort({
+      createEnvironment: async () => ENVIRONMENT,
+      ensureInstanceRuntime: async () => {
+        throw startupError;
+      },
+      restartInstanceRuntime: async () => {
+        restarts += 1;
+      },
+      getRuntimeSnapshot: () => runtimeSnapshot(1),
+    });
+    const port = createChannelImSessionPort();
+
+    const error = await capturePortError(port.ensureInstance(ensureInput()));
+
+    expect(error).toBe(startupError);
+    expect(restarts).toBe(0);
   });
 });

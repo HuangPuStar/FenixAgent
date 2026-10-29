@@ -1,4 +1,4 @@
-import { error as logError } from "@fenix/logger";
+import { error as logError, warn as logWarn } from "@fenix/logger";
 import { runInTransaction } from "@fenix/platform-sdk/server";
 import type { ImChatType } from "@fenix/resource-channel/db";
 import type { ImSessionTarget } from "../../ports/im-session";
@@ -11,7 +11,12 @@ import type { ImChannelEventRepository } from "../../repositories/im-channel-eve
 import type { ImChannelRouteRepository } from "../../repositories/im-channel-route";
 import type { ConversationService } from "./conversation-service";
 import type { DeliveryDispatcher } from "./delivery-dispatcher";
-import { type ImSessionBridge, ImSessionBridgeError, type ImSessionOpenOutcome } from "./im-session-bridge";
+import {
+  type ImSessionBridge,
+  ImSessionBridgeError,
+  type ImSessionFailureCode,
+  type ImSessionOpenOutcome,
+} from "./im-session-bridge";
 import { findActiveRoute } from "./route-service";
 import { readBotUuid } from "./types";
 
@@ -23,7 +28,8 @@ import { readBotUuid } from "./types";
  *
  * 关键边界：
  * 1. 去重必须由数据库唯一键原子拦截（`insertIfAbsent`），不能先查后插：多实例与重启后重投都靠它。
- * 2. 没有订阅流时事件保持 `received`，由 dispatcher 退避重试；这里只负责入队，不等待 Agent。
+ * 2. 暖态且有订阅流时只发通知；订阅流随 Agent turn 结束关闭，此时通知无人接收，必须改发唤醒 prompt，
+ *    否则事件会一直停在 `received` 等 dispatcher 退避。
  * 3. 群聊只接受直接 @ 的消息；LangBot Webhook 不提供机器人自身 IM ID，因此「直接 At」是当前能判定的
  *    最强条件，AtAll 不算直接 @（规格 §6.1.1）。
  * 4. 非文本事件只落 `skipped` 并回固定提示，不进入 Agent。
@@ -108,6 +114,15 @@ type ParseResult =
 
 const TEXT_ONLY_NOTICE = "当前仅支持文本消息。";
 const BUSY_NOTICE = "系统繁忙，请稍后重试。";
+/** 手动停止由端口负责唤醒；走到这里说明唤醒没有发生，提示仍要指向可执行动作。 */
+const INSTANCE_STOPPED_NOTICE = "助手当前已停止，请在控制台启动实例后重试。";
+/** 端口已尝试唤醒但失败：先让用户核对实例状态，避免反复重试都落在同一次失败上。 */
+const WAKE_FAILED_NOTICE = "主动唤醒助手失败，请检查实例状态后重试。";
+/** 只有可操作的失败码才给针对性文案；其余统一按繁忙处理，不暴露内部失败分类。 */
+const FAILURE_NOTICES: Partial<Record<ImSessionFailureCode, string>> = {
+  INSTANCE_STOPPED: INSTANCE_STOPPED_NOTICE,
+  WAKE_FAILED: WAKE_FAILED_NOTICE,
+};
 /** 冷启动 prompt 已覆盖会话积压；收口上限与 dispatcher 的补发上限保持一致。 */
 const PENDING_DELIVERY_LIMIT = 100;
 /** 这些组件属于消息结构，不是正文；其余未知组件一律按「非文本」处理。 */
@@ -284,7 +299,10 @@ export function createInboundService(deps: InboundServiceDeps): InboundService {
     }
   }
 
-  /** 响应后的异步投递：冷启动走一次 prompt，暖态只发订阅通知；失败按 §6.3 落 failed 并回固定提示。 */
+  /**
+   * 响应后的异步投递：冷启动走一次 prompt；暖态有订阅时只发通知，订阅已断开则改发一次唤醒 prompt。
+   * 失败按 §6.3 落 failed 并回固定提示。
+   */
   async function deliverAccepted(input: {
     bridge: ImSessionBridge;
     channel: ImChannelRow;
@@ -309,6 +327,11 @@ export function createInboundService(deps: InboundServiceDeps): InboundService {
     let opened: ImSessionOpenOutcome;
     try {
       opened = await input.bridge.open(target);
+      if (opened.kind === "warm" && deps.dispatcher.subscriptionCount(conversation.id) === 0) {
+        // 订阅是 stateless SSE，peri 的 turn 结束即 unsubscribe；暖态记录不能证明通知有人接收。
+        logWarn(`[im-inbound] 订阅流已断开，暖态改用唤醒 prompt：conversationId=${conversation.id}`);
+        opened = await input.bridge.wake(target);
+      }
     } catch (error) {
       const lastError = error instanceof ImSessionBridgeError ? error.code : "COLD_START_FAILED";
       try {
@@ -321,7 +344,7 @@ export function createInboundService(deps: InboundServiceDeps): InboundService {
         chatType: input.event.chatType,
         chatId: input.event.chatId,
         senderId: input.event.senderId,
-        text: BUSY_NOTICE,
+        text: FAILURE_NOTICES[lastError] ?? BUSY_NOTICE,
       });
       return;
     }

@@ -15,7 +15,21 @@ import type { ImSessionHandle, ImSessionInstanceRef, ImSessionPort, ImSessionTar
 export const IM_WAKE_PROMPT_TEXT =
   "IM 消息已到达。请调用 resources/read 读取 im://inbox 并处理其中全部待处理消息；没有待处理消息时不要回复。";
 
-export type ImSessionFailureCode = "ENSURE_INSTANCE_FAILED" | "OPEN_SESSION_FAILED" | "COLD_START_FAILED";
+/**
+ * 手动停止不再意味着拒绝启动：端口会先触发一次显式唤醒，只有唤醒本身失败才是 `WAKE_FAILED`；
+ * `INSTANCE_STOPPED` 保留为兜底，用于尚未实现唤醒的端口。
+ */
+export type ImSessionFailureCode =
+  | "ENSURE_INSTANCE_FAILED"
+  | "INSTANCE_STOPPED"
+  | "WAKE_FAILED"
+  | "OPEN_SESSION_FAILED"
+  | "COLD_START_FAILED";
+
+/** 端口与资源包只共享稳定字符串码，不共享错误类型。 */
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+}
 
 /** 冷启动链路的失败面；`code` 用于把事件标记为 `failed` 并写入稳定原因。 */
 export class ImSessionBridgeError extends Error {
@@ -41,6 +55,13 @@ export interface ImSessionBridge {
    * 每次调用都检查实例代次：实例被回收后重启时 uid 不变，只有 runtimeToken 变化，必须重新冷启动。
    */
   open(input: ImSessionTarget): Promise<ImSessionOpenOutcome>;
+  /**
+   * 暖态但订阅流已断开时补一次唤醒 prompt。
+   *
+   * 暖态通知依赖 Agent 在首个 turn 注册的 MCP 订阅；turn 结束该流即关闭，此时通知无人接收，
+   * 只有 prompt 能让 Agent 重新读取 inbox。调用方必须先确认订阅已不存在。
+   */
+  wake(input: ImSessionTarget): Promise<ImSessionOpenOutcome>;
   /** 会话被重建（例如 `session/load` 失败后新建）时作废暖态，由执行重建的调用方显式调用。 */
   invalidate(conversationId: string): void;
   /** 诊断与测试用：该聊天当前是否处于暖态。 */
@@ -76,6 +97,12 @@ export function createImSessionBridge(deps: ImSessionBridgeDeps): ImSessionBridg
         agentConfigId: input.agentConfigId,
       });
     } catch (error) {
+      if (hasErrorCode(error, "IM_WAKE_FAILED")) {
+        throw new ImSessionBridgeError("WAKE_FAILED", input.conversationId, "IM 实例自动唤醒失败", { cause: error });
+      }
+      if (hasErrorCode(error, "INSTANCE_STOPPED")) {
+        throw new ImSessionBridgeError("INSTANCE_STOPPED", input.conversationId, "IM 专属实例已停止", { cause: error });
+      }
       throw new ImSessionBridgeError("ENSURE_INSTANCE_FAILED", input.conversationId, "IM 专属实例启动失败", {
         cause: error,
       });
@@ -125,6 +152,26 @@ export function createImSessionBridge(deps: ImSessionBridgeDeps): ImSessionBridg
     return { kind: "cold_started", acpSessionId: session.acpSessionId };
   }
 
+  /**
+   * 发起冷启动并共享同会话键的在途调用。
+   *
+   * 实例确保留在调用方：暖态判断必须复用同一次 `ensureInstance`，否则每次 open 都会多调一次端口。
+   */
+  async function startColdStart(input: ImSessionTarget, instance: ImSessionInstanceRef): Promise<ImSessionOpenOutcome> {
+    // 两次 await 之间可能已有同会话完成了冷启动。
+    const started = inFlight.get(input.conversationId);
+    if (started?.rcsSessionId === input.rcsSessionId) return await started.promise;
+
+    const entry: InFlightColdStart = { rcsSessionId: input.rcsSessionId, promise: coldStart(input, instance) };
+    inFlight.set(input.conversationId, entry);
+    try {
+      return await entry.promise;
+    } finally {
+      // 只清理自己的条目：并发换 Agent 时同一 conversation 可能已被新的在途冷启动覆盖。
+      if (inFlight.get(input.conversationId) === entry) inFlight.delete(input.conversationId);
+    }
+  }
+
   return {
     async open(input) {
       // 同一会话键的在途冷启动才可共享：换 Agent 后 rcsSessionId 不同，旧唤醒不属于新会话。
@@ -137,21 +184,23 @@ export function createImSessionBridge(deps: ImSessionBridgeDeps): ImSessionBridg
       const instance = await ensureInstance(input);
       if (isWarmFor(warm.get(input.conversationId), instance, input)) return { kind: "warm" };
 
-      // 两次 await 之间可能已有同会话完成了冷启动。
+      // 两次 await 之间可能已有同会话完成了冷启动；对 open 而言这就是暖态。
       const started = inFlight.get(input.conversationId);
       if (started?.rcsSessionId === input.rcsSessionId) {
         await started.promise;
         return { kind: "warm" };
       }
 
-      const entry: InFlightColdStart = { rcsSessionId: input.rcsSessionId, promise: coldStart(input, instance) };
-      inFlight.set(input.conversationId, entry);
-      try {
-        return await entry.promise;
-      } finally {
-        // 只清理自己的条目：并发换 Agent 时同一 conversation 可能已被新的在途冷启动覆盖。
-        if (inFlight.get(input.conversationId) === entry) inFlight.delete(input.conversationId);
-      }
+      return await startColdStart(input, instance);
+    },
+
+    async wake(input) {
+      // 跳过暖态判断：暖态记录只能说明会话存在，不能证明订阅仍活着。
+      const running = inFlight.get(input.conversationId);
+      if (running?.rcsSessionId === input.rcsSessionId) return await running.promise;
+
+      const instance = await ensureInstance(input);
+      return await startColdStart(input, instance);
     },
 
     invalidate(conversationId) {

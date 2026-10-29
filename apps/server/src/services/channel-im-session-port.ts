@@ -27,6 +27,33 @@ interface OpenedTurn {
   promptSent: boolean;
 }
 
+/** 唤醒失败对外的稳定字符串码；资源包只按码分类，不共享具体错误类型。 */
+const IM_WAKE_FAILED = "IM_WAKE_FAILED";
+
+/** 手动停止的实例由 coordinator 以这个码拒绝 ensure；只有它代表「可以显式唤醒」。 */
+function isInstanceStoppedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "INSTANCE_STOPPED"
+  );
+}
+
+/**
+ * 自动唤醒失败。
+ *
+ * 消息保留底层错误摘要供日志定位；用户可见回复由桥接层固定文案决定，不读取这里的内容。
+ */
+class ImWakeFailedError extends Error {
+  readonly code = IM_WAKE_FAILED;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ImWakeFailedError";
+  }
+}
+
 /** ACP 会话的 `prompt` 应答在整轮结束时才返回，因此这里只把「发送成功」当作已接受。 */
 export function createChannelImSessionPort(): ImSessionPort {
   const runtime = () => getBoundAgentRuntime();
@@ -99,7 +126,23 @@ export function createChannelImSessionPort(): ImSessionPort {
         ownerUserId: input.ownerUserId,
         name: `im-${input.conversationId}`,
       });
-      await runtime().ensureInstanceRuntime(instance);
+      try {
+        await runtime().ensureInstanceRuntime(instance);
+      } catch (error) {
+        if (!isInstanceStoppedError(error)) throw error;
+        // 手动停止在 IM 场景不是拒绝启动：消息到达本身即唤醒意图，只对这一个码显式重启一次。
+        logWarn(
+          `[im-session] 实例已手动停止，收到 IM 消息后自动唤醒：conversationId=${input.conversationId}, instanceId=${instance.id}`,
+        );
+        try {
+          await runtime().restartInstanceRuntime(instance);
+        } catch (wakeError) {
+          throw new ImWakeFailedError(
+            `IM 实例自动唤醒失败：${wakeError instanceof Error ? wakeError.message : String(wakeError)}`,
+            { cause: wakeError },
+          );
+        }
+      }
       // 实例重启后 uid 不变，只有运行代次变化；桥接层据此作废暖态。
       return {
         instanceId: instance.id,

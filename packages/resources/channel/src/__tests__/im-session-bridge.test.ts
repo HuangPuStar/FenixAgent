@@ -148,6 +148,35 @@ describe("IM 会话冷启动桥接", () => {
     expect(port.calls.sendWakePrompt).toBe(1);
   });
 
+  // 暖态记录不能证明订阅仍存活：wake 跳过暖态判断，重新打开会话并发送一次唤醒 prompt。
+  test("暖态下 wake 仍发送唤醒 prompt", async () => {
+    const port = createFakeImSessionPort();
+    const bridge = createImSessionBridge({ port });
+    const target = makeTarget();
+    await bridge.open(target);
+
+    const outcome = await bridge.wake(target);
+
+    expect(outcome).toEqual({ kind: "cold_started", acpSessionId: "ses_fake_2" });
+    expect(port.calls).toEqual({ ensureInstance: 2, openSession: 2, sendWakePrompt: 2, close: 2 });
+  });
+
+  // 同一聊天的并发 wake 复用同一条在途冷启动：一次唤醒处理全部积压，不能各发一次 prompt。
+  test("并发 wake 只发送一次 prompt", async () => {
+    const port = createFakeImSessionPort();
+    const bridge = createImSessionBridge({ port });
+    const target = makeTarget();
+
+    const outcomes = await Promise.all([bridge.wake(target), bridge.wake(target)]);
+
+    expect(outcomes).toEqual([
+      { kind: "cold_started", acpSessionId: "ses_fake_1" },
+      { kind: "cold_started", acpSessionId: "ses_fake_1" },
+    ]);
+    expect(port.calls.openSession).toBe(1);
+    expect(port.calls.sendWakePrompt).toBe(1);
+  });
+
   // 并发消息若已换 Agent，旧会话的冷启动不能当作新会话的暖态，两条会话各需一次唤醒。
   test("并发换 Agent 时不同会话键各自冷启动", async () => {
     const port = createFakeImSessionPort();
@@ -175,6 +204,30 @@ describe("IM 会话冷启动桥接", () => {
     expect(port.calls.openSession).toBe(0);
     expect(port.calls.sendWakePrompt).toBe(0);
     expect(bridge.isWarm("conversation-1")).toBe(false);
+  });
+
+  // 端口未实现唤醒时保留 INSTANCE_STOPPED 兜底码，仍要给用户可操作提示。
+  test("实例被手动停止时保留 INSTANCE_STOPPED 失败码", async () => {
+    const port = createFakeImSessionPort();
+    const bridge = createImSessionBridge({ port });
+    port.failNextEnsure(Object.assign(new Error("Agent Instance is stopped"), { code: "INSTANCE_STOPPED" }));
+
+    const error = await captureError(bridge.open(makeTarget()));
+
+    expect(error.code).toBe("INSTANCE_STOPPED");
+    expect(port.calls.openSession).toBe(0);
+  });
+
+  // 端口尝试唤醒后仍失败时必须给出独立失败码，上层才能区分「已停止」与「主动唤醒失败」。
+  test("实例唤醒失败时映射为 WAKE_FAILED", async () => {
+    const port = createFakeImSessionPort();
+    const bridge = createImSessionBridge({ port });
+    port.failNextEnsure(Object.assign(new Error("restart failed"), { code: "IM_WAKE_FAILED" }));
+
+    const error = await captureError(bridge.open(makeTarget()));
+
+    expect(error.code).toBe("WAKE_FAILED");
+    expect(port.calls.openSession).toBe(0);
   });
 
   // 会话打开失败同样中止，不能用通知代替尚未建立的会话。
