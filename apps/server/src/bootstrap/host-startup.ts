@@ -1,5 +1,9 @@
 import { bindMachineLookupPort, bindModelLookupPort, getAgentConfigModule } from "@fenix/agent-config/server";
-import { bindAgentConfigLookupPort, bindAgentLaunchSpecPort } from "@fenix/agent-runtime/server";
+import {
+  bindAgentConfigLookupPort,
+  bindAgentLaunchSpecPort,
+  setSessionMcpServersProvider,
+} from "@fenix/agent-runtime/server";
 import { ensureSystemAdmin } from "@fenix/identity/server";
 import { createLogger } from "@fenix/logger";
 import {
@@ -11,6 +15,7 @@ import {
 import type { BootstrapResult } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
+import { getCloudDriveConfig } from "@fenix/resource-cloud-drive/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   bindMachineAgentConfigPort,
@@ -28,11 +33,12 @@ import {
 import { schedulerService } from "@fenix/resource-task/server";
 import { initCustomToolsRegistry } from "@fenix/resource-workflow/server";
 import { bootstrapServerAssembly } from "../bootstrap";
-import { config } from "../config";
+import { config, getBaseUrl } from "../config";
 import { initDb, client as pgClient } from "../db";
 import { findDeprecatedEnvVars } from "../env";
 import { readDeclaredEnv, type ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
+import { createCloudDriveSessionMcpProvider } from "../services/cloud-drive-mcp";
 import { initCoreRuntime } from "../services/core-bootstrap";
 import { machineAgentConfigPort } from "../services/machine-agent-config-port";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
@@ -221,6 +227,11 @@ async function runStartupSteps(
   });
   bindAgentLaunchSpecPort(preLaunchPorts.launchSpec);
   bindAgentConfigLookupPort(preLaunchPorts.lookup);
+  // 通道 B：会话级 CloudDrive MCP。实现在宿主（agent-runtime 依赖矩阵不允许反向依赖云盘资源包），
+  // provider 只在 Chat 的 session/new|load|resume 时惰性调用，未配置时返回 undefined。
+  setSessionMcpServersProvider(
+    createCloudDriveSessionMcpProvider({ baseUrl: getBaseUrl, config: getCloudDriveConfig }),
+  );
   // agent-config 的机器标签与模型标签端口：实现分别是 machine 与 model-management 包的只读投影。绑在这里
   // 而不是 `host-wiring.ts`，是为了与本文件已有的另两个 agent-config 端口放在一起——host-wiring 刻意不
   // 导入 agent-config 的入口。

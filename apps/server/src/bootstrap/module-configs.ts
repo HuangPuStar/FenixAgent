@@ -123,6 +123,11 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       masterKey: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_MASTER_KEY"),
       keyId: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_KEY_ID"),
       timeoutMs: readDeclaredEnv<number>(env, "CLOUDDRIVE_TIMEOUT_MS"),
+      mcpTokenSecret: readDeclaredEnv<string | undefined>(env, "CLOUDDRIVE_MCP_TOKEN_SECRET"),
+      mcpTokenTtlSeconds: readDeclaredEnv<number>(env, "CLOUDDRIVE_MCP_TOKEN_TTL_SECONDS"),
+      mcpLaunchTtlSeconds: readDeclaredEnv<number>(env, "CLOUDDRIVE_MCP_LAUNCH_TTL_SECONDS"),
+      mcpScope: readDeclaredEnv<"read" | "write">(env, "CLOUDDRIVE_MCP_SCOPE"),
+      mcpTimeoutMs: readDeclaredEnv<number>(env, "CLOUDDRIVE_MCP_TIMEOUT_MS"),
     },
     // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
     memory: { hindsightMcpUrl: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_MCP_URL") },

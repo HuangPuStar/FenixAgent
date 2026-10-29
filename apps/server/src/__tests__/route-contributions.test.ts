@@ -588,6 +588,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // agent-config（站点代理；`/app-*` 兜底见末尾）
     "ALL /web/site/deploy/:appId",
     "ALL /web/site/deploy/:appId/*",
+    // cloud-drive（平台托管 MCP：Bearer token 自鉴权，主体从 token 派生）
+    "ALL /mcp/cloud-drive",
     // workflow
     "ALL /workflow-ui/",
     "ALL /workflow-ui/:path",
