@@ -165,6 +165,12 @@
   --sidebar-collapsed: 60px;
   --topbar-height: 56px;
 }
+/* OpenUI 画布主题桥：SDK 只读这三个变量；值由本包 token 派生（getComputedStyle 会完成 var 替换）。 */
+:root {
+  --chat-code-bg: var(--color-surface-2);
+  --chat-fg: var(--color-foreground);
+  --chat-link: var(--color-primary);
+}
 @theme static {
   --radius-3: 3px;
   --radius-5: 5px;
