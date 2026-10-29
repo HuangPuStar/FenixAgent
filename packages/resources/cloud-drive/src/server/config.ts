@@ -20,6 +20,20 @@ export interface CloudDriveModuleConfig {
   readonly keyId?: string;
   /** 出站请求超时（毫秒）。 */
   readonly timeoutMs: number;
+  /**
+   * MCP token 的 HMAC 密钥；与 master key 分离。缺失时网关 503、宿主不下发条目。
+   *
+   * 轮换会让所有在途 token 立即失效（LaunchSpec 注入的 `cloud-drive` 条目需要实例重物化）。
+   */
+  readonly mcpTokenSecret?: string;
+  /** 会话级 token 的 TTL（秒）；与 LaunchSpec 的更长 TTL 分开。 */
+  readonly mcpTokenTtlSeconds: number;
+  /** LaunchSpec 下发 token 的 TTL（秒），默认 1 天。 */
+  readonly mcpLaunchTtlSeconds: number;
+  /** MCP 写工具是否注册：`read` 只读，`write` 才注册写工具。 */
+  readonly mcpScope: "read" | "write";
+  /** 读工具的单次执行上限（毫秒）；写操作沿用 `timeoutMs`。 */
+  readonly mcpTimeoutMs: number;
 }
 
 /**
@@ -34,6 +48,11 @@ const CloudDriveModuleConfigSchema: z.ZodType<CloudDriveModuleConfig> = z.strict
   masterKey: z.string().optional(),
   keyId: z.string().optional(),
   timeoutMs: z.number().int().positive(),
+  mcpTokenSecret: z.string().optional(),
+  mcpTokenTtlSeconds: z.number().int().positive(),
+  mcpLaunchTtlSeconds: z.number().int().positive(),
+  mcpScope: z.enum(["read", "write"]),
+  mcpTimeoutMs: z.number().int().positive(),
 });
 
 /**

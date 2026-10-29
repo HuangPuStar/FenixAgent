@@ -54,6 +54,22 @@ export type {
   PreviewPageCommand,
 } from "./server/facades/cloud-drive-preview";
 export type { CloudDriveFailure, CloudDriveResult } from "./server/facades/cloud-drive-result";
+export type { CloudDriveMcpScope, CloudDriveMcpTokenClaims } from "./server/mcp/token";
+export {
+  CloudDriveMcpTokenError,
+  issueCloudDriveMcpToken,
+  verifyCloudDriveMcpToken,
+} from "./server/mcp/token";
+export type {
+  CloudDriveMcpErrorCode,
+  CloudDriveMcpTool,
+  CloudDriveMcpToolContext,
+  CloudDriveMcpToolOutcome,
+  CloudDriveMcpToolResult,
+} from "./server/mcp/tool-support";
+export { listCloudDriveToolNames, selectCloudDriveTools } from "./server/mcp/tools";
 export type { CloudDriveRouteDependencies, SessionAuthContext } from "./server/routes/dependencies";
+export type { CloudDriveMcpRouteDependencies } from "./server/routes/mcp/cloud-drive";
+export { createCloudDriveMcpRoutes } from "./server/routes/mcp/cloud-drive";
 export { createWebCloudDriveRoutes } from "./server/routes/web/cloud-drive";
 export * from "./server/schemas/cloud-drive.schema";

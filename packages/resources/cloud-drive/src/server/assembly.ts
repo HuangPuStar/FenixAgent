@@ -3,8 +3,9 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { CloudDriveClient, resolveCloudDriveClientConfig } from "./client/cloud-drive-client";
 import { getCloudDriveConfig } from "./config";
-import { createCloudDriveFacade } from "./facades/cloud-drive-facade";
+import { type CloudDriveFacade, createCloudDriveFacade } from "./facades/cloud-drive-facade";
 import type { CloudDriveRouteDependencies } from "./routes/dependencies";
+import { createCloudDriveMcpRoutes } from "./routes/mcp/cloud-drive";
 import { createWebCloudDriveRoutes } from "./routes/web/cloud-drive";
 
 /**
@@ -21,9 +22,14 @@ import { createWebCloudDriveRoutes } from "./routes/web/cloud-drive";
  */
 const logger = createLogger("cloud-drive");
 
-/** 把宿主协议面收窄为本包路由的依赖。 */
-function routeDependencies(host: ServerRouteHost): CloudDriveRouteDependencies {
-  const facade = createCloudDriveFacade({
+/**
+ * 创建共享 Facade：`/web/cloud-drive/*` 与 `/mcp/cloud-drive` 必须走同一份业务规则。
+ *
+ * 两个入口各自 new 一个实例在功能上等价（Facade 无状态），但共享一个实例能让「只有一份实现」
+ * 在装配层可见，避免后续有人在某一侧单独加编排放宽语义。
+ */
+function createSharedFacade(): CloudDriveFacade {
+  return createCloudDriveFacade({
     resolveGateway: () => {
       const config = getCloudDriveConfig();
       return new CloudDriveClient({
@@ -44,7 +50,10 @@ function routeDependencies(host: ServerRouteHost): CloudDriveRouteDependencies {
       logger.error("CloudDrive Facade 未预期异常", { operation: context.operation }, error);
     },
   });
+}
 
+/** 把宿主协议面收窄为本包路由的依赖。 */
+function routeDependencies(host: ServerRouteHost, facade: CloudDriveFacade): CloudDriveRouteDependencies {
   return {
     authGuardPlugin: host.authGuardPlugin as AnyElysia,
     facade,
@@ -53,5 +62,13 @@ function routeDependencies(host: ServerRouteHost): CloudDriveRouteDependencies {
 
 /** `/web/cloud-drive/*` 个人云盘代理（挂宿主 `web` 聚合槽）。 */
 export function createCloudDriveWebRoutes(host: ServerRouteHost) {
-  return createWebCloudDriveRoutes(routeDependencies(host));
+  return createWebCloudDriveRoutes(routeDependencies(host, createSharedFacade()));
+}
+
+/** `/mcp/cloud-drive` 平台托管 MCP（挂宿主 `app` 槽；Bearer token 自鉴权，不消费 host）。 */
+export function createCloudDriveMcpAppRoutes() {
+  return createCloudDriveMcpRoutes({
+    facade: createSharedFacade(),
+    getConfig: getCloudDriveConfig,
+  });
 }

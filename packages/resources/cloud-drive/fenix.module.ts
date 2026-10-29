@@ -42,6 +42,13 @@ export const moduleManifest = {
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createCloudDriveWebRoutes(host)),
     },
+    {
+      id: "cloud-drive.mcp",
+      kind: "app-route",
+      slot: "app",
+      // 工厂不消费 host：Bearer token 自鉴权（主体从 token 派生），没有守卫可注入。
+      value: () => import("./src/server/assembly").then((assembly) => assembly.createCloudDriveMcpAppRoutes()),
+    },
   ],
   envDefinitions: [
     {
@@ -87,6 +94,55 @@ export const moduleManifest = {
       restartRequired: true,
       description:
         "CloudDrive 出站请求超时（毫秒），默认 120000；冷启动首次写操作实测可达约 65s，finalize 含异步提交，30s 会把正常写入误判为超时。下载只在等待响应头阶段计时，避免把长传输误判为超时。",
+    },
+    {
+      moduleId: "cloud-drive",
+      key: "CLOUDDRIVE_MCP_TOKEN_SECRET",
+      schema: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(1).optional()),
+      secret: true,
+      restartRequired: true,
+      description:
+        "CloudDrive MCP token 的 HMAC 密钥，与 CLOUDDRIVE_MASTER_KEY 分离；缺失时不向 Agent 下发 cloud-drive MCP 条目，/mcp/cloud-drive 返回 503。轮换会使在途 token 立即失效。",
+    },
+    {
+      moduleId: "cloud-drive",
+      key: "CLOUDDRIVE_MCP_TOKEN_TTL_SECONDS",
+      schema: z.coerce.number().int().positive().default(3600),
+      defaultValue: 3600,
+      secret: false,
+      restartRequired: false,
+      description:
+        "交互式 Chat 会话级 CloudDrive MCP token 的有效期（秒），默认 3600；token 只在 ACP 消息里传递，不落盘。",
+    },
+    {
+      moduleId: "cloud-drive",
+      key: "CLOUDDRIVE_MCP_LAUNCH_TTL_SECONDS",
+      schema: z.coerce.number().int().positive().default(86400),
+      defaultValue: 86400,
+      secret: false,
+      restartRequired: false,
+      description:
+        "LaunchSpec 下发的 CloudDrive MCP token 有效期（秒），默认 86400；条目经 .mcp.json 落到实例工作区，TTL 需要覆盖实例存活期。",
+    },
+    {
+      moduleId: "cloud-drive",
+      key: "CLOUDDRIVE_MCP_SCOPE",
+      schema: z.enum(["read", "write"]).default("read"),
+      defaultValue: "read",
+      secret: false,
+      restartRequired: false,
+      description:
+        "CloudDrive MCP 工具面：read 只注册只读工具；write 额外注册 mkdir / write_text / move / rename。v1 不提供删除、恢复、分享与上传票据。",
+    },
+    {
+      moduleId: "cloud-drive",
+      key: "CLOUDDRIVE_MCP_TIMEOUT_MS",
+      schema: z.coerce.number().int().positive().default(15000),
+      defaultValue: 15000,
+      secret: false,
+      restartRequired: false,
+      description:
+        "只读 MCP 工具的单次执行上限（毫秒），默认 15000；写操作沿用 CLOUDDRIVE_TIMEOUT_MS（首次 provision 可能约 65s）。",
     },
   ],
 } satisfies ModuleManifest;
