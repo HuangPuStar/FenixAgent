@@ -97,7 +97,9 @@ export const MessageMarkdown = ({
         // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
         // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
         // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
-        className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
+        // 只占满宽度：OpenUI 会把一条消息拆成「前文 / 面板 / 后文」三个兄弟片段，
+        // 高度 100% 会让每个片段各自撑满容器，把后续片段顶出视口。
+        className={cn(MARKDOWN_CONTENT_CLASS, "message-response w-full", className)}
       >
         {text}
       </LazyStreamdown>
