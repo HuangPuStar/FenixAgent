@@ -152,6 +152,18 @@ describe("OpenUI 围栏渲染", () => {
     expect(host.textContent).not.toContain("root = Stack");
   });
 
+  // 前后文分片只占宽度：高度 100% 会让每个片段各自撑满容器，把面板顶出视口
+  test("围栏前后分片不携带撑满高度的 size-full", async () => {
+    const host = await renderMessage(`前言文字\n\n${fence(VALID_PROGRAM)}\n\n后记文字`);
+    await waitFor(host, '[data-slot="peri-openui"]');
+    // 分片与面板各自惰性加载，等 Markdown 容器真正落地后再断言。
+    await waitFor(host, ".message-response");
+
+    const fragments = Array.from(host.querySelectorAll(".message-response"));
+    expect(fragments.length).toBeGreaterThan(1);
+    expect(fragments.some((fragment) => fragment.classList.contains("size-full"))).toBe(false);
+  });
+
   // 坏程序（引用不存在的节点）不能吞掉模型输出：出现回退标记，原文仍可见，渲染不抛错
   test("非法程序回退原文并标记 data-openui-fallback", async () => {
     const program = "root = Stack([missing])";
