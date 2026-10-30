@@ -14,8 +14,8 @@
  * `CLOUDDRIVE_MCP_TOKEN_SECRET`。脚本自己签发两个用户的 token（不打印 token），只访问
  * `/mcp/cloud-drive`，不读取 master key。
  *
- * 覆盖：initialize、tools/list（scope 过滤）、me、list、search、mkdir、write_text、stat、
- * read_markdown（尽力轮询转换产物）、双用户隔离（跨用户 file_id → NOT_FOUND）。
+ * 覆盖：initialize、tools/list（scope 过滤）、list、mkdir、write_text、read_markdown（尽力轮询转换
+ * 产物）、双用户隔离（B 用 A 的 file_id 调 read_markdown → NOT_FOUND）。
  */
 
 import { type CloudDriveMcpScope, issueCloudDriveMcpToken } from "@fenix/resource-cloud-drive/server";
@@ -176,31 +176,21 @@ async function main(): Promise<void> {
   const writeTools = await listTools(writeA);
   record(
     "tools/list scope=read",
-    readTools.length === 7 && !readTools.includes("cloud_drive_write_text"),
+    readTools.length === 2 && !readTools.includes("cloud_drive_write_text"),
     `tools=${readTools.join(",")}`,
   );
   record(
     "tools/list scope=write",
-    writeTools.length === 11 && writeTools.includes("cloud_drive_write_text"),
+    writeTools.length === 4 && writeTools.includes("cloud_drive_write_text"),
     `tools=${writeTools.length}`,
   );
 
-  // ── A：主体 / 列表 / 搜索 ─────────────────────────────
-  const me = await callTool(readA, "cloud_drive_me");
-  record("A me", !me.result?.isError, `subject=${(me.payload as { subject?: string } | null)?.subject ?? "?"}`);
-
+  // ── A：列表 ───────────────────────────────────────────
   const root = await callTool(readA, "cloud_drive_list");
   record(
     "A 根列表",
     !root.result?.isError,
     `items=${(root.payload as { items?: unknown[] } | null)?.items?.length ?? 0}`,
-  );
-
-  const search = await callTool(readA, "cloud_drive_search", { query: "smoke", limit: 5 });
-  record(
-    "A 搜索",
-    !search.result?.isError,
-    `items=${(search.payload as { items?: unknown[] } | null)?.items?.length ?? 0}`,
   );
 
   // ── A：写目录与文本（scope=write） ────────────────────
@@ -226,43 +216,15 @@ async function main(): Promise<void> {
   );
   assert(fileId, "写文件失败，无法继续读/隔离验证");
 
-  const stat = await callTool(readA, "cloud_drive_stat", { file_id: fileId });
-  record(
-    "A stat",
-    !stat.result?.isError,
-    `name=${(stat.payload as { name?: string } | null)?.name ?? "?"} size=${(stat.payload as { sizeBytes?: number } | null)?.sizeBytes ?? "?"}`,
-  );
-
   const markdown = await waitForMarkdown(readA, fileId);
   record("A read_markdown", markdown.ok, markdown.ok ? markdown.detail : `code=${markdown.code} ${markdown.detail}`);
 
-  const versions = await callTool(readA, "cloud_drive_versions", { file_id: fileId });
-  record(
-    "A versions",
-    !versions.result?.isError,
-    `count=${(versions.payload as { items?: unknown[] } | null)?.items?.length ?? 0}`,
-  );
-
-  const trash = await callTool(readA, "cloud_drive_trash_list");
-  record(
-    "A trash_list",
-    !trash.result?.isError,
-    `items=${(trash.payload as { items?: unknown[] } | null)?.items?.length ?? 0}`,
-  );
-
   // ── 双用户隔离：B 用 A 的 fileId 一律 NOT_FOUND ───────
-  const crossStat = await callTool(writeB, "cloud_drive_stat", { file_id: fileId });
+  const crossRead = await callTool(writeB, "cloud_drive_read_markdown", { file_id: fileId });
   record(
-    "B 跨用户 stat",
-    crossStat.result?.isError === true && toolErrorCode(crossStat.payload) === "NOT_FOUND",
-    `code=${toolErrorCode(crossStat.payload)}`,
-  );
-
-  const crossRename = await callTool(writeB, "cloud_drive_rename", { file_id: fileId, name: "hijacked.md" });
-  record(
-    "B 跨用户 rename",
-    crossRename.result?.isError === true && toolErrorCode(crossRename.payload) === "NOT_FOUND",
-    `code=${toolErrorCode(crossRename.payload)}`,
+    "B 跨用户 read_markdown",
+    crossRead.result?.isError === true && toolErrorCode(crossRead.payload) === "NOT_FOUND",
+    `code=${toolErrorCode(crossRead.payload)}`,
   );
 
   const bRoot = await callTool(writeB, "cloud_drive_list");

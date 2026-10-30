@@ -221,16 +221,13 @@ describe("CloudDrive MCP 路由", () => {
       )
     ).json()) as { result: { tools: Array<{ name: string }> } };
 
-    expect(readBody.result.tools.map((tool) => tool.name)).toEqual([
-      "cloud_drive_me",
+    expect(readBody.result.tools.map((tool) => tool.name)).toEqual(["cloud_drive_list", "cloud_drive_read_markdown"]);
+    expect(writeBody.result.tools.map((tool) => tool.name)).toEqual([
       "cloud_drive_list",
-      "cloud_drive_stat",
-      "cloud_drive_search",
       "cloud_drive_read_markdown",
-      "cloud_drive_versions",
-      "cloud_drive_trash_list",
+      "cloud_drive_mkdir",
+      "cloud_drive_write_text",
     ]);
-    expect(writeBody.result.tools.map((tool) => tool.name)).toContain("cloud_drive_write_text");
   });
 
   // tools/call 只使用 token 派生主体；工具参数中的 uid 不能改变 subject。
@@ -281,11 +278,11 @@ describe("CloudDrive MCP 路由", () => {
     expect(serialized).not.toContain("user-b");
   });
 
-  // 未知工具名由 SDK 拒绝；不能落进任意业务分支。
-  test("未知工具返回错误", async () => {
+  // 已下线的工具名不能被解析：工具面收窄后旧调用不应落进任意业务分支。
+  test("已删除的工具名返回错误", async () => {
     const response = await post(
       createApp(),
-      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "cloud_drive_delete", arguments: {} } },
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "cloud_drive_me", arguments: {} } },
       { token: await token({ scope: "write" }) },
     );
     const body = (await response.json()) as { error?: { message: string }; result?: { isError?: boolean } };
@@ -315,7 +312,7 @@ describe("CloudDrive MCP 路由", () => {
   test("工具调用结果不包含 token 与上游细节", async () => {
     const app = createApp({
       gateway: {
-        getMe: async () => {
+        listFiles: async () => {
           throw new Error("internal upstream detail at http://drive.localhost");
         },
       },
@@ -323,7 +320,7 @@ describe("CloudDrive MCP 路由", () => {
     const issued = await token();
     const response = await post(
       app,
-      { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "cloud_drive_me", arguments: {} } },
+      { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "cloud_drive_list", arguments: {} } },
       { token: issued },
     );
     const text = await response.text();

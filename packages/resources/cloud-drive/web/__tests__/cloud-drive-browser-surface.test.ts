@@ -54,6 +54,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["streamdown", "markdown 渲染器（MessageResponse 的惰性边界，纯浏览器）"],
   ["@streamdown/math", "streamdown 数学插件（ui-spec 插件配置动态加载，KaTeX 随需下载）"],
   ["katex", "数学排版样式与 JS（仅 CSS 为静态叶子，JS 由插件惰性加载）"],
+  ["@peri-code/sdk", "OpenUI 渲染器（ui-components chat 传递依赖，纯浏览器）"],
   ["zod", "ui-spec 协议校验（纯函数，chat 预览链路传递依赖）"],
   ["class-variance-authority", "类名变体工具（ui/button 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（ui-components/lib/cn 传递依赖），纯函数"],

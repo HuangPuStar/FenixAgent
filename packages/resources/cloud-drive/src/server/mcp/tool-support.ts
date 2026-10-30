@@ -97,16 +97,6 @@ export function renderPayload(payload: Record<string, unknown>, textField?: stri
       const next = { ...payload, [textField]: truncateToBytes(fieldValue, budget), truncated: true, notice };
       return { content: [{ type: "text", text: JSON.stringify(next) }], structuredContent: next };
     }
-    if (Array.isArray(fieldValue)) {
-      const kept: unknown[] = [];
-      for (const item of fieldValue) {
-        const candidate = { ...payload, [textField]: [...kept, item], truncated: true, notice };
-        if (byteLength(JSON.stringify(candidate)) > CLOUD_DRIVE_MCP_RESULT_LIMIT_BYTES) break;
-        kept.push(item);
-      }
-      const next = { ...payload, [textField]: kept, truncated: true, notice };
-      return { content: [{ type: "text", text: JSON.stringify(next) }], structuredContent: next };
-    }
   }
 
   const summary = { truncated: true, notice, byte_size: byteLength(serialized) };

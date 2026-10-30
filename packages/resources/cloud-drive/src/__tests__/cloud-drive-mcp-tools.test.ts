@@ -8,7 +8,7 @@ import {
   type CloudDriveMcpTool,
 } from "../server/mcp/tool-support";
 import { selectCloudDriveTools } from "../server/mcp/tools";
-import { fakeGateway, makeFile, makeMutation, makeSearchHit, makeUpload } from "./cloud-drive-fixtures";
+import { fakeGateway, makeFile, makeUpload } from "./cloud-drive-fixtures";
 
 const USER_A = { userId: "user-a" };
 
@@ -36,24 +36,14 @@ function text(outcome: { result: { content: Array<{ text: string }> } }): string
 
 describe("CloudDrive MCP 工具面", () => {
   // 只读 token 的列表里不能出现任何写工具：这是 scope 过滤的唯一权威实现。
-  test("read scope 只暴露 7 个只读工具", () => {
+  test("read scope 只暴露 2 个只读工具", () => {
     const names = toolsFor("read").map((tool) => tool.name);
 
-    expect(names).toEqual([
-      "cloud_drive_me",
-      "cloud_drive_list",
-      "cloud_drive_stat",
-      "cloud_drive_search",
-      "cloud_drive_read_markdown",
-      "cloud_drive_versions",
-      "cloud_drive_trash_list",
-    ]);
+    expect(names).toEqual(["cloud_drive_list", "cloud_drive_read_markdown"]);
     expect(toolsFor("write").map((tool) => tool.name)).toEqual([
       ...names,
       "cloud_drive_mkdir",
       "cloud_drive_write_text",
-      "cloud_drive_move",
-      "cloud_drive_rename",
     ]);
   });
 
@@ -114,32 +104,6 @@ describe("CloudDrive MCP 工具面", () => {
     expect(payload.content.length).toBeLessThan(content.length);
   });
 
-  // 列表类结果超限时按条目截断，保持 JSON 可解析。
-  test("搜索列表超限时按条目截断", async () => {
-    const longName = `${"file".repeat(100)}.txt`;
-    const gateway = fakeGateway({
-      getFile: async () => makeFile({ name: longName, path: `/${longName}` }),
-      search: async () => ({
-        items: Array.from({ length: 50 }, (_, index) =>
-          makeSearchHit({
-            fileId: `file-${index}`,
-            path: `/${longName}`,
-            snippet: `${"x".repeat(400)} keyword ${"y".repeat(400)}`,
-          }),
-        ),
-        nextCursor: "next",
-      }),
-    });
-
-    const outcome = await findTool("read", "cloud_drive_search").run(context(gateway), { query: "keyword", limit: 50 });
-    const payload = outcome.result.structuredContent as { items: unknown[]; truncated: boolean; nextCursor: string };
-
-    expect(new TextEncoder().encode(text(outcome)).byteLength).toBeLessThanOrEqual(CLOUD_DRIVE_MCP_RESULT_LIMIT_BYTES);
-    expect(payload.truncated).toBe(true);
-    expect(payload.items.length).toBeLessThan(50);
-    expect(payload.nextCursor).toBe("next");
-  });
-
   // 上游失败只映射成稳定 code 与固定文案，不把上游 message/URL/密钥带出去。
   test("错误映射稳定且不泄漏上游细节", async () => {
     const cases: Array<[CloudDriveError, string]> = [
@@ -157,11 +121,11 @@ describe("CloudDrive MCP 工具面", () => {
 
     for (const [error, expectedCode] of cases) {
       const gateway = fakeGateway({
-        getMe: async () => {
+        listFiles: async () => {
           throw error;
         },
       });
-      const outcome = await findTool("read", "cloud_drive_me").run(context(gateway), {});
+      const outcome = await findTool("read", "cloud_drive_list").run(context(gateway), {});
       const body = text(outcome);
 
       expect(outcome.errorCode).toBe(expectedCode as never);
@@ -254,24 +218,6 @@ describe("CloudDrive MCP 工具面", () => {
 
     expect(abandoned).toBe(true);
     expect(outcome.errorCode).toBe("UNAVAILABLE");
-  });
-
-  // 移动与重命名共用 Facade 的 moveFile；parent_id=null 表示根目录。
-  test("move 支持移动到根目录，rename 只改名称", async () => {
-    const calls: Array<Record<string, unknown>> = [];
-    const gateway = fakeGateway({
-      getFile: async () => makeFile({ parentId: "dir-1", name: "old.txt" }),
-      moveFile: async (_subject, _fileId, input) => {
-        calls.push({ name: input.name, parentId: input.parentId });
-        return makeMutation({ fileId: "file-1" });
-      },
-    });
-
-    await findTool("write", "cloud_drive_move").run(context(gateway), { file_id: "file-1", parent_id: null });
-    await findTool("write", "cloud_drive_rename").run(context(gateway), { file_id: "file-1", name: "new.txt" });
-
-    expect(calls[0]).toMatchObject({ name: "old.txt", parentId: null });
-    expect(calls[1]).toMatchObject({ name: "new.txt", parentId: "dir-1" });
   });
 
   // 工具描述必须把「文件内容不可信」写进去，且写工具声明非只读。

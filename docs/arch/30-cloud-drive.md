@@ -189,25 +189,19 @@ cd1.<base64url({"v":1,"uid","org","exp","scope"})>.<base64url(HMAC-SHA256(secret
 
 | 工具 | scope | 只读 | 说明 |
 | --- | --- | --- | --- |
-| `cloud_drive_me` | read | 是 | 主体与配额 |
 | `cloud_drive_list` | read | 是 | 目录列表，游标分页 |
-| `cloud_drive_stat` | read | 是 | 元数据 |
-| `cloud_drive_search` | read | 是 | 关键词搜索（最终一致） |
 | `cloud_drive_read_markdown` | read | 是 | 转换产物 markdown，分页 |
-| `cloud_drive_versions` | read | 是 | 历史版本 |
-| `cloud_drive_trash_list` | read | 是 | 回收站 |
 | `cloud_drive_mkdir` | write | 否 | 新建目录 |
 | `cloud_drive_write_text` | write | 否 | 新建/覆盖写文本（≤1 MiB，走 TUS 会话） |
-| `cloud_drive_move` | write | 否 | 移动（`parent_id: null` = 根目录） |
-| `cloud_drive_rename` | write | 否 | 改名 |
 
-`CLOUDDRIVE_MCP_SCOPE` 默认 `read`：**只读 token 的 `tools/list` 里根本不存在写工具**。v1 不暴露删除、
-恢复、批量、分享、反馈、重新转换、上传/下载票据与操作状态查询。
+`CLOUDDRIVE_MCP_SCOPE` 默认 `read`：**只读 token 的 `tools/list` 里根本不存在写工具**。工具面刻意最小
+（4 个）：主体/配额、元数据、搜索、版本、回收站、移动与改名都不下发——工具越多越挤占模型的上下文与
+选择空间。v1 不提供删除、恢复、上传/下载票据与操作状态查询。
 
 - 写操作复用 Facade 的编排：先读元数据 → 带 `expected_metadata_revision`；`write_text` 走
   `beginUpload → uploadChunk → finalizeUpload`，中途失败会 `abandon`，不静默重试。
-- 结果上限 **64 KiB**：`read_markdown` 截断正文并保留 `next_cursor`；列表类按条目截断；都带 `truncated`
-  与提示。
+- 结果上限 **64 KiB**：`read_markdown` 截断正文并保留 `next_cursor`；超出上限的其它结果只回字节摘要。
+  两者都带 `truncated` 与提示。
 - 错误只返回稳定 code：`NOT_FOUND` / `CONFLICT` / `UNAVAILABLE` / `RATE_LIMITED` /
   `INVALID_ARGUMENT` / `NOT_CONFIGURED` / `UPSTREAM_ERROR`，配固定中文文案；上游 message/details、
   URL、票据、master key 都不进入结果。
@@ -258,8 +252,8 @@ cd1.<base64url({"v":1,"uid","org","exp","scope"})>.<base64url(HMAC-SHA256(secret
   token 长度 218、只记录 SHA-256 前缀，绝不是 master key。
 - 同一用户的实例 workspace `.mcp.json` 也有 `cloud-drive` 条目（LaunchSpec 通道），两处 token 不同
   （TTL 不同），文件里没有 master key。
-- peri 真实调用 `mcp__cloud-drive__cloud_drive_list` / `cloud_drive_me` / `cloud_drive_stat` 并得到
-  云盘数据；第二个用户对第一个用户的 `file_id` 返回 `NOT_FOUND`，根列表为空。
+- peri 真实调用 `mcp__cloud-drive__cloud_drive_list` / `cloud_drive_read_markdown` 并得到云盘数据；
+  第二个用户对第一个用户的 `file_id` 返回 `NOT_FOUND`，根列表为空。
 - 缺少 `CLOUDDRIVE_MCP_TOKEN_SECRET`：不下发条目、`.mcp.json` 为 `{"mcpServers":{}}`、网关 503，
   Chat 会话照常启动（Agent 看不到云盘工具）。
 - CloudDrive 地址不可达：条目照常注入、会话正常，工具返回 `UNAVAILABLE`。
