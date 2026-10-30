@@ -6,7 +6,7 @@
 // 用户看不出是哪个输入没填。
 //
 // **schema 不携带文案**：它只描述「什么样的取值合法」，错误文案在视图边界按字段取 i18n 键（与
-// `channelBindingFormSchema` / `agentEditorSchema` 同口径）。带中文 `message` 会让文案绕过 `t()`（§9.1），
+// `agentEditorSchema` 同口径）。带中文 `message` 会让文案绕过 `t()`（§9.1），
 // 译文也就没法随语言切换。
 
 import { Input } from "@fenix/ui-components/ui/input";

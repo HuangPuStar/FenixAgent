@@ -109,6 +109,7 @@ export {
 // 实例生命周期服务（`agentInstanceService` 等）不再出口：宿主用例改写实例能力一律经
 // `createAgentRuntime()` 生成的真实入口 + `stubAgentRuntimePort({ ensureInstance, getRuntimeSnapshot, … })`
 // 覆盖（1.4 W6b），port 方法名与 port 契约一一对应，不再依赖「改写包内单例」这一隐式耦合。
+export { findOrCreateNamedApiInstance } from "./server/services/agent-instance-named"; // 宿主取用·具名 api 持久实例（IM 专属实例 `im-<conversationId>` 的创建来源）
 export {
   type AgentLaunchSpecPort,
   bindAgentLaunchSpecPort,

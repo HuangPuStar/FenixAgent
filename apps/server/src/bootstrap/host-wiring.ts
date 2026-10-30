@@ -9,7 +9,6 @@ import {
   bindSessionEventBusPort,
   environmentRepo,
   findMachineConnectionById,
-  getAcpEventBus,
   getAgentNodeService,
   getAllEventBuses,
   isMachineAcpReady,
@@ -18,7 +17,6 @@ import {
 } from "@fenix/agent-runtime/server";
 import { createIdentityDirectory } from "@fenix/identity/server";
 import { initializeApplicationInfrastructure, registerIdentityDirectory } from "@fenix/platform-sdk/server";
-import { bindAcpEventBusPort } from "@fenix/resource-channel/server";
 import {
   bindMachineEnvironmentPort,
   bindMachineHostPort,
@@ -124,7 +122,6 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
   bindLocalNodeAgentNodeServicePort({
     getAgentNodeService: () => new LocalNodeAwareService(getAgentNodeService),
   });
-  bindAcpEventBusPort({ getAcpBus: (agentId) => getAcpEventBus(agentId) });
   bindFileWsPort({
     checkParsedObjectSize,
     checkWsMessageSize,

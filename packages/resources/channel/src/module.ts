@@ -1,39 +1,26 @@
-import { bindAcpEventBusPort, getAcpEventBusPort, resetAcpEventBusPort } from "./server/services/acp-event-bus-port";
-import { getHermesClient, initHermesClient, resetHermesClient } from "./server/services/hermes-client";
+import type { ModuleFactoryContext } from "@fenix/platform-sdk";
+import { assertLangBotDataPlaneConfigured, getChannelConfig } from "./server/config";
+import { type ChannelServerModule, createChannelServerModule } from "./server/module";
+import { installChannelModule } from "./server/runtime";
 
 /**
- * Channel 模块的运行时表面。
+ * Channel 模块的 registry 装配入口（`fenix.module.ts` 的 `create` 目标）。
  *
- * 只暴露需要「对象身份」的能力：Hermes 客户端与 ACP 事件总线端口都是**进程级单例**——
- * 前者持有唯一的网关 WebSocket 与订阅集合，后者是 Machine 事件总线的唯一绑定点。两份实例
- * 会让同一批通道绑定开两条回投路径、或让出站路由读到未绑定的端口，因此组合根返回包内既有
- * 单例的入口，而不是新建一套。
+ * 本模块没有装配期外部依赖：仓储经平台 DB 句柄在请求期取用，LangBot 客户端在调用期读模块配置，Agent
+ * 配置可用性端口由宿主在启动流程里晚绑定。因此装配只构造实例并装入进程级槽位。
  *
- * 路由工厂与 `listChannelProviders` 之类的纯函数是宿主显式调用的入口，不经过模块实例即可使用，
- * 故不在这里重复包装；等 registry 驱动的装配落地（§1.5 的 `mountContribution`）需要统一拿到
- * 它们时再按需扩展（与 `@fenix/resource-sandbox` 的组合根同口径）。
+ * 例外是配置的**完整性**：启用 LangBot 的部署缺数据面密钥时，全量消息都会失败且没有任何启动提示，
+ * 因此在装配期直接拒绝启动（未配置 `LANGBOT_BASE_URL` 的部署不受影响）。
+ *
+ * 必须 `install`：路由经 `getChannelModule()` 读取同一份结果（唯一读取点）。cleanup 只释放数据面
+ * dispatcher 的重试定时器与订阅表：定时器若随进程退出自然消失，测试与热重载下会留下跨实例的重复派发。
  */
-export interface ChannelModule {
-  readonly id: "channel";
-  /** Hermes 网关客户端单例：装配期初始化、运行期读取、释放时停连。 */
-  readonly hermesClient: {
-    readonly init: typeof initHermesClient;
-    readonly get: typeof getHermesClient;
-    readonly reset: typeof resetHermesClient;
-  };
-  /** Machine ACP 事件总线端口：装配期绑定；未绑定时 `get` fail-fast，禁止反向依赖 Machine。 */
-  readonly acpEventBus: {
-    readonly bind: typeof bindAcpEventBusPort;
-    readonly get: typeof getAcpEventBusPort;
-    readonly reset: typeof resetAcpEventBusPort;
-  };
-}
-
-/** 创建 Channel 模块实例；返回的是包内既有单例的入口，不产生第二份运行期状态。 */
-export function createChannelModule(): ChannelModule {
-  return {
-    id: "channel",
-    hermesClient: { init: initHermesClient, get: getHermesClient, reset: resetHermesClient },
-    acpEventBus: { bind: bindAcpEventBusPort, get: getAcpEventBusPort, reset: resetAcpEventBusPort },
-  };
+export function createChannelModule(context?: Pick<ModuleFactoryContext, "registerCleanup">): ChannelServerModule {
+  assertLangBotDataPlaneConfigured(getChannelConfig());
+  const module = createChannelServerModule();
+  installChannelModule(module);
+  context?.registerCleanup(() => {
+    module.dataPlane?.dispatcher.stop();
+  });
+  return module;
 }

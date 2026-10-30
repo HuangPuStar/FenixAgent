@@ -106,6 +106,9 @@ function createAgent(autoInitialize: boolean) {
           respond(request.id, { sessionId });
           break;
         }
+        case "session/list":
+          respond(request.id, { sessions: [] });
+          break;
         case "session/prompt": {
           const sessionId = String(request.params?.sessionId);
           if (!loadedSessions.has(sessionId)) {
@@ -370,6 +373,67 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
         expect.objectContaining({ type: "status", payload: expect.objectContaining({ connected: true }) }),
       );
     }
+  });
+
+  // 冷启动时 session/load 可能紧跟在 connect 之后到达（能力仍为 null），必须等真实能力而非立即回「不支持」。
+  test("session/load waits for in-flight initialization before checking capabilities", async () => {
+    const harness = createHarness(false);
+    const ws = new FakeWs();
+    harness.handlers.open(ws);
+    harness.handlers.message(ws, JSON.stringify({ type: "connect" }));
+    await waitUntil(() => (harness.agents[0]?.requests.length ?? 0) > 0);
+
+    harness.handlers.message(
+      ws,
+      JSON.stringify({ jsonrpc: "2.0", id: "load", method: "session/load", params: { sessionId: "ses-lifecycle" } }),
+    );
+    await Bun.sleep(0);
+    // 初始化未完成时不得提前拒绝：这条断言就是竞态回归点
+    expect(ws.messages.some((message) => message.id === "load")).toBe(false);
+
+    harness.agents[0]?.initialize();
+    await waitUntil(() => ws.messages.some((message) => message.id === "load"));
+    expect(ws.messages.find((message) => message.id === "load")).toMatchObject({
+      result: { sessionId: "ses-lifecycle" },
+    });
+  });
+
+  // session/list 与 load 共用同一能力门，初始化在途时同样要等待，避免列表被误判为不支持。
+  test("session/list waits for in-flight initialization before checking capabilities", async () => {
+    const harness = createHarness(false);
+    const ws = new FakeWs();
+    harness.handlers.open(ws);
+    harness.handlers.message(ws, JSON.stringify({ type: "connect" }));
+    await waitUntil(() => (harness.agents[0]?.requests.length ?? 0) > 0);
+
+    harness.handlers.message(ws, JSON.stringify({ jsonrpc: "2.0", id: "list", method: "session/list", params: {} }));
+    await Bun.sleep(0);
+    expect(ws.messages.some((message) => message.id === "list")).toBe(false);
+
+    harness.agents[0]?.initialize();
+    await waitUntil(() => ws.messages.some((message) => message.id === "list"));
+    expect(ws.messages.find((message) => message.id === "list")).toMatchObject({ result: { sessions: [] } });
+  });
+
+  // 初始化失败时等待必须收敛，仍按原错误码与文案拒绝，不能让请求挂死。
+  test("session/load settles with the original error when initialization fails", async () => {
+    const harness = createHarness(false);
+    const ws = new FakeWs();
+    harness.handlers.open(ws);
+    harness.handlers.message(ws, JSON.stringify({ type: "connect" }));
+    await waitUntil(() => (harness.agents[0]?.requests.length ?? 0) > 0);
+
+    harness.handlers.message(
+      ws,
+      JSON.stringify({ jsonrpc: "2.0", id: "load", method: "session/load", params: { sessionId: "ses-lifecycle" } }),
+    );
+    await Bun.sleep(0);
+    harness.agents[0]?.failInitialization();
+    await waitUntil(() => ws.messages.some((message) => message.id === "load"));
+
+    expect(ws.messages.find((message) => message.id === "load")).toMatchObject({
+      error: { code: -32000, message: "Loading sessions is not supported by this agent" },
+    });
   });
 
   // 只有实例真正停止才终止子进程；重复停止必须幂等，避免重复回收同一资源。

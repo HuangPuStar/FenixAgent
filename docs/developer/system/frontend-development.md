@@ -320,7 +320,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 5.6 域模块一览
 - `@fenix/web-runtime` `web/api/request.ts`（请求基建，非域模块）；`@fenix/agent-runtime` `environments.ts`（环境与实例；**窄口** `@fenix/agent-runtime/web/api/environments`）、`instances.ts`（实例生命周期；**窄口** `@fenix/agent-runtime/web/api/instances`）；`@fenix/identity` `api-keys.ts`、`organizations.ts`（API Key 与组织）；`@fenix/agent-config` `agents.ts`、`sites.ts`、`web/src/api/sidebar-config.ts`（Agent 配置、站点、侧栏配置）。
 - `@fenix/model-management` `providers.ts`、`models.ts`、`model-gateway.ts`（Provider、模型、模型网关）；`@fenix/resource-skill` `skills.ts`（Skill 元数据与内容）；`@fenix/resource-mcp` `mcp.ts`（MCP server）；`@fenix/resource-knowledge` `knowledge-bases.ts`、`knowledge-models.ts`（知识库与嵌入模型）；`@fenix/resource-task` `tasks-v2.ts`（定时任务 v2）。
-- `@fenix/resource-channel` `channels.ts`（IM 通道）；`@fenix/resource-machine` `registry.ts`、`fs.ts`（机器注册表、文件域客户端）；`@fenix/resource-memory` `hindsight.ts`（记忆）；`@fenix/resource-prod-view` `prod-views.ts`（生产视图）。
+- `@fenix/resource-machine` `registry.ts`、`fs.ts`（机器注册表、文件域客户端）；`@fenix/resource-memory` `hindsight.ts`（记忆）；`@fenix/resource-prod-view` `prod-views.ts`（生产视图）。
 - `@fenix/resource-observer` `observer.ts`、`system-logs.ts`、`system-people-tree.ts`（观察面板与系统日志）；`@fenix/resource-sandbox` `web/src/api/{sandbox-pools,system-organizations,system-sandbox}.ts`（沙箱与系统组织）；宿主 `apps/web/src/api/` 只剩 `branding.ts`（宿主专有域，无资源包归属；`file-events.ts` 与 `fs.ts` 已归位 `@fenix/resource-machine`、`instances.ts` 归 `@fenix/agent-runtime`、`peri-task-details.ts` 归 `@fenix/model-management`、`helpers.ts` 已删除）。按 owner 归属维护，**不记录接口数量**（会漂）；新增域模块时同步本表，删除模块时同步删行。
 
 ### 5.7 组件中使用

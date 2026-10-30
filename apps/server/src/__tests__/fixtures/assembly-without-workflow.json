@@ -19,5 +19,5 @@
     "task",
     "workflow"
   ],
-  "web": ["agent-config", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task"]
+  "web": ["agent-config", "channel", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task"]
 }

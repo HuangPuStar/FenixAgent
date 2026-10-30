@@ -11,8 +11,8 @@ export default defineConfig({
   // `@fenix/agent-runtime/db`（任务 1.7 B8）、知识库三张表 `@fenix/resource-knowledge/db`（任务 1.7 B9）
   // 与 Agent 记忆开关表 `@fenix/resource-memory/db`（任务 1.7 B10）、发布视图表
   // `@fenix/resource-prod-view/db`（任务 1.7 B11）、定时任务与执行日志两张表
-  // `@fenix/resource-task/db`（任务 1.7 B12）、IM 通道三张表 `@fenix/resource-channel/db`
-  // （任务 1.7 B13，B 块最后一批）、上游桥接四张表 `@fenix/resource-workflow-v2/db`
+  // `@fenix/resource-task/db`（任务 1.7 B12）、IM 通道两张表 `@fenix/resource-channel/db`
+  // （任务 1.7 B13，`channel_binding` 已随 Hermes 移除删除）、上游桥接四张表 `@fenix/resource-workflow-v2/db`
   // （workflow-v2 任务 1A）、公共 Git 四张表 `@fenix/git/db`（T01 公共 Git 模块，位于
   // `packages/common/` 这一新分组下）、工单五张表 `@fenix/resource-tickets/db`（T02 工单资源包，
   // 唯一跨包外键 `repository_ref → git_repository_bindings.id` 只在这两张 owner 表之间）。
