@@ -1,0 +1,451 @@
+import { CloudDriveError, invalidRequestError } from "../client/cloud-drive-error";
+import type { CloudDriveGateway } from "../client/cloud-drive-gateway";
+import type {
+  CloudDriveAbandonResult,
+  CloudDriveConversionJob,
+  CloudDriveFile,
+  CloudDriveFilePage,
+  CloudDriveMarkdownPage,
+  CloudDriveMutation,
+  CloudDrivePreviewManifest,
+  CloudDrivePrincipal,
+  CloudDriveSearchResultPage,
+  CloudDriveTrashPage,
+  CloudDriveUpload,
+  CloudDriveUploadResult,
+  CloudDriveUploadStatus,
+  CloudDriveVersionPage,
+} from "../schemas/cloud-drive.schema";
+import { enrichSearchFileMetadata } from "../search/search-metadata";
+import { aggregateSearchHits } from "../search/search-result";
+import {
+  type CloudDrivePreviewPageContent,
+  type MarkdownCommand,
+  openPreviewPage,
+  type PreviewPageCommand,
+  readMarkdownPage,
+  readPreviewManifest,
+  retryConversion as requestConversionRetry,
+} from "./cloud-drive-preview";
+import { type CloudDriveResult, cloudDriveFail, cloudDriveFailureFrom, cloudDriveOk } from "./cloud-drive-result";
+
+/**
+ * CloudDrive 的资源应用 Facade：`route → Facade → CloudDrive client` 的应用入口。
+ *
+ * 本层只有两件事，且都放在这里而不是路由或 client 里：
+ *
+ * 1. **actor 隔离**：所有方法只接受 `{ userId }`，并且只把 `userId` 作为 `subject` 交给 client。
+ *    请求参数里没有、"也不需要"用户标识；路由从守卫写入的 `store.authContext` 投影出 actor。跨用户
+ *    隔离由 CloudDrive 按 `(issuer, subject)` 分区保证，Fenix 侧只负责「永远是当前登录用户」。
+ * 2. **多步编排**：改名/移动/删除/覆盖写都需要 `expected_metadata_revision`（覆盖写还要
+ *    `expected_version_id`），CloudDrive 不会替我们读取。Facade 先 `GET /v1/files/{id}` 取当前元数据，
+ *    再带上乐观并发值执行变更；两次调用之间若版本推进，上游返回 `VERSION_CONFLICT` → 409，由前端
+ *    刷新后重试。删除/恢复的 revision 语义见各方法注释。
+ *
+ * 每次写操作生成一个全局唯一 `idempotency_key`：CloudDrive 的写接口都要求它，缺失会被判
+ * `INVALID_ARGUMENT`。浏览器重试的语义由此确定（重试 = 新 key = 新操作），这是「不保存状态」的必然
+ * 取舍；需要跨请求幂等时由前端用同一个上传会话续传，而不是重复创建上传。
+ *
+ * 没有 Repository / Domain Service：本模块不落库，也没有独立于远端调用的领域规则；再造两层空壳
+ * 只会把「读元数据 → 拼接并发值 → 调用」的编排拆到三个文件里。
+ */
+
+/** 会话派生主体；只允许 `userId`，路由不得从请求体或查询串构造它。 */
+export interface CloudDriveActor {
+  readonly userId: string;
+}
+
+/**
+ * 下载结果：上游响应 + 文件名。
+ *
+ * 文件名单独取（先 `GET /v1/files/{id}`）是因为 CloudDrive 的 `Content-Disposition` 只有裸
+ * `attachment`，没有文件名；前端另存时只能靠它。代价是每次下载多一次元数据请求（~50ms）。
+ */
+export interface CloudDriveContent {
+  readonly response: Response;
+  readonly fileName: string;
+}
+
+export interface ListFilesCommand {
+  readonly parentId?: string;
+  readonly cursor?: string;
+}
+
+export interface ContentCommand {
+  readonly versionId?: string;
+  readonly range?: string;
+}
+
+export interface CreateDirectoryCommand {
+  readonly name: string;
+  readonly parentId?: string | null;
+}
+
+export interface MoveFileCommand {
+  readonly name?: string;
+  readonly parentId?: string | null;
+}
+
+export interface RestoreTrashCommand {
+  readonly expectedMetadataRevision: number;
+  readonly parentId?: string | null;
+  readonly name?: string;
+}
+
+export interface SearchCommand {
+  readonly query: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+/** 上游按 chunk 返回命中；固定取满一页再聚合，避免单个大文件占满结果。 */
+const SEARCH_UPSTREAM_LIMIT = 100;
+/** 控制台默认展示的文件数：紧凑列表一屏可扫完，也把元数据补齐请求限制在可接受范围。 */
+const SEARCH_DEFAULT_FILES = 20;
+/** 单次搜索返回的文件数硬上限（即使调用方请求更多）。 */
+const SEARCH_MAX_FILES = 50;
+const SEARCH_MAX_SNIPPETS_PER_FILE = 3;
+
+export interface BeginUploadCommand {
+  readonly fileId?: string;
+  readonly parentId?: string | null;
+  readonly name?: string;
+  readonly sizeBytes: number;
+  readonly contentType?: string;
+}
+
+export interface UploadChunkCommand {
+  readonly offset: number;
+  readonly chunk: Uint8Array<ArrayBuffer>;
+}
+
+/** Facade 的契约面；路由与测试都只依赖这组方法。 */
+export interface CloudDriveFacade {
+  me(actor: CloudDriveActor): Promise<CloudDriveResult<CloudDrivePrincipal>>;
+  listFiles(actor: CloudDriveActor, command: ListFilesCommand): Promise<CloudDriveResult<CloudDriveFilePage>>;
+  getFile(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveFile>>;
+  listVersions(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveVersionPage>>;
+  getMarkdown(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: MarkdownCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveMarkdownPage>>;
+  getPreview(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDrivePreviewManifest>>;
+  openPreviewPage(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: PreviewPageCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDrivePreviewPageContent>>;
+  retryConversion(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveConversionJob>>;
+  openContent(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: ContentCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveContent>>;
+  createDirectory(
+    actor: CloudDriveActor,
+    command: CreateDirectoryCommand,
+  ): Promise<CloudDriveResult<CloudDriveMutation>>;
+  moveFile(
+    actor: CloudDriveActor,
+    fileId: string,
+    command: MoveFileCommand,
+  ): Promise<CloudDriveResult<CloudDriveMutation>>;
+  deleteFile(actor: CloudDriveActor, fileId: string): Promise<CloudDriveResult<CloudDriveMutation>>;
+  listTrash(actor: CloudDriveActor): Promise<CloudDriveResult<CloudDriveTrashPage>>;
+  restoreTrash(
+    actor: CloudDriveActor,
+    trashId: string,
+    command: RestoreTrashCommand,
+  ): Promise<CloudDriveResult<CloudDriveMutation>>;
+  search(
+    actor: CloudDriveActor,
+    command: SearchCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveSearchResultPage>>;
+  beginUpload(actor: CloudDriveActor, command: BeginUploadCommand): Promise<CloudDriveResult<CloudDriveUpload>>;
+  getUploadStatus(actor: CloudDriveActor, uploadId: string): Promise<CloudDriveResult<CloudDriveUploadStatus>>;
+  uploadChunk(
+    actor: CloudDriveActor,
+    uploadId: string,
+    command: UploadChunkCommand,
+    signal?: AbortSignal,
+  ): Promise<CloudDriveResult<CloudDriveUploadStatus>>;
+  finalizeUpload(actor: CloudDriveActor, uploadId: string): Promise<CloudDriveResult<CloudDriveUploadResult>>;
+  abandonUpload(actor: CloudDriveActor, uploadId: string): Promise<CloudDriveResult<CloudDriveAbandonResult>>;
+}
+
+export interface CloudDriveFacadeOptions {
+  /** 按请求解析出站网关；未配置时抛 `not-configured` 错误（由 Facade 转成 503）。 */
+  readonly resolveGateway: () => CloudDriveGateway;
+  /** 非 CloudDriveError 的意外异常（编程错误）上报点；默认丢弃，装配时接到宿主日志。 */
+  readonly onUnexpectedError?: (error: unknown, context: { readonly operation: string }) => void;
+  /** 幂等键生成器；仅测试替换。 */
+  readonly newIdempotencyKey?: () => string;
+}
+
+/** 创建 CloudDrive Facade；无状态，可按应用生命周期单例化。 */
+export function createCloudDriveFacade(options: CloudDriveFacadeOptions): CloudDriveFacade {
+  return new DefaultCloudDriveFacade(options);
+}
+
+class DefaultCloudDriveFacade implements CloudDriveFacade {
+  private readonly newIdempotencyKey: () => string;
+
+  constructor(private readonly options: CloudDriveFacadeOptions) {
+    this.newIdempotencyKey = options.newIdempotencyKey ?? (() => crypto.randomUUID());
+  }
+
+  me(actor: CloudDriveActor) {
+    return this.run(actor, "me", (gateway, subject) => gateway.getMe(subject));
+  }
+
+  listFiles(actor: CloudDriveActor, command: ListFilesCommand) {
+    return this.run(actor, "listFiles", (gateway, subject) =>
+      gateway.listFiles(subject, { parentId: command.parentId, cursor: command.cursor }),
+    );
+  }
+
+  getFile(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "getFile", (gateway, subject) => gateway.getFile(subject, fileId));
+  }
+
+  listVersions(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "listVersions", (gateway, subject) => gateway.listVersions(subject, fileId));
+  }
+
+  getMarkdown(actor: CloudDriveActor, fileId: string, command: MarkdownCommand, signal?: AbortSignal) {
+    return this.run(actor, "getMarkdown", (gateway, subject) =>
+      readMarkdownPage(gateway, subject, fileId, command, signal),
+    );
+  }
+
+  getPreview(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "getPreview", (gateway, subject) => readPreviewManifest(gateway, subject, fileId));
+  }
+
+  openPreviewPage(actor: CloudDriveActor, fileId: string, command: PreviewPageCommand, signal?: AbortSignal) {
+    return this.run(actor, "openPreviewPage", (gateway, subject) =>
+      openPreviewPage(gateway, subject, fileId, command, signal),
+    );
+  }
+
+  retryConversion(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "retryConversion", (gateway, subject) =>
+      requestConversionRetry(gateway, subject, fileId, this.newIdempotencyKey()),
+    );
+  }
+
+  openContent(actor: CloudDriveActor, fileId: string, command: ContentCommand, signal?: AbortSignal) {
+    return this.run(actor, "openContent", async (gateway, subject) => {
+      const file = await gateway.getFile(subject, fileId);
+      if (file.kind !== "file") throw invalidRequestError("CLOUD_DRIVE_NOT_A_FILE", "目录不能下载内容");
+      const response = await gateway.openContent(
+        subject,
+        fileId,
+        { versionId: command.versionId, range: command.range },
+        signal,
+      );
+      return { response, fileName: file.name };
+    });
+  }
+
+  createDirectory(actor: CloudDriveActor, command: CreateDirectoryCommand) {
+    return this.run(actor, "createDirectory", (gateway, subject) =>
+      gateway.createDirectory(subject, {
+        name: command.name,
+        parentId: command.parentId ?? undefined,
+        idempotencyKey: this.newIdempotencyKey(),
+      }),
+    );
+  }
+
+  async moveFile(actor: CloudDriveActor, fileId: string, command: MoveFileCommand) {
+    return this.run(actor, "moveFile", async (gateway, subject) => {
+      const file = await gateway.getFile(subject, fileId);
+      const name = command.name ?? file.name;
+      const parentId = command.parentId === undefined ? file.parentId : command.parentId;
+      if (name === file.name && parentId === file.parentId) {
+        throw invalidRequestError("CLOUD_DRIVE_NO_CHANGE", "名称与位置均未变化");
+      }
+      return gateway.moveFile(subject, fileId, {
+        name,
+        parentId,
+        expectedMetadataRevision: file.metadataRevision,
+        idempotencyKey: this.newIdempotencyKey(),
+      });
+    });
+  }
+
+  async deleteFile(actor: CloudDriveActor, fileId: string) {
+    return this.run(actor, "deleteFile", async (gateway, subject) => {
+      const file = await gateway.getFile(subject, fileId);
+      return gateway.deleteFile(subject, fileId, {
+        expectedMetadataRevision: file.metadataRevision,
+        idempotencyKey: this.newIdempotencyKey(),
+      });
+    });
+  }
+
+  listTrash(actor: CloudDriveActor) {
+    return this.run(actor, "listTrash", (gateway, subject) => gateway.listTrash(subject));
+  }
+
+  restoreTrash(actor: CloudDriveActor, trashId: string, command: RestoreTrashCommand) {
+    return this.run(actor, "restoreTrash", (gateway, subject) => {
+      if (!Number.isInteger(command.expectedMetadataRevision) || command.expectedMetadataRevision < 1) {
+        throw invalidRequestError("CLOUD_DRIVE_REVISION_REQUIRED", "缺少回收站条目的元数据修订号");
+      }
+      return gateway.restoreTrash(subject, trashId, {
+        expectedMetadataRevision: command.expectedMetadataRevision,
+        parentId: command.parentId,
+        name: command.name,
+        idempotencyKey: this.newIdempotencyKey(),
+      });
+    });
+  }
+
+  search(actor: CloudDriveActor, command: SearchCommand, signal?: AbortSignal) {
+    return this.run(actor, "search", async (gateway, subject) => {
+      const query = command.query.trim();
+      if (!query) throw invalidRequestError("CLOUD_DRIVE_QUERY_REQUIRED", "搜索词不能为空");
+      const maxFiles = Math.min(Math.max(command.limit ?? SEARCH_DEFAULT_FILES, 1), SEARCH_MAX_FILES);
+      const page = await gateway.search(
+        subject,
+        { query, cursor: command.cursor, limit: SEARCH_UPSTREAM_LIMIT },
+        signal,
+      );
+      const aggregated = aggregateSearchHits(page.items, query, {
+        maxFiles,
+        maxSnippetsPerFile: SEARCH_MAX_SNIPPETS_PER_FILE,
+      });
+      const items = await enrichSearchFileMetadata(gateway, subject, aggregated.items, signal);
+      return {
+        items,
+        nextCursor: page.nextCursor,
+        fileCount: items.length,
+        matchCount: items.reduce((total, file) => total + file.matchCount, 0),
+      };
+    });
+  }
+
+  async beginUpload(actor: CloudDriveActor, command: BeginUploadCommand) {
+    return this.run(actor, "beginUpload", async (gateway, subject) => {
+      if (command.fileId) {
+        const file = await gateway.getFile(subject, command.fileId);
+        if (file.kind !== "file") throw invalidRequestError("CLOUD_DRIVE_NOT_A_FILE", "目录不能上传内容");
+        if (command.name !== undefined && command.name !== file.name) {
+          throw invalidRequestError("CLOUD_DRIVE_OVERWRITE_NAME_MISMATCH", "覆盖写不能修改文件名");
+        }
+        if (command.parentId !== undefined && command.parentId !== file.parentId) {
+          throw invalidRequestError("CLOUD_DRIVE_OVERWRITE_MOVE", "覆盖写不能移动文件");
+        }
+        if (!file.currentVersionId) throw invalidRequestError("CLOUD_DRIVE_NO_VERSION", "文件当前没有可覆盖版本");
+        return gateway.beginUpload(subject, {
+          fileId: file.id,
+          parentId: file.parentId,
+          name: file.name,
+          sizeBytes: command.sizeBytes,
+          contentType: command.contentType ?? file.contentType,
+          expectedVersionId: file.currentVersionId,
+          expectedMetadataRevision: file.metadataRevision,
+          idempotencyKey: this.newIdempotencyKey(),
+        });
+      }
+      if (!command.name) throw invalidRequestError("CLOUD_DRIVE_NAME_REQUIRED", "新建上传必须提供文件名");
+      return gateway.beginUpload(subject, {
+        name: command.name,
+        sizeBytes: command.sizeBytes,
+        contentType: command.contentType,
+        parentId: command.parentId ?? undefined,
+        idempotencyKey: this.newIdempotencyKey(),
+      });
+    });
+  }
+
+  async getUploadStatus(actor: CloudDriveActor, uploadId: string) {
+    const result = await this.run(actor, "getUploadStatus", (gateway, subject) =>
+      gateway.statUpload(subject, uploadId),
+    );
+    if (!result.ok && result.error.kind === "not-found") {
+      return cloudDriveFail("not-found", "CLOUD_DRIVE_UPLOAD_NOT_FOUND", "上传会话不存在或已结束");
+    }
+    // CloudDrive 对已 finalize / 已放弃的会话返回 OPERATION_PENDING（409）：会话存在但不可续传。
+    // 前端应停止轮询并继续 finalize（幂等）或重新创建，而不是把它当成上游故障。
+    if (!result.ok && result.error.kind === "conflict") {
+      return cloudDriveFail("gone", "CLOUD_DRIVE_UPLOAD_GONE", "上传会话已结束或不可续传");
+    }
+    return result;
+  }
+
+  uploadChunk(actor: CloudDriveActor, uploadId: string, command: UploadChunkCommand, signal?: AbortSignal) {
+    return this.runUpload(actor, "uploadChunk", (gateway, subject) => {
+      if (!Number.isInteger(command.offset) || command.offset < 0) {
+        throw invalidRequestError("CLOUD_DRIVE_OFFSET_INVALID", "Upload-Offset 必须是非负整数");
+      }
+      if (command.chunk.byteLength === 0) {
+        throw invalidRequestError("CLOUD_DRIVE_CHUNK_EMPTY", "分片不能为空");
+      }
+      return gateway.patchUpload(subject, uploadId, { offset: command.offset, chunk: command.chunk }, signal);
+    });
+  }
+
+  finalizeUpload(actor: CloudDriveActor, uploadId: string) {
+    return this.runUpload(actor, "finalizeUpload", (gateway, subject) => gateway.finalizeUpload(subject, uploadId));
+  }
+
+  abandonUpload(actor: CloudDriveActor, uploadId: string) {
+    return this.runUpload(actor, "abandonUpload", (gateway, subject) => gateway.abandonUpload(subject, uploadId));
+  }
+
+  /**
+   * 上传会话类操作的统一收口。
+   *
+   * CloudDrive 对「会话已消费 / 不存在 / 不属于当前主体」都返回 404；对前端而言这三种情况都只能
+   * 重新创建上传，因此统一成可识别的 `CLOUD_DRIVE_UPLOAD_NOT_FOUND`，而不是泛化的「文件不存在」。
+   */
+  private async runUpload<T>(
+    actor: CloudDriveActor,
+    operation: string,
+    task: (gateway: CloudDriveGateway, subject: string) => Promise<T>,
+  ): Promise<CloudDriveResult<T>> {
+    const result = await this.run(actor, operation, task);
+    if (!result.ok && result.error.kind === "not-found") {
+      return cloudDriveFail("not-found", "CLOUD_DRIVE_UPLOAD_NOT_FOUND", "上传会话不存在或已结束");
+    }
+    return result;
+  }
+
+  /** 统一入口：actor 校验、网关解析、结果收敛；任何分支都不向路由抛异常。 */
+  private async run<T>(
+    actor: CloudDriveActor,
+    operation: string,
+    task: (gateway: CloudDriveGateway, subject: string) => Promise<T>,
+  ): Promise<CloudDriveResult<T>> {
+    const subject = actor.userId?.trim();
+    if (!subject) {
+      return cloudDriveFail("invalid", "CLOUD_DRIVE_ACTOR_REQUIRED", "缺少登录用户上下文");
+    }
+    let gateway: CloudDriveGateway;
+    try {
+      gateway = this.options.resolveGateway();
+    } catch (error) {
+      return this.failure(operation, error);
+    }
+    try {
+      return cloudDriveOk(await task(gateway, subject));
+    } catch (error) {
+      return this.failure(operation, error);
+    }
+  }
+
+  private failure(operation: string, error: unknown): CloudDriveResult<never> {
+    if (!(error instanceof CloudDriveError)) {
+      this.options.onUnexpectedError?.(error, { operation });
+    }
+    return { ok: false, error: cloudDriveFailureFrom(error) };
+  }
+}

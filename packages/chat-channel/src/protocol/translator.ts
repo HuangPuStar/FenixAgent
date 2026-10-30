@@ -13,6 +13,11 @@ export interface TranslateActionContext {
   generation?: string | null;
   /** 端到端幂等键：浏览器 commandId 原样转交 peri（peri 按它去重，重复提交不重复入队） */
   commandId?: string;
+  /**
+   * 会话级 MCP 条目（通道 B）。只由服务端注入，浏览器无法指定；构造失败时不注入。
+   * 条目只在 ACP 消息里传递，不落盘——token 生命周期与 session 一致。
+   */
+  mcpServers?: readonly Record<string, unknown>[];
 }
 
 /** Peri 待发送队列（steer）扩展方法名（acp-link 只做原样透传，方法名字面量两侧一致） */
@@ -41,6 +46,8 @@ export function translateSimpleAction(
 ): Record<string, unknown> {
   const action = parsed.action as string;
   const id = rpcId;
+  // 会话级 MCP 只在 create/load/resume 的握手里下发；其余动作携带它会被 Agent 忽略或拒绝。
+  const sessionMcp = context.mcpServers && context.mcpServers.length > 0 ? { mcpServers: context.mcpServers } : {};
   switch (action) {
     case "send_prompt":
       // 携带目标 sessionId（服务端 session-channel 注入，来自绑定的 acpSessionId）：
@@ -58,20 +65,20 @@ export function translateSimpleAction(
       // dispatcher fallback 到当前会话（向后兼容）。
       return { jsonrpc: "2.0", id, method: "session/cancel", params: { sessionId: parsed.sessionId } };
     case "create_session":
-      return { jsonrpc: "2.0", id, method: "session/new", params: { cwd: workspacePath } };
+      return { jsonrpc: "2.0", id, method: "session/new", params: { cwd: workspacePath, ...sessionMcp } };
     case "load_session":
       return {
         jsonrpc: "2.0",
         id,
         method: "session/load",
-        params: { sessionId: parsed.sessionId, cwd: workspacePath },
+        params: { sessionId: parsed.sessionId, cwd: workspacePath, ...sessionMcp },
       };
     case "resume_session":
       return {
         jsonrpc: "2.0",
         id,
         method: "session/resume",
-        params: { sessionId: parsed.sessionId, cwd: workspacePath },
+        params: { sessionId: parsed.sessionId, cwd: workspacePath, ...sessionMcp },
       };
     case "list_sessions":
       return { jsonrpc: "2.0", id, method: "session/list", params: { cwd: workspacePath } };

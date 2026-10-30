@@ -1,0 +1,33 @@
+{
+  // 包内类型检查入口：自包含，不 extends 包外 tsconfig（理由见 `packages/resources/memory/tsconfig.json` 文件头）。
+  // - `web/**` 是浏览器面：需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
+  // - 末两条 include 是各包自带的类型垫片（`<pkg>/web/types/*.d.ts`、`<pkg>/web/css.d.ts`）：本包经
+  //   `exports` 引到的对端文件会在本程序内解析自己的 import，垫片不在本程序里就会把对端的第三方模块
+  //   报成 TS7016 / TS2882。垫片归属仍是各包，本包不保留副本。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": [
+    "fenix.module.ts",
+    "src/**/*.ts",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "../../*/web/**/*.d.ts",
+    "../../*/*/web/**/*.d.ts"
+  ]
+}

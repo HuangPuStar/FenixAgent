@@ -46,6 +46,10 @@
 > 去掉运行期 `curl atlasgo.sh`）；业务配置收敛为本目录唯一一份 `.env`（上游 `docker/.env` 不再参与）；
 > 栈内数据（ES / redis / etcd / Milvus）从 `${WORKFLOW_STUDIO_DIR}/docker/data/` 收进 `docker/workflow/data/`；
 > `WORKFLOW_STUDIO_DIR` 变量与上游源码 clone 一并退场。取舍、过渡门槛与代价见 §13.21。
+> **2026-10-28 追加：新增依赖目录 `docker/langbot/`**（IM 网关，上游 LangBot 发布镜像，源码不改动）。
+> 只有核心服务接入 `fenix-server`（主服务按 `http://langbot:5300` 访问，它按 `http://rcs:3000/hooks/langbot/*`
+> 回调主服务），插件运行时留在项目默认网络。Webhook 目的地只能在 LangBot WebUI 配置，没有 Service API。
+> 开关 `FENIX_FEATURE_LANGBOT` 已进生成物（§7），集成契约见 [30 号文档](../arch/30-langbot-channel-gateway.md)。
 
 ## 1. 设计结论速览
 
@@ -88,7 +92,7 @@
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（只有开关，见 §7；.example 是生成物）
-    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
+    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/  langbot/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
     ├── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
@@ -121,7 +125,7 @@
 成员判定标准（唯一）：**这个服务是否需要与主服务（或需要访问主服务的执行节点）直接通信。**
 
 - 必须接入 ②：`rcs`；主服务自带的两个基础服务 `postgres` / `redis`（它们的服务名是 `fenix-server` 上的跨项目 DNS 名）；
-  依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、
+  依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、`langbot`、
   观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、
   Workflow 的 `coze-web`（唯一出口；Workflow 的其余服务——`coze-server` / `milvus` / `redis` / `elasticsearch` 与它自带的
   `mysql` / `rustfs`、以及所有一次性初始化服务——都只在项目默认网络内）；sandbox 节点与 opensandbox 管理面。
@@ -385,6 +389,7 @@ Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init
 | `PERI_FUSE` | `docker/peri-fuse/` | agent-config：Agent 观测透传（Trace 上报；主服务不访问本服务） | `LANGFUSE_BASE_URL` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` |
 | `NPM_REGISTRY` | `docker/npm-registry/` | plugin-market：元数据源 | `PLUGIN_MARKET_REGISTRY_*` |
 | `AGENT_SITES` | `docker/agent-sites/` | agent-config：站点部署 | `AGENT_SITES_MASTER_KEY` 等 |
+| `LANGBOT` | `docker/langbot/` | channel：IM 网关（LangBot 上游镜像，源码不改动） | `LANGBOT_BASE_URL` / `LANGBOT_API_KEY`（与主服务同值）；`LANGBOT_PUBLIC_BASE_URL` 必须是外部 HTTPS 源；Webhook 只能在 LangBot WebUI 配置（[30 号文档](../arch/30-langbot-channel-gateway.md)） |
 | `WORKFLOW` | `docker/workflow/` | workflow-v2 | `WORKFLOW_STUDIO_TAG` / `WEB_LISTEN_ADDR`（单份 `.env`）；MySQL 与对象存储（栈内 `mysql` / `rustfs`）**都是本栈自带**，初始化资产随 server 镜像交付、由 `assets-init` 展开（§13.21），另有前置条件（见该目录 README） |
 | `SANDBOX_PERI` / `SANDBOX_DSH` / `SANDBOX_CCB` / `SANDBOX_OPENCODE` | `docker/sandbox-*/` | sandbox 执行节点 | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` |
 | `OPENSANDBOX_CLUSTER` | `docker/opensandbox-cluster/` | sandbox 管理面 | `FRP_PUBLIC_ADDRESS` / `FRP_TOKEN` / `CLUSTER_SERVICE_API_KEY` / `SERVER_API_KEY_ENCRYPTION_KEY` |
@@ -415,6 +420,7 @@ FENIX_FEATURE_LITELLM=false
 FENIX_FEATURE_HINDSIGHT=false
 FENIX_FEATURE_NPM_REGISTRY=false
 FENIX_FEATURE_AGENT_SITES=false
+FENIX_FEATURE_LANGBOT=false
 FENIX_FEATURE_WORKFLOW=false
 FENIX_FEATURE_SANDBOX_PERI=false
 FENIX_FEATURE_SANDBOX_DSH=false
@@ -446,7 +452,7 @@ FENIX_FEATURE_REDIS=false
 - `docker/deploy.env.example` 是**生成物**（`bun run scripts/generate-env-example.ts`，与 `.env.example`、
   `docker/main/.env.example` 同批产出）；开关清单以脚本发现的目录为准，模板只负责把
   清单落成文件，不手工维护。
-  上面这份示例的开关名单与生成物一致（16 个：15 个目录开关 + `REDIS`），核对方式：
+  上面这份示例的开关名单与生成物一致（17 个：16 个目录开关 + `REDIS`），核对方式：
   `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 得到的键名集合与上面的名单相同。
 - **配置文件解析**（脚本行为，见 §9）：默认读与脚本同目录的 `docker/deploy.env`；它不存在而同目录恰好只有
   一份 `*.env` 时用那一份（部署方常按机器命名，如 `prod.env`）；有多份则报错列出、要求 `--config` 指定，不替你猜。
@@ -755,6 +761,7 @@ docker compose up -d
 | `docker/agent-sites/` | 已建（含 README 与三段式 `.env.example`），是后续依赖目录的样板；`docker/gotenberg/` 曾以同样形态存在，已按上表并入 `docker/ragflow/` |
 | `docker/sandbox-{peri,dsh,ccb,opencode}/` | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` 走 `.env.example`（同机启动由脚本注入 `RCS_URL`，独立部署填真实地址）；辅助服务一律留在项目网络，只有执行节点接入 `fenix-server`。**2026-10-08 起 peri / ccb / opencode 的 compose 只引用发布镜像**（`ghcr.io/huangpustar/fenixagent-sandbox-<name>:v0.7.0-beta.1-<name>`，与主服务同版本；本地自建见各目录 README）；`dsh` 是唯一例外——GHCR 上没有它的发布镜像，仍从源码构建（§13.15） |
 | `docker/{ragflow,litellm,hindsight,npm-registry,workflow}/` | 已补齐契约：固定镜像版本、端口回环绑定、网络接入清单、README；ragflow / litellm / hindsight 新增三段式 `.env.example`（npm-registry 无插值键，故不设；workflow 有自己的 `.env.example`——2026-10-14 起它是该目录唯一一份配置面，见 §13.21） |
+| `docker/langbot/` | **2026-10-28 新增**：IM 网关（LangBot `rockchin/langbot:v4.11.2` 上游镜像，源码不改动）。核心服务接入 `fenix-server`，插件运行时留在项目默认网络；宿主端口只绑回环；三段式 `.env.example`（`LANGBOT_API_KEY` 为 `${VAR:?}` 必填键）。集成契约见 [30 号文档](../arch/30-langbot-channel-gateway.md) |
 | `docker/peri-fuse/` | **2026-10-10 新增**：LLM 观测（Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，无 ClickHouse / Redis / S3）。写入侧消费方是 **Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按 `LANGFUSE_BASE_URL=http://peri-fuse:23332` 直连上报；读取侧由主服务（`@fenix/resource-trace` 的只读薄层 → `/web/.../traces*`）访问同一基址，故本目录必须留在 `fenix-server` 网络上（§6 规则 3 的成员判定因此从「执行节点」扩到「主服务也会读它」）。宿主端口默认只绑回环，`.env` 暴露 `PERIFUSE_BIND_ADDR` / `PERIFUSE_HOST_PORT` / `PERIFUSE_SALT`；**版本键 `PERIFUSE_VERSION`**（覆盖 compose 的缺省 tag，§6 规则 10 的登记例外） |
 | `docker/opensandbox-{cluster,server,server-tunnel}/` | 已补齐契约：镜像固定为 `…/v0.2.0`（不再插值）、`opensandbox-server` 改名并补开关；**2026-10-08 起三者的 compose 都不声明 `build:`**，只引用发布 tag（本地自建命令见各目录 README，隧道目录不再需要在 server 侧打标） |
 

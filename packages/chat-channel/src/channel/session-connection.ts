@@ -96,4 +96,11 @@ export interface SessionChannelDependencies {
   permissionTimeoutMs?: number;
   /** steer（session/input/*）等待 peri 回执的上限（毫秒），缺省 DEFAULT_USER_INPUT_REQUEST_TIMEOUT_MS */
   userInputQueueTimeoutMs?: number;
+  /**
+   * 会话级 MCP 条目（通道 B）：每次 `session/new|load|resume` 前解析一次。
+   *
+   * 条目只进 ACP 消息、不落盘，token 因此可以短 TTL。解析失败由 SessionChannel 记录并降级为
+   * 「本次不注入」，不能让云盘凭据问题阻断用户建会话。
+   */
+  sessionMcpServers?: (connection: SessionConnection) => Promise<readonly Record<string, unknown>[] | undefined>;
 }

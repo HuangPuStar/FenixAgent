@@ -41,11 +41,13 @@ test("装配关闭 workflow 与隐藏偏好叠加，其他入口和顺序不变"
   const ids = groups.flatMap((group) => group.items.map((item) => item.id));
   expect(ids).not.toContain("workflow");
   expect(ids).not.toContain("skills");
+  // fixture 的 web 列表早于 cloud-drive 模块，未启用的贡献同样被装配收窄掉。
+  expect(ids).not.toContain("cloud-drive");
   expect(ids).toContain("agents");
   expect(ids).toEqual(
     ASSEMBLED_NAVIGATION.groups
       .flatMap((group) => group.items.map((item) => item.id))
-      .filter((id) => !["workflow", "skills"].includes(id)),
+      .filter((id) => !["workflow", "skills", "cloud-drive"].includes(id)),
   );
 });
 

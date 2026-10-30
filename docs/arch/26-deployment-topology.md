@@ -48,7 +48,7 @@
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（只有开关；.example 是生成物）
-    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
+    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/  langbot/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
     └── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
@@ -279,7 +279,7 @@ flowchart LR
 | --- | --- | --- |
 | `docker/main/.env` | 生产主服务的应用配置与密钥，以及主服务自带基础服务的凭据（`POSTGRES_PASSWORD`） | 与生产编排同目录、compose 自动加载；模板 `docker/main/.env.example` 是生成物，`deploy.sh init` 落成 |
 | 根 `.env` | dev 形态的应用配置与密钥（含同一份基础服务凭据） | 根编排与 `bun run dev` 读它；键与逐键说明的真相来源是代码声明（宿主 `env.ts` + 各模块 `envDefinitions`）；`.env` 不进版本控制 |
-| `docker/deploy.env` | 依赖开关（`FENIX_FEATURE_*`，含主服务可选服务 `REDIS`；共 15 个） | 模板 `deploy.env.example` 是生成物；端口等主服务编排插值键写在 `docker/main/.env` |
+| `docker/deploy.env` | 依赖开关（`FENIX_FEATURE_*`，含主服务可选服务 `REDIS`；共 17 个：16 个目录开关 + `REDIS`） | 模板 `deploy.env.example` 是生成物；端口等主服务编排插值键写在 `docker/main/.env` |
 | `docker/<name>/.env` | 依赖私有键，含该目录自带实例的凭据（`LITELLM_DB_PASSWORD`、`WORKFLOW_MYSQL_*` / `WORKFLOW_S3_*` 等） | 各目录自带 `.env.example`，三段式排序 |
 
 规则：

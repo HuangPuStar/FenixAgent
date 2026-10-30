@@ -73,6 +73,7 @@
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-channel": "workspace:*",
+    "@fenix/resource-cloud-drive": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-observer": "workspace:*",
     "@fenix/resource-plugin-market": "workspace:*",

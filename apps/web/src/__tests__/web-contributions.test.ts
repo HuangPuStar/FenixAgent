@@ -15,6 +15,7 @@ import { expect, test } from "bun:test";
 import { AGENTS_NS, agentResources } from "@fenix/agent-config/web/i18n";
 import { APIKEY_NS, apikeyResources, ORGS_NS, orgResources } from "@fenix/identity/web/i18n";
 import { MODELS_NS, modelManagementResources } from "@fenix/model-management/web/i18n";
+import { CLOUD_DRIVE_NS, cloudDriveResources } from "@fenix/resource-cloud-drive/web/i18n";
 import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n";
 import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
 import { HINDSIGHT_NS, hindsightResources } from "@fenix/resource-memory/web/i18n";
@@ -36,6 +37,7 @@ const DICTIONARIES = new Map<string, { readonly en: unknown; readonly zh: unknow
   [MCP_NS, mcpResources],
   [TASKS_V2_NS, tasksV2Resources],
   [HINDSIGHT_NS, hindsightResources],
+  [CLOUD_DRIVE_NS, cloudDriveResources],
   // tickets 的导航只出现在含工单的装配产物里（`deploy/assembly/ce-tickets.json`），默认产物下这条
   // 登记不参与断言；漏登记时症状是工单构建下文案整片回退成 key，而默认构建看不见。
   [TICKETS_NS, ticketsResources],

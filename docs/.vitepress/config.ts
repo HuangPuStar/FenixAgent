@@ -114,6 +114,7 @@ export default defineConfig({
         {
           text: "全局概览",
           items: [
+            { text: "架构拓扑总览", link: "/arch/00-topology" },
             { text: "总体架构", link: "/arch/tech-stack-overview" },
             { text: "后端技术栈", link: "/arch/tech-stack-backend" },
             { text: "前端技术栈", link: "/arch/tech-stack-frontend" },
@@ -137,6 +138,12 @@ export default defineConfig({
             { text: "Agent 输出可视化（四条路径定位）", link: "/arch/27-agent-output-visualization" },
             { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },
             { text: "文件系统", link: "/arch/12-files" },
+          ],
+        },
+        {
+          text: "消息通道",
+          items: [
+            { text: "LangBot IM 网关", link: "/arch/30-langbot-channel-gateway" },
           ],
         },
         {
@@ -164,6 +171,7 @@ export default defineConfig({
             { text: "插件市场", link: "/arch/24-plugin-market" },
             { text: "公共 Git", link: "/arch/28-common-git" },
             { text: "工单", link: "/arch/29-tickets" },
+            { text: "个人云盘（CloudDrive）", link: "/arch/30-cloud-drive" },
           ],
         },
         { text: "Access Control", link: "/arch/29-access-control" },
@@ -181,6 +189,7 @@ export default defineConfig({
             { text: "Workflow V2 部署", link: "/operations/workflow-deployment" },
             { text: "公共 Git（Forgejo）", link: "/operations/common-git" },
             { text: "工单（Tickets）", link: "/operations/tickets" },
+            { text: "CloudDrive 本地联调", link: "/operations/cloud-drive-local-smoke" },
             { text: "升级", link: "/operations/upgrade" },
             { text: "迁移", link: "/operations/migration" },
             { text: "备份与恢复", link: "/operations/backup-and-restore" },

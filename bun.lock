@@ -30,6 +30,7 @@
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
         "@fenix/resource-channel": "workspace:*",
+        "@fenix/resource-cloud-drive": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
         "@fenix/resource-machine": "workspace:*",
         "@fenix/resource-mcp": "workspace:*",
@@ -179,6 +180,7 @@
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
         "@fenix/resource-channel": "workspace:*",
+        "@fenix/resource-cloud-drive": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
         "@fenix/resource-machine": "workspace:*",
         "@fenix/resource-mcp": "workspace:*",
@@ -214,6 +216,7 @@
         "@fenix/model-management": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/resource-channel": "workspace:*",
+        "@fenix/resource-cloud-drive": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
         "@fenix/resource-machine": "workspace:*",
         "@fenix/resource-mcp": "workspace:*",
@@ -533,6 +536,29 @@
       "devDependencies": {
         "happy-dom": "^20.9.0",
         "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "i18next": "^26.2.0",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+        "react-i18next": "^17.0.8",
+      },
+    },
+    "packages/resources/cloud-drive": {
+      "name": "@fenix/resource-cloud-drive",
+      "dependencies": {
+        "@fenix/logger": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
+        "@fenix/web-runtime": "workspace:*",
+        "ahooks": "^3.9.7",
+        "elysia": "^1.4.28",
+        "lucide-react": "^1.16.0",
+        "sonner": "^2.0.7",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
       },
       "peerDependencies": {
         "i18next": "^26.2.0",
@@ -1410,6 +1436,8 @@
     "@fenix/remote-runtime": ["@fenix/remote-runtime@workspace:packages/remote-runtime"],
 
     "@fenix/resource-channel": ["@fenix/resource-channel@workspace:packages/resources/channel"],
+
+    "@fenix/resource-cloud-drive": ["@fenix/resource-cloud-drive@workspace:packages/resources/cloud-drive"],
 
     "@fenix/resource-knowledge": ["@fenix/resource-knowledge@workspace:packages/resources/knowledge"],
 
@@ -3709,7 +3737,7 @@
 
     "yargs-parser": ["yargs-parser@18.1.3", "https://registry.npmmirror.com/yargs-parser/-/yargs-parser-18.1.3.tgz", { "dependencies": { "camelcase": "^5.0.0", "decamelize": "^1.2.0" } }, "sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ=="],
 
-    "yjs": ["yjs@13.6.31", "https://registry.npmmirror.com/yjs/-/yjs-13.6.31.tgz", { "dependencies": { "lib0": "^0.2.99" } }, "sha512-Eq+5BRfbeGyqGVrTJL3bEcr8gKkxPuyuoHmAwpk52fDb8kOVMrfVSTRPd6yiGgX5Fskb96qCRjzjbRjrL4YEnw=="],
+    "yjs": ["yjs@13.6.33", "https://registry.npmmirror.com/yjs/-/yjs-13.6.33.tgz", { "dependencies": { "lib0": "^0.2.99" } }, "sha512-q/UYvr1gOk4XII+Cu1CW2dINjYqJJFifTzogEaIARznrvX7uOlHsdTEXcnOBMuIsrCGEEKdNxi74kyMLZlKVfw=="],
 
     "zod": ["zod@4.6.7", "https://registry.npmmirror.com/zod/-/zod-4.6.7.tgz", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
@@ -3774,8 +3802,6 @@
     "@opencode-ai/plugin/zod": ["zod@4.1.8", "https://registry.npmmirror.com/zod/-/zod-4.1.8.tgz", {}, "sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ=="],
 
     "@openuidev/devtools/lucide-react": ["lucide-react@0.575.0", "https://registry.npmmirror.com/lucide-react/-/lucide-react-0.575.0.tgz", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-VuXgKZrk0uiDlWjGGXmKV6MSk9Yy4l10qgVvzGn2AWBx1Ylt0iBexKOAoA6I7JO3m+M9oeovJd3yYENfkUbOeg=="],
-
-    "@peri-code/sdk/yjs": ["yjs@13.6.33", "https://registry.npmmirror.com/yjs/-/yjs-13.6.33.tgz", { "dependencies": { "lib0": "^0.2.99" } }, "sha512-q/UYvr1gOk4XII+Cu1CW2dINjYqJJFifTzogEaIARznrvX7uOlHsdTEXcnOBMuIsrCGEEKdNxi74kyMLZlKVfw=="],
 
     "@pierre/diffs/@shikijs/transformers": ["@shikijs/transformers@3.23.0", "https://registry.npmmirror.com/@shikijs/transformers/-/transformers-3.23.0.tgz", { "dependencies": { "@shikijs/core": "3.23.0", "@shikijs/types": "3.23.0" } }, "sha512-F9msZVxdF+krQNSdQ4V+Ja5QemeAoTQ2jxt7nJCwhDsdF1JWS3KxIQXA3lQbyKwS3J61oHRUSv4jYWv3CkaKTQ=="],
 
@@ -3954,8 +3980,6 @@
     "utif/pako": ["pako@1.0.11", "https://registry.npmmirror.com/pako/-/pako-1.0.11.tgz", {}, "sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw=="],
 
     "vitepress/vite": ["vite@5.4.21", "https://registry.npmmirror.com/vite/-/vite-5.4.21.tgz", { "dependencies": { "esbuild": "^0.21.3", "postcss": "^8.4.43", "rollup": "^4.20.0" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^18.0.0 || >=20.0.0", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "sass-embedded": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw=="],
-
-    "yjs/lib0": ["lib0@0.2.117", "https://registry.npmmirror.com/lib0/-/lib0-0.2.117.tgz", { "dependencies": { "isomorphic.js": "^0.2.4" }, "bin": { "0gentesthtml": "bin/gentesthtml.js", "0serve": "bin/0serve.js", "0ecdsa-generate-keypair": "bin/0ecdsa-generate-keypair.js" } }, "sha512-DeXj9X5xDCjgKLU/7RR+/HQEVzuuEUiwldwOGsHK/sfAfELGWEyTcf0x+uOvCvK3O2zPmZePXWL85vtia6GyZw=="],
 
     "zrender/tslib": ["tslib@2.3.0", "https://registry.npmmirror.com/tslib/-/tslib-2.3.0.tgz", {}, "sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg=="],
 

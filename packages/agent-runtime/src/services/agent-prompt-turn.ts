@@ -20,6 +20,13 @@ export interface PromptTurnStartOptions {
   session: AgentSession;
   sessionId?: string;
   prepareNewSession?: () => Promise<void>;
+  /**
+   * Session-scoped MCP servers handed to `session/new|load` (channel B).
+   *
+   * Entries never touch disk, so the caller can use a short-lived bearer token. Only engines that
+   * consume ACP session-level `mcpServers` (peri) act on them; others ignore the field.
+   */
+  mcpServers?: readonly Record<string, unknown>[];
   signal?: AbortSignal;
   /** Bounded handshake timeout; configurable for deterministic regression coverage. */
   handshakeTimeoutMs?: number;
@@ -298,11 +305,15 @@ export async function startPromptTurn(
       }
       try {
         sent = true;
+        const sessionParams = options.sessionId ? { sessionId: options.sessionId } : {};
         const sending = session.relayHandle.send({
           jsonrpc: "2.0",
           id: rpcId,
           method: options.sessionId ? "session/load" : "session/new",
-          params: options.sessionId ? { sessionId: options.sessionId } : {},
+          params:
+            options.mcpServers && options.mcpServers.length > 0
+              ? { ...sessionParams, mcpServers: options.mcpServers }
+              : sessionParams,
         } as unknown as EngineRelayMessage);
         if (sending) void sending.catch((error) => settle(error));
       } catch (error) {

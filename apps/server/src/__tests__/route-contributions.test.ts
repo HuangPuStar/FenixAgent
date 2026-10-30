@@ -300,6 +300,27 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /channels/bindings",
     "DELETE /channels/bindings/:id",
     "PATCH /channels/bindings/:id",
+    // cloud-drive
+    "GET /cloud-drive/me",
+    "GET /cloud-drive/files",
+    "GET /cloud-drive/files/:id",
+    "GET /cloud-drive/files/:id/versions",
+    "GET /cloud-drive/files/:id/content",
+    "POST /cloud-drive/search",
+    "GET /cloud-drive/files/:id/markdown",
+    "GET /cloud-drive/files/:id/preview",
+    "GET /cloud-drive/files/:id/preview/pages/:page",
+    "POST /cloud-drive/files/:id/conversions",
+    "POST /cloud-drive/directories",
+    "PATCH /cloud-drive/files/:id/location",
+    "DELETE /cloud-drive/files/:id",
+    "GET /cloud-drive/trash",
+    "POST /cloud-drive/trash/:id/restore",
+    "POST /cloud-drive/uploads",
+    "GET /cloud-drive/uploads/:id",
+    "PATCH /cloud-drive/uploads/:id",
+    "POST /cloud-drive/uploads/:id/finalize",
+    "POST /cloud-drive/uploads/:id/abandon",
     // machine（`/file-events` 是 WS 升级，method 记为 WS）
     "GET /environments/:id/fs/tree",
     "GET /environments/:id/fs",
@@ -570,6 +591,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // agent-config（站点代理；`/app-*` 兜底见末尾）
     "ALL /web/site/deploy/:appId",
     "ALL /web/site/deploy/:appId/*",
+    // cloud-drive（平台托管 MCP：Bearer token 自鉴权，主体从 token 派生）
+    "ALL /mcp/cloud-drive",
     // workflow
     "ALL /workflow-ui/",
     "ALL /workflow-ui/:path",

@@ -23,10 +23,13 @@ import {
   type AgentLaunchSpecPort,
   resolveWorkspacePath,
 } from "@fenix/agent-runtime/server";
+import { warn } from "@fenix/logger";
 import { createModelService, getModelManagementModule } from "@fenix/model-management/server";
+import { getCloudDriveConfig } from "@fenix/resource-cloud-drive/server";
 import { getMcpServerModule } from "@fenix/resource-mcp/server";
 import { getSkillServerModule } from "@fenix/resource-skill/server";
 import { config, getBaseUrl } from "@server/config";
+import { CloudDriveMcpNameConflictError, withCloudDriveMcpServer } from "./cloud-drive-mcp";
 import { resolveSecretReference } from "./resource-module-ports";
 
 export interface PreLaunchPortsDeps {
@@ -80,15 +83,37 @@ export function createPreLaunchPorts(deps: PreLaunchPortsDeps = {}): {
 
   return {
     launchSpec: {
-      buildAgentLaunchSpec: (request) =>
-        assembler.buildAgentLaunchSpec({
+      buildAgentLaunchSpec: async (request) => {
+        const spec = await assembler.buildAgentLaunchSpec({
           organizationId: request.organizationId,
           userId: request.ownerUserId,
           agentConfigId: request.agentConfigId,
           environmentId: request.environmentId,
           environmentSecret: request.environmentSecret,
           extraEnv: request.extraEnv,
-        }),
+        });
+        // 通道 A：环境级 `.mcp.json` 条目。未配置时跳过并保持实例可启动；token 签发失败也不阻断启动。
+        try {
+          const injected = await withCloudDriveMcpServer({
+            spec,
+            config: getCloudDriveConfig(),
+            baseUrl: getBaseUrl(),
+            organizationId: request.organizationId,
+            userId: request.ownerUserId,
+          });
+          if (injected.skipped === "missing-token-secret") {
+            warn("CloudDrive 已配置但缺少 CLOUDDRIVE_MCP_TOKEN_SECRET，未向 Agent 下发 cloud-drive MCP 条目");
+          }
+          return injected.spec;
+        } catch (error) {
+          // 保留名冲突必须让启动失败：静默丢弃用户配置或平台条目都会造成不可见的能力缺失。
+          if (error instanceof CloudDriveMcpNameConflictError) throw error;
+          warn("CloudDrive MCP 条目下发失败，实例按无云盘工具启动", {
+            reason: error instanceof Error ? error.name : "unknown",
+          });
+          return spec;
+        }
+      },
       buildMinimalAgentLaunchSpec: (request) =>
         assembler.buildMinimalLaunchSpec({
           organizationId: request.organizationId,

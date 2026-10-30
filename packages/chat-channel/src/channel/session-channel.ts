@@ -174,6 +174,21 @@ export class SessionChannel {
     if (isUserInputQueueAction(command.type)) validateUserInputQueueAction(connection, command);
   }
 
+  /** 解析会话级 MCP；未注入或解析失败时返回 undefined（调用方降级为不注入）。 */
+  private async resolveSessionMcpServers(
+    connection: SessionConnection,
+  ): Promise<readonly Record<string, unknown>[] | undefined> {
+    const resolve = this.dependencies.sessionMcpServers;
+    if (!resolve) return;
+    try {
+      const servers = await resolve(connection);
+      return servers && servers.length > 0 ? servers : undefined;
+    } catch (error) {
+      this.dependencies.reportError("[SessionChannel] 会话级 MCP 解析失败，本次会话不注入", error);
+      return;
+    }
+  }
+
   private getProjectionVersion(rcsSessionId: string): number | null {
     const ydoc = this.dependencies.docManager.getChatYdoc(rcsSessionId);
     if (!ydoc) return null;
@@ -295,7 +310,17 @@ export class SessionChannel {
     // 浏览器传入的 workspace/cwd 不可信（CLAUDE.md 不变量）。
     // rpcId 单独捕获：会话同步请求需用同一 id 登记，等待响应按 id 校验
     const rpcId = connection.getNextRpcId();
-    const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, rpcId);
+    // 只在握手动作上解析会话级 MCP：其它动作不能多出一次 await（会改变命令发送时序）。
+    let sessionMcpServers: readonly Record<string, unknown>[] | undefined;
+    if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
+      sessionMcpServers = await this.resolveSessionMcpServers(connection);
+    }
+    const rpc = translateSimpleAction(
+      toLegacyAction(command),
+      connection.workspacePath,
+      rpcId,
+      sessionMcpServers === undefined ? {} : { mcpServers: sessionMcpServers },
+    );
     if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
       connection.registerSessionSyncRpcId?.(
         rpc.id as number | string,
