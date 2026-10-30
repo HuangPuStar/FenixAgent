@@ -50,7 +50,7 @@ describe("系统通道拓扑接口", () => {
       client: {
         status: async () => ({ reachable: true, version: "v4.11.2", edition: "ce", wizardStatus: "done" }),
         listBots: async () => [
-          { uuid: "bot-1", name: "飞书机器人", adapter: "lark", createdAt: null, updatedAt: null },
+          { uuid: "bot-1", name: "飞书机器人", adapter: "lark", enable: true, createdAt: null, updatedAt: null },
         ],
       },
     });

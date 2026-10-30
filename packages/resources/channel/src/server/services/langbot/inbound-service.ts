@@ -9,6 +9,7 @@ import type {
 } from "../../repositories/im-channel-conversation";
 import type { ImChannelEventRepository } from "../../repositories/im-channel-event";
 import type { ImChannelRouteRepository } from "../../repositories/im-channel-route";
+import type { ChannelService } from "./channel-service";
 import type { ConversationService } from "./conversation-service";
 import type { DeliveryDispatcher } from "./delivery-dispatcher";
 import {
@@ -95,6 +96,12 @@ export interface InboundServiceDeps {
   }) => void | Promise<void>;
   /** 响应后的异步执行器；测试注入以便 await，生产保持 fire-and-forget。 */
   readonly afterResponse?: (task: Promise<void>) => void;
+  /**
+   * 通道健康回写；由 `ChannelService` 实现，入站层不直接改通道行。
+   *
+   * 只写状态与摘要，不停用通道：入站失败多发生在实例与会话侧，停用会让后续消息全部回落到 LangBot 流水线。
+   */
+  readonly channelHealth: Pick<ChannelService, "markInboundSucceeded" | "markInboundFailed">;
 }
 
 interface ParsedInboundEvent {
@@ -334,6 +341,8 @@ export function createInboundService(deps: InboundServiceDeps): InboundService {
       }
     } catch (error) {
       const lastError = error instanceof ImSessionBridgeError ? error.code : "COLD_START_FAILED";
+      // 只写事件表的话，管理员必须翻事件表才能发现故障；通道行是「消息通道」页唯一的状态来源。
+      await deps.channelHealth.markInboundFailed(input.channel.id, error);
       try {
         await deps.events.markFailed({ eventId: input.eventId, lastError, at: input.at });
       } catch (markError) {
@@ -385,7 +394,16 @@ export function createInboundService(deps: InboundServiceDeps): InboundService {
       const event = parsed.event;
       const at = now();
 
-      const outcome = await transaction(() => recordAndRoute(channel, event, at));
+      let outcome: InboundOutcome;
+      try {
+        outcome = await transaction(() => recordAndRoute(channel, event, at));
+      } catch (error) {
+        // 落库与建会话失败同样要把原因留在通道上，否则只能从 500 响应里猜。
+        await deps.channelHealth.markInboundFailed(channel.id, error);
+        throw error;
+      }
+      // 能走到这里说明事件已落库：这条 Webhook 本身就是链路可用的证据。
+      await deps.channelHealth.markInboundSucceeded(channel.id);
 
       if (outcome.kind === "accepted") {
         // 实例启动与会话打开都在响应后异步执行（规格 §4.3.6）；没有桥时才退化为直接入队。

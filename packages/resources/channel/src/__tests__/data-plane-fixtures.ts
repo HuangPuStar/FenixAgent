@@ -7,6 +7,7 @@ import type {
   ImChannelEventRow,
 } from "../server/repositories/im-channel-event";
 import type { ImChannelRouteRow } from "../server/repositories/im-channel-route";
+import { createChannelService } from "../server/services/langbot/channel-service";
 import type { LangBotClient, LangBotSendMessageInput } from "../server/services/langbot/client";
 import { type ConversationService, createConversationService } from "../server/services/langbot/conversation-service";
 import {
@@ -275,6 +276,7 @@ export function createDataPlaneTestContext(input: DataPlaneTestInput = {}): Data
       }),
   });
   const now = input.now ?? (() => new Date());
+  const channelService = createChannelService({ client, channels, routes, conversations });
   const conversationService = createConversationService({
     conversations,
     ...(input.generateConversationId ? { generateId: input.generateConversationId } : {}),
@@ -301,6 +303,8 @@ export function createDataPlaneTestContext(input: DataPlaneTestInput = {}): Data
     events,
     conversationService,
     dispatcher,
+    // 用真实服务层回写通道状态：入站成功/失败对 `im_channel` 的影响必须在用例里可见。
+    channelHealth: channelService,
     now,
     transaction: async (callback) => {
       transactions.count += 1;

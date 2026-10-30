@@ -200,7 +200,7 @@ describe("LangBot 入站投递", () => {
     ]);
   });
 
-  // 实例或会话启动失败不能让消息静默退避：事件落 failed，并由平台回固定提示（规格 §6.3）。
+  // 实例或会话启动失败不能让消息静默退避：事件落 failed，通道回写 error 与摘要，并由平台回固定提示（规格 §6.3）。
   test("冷启动失败时事件落 failed 并回固定提示", async () => {
     const bridge = createBridgeStub({
       open: () => {
@@ -215,6 +215,10 @@ describe("LangBot 入站投递", () => {
     const event = context.events.rows[0]!;
     expect(event.status).toBe("failed");
     expect(event.lastError).toBe("ENSURE_INSTANCE_FAILED");
+    // 只写事件表的话，管理员得翻事件表才能发现故障；通道行必须同时给出状态与可展示摘要。
+    const channel = context.channels.rows[0]!;
+    expect(channel.status).toBe("error");
+    expect(channel.lastError).toBe("IM 专属实例启动失败");
     expect(context.failureNotices).toEqual([
       {
         channelId: CHANNEL_ID,

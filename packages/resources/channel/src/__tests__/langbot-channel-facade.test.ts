@@ -192,8 +192,8 @@ describe("LangBot 控制面门面", () => {
       routes: [route],
       client: {
         listBots: async () => [
-          { uuid: "bot-1", name: "飞书机器人", adapter: "feishu", createdAt: null, updatedAt: null },
-          { uuid: "bot-x", name: "未认领 Bot", adapter: "telegram", createdAt: null, updatedAt: null },
+          { uuid: "bot-1", name: "飞书机器人", adapter: "feishu", enable: false, createdAt: null, updatedAt: null },
+          { uuid: "bot-x", name: "未认领 Bot", adapter: "telegram", enable: false, createdAt: null, updatedAt: null },
         ],
       },
     });
@@ -321,6 +321,7 @@ describe("LangBot 控制面门面", () => {
           uuid: "bot-new",
           name: "我的机器人",
           adapter: "telegram",
+          enable: true,
           createdAt: null,
           updatedAt: null,
         }),

@@ -322,8 +322,8 @@ im_channel（Bot + 所有者 / 组织）
 | --- | --- |
 | `platform` | `'langbot'` |
 | `credentials` | `{ "botUuid": "<LangBot bot uuid>" }`；**不存 API Key**（v1 为实例级共享密钥） |
-| `status` | `connected` / `disconnected` / `error`（由探测与发送结果维护） |
-| `lastError` | 最近一次探测或发送失败的结构化摘要（不含密钥与响应体全文） |
+| `status` | `connected` / `disconnected` / `error`（由探测、发送与入站结果维护） |
+| `lastError` | 最近一次探测、发送或入站失败的结构化摘要（不含密钥与响应体全文，按 500 字符截断） |
 | `enabled` | 是否处理入站事件；停用不删除 LangBot Bot |
 | `userId` / `organizationId` | 通道所有者（**Agent 的执行身份**）与租户边界 |
 
@@ -444,7 +444,7 @@ im_channel（Bot + 所有者 / 组织）
 ### 6.1 入站处理
 
 1. 解析事件；群聊只接受 `@机器人` 的消息，私聊全部接受。
-2. 事务内写 `im_channel_event`（含 `text` 快照），状态 `received`；唯一键冲突直接返回。
+2. 事务内写 `im_channel_event`（含 `text` 快照），状态 `received`；唯一键冲突直接返回。事件落库即把通道标为 `connected` 并清空 `lastError`；落库、实例启动或会话打开失败则标 `error` 并写入截断摘要（§5.2）。**失败不停用通道**：入站失败多在实例与会话侧，停用会让后续消息全部回落到 LangBot 流水线。
 3. 匹配路由：`channel_id + chat_type + chat_id` 精确 → 通配；无路由标记 `skipped`，不发提示。
 4. 取得或创建 `im_channel_conversation`；Agent 配置变化时重建会话并重建专属实例。
 5. 确保 owner + `agent_config_id` 的 `environment` 与 `im-<conversationId>` 专属实例存在；实例未运行则启动；打开或复用 Chat 会话（`session/new` / `session/load`），`mcpServers` 带上本 conversation 的 `im` 条目与 token。**判定冷启动之前不发送 prompt。**
@@ -619,7 +619,7 @@ LangBot 的 Webhook 目的地**没有 Service API**，只能在 WebUI 设置一�
 ### 12.2 已知偏差（当前实现，不阻塞合并）
 
 1. 20 秒「处理中」ACK 未实现：`ack_sent_at` 与仓储原语已就绪，缺定时触发，登记为 P5。
-2. 管理台「消息通道」页缺「最近错误」与「订阅流状态」：`im_channel` 无 `last_error` 列，需先定数据来源，避免幻影字段。
+2. 管理台「消息通道」页缺「最近错误」与「订阅流状态」：`im_channel.last_error` 已有数据来源（探测、发送与入站失败），但页面尚未展示这两项。
 3. 入站限流未做（§9.11 为建议项）。
 4. 群聊「任意 @」即视为 @ 机器人；适配器只提供昵称时无法区分同名用户，按「任意 @」实现。
 5. 冷启动 prompt 为 fire-and-forget：事件在 prompt 派发后标记 `delivered/prompt`，agent 侧即时失败不会被回写。

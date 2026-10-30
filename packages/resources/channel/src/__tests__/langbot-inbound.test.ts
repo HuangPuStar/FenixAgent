@@ -78,6 +78,20 @@ describe("LangBot 入站", () => {
     expect(conversation.rcsSessionId).toMatch(/^rcs_im_[0-9a-f]{32}$/);
   });
 
+  // 收到并接受事件本身就是链路可用的证据：通道必须从 error 回到 connected，并清掉旧的失败摘要。
+  test("入站成功清空通道故障标记", async () => {
+    const context = setup({
+      channels: [makeChannel({ id: CHANNEL_ID, status: "error", lastError: "实例启动失败" })],
+    });
+
+    const outcome = await context.inbound.handle({ channelId: CHANNEL_ID, payload: makePayload() });
+
+    expect(outcome.kind).toBe("accepted");
+    const channel = context.channels.rows[0]!;
+    expect(channel.status).toBe("connected");
+    expect(channel.lastError).toBeNull();
+  });
+
   // LangBot 可能因超时重投同一 uuid；第二次必须由唯一键拦下，不能落第二条事件或第二条会话。
   test("同一事件 uuid 重复投递只落一条事件", async () => {
     const context = setup();

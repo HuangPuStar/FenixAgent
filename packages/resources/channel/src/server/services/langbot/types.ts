@@ -21,6 +21,12 @@ export interface LangBotBot {
   readonly uuid: string;
   readonly name: string;
   readonly adapter: string;
+  /**
+   * 适配器启停状态；缺失按 LangBot 默认值 `false`（未启用）处理。
+   *
+   * 平台编辑 Bot 时必须把它原样回填：`PUT /platform/bots` 的白名单含 `enable`，缺省发送会被上游按默认值处理，
+   * 一次改名就可能停掉适配器。页面不展示这个值（规格 §7.3）。 */
+  readonly enable: boolean;
   readonly createdAt: string | null;
   readonly updatedAt: string | null;
 }

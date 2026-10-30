@@ -376,7 +376,7 @@ describe("LangBot Bot 写入契约", () => {
       Response.json({ code: 0, data: null }),
       Response.json({
         code: 0,
-        data: { bot: { adapter_config: { token: "old-token", markdown_card: true } } },
+        data: { bot: { enable: true, adapter_config: { token: "old-token", markdown_card: true } } },
       }),
       Response.json({ code: 0, data: null }),
     ]);
@@ -406,7 +406,43 @@ describe("LangBot Bot 写入契约", () => {
       name: "测试二",
       // PUT 整体替换 adapter_config：未填写的 markdown_card 必须从远端读回后保留。
       adapter_config: { token: "next-token", markdown_card: true },
+      // enable 也在更新白名单里：必须原样回填远端当前值。
+      enable: true,
     });
+  });
+
+  // 业务意图：`enable` 决定适配器是否运行；更新时漏发会被上游按默认值处理，一次改名就会让通道收不到消息。
+  test("更新 Bot 回填远端 enable，改名不会重置启停", async () => {
+    const fetch = createRecordingFetch([
+      Response.json({ code: 0, data: { bot: { enable: true } } }),
+      Response.json({ code: 0, data: null }),
+    ]);
+    const client = createLangBotClient({
+      baseUrl: "http://langbot.test/api/v1",
+      apiKey: "test-api-key",
+      fetcher: fetch.fetcher,
+    });
+
+    await client.updateBot("bot-1", { name: "改名" });
+
+    expect(JSON.parse(fetch.requests[1]!.body ?? "{}")).toEqual({ name: "改名", enable: true });
+  });
+
+  // 业务意图：Bot 投影要保留上游的启停状态，否则调用方只能看到「未知」，也就无从回填。
+  test("读取 Bot 保留 enable", async () => {
+    const fetch = createRecordingFetch([
+      Response.json({
+        code: 0,
+        data: { bot: { uuid: "bot-1", name: "飞书机器人", adapter: "feishu", enable: true } },
+      }),
+    ]);
+    const client = createLangBotClient({
+      baseUrl: "http://langbot.test/api/v1",
+      apiKey: "test-api-key",
+      fetcher: fetch.fetcher,
+    });
+
+    await expect(client.getBot("bot-1")).resolves.toMatchObject({ enable: true });
   });
 
   // 业务意图：创建后启动失败时远端已留下 Bot 行，必须补偿删除，避免平台重试产生同名孤儿。

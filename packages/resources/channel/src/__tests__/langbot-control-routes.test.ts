@@ -77,6 +77,7 @@ describe("LangBot 控制面路由", () => {
           uuid: "bot-1",
           name: "飞书机器人",
           adapter: "feishu",
+          enable: true,
           createdAt: null,
           updatedAt: null,
         }),

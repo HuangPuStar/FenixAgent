@@ -156,6 +156,7 @@ function toBot(value: unknown): LangBotBot {
     uuid: record.uuid,
     name: record.name,
     adapter: record.adapter,
+    enable: record.enable === true,
     createdAt: typeof record.created_at === "string" ? record.created_at : null,
     updatedAt: typeof record.updated_at === "string" ? record.updated_at : null,
   };
@@ -244,13 +245,13 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
   }
 
   /**
-   * 读取远端 Bot 的现有适配器配置，供部分更新时合并。
+   * 读取远端 Bot 的现有记录，供部分更新时合并。
    *
-   * LangBot 的 PUT 是整体替换 `adapter_config`，而编辑表单只回填用户填写的字段；
-   * 先读回再合并，避免留空的密钥被覆盖。没有 RESOURCE_MANAGE 时上游会返回掩码字符串，
-   * 这种情况必须报错而不是拿掩码去覆盖真实密钥。
+   * LangBot 的 PUT 是整体替换 `adapter_config`，`enable` 也在更新白名单里；既不能拿掩码去覆盖真实密钥，
+   * 也不能让一次改名重置启停开关。因此更新前先读回这两项，编辑表单只回填用户填写的字段。
+   * 没有 RESOURCE_MANAGE 时上游会返回掩码字符串，这种情况必须报错而不是把掩码写回去。
    */
-  async function readAdapterConfig(botUuid: string): Promise<Record<string, unknown>> {
+  async function readBotRecord(botUuid: string): Promise<{ enable: boolean; config: Record<string, unknown> }> {
     const data = await call({
       method: "GET",
       path: `platform/bots/${encodeSegment(botUuid)}`,
@@ -259,12 +260,15 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
     if (typeof data !== "object" || data === null) throw badResponse();
     const bot = (data as { bot?: unknown }).bot;
     if (typeof bot !== "object" || bot === null) throw badResponse();
-    const config = (bot as { adapter_config?: unknown }).adapter_config;
-    if (config === undefined || config === null) return {};
-    if (typeof config !== "object" || Array.isArray(config)) {
+    const record = bot as Record<string, unknown>;
+    const config = record.adapter_config;
+    if (config !== undefined && config !== null && (typeof config !== "object" || Array.isArray(config))) {
       throw new ChannelControlError("LANGBOT_REJECTED", 502, "LangBot 未返回可合并的适配器配置");
     }
-    return { ...(config as Record<string, unknown>) };
+    return {
+      enable: record.enable === true,
+      config: config === undefined || config === null ? {} : { ...(config as Record<string, unknown>) },
+    };
   }
 
   return {
@@ -321,12 +325,14 @@ export function createLangBotClient(options: LangBotClientOptions): LangBotClien
     },
 
     async updateBot(botUuid, input) {
-      // 上游是 PUT：只发送显式提供的字段，未提供 config 时绝不能补一个空对象覆盖原配置。
-      const body: Record<string, unknown> = {};
+      // 上游是 PUT：只发送显式提供的字段，未提供 config 时绝不能补一个空对象覆盖原配置；
+      // enable 则必须回填当前值，否则缺省会被上游按默认值处理。
+      const current = await readBotRecord(botUuid);
+      const body: Record<string, unknown> = { enable: current.enable };
       if (input.name !== undefined) body.name = input.name;
       if (input.adapter !== undefined) body.adapter = input.adapter;
       if (input.config !== undefined) {
-        body.adapter_config = { ...(await readAdapterConfig(botUuid)), ...input.config };
+        body.adapter_config = { ...current.config, ...input.config };
       }
       await call({ method: "PUT", path: `platform/bots/${encodeSegment(botUuid)}`, body, botNotFound: true });
     },

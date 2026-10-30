@@ -143,6 +143,8 @@ export function createChannelServerModule(deps: ChannelModuleDeps = {}): Channel
     conversationService,
     dispatcher,
     bridge,
+    // 状态语义只由 ChannelService 维护，入站层不直接改通道行。
+    channelHealth: service,
     // 固定提示是平台代发，不是 Agent 回复；失败只记日志，不影响 Webhook 响应。
     notifyUnsupported: (input) => outbound.notifyUnsupported(input),
     notifyFailure: (input) => outbound.notifyUnsupported(input),

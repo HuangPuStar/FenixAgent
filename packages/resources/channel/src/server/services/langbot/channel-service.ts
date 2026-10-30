@@ -86,6 +86,18 @@ export interface ChannelService {
   /** 控制面派生：按通道取全部会话映射（不分页），用于解释路由当前服务的实例。 */
   listConversationsByChannels(input: { channelIds: readonly string[] }): Promise<ImChannelConversationRow[]>;
   /**
+   * 入站处理成功：收到事件即证明链路可用，清空故障摘要并标记 `connected`。
+   *
+   * 入站层不直接改通道行：状态语义只在这里维护，避免路由或仓储各写一套。
+   */
+  markInboundSucceeded(channelId: string): Promise<void>;
+  /**
+   * 入站处理失败：写入截断摘要并标记 `error`。
+   *
+   * 不停用通道——入站失败多发生在实例与会话侧，停用会让后续消息全部回落到 LangBot 流水线。
+   */
+  markInboundFailed(channelId: string, error: unknown): Promise<void>;
+  /**
    * 系统管理面派生：跨组织读取全部通道。
    *
    * 与 {@link listConversationsByChannels} 同因——系统 API Key 面没有组织上下文，只能全量取；用户面不得
@@ -132,7 +144,7 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
     }
   }
 
-  async function markChannelFailure(channelId: string, error: unknown): Promise<void> {
+  async function markChannelDisabled(channelId: string, error: unknown): Promise<void> {
     const code = error instanceof ChannelControlError ? error.code : undefined;
     await patchChannelBestEffort(channelId, {
       status: "error",
@@ -234,6 +246,8 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
           uuid: botUuid,
           name: input.name,
           adapter: input.adapter,
+          // 创建路径显式启用了远端 Bot（POST + PUT），读不到详情时才用这个已知值兜底。
+          enable: true,
           createdAt: null,
           updatedAt: null,
         },
@@ -289,7 +303,7 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
         await routes.deleteByChannel({ channelId: channel.id });
         await conversations.deleteByChannel({ channelId: channel.id });
       } catch (error) {
-        await markChannelFailure(channel.id, error);
+        await markChannelDisabled(channel.id, error);
         throw new ChannelControlError("CHANNEL_PERSIST_FAILED", 500, "通道关联删除失败，LangBot Bot 未删除", {
           cause: error,
         });
@@ -298,7 +312,7 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
       try {
         await client.deleteBot(botUuid);
       } catch (error) {
-        await markChannelFailure(channel.id, error);
+        await markChannelDisabled(channel.id, error);
         throw error;
       }
 
@@ -306,7 +320,7 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
         const deleted = await channels.deleteById({ channelId: channel.id });
         if (!deleted) throw new ChannelControlError("NOT_FOUND", 404, "通道不存在");
       } catch (error) {
-        await markChannelFailure(channel.id, error);
+        await markChannelDisabled(channel.id, error);
         throw new ChannelControlError("CHANNEL_PERSIST_FAILED", 500, "LangBot Bot 已删除，但平台记录删除失败", {
           cause: error,
         });
@@ -356,6 +370,14 @@ export function createChannelService(deps: ChannelServiceDeps): ChannelService {
 
     listConversationsByChannels(input) {
       return conversations.findAllByChannels(input);
+    },
+
+    async markInboundSucceeded(channelId) {
+      await patchChannelBestEffort(channelId, { status: "connected", lastError: null });
+    },
+
+    async markInboundFailed(channelId, error) {
+      await patchChannelBestEffort(channelId, { status: "error", lastError: summarizeError(error) });
     },
 
     listAllChannels() {
