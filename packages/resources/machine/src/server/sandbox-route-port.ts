@@ -16,8 +16,15 @@
 export interface SandboxRouteInput {
   /** AgentNode 显式声明的沙盒池 ID；非沙盒节点为 null。 */
   readonly explicitSandboxPoolId: string | null;
+  /**
+   * 显式池所属组织（Agent 配置的归属）；null 表示沿用 `organizationId`。
+   *
+   * 跨组织共享的 Agent 里，显式池属于共享方，默认池才是调用方自己的池，两者必须分开传。
+   */
+  readonly explicitSandboxPoolOrganizationId: string | null;
   /** AgentNode 是否显式绑定到某台机器；为 true 时不走沙盒。 */
   readonly boundToMachine: boolean;
+  /** 环境所属组织（调用方）：默认池按它解析。 */
   readonly organizationId: string;
   /** 环境属主；为空表示没有可查询的主体，判定方据此跳过实例查询。 */
   readonly userId: string;

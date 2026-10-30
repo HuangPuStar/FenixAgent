@@ -336,8 +336,19 @@
     "enableDescription": "Enable agent memory across conversations"
   },
   "resource": {
-    "publicTitle": "Public read access",
-    "publicDescription": "Allow other teams to read this agent",
+    "publicTitle": "Public sharing",
+    "publicDescription": "Allow other teams to view and run this agent; it uses the execution node and resources it declares",
+    "publicWarningTitle": "Public sharing exposes this agent's dependencies",
+    "publicWarningDescription": "Once public, other teams can view and run this agent and use the following resources through it, even if they are not shared separately. Confirm each one is safe to expose:",
+    "publicWarningItems": {
+      "skill": "Skills",
+      "mcp": "MCP servers (including any credentials configured in them)",
+      "model": "Models and providers (upstream calls use the key configured on this agent)",
+      "knowledgeBase": "Knowledge bases (their content becomes retrievable)",
+      "machine": "Machines (code and files land on that machine)",
+      "sandboxPool": "Sandbox pools (instances are created in the pool for the other party)"
+    },
+    "publicWarningConfirm": "Make public",
     "readOnlyAgent": "This agent is shared from {{source}} and cannot be edited here."
   },
   "save": {

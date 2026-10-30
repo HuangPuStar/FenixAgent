@@ -18,7 +18,10 @@ import { getAgentConfigLookupPort } from "../services/agent-config-lookup-port";
  */
 export type ExecutionNodeResolver = (input: {
   envId: string;
+  /** 环境所属组织（调用方）：默认执行节点跟着它走。 */
   organizationId: string | null;
+  /** Agent 配置所属组织：显式沙盒池按池所属组织解析（跨组织共享时两者不同）。 */
+  configOrganizationId: string | null;
   userId?: string;
   agentNode: unknown;
   configMachineId: string | null;
@@ -92,6 +95,8 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
     const executionFields = row.agentConfigId
       ? await getAgentConfigLookupPort().findAgentConfigExecutionFields(row.agentConfigId)
       : null;
+    // 显式节点（agentNode / machineId 列）是 Agent 的依赖，跨组织共享时照常使用；只有"未指定"才由调用方
+    // 的默认链决定。显式沙盒池属于配置所属组织，解析器需要知道它的归属才能找到池（池查询按组织收窄）。
     const configMachineId = executionFields?.machineId ?? null;
     const agentNode = executionFields?.agentNode ?? null;
 
@@ -101,6 +106,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
       ? await this.executionNodeResolver({
           envId,
           organizationId: row.organizationId,
+          configOrganizationId: executionFields?.organizationId ?? null,
           userId: userId ?? row.envUserId ?? undefined,
           agentNode,
           configMachineId,

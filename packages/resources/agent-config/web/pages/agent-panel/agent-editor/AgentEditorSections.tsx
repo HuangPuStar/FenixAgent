@@ -26,6 +26,7 @@ import {
   RUNTIME_NOTE,
 } from "./agent-editor-form-classes";
 import type { AgentEditorValues } from "./agent-editor-model";
+import { AgentPublicShareDialog } from "./agent-public-share-dialog";
 import type { AgentEditorData } from "./use-agent-editor";
 export type AgentEditorSection = "identity" | "model" | "capabilities" | "knowledge" | "runtime" | "sharing";
 type Props = {
@@ -280,6 +281,8 @@ function Sharing({
   disabled: boolean;
 }) {
   const { t } = useTranslation(NS.AGENTS);
+  // 开启公开是"把依赖资源一并交出去"的动作，先弹固定文案确认框，确认后才落值
+  const [publicConfirmOpen, setPublicConfirmOpen] = useState(false);
   const manageable =
     mode === "create" || canManageAgentSharing({ name: form.watch("name"), scope: data.scope, access: data.access });
   return (
@@ -308,13 +311,27 @@ function Sharing({
         render={({ field }) => (
           <Toggle
             checked={field.value}
-            onChange={field.onChange}
+            onChange={(next) => {
+              if (next) {
+                setPublicConfirmOpen(true);
+                return;
+              }
+              field.onChange(false);
+            }}
             icon={<Globe2 className="w-3.75" />}
             title={t("resource.publicTitle")}
             description={manageable ? t("resource.publicDescription") : t("editor.sharingNotManageable")}
             disabled={disabled || !manageable}
           />
         )}
+      />
+      <AgentPublicShareDialog
+        open={publicConfirmOpen}
+        onOpenChange={setPublicConfirmOpen}
+        onConfirm={() => {
+          form.setValue("publicReadable", true, { shouldDirty: true, shouldTouch: true });
+          setPublicConfirmOpen(false);
+        }}
       />
       <div className={ACCESS_PREVIEW}>
         <strong className="text-3xs text-gray-500">{t("editor.currentVisibility")}</strong>

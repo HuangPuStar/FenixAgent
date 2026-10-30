@@ -336,8 +336,19 @@
     "enableDescription": "启用跨会话记忆能力"
   },
   "resource": {
-    "publicTitle": "公开读取",
-    "publicDescription": "允许其他团队读取此智能体",
+    "publicTitle": "公开共享",
+    "publicDescription": "允许其他团队查看并运行此智能体，运行时会使用它声明的执行节点与依赖资源",
+    "publicWarningTitle": "公开会连同依赖资源一起共享",
+    "publicWarningDescription": "公开后，其他团队不仅能查看和运行此智能体，还能通过它使用下列未单独公开的资源。请逐项确认可以对外共享：",
+    "publicWarningItems": {
+      "skill": "技能（Skill）",
+      "mcp": "MCP 服务（含其中配置的凭据）",
+      "model": "模型与 Provider（调用上游时使用本智能体配置的密钥）",
+      "knowledgeBase": "知识库（内容可被检索）",
+      "machine": "机器（代码与文件会落到该机器）",
+      "sandboxPool": "沙盒资源池（会在池中为对方创建实例）"
+    },
+    "publicWarningConfirm": "确认公开",
     "readOnlyAgent": "该智能体来自 {{source}} 的共享，当前团队无法编辑。"
   },
   "save": {

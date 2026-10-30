@@ -2,7 +2,7 @@ import { findAgentConfigNamesByIds } from "@fenix/agent-config/server";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { getModelManagementConfig } from "../config";
-import { SUBJECT_REJECTION_MESSAGES, type SubjectVerificationPort } from "../ports/subject-verification";
+import type { SubjectVerificationPort } from "../ports/subject-verification";
 import {
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
@@ -19,6 +19,7 @@ import { type ModelGatewayServices, setModelGatewayServices } from "./index";
 import { createModelGatewayKeyManagementService } from "./key-management-service";
 import { createSystemModelGatewayProviderService } from "./provider-service";
 import { createModelGatewayRuntimeCredentialResolver } from "./runtime-credential-resolver";
+import { toSubjectRejectionError } from "./subject-rejection";
 import { createModelGatewaySubjectService } from "./subject-service";
 import { createModelGatewayUsageMappingLister } from "./usage-mapping-service";
 import { createModelGatewayUsageService, type UsageCredentialMapping } from "./usage-service";
@@ -79,7 +80,7 @@ export function createModelGatewayRuntime(deps: ModelGatewayRuntimeDeps) {
         userId: input.userId,
         agentConfigId: input.agentConfigId,
       });
-      if (!verdict.valid) throw new Error(SUBJECT_REJECTION_MESSAGES[verdict.reason]);
+      if (!verdict.valid) throw toSubjectRejectionError(verdict.reason);
     },
     findMapping: findModelGatewayCredentialBySubject,
     upsertMapping: upsertModelGatewayCredential,

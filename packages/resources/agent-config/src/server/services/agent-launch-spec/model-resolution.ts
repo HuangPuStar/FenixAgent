@@ -19,25 +19,25 @@ function invalidConfig(message: string, detail: string): never {
 }
 
 /**
- * 解析 Agent 配置引用的模型；未指定 `modelId` 时回退到组织内第一个可用模型。
+ * 解析 Agent 配置引用的模型；未指定 `modelId` 时回退到**运行组织**内第一个可用模型。
  *
- * `userId` 是**实例属主**，只用于网关凭证：网关凭证按"谁在跑这个 Agent"签发，与主体复验同一个主体。
- * 与之相对，回退选模型用的用户标识取 **Agent 配置的属主**（`agentConfig.userId`）——那条回退表达的
- * 是"这个配置自己没有指定模型"，沿用配置自身的归属语境。
+ * 两类资源在这里分道：显式 `modelId` 指向的 Provider/Model 是 Agent 的依赖，按 ID 直接用（跨组织共享时
+ * 就是共享方配置的那一个）；模型网关则是通用池，凭证按**调用方**（`organizationId` + `userId`）签发，
+ * 用量与预算都记在调用方账上。缺省 `modelId` 的兜底同理——它表达的是"这个配置没指定"，只能用调用方
+ * 自己配置的模型。
+ *
+ * `organizationId` / `userId` 都是**实例侧**取值，不是配置归属。
  */
 export async function resolveModelConfig(
   deps: AgentLaunchSpecAssemblerDeps,
-  agentConfig: ScopedAgentConfigRow,
-  userId: string,
+  input: { agentConfig: ScopedAgentConfigRow; organizationId: string; userId: string },
 ): Promise<ModelConfig> {
+  const { agentConfig, organizationId, userId } = input;
   if (!agentConfig.modelId) {
     log(
-      `${LAUNCH_SPEC_LOG_PREFIX} agentConfig '${agentConfig.id}' has no modelId, falling back to first available model in org '${agentConfig.organizationId}'`,
+      `${LAUNCH_SPEC_LOG_PREFIX} agentConfig '${agentConfig.id}' has no modelId, falling back to first available model in runtime org '${organizationId}'`,
     );
-    return resolveFirstConfiguredModel(deps, {
-      organizationId: agentConfig.organizationId,
-      userId: agentConfig.userId ?? agentConfig.organizationId,
-    });
+    return resolveFirstConfiguredModel(deps, { organizationId, userId });
   }
 
   const matchedModel = await deps.models.findModelRowUnscoped(agentConfig.modelId);
@@ -66,9 +66,10 @@ export async function resolveModelConfig(
 
   let apiKey = deps.resolveProviderApiKey(matchedProvider.apiKey) ?? "";
   if (matchedProvider.kind === "gateway") {
+    // 网关是通用池：凭证主体取运行侧（调用方组织 + 实例属主），跨组织共享时花调用方自己的预算
     apiKey = await resolveGatewayApiKey(deps, {
       providerId: matchedProvider.id,
-      organizationId: agentConfig.organizationId,
+      organizationId,
       agentConfigId: agentConfig.id,
       userId,
     });
@@ -90,8 +91,8 @@ export async function resolveModelConfig(
 /**
  * 网关 Provider 的密钥来自宿主注入的凭证服务，而不是 Provider 行里的 apiKey。
  *
- * 用户标识取**实例属主**（请求入参）而不是配置属主：网关凭证是按"谁在跑这个 Agent"签发的，
- * 主体复验（`SubjectVerificationPort`）用的也是这个 `userId`，两处必须同一个主体。
+ * 组织与用户都取**运行侧**（请求入参）而不是配置归属：网关凭证按"谁在跑这个 Agent"签发，
+ * 主体复验（`SubjectVerificationPort`）用的是同一对主体，两处必须一致。
  */
 async function resolveGatewayApiKey(
   deps: AgentLaunchSpecAssemblerDeps,

@@ -33,7 +33,11 @@ export async function resolveSandboxMachineRoute(input: SandboxRouteInput): Prom
   // 没有环境属主就没有可查询的主体，选中状态仍然成立
   if (!input.userId) return { sandboxSelected: true, machineId: null };
 
-  const pool = await findReadableSandboxPoolById(poolId, input.organizationId);
+  // 显式池属于声明它的 Agent 配置，默认池属于环境所在组织：跨组织共享时两者的池不可混用
+  const poolOrganizationId = input.explicitSandboxPoolId
+    ? (input.explicitSandboxPoolOrganizationId ?? input.organizationId)
+    : input.organizationId;
+  const pool = await findReadableSandboxPoolById(poolId, poolOrganizationId);
   if (!pool) return { sandboxSelected: true, machineId: null };
 
   const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, input.userId);

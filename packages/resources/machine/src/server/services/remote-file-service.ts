@@ -57,17 +57,11 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await getEnvironmentById(envId);
   if (!env) return null;
-  // 归属上下文取自环境本身（`environment.organization_id` 是 NOT NULL 列，视图的可空只是投影宽松）。
-  // 没有组织上下文时不读 Agent 配置：拿不到归属就无法判定「这个配置是不是本组织的」，宁可退回默认机器
-  // 或本地 FS，也不做一次无归属的取数（§10.3 多租户隔离）。
-  const organizationId = env.organizationId ?? "";
-  const agentNode =
-    env.agentConfigId && organizationId
-      ? await getMachineAgentConfigPort().getExecutionNode({
-          agentConfigId: env.agentConfigId,
-          organizationId,
-        })
-      : null;
+  // 执行节点按配置 ID 读、不按环境组织收窄：显式机器/显式池是 Agent 的依赖，跨组织共享时文件请求必须
+  // 与启动路径落在同一个节点，否则实例在共享方的机器上跑、文件却写到调用方默认机器或本地。
+  const agentNode = env.agentConfigId
+    ? await getMachineAgentConfigPort().getExecutionNode({ agentConfigId: env.agentConfigId })
+    : null;
 
   // 沙盒分支归 sandbox 判定：池选择与活跃实例查询读的是它自己的模块配置和池、实例表，本包不反向查询，
   // 只取它装配时注入的端口结果。端口为空表示该 assembly profile 未装配沙盒模块——降级为「无沙盒能力」，
@@ -76,6 +70,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
   const sandboxRoute: SandboxRouteResult = sandboxPort
     ? await sandboxPort.resolveSandboxRoute({
         explicitSandboxPoolId: agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null,
+        explicitSandboxPoolOrganizationId: agentNode?.kind === "sandbox" ? agentNode.organizationId : null,
         boundToMachine: agentNode?.kind === "machine",
         organizationId: env.organizationId ?? env.userId ?? "",
         userId: env.userId ?? "",
