@@ -55,10 +55,10 @@ describe("skill-resource-access 纯转换空值与边界", () => {
 
   // 详情接口的 name 参数同时承载技能名与跨组织资源键，查找键必须与稳定键一致。
   test.each<[string, SkillOptionLike, string]>([
-    ["外部组织资源", externalSkill(), "org-source/skill-external"],
-    ["本组织资源", internalSkill(), "org-current/skill-id"],
-    ["无归属信息", { name: "技能" }, "技能"],
-    ["空名称", { name: "" }, ""],
+    ["外部组织资源", externalSkill(), "skill-external"],
+    ["本组织资源", internalSkill(), "skill-id"],
+    ["无归属信息", { id: "skill-solo", name: "技能" }, "skill-solo"],
+    ["空名称", { id: "skill-empty-name", name: "" }, "skill-empty-name"],
   ])("getSkillLookupKey 推导%s", (_label, input, expected) => {
     expect(getSkillLookupKey(input)).toBe(expected);
   });

@@ -47,7 +47,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["lucide-react", "SVG 图标库（本包依赖，宿主亦直接依赖）"],
   ["sonner", "Toast 渲染（本包依赖，宿主亦直接依赖）"],
   // 图内经 `@fenix/ui-components` 子路径进入：本包 web 自身不引 zod（server 侧引），故此处一并注明到达路径。
-  ["zod", "运行时校验（本包依赖 zod/v4，纯函数，无 node 依赖；经 ui-components 的 chat/ui-spec/catalog 进图）"],
+  ["zod", "运行时校验（本包依赖 zod/v4，纯函数，无 node 依赖；经 ui-components 的 card-renderer 进图）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
   //
   // 2026-09-22 台账收敛：删除 `@radix-ui/react-popover`（原注「ui/popover 传递依赖」）与
@@ -63,6 +63,10 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖，详情滚动区）"],
   ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖）"],
   ["streamdown", "Markdown 流式渲染（ui-components chat/primitives/message 的依赖，宿主浏览器已在用同一组件）"],
+  [
+    "@peri-code/sdk",
+    "OpenUI 围栏切分与画布渲染（ui-components chat/primitives/message 与 chat/openui 的依赖；openui 出口只含纯 TS + React，渲染器经动态 import 懒加载）",
+  ],
   [
     "@streamdown/math",
     "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",

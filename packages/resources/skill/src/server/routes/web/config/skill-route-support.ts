@@ -150,6 +150,7 @@ export function toWebSkillDetail(skill: SkillDetailView, organizationName: strin
 /** 保存结果：创建/更新/改公开受众后回给前端的稳定片段（名称 + 归属范围 + 有效动作）。 */
 export function toWebSkillSaveResult(skill: SkillListItem, organizationName: string | undefined) {
   return {
+    id: skill.id,
     name: skill.name,
     scope: skill.scope,
     access: skill.access,

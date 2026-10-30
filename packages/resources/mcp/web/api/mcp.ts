@@ -2,7 +2,7 @@
  * mcp.ts — MCP 服务器配置域 API 模块
  *
  * 封装 MCP 服务器的 CRUD、启停、检测等操作。
- * 后端使用 REST 风格端点（GET/POST/PUT/DELETE /web/config/mcp + /actions/* 子路由），
+ * 后端使用 REST 风格端点（GET/POST/PATCH/DELETE /web/config/mcp，单资源使用 ID 路径），
  * 域模块内部抽象为具名方法。
  */
 
@@ -25,6 +25,7 @@ type McpGetResult = McpServerDetail;
 
 /** 创建/更新响应 */
 interface McpSaveResult {
+  id: string;
   name: string;
 }
 
@@ -57,7 +58,7 @@ export const mcpApi = {
   list: () => request<McpListResult>("/web/config/mcp", { method: "GET" }),
 
   /** 获取单个 MCP 服务器详情 */
-  get: (name: string) => request<McpGetResult>("/web/config/mcp", { method: "GET", query: { name } }),
+  get: (name: string) => request<McpGetResult>("/web/config/mcp/:id", { method: "GET", params: { id: name } }),
 
   /** 创建 MCP 服务器 */
   create: (name: string, config: McpServerConfig) =>
@@ -65,34 +66,38 @@ export const mcpApi = {
 
   /** 更新 MCP 服务器配置 */
   update: (name: string, config: McpServerConfig) =>
-    request<McpSaveResult>("/web/config/mcp", { method: "PUT", query: { name }, body: { config } }),
+    request<McpSaveResult>("/web/config/mcp/:id", { method: "PATCH", params: { id: name }, body: { config } }),
 
   /** 删除 MCP 服务器 */
-  del: (name: string) => request<void>("/web/config/mcp", { method: "DELETE", query: { name } }),
+  del: (name: string) => request<void>("/web/config/mcp/:id", { method: "DELETE", params: { id: name } }),
 
   /** 启用 MCP 服务器 */
   enable: (name: string) =>
-    request<McpToggleResult>("/web/config/mcp/actions/enable", { method: "POST", query: { name } }),
+    request<McpToggleResult>("/web/config/mcp/:id", { method: "PATCH", params: { id: name }, body: { enabled: true } }),
 
   /** 禁用 MCP 服务器 */
   disable: (name: string) =>
-    request<McpToggleResult>("/web/config/mcp/actions/disable", { method: "POST", query: { name } }),
+    request<McpToggleResult>("/web/config/mcp/:id", {
+      method: "PATCH",
+      params: { id: name },
+      body: { enabled: false },
+    }),
 
   /** 测试已保存的 MCP 服务器连接 */
-  test: (name: string) => request<McpTestResult>("/web/config/mcp/actions/test", { method: "POST", query: { name } }),
+  test: (name: string) => request<McpTestResult>("/web/config/mcp/:id/test", { method: "POST", params: { id: name } }),
 
   /** 测试 URL 是否可达且支持 MCP 协议 */
   testUrl: (url: string, headers?: Record<string, string>, timeout?: number) =>
-    request<McpTestResult>("/web/config/mcp/actions/test-url", {
+    request<McpTestResult>("/web/config/mcp/test-url", {
       method: "POST",
       body: { url, headers, timeout },
     }),
 
   /** 检测远程 MCP 服务器并同步工具列表（仅 writable 的 server） */
   inspect: (name: string) =>
-    request<McpInspectResult>("/web/config/mcp/actions/inspect", { method: "POST", query: { name } }),
+    request<McpInspectResult>("/web/config/mcp/:id/inspect", { method: "POST", params: { id: name } }),
 
   /** 获取缓存的工具列表（用于外部只读 MCP server） */
   listTools: (name: string) =>
-    request<McpListToolsResult>("/web/config/mcp/actions/tools", { method: "GET", query: { name } }),
+    request<McpListToolsResult>("/web/config/mcp/:id/tools", { method: "GET", params: { id: name } }),
 };

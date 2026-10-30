@@ -28,127 +28,33 @@ import {
 } from "../services/skill-content";
 import type { SkillService } from "../services/skill-service";
 
-/**
- * Skill 的资源应用 Facade：授权编排 + 内容与资源行的补偿写入。
- *
- * 它是 Skill 资源的唯一应用入口（`route → Facade → Domain Service → Repository`）：route 只做协议
- * 接入与响应映射，领域服务不认识 actor。所有授权判断都经 `AccessControlModule`（继承基类的
- * `resolveInitialScope` / `listConstraint` / `authorizeAction` / `withAccess*` / `setVisibility`），
- * 本文件不复制任何组织、角色或 `visibility` 规则。
- *
- * Skill 的内容（SKILL.md 与归档）在文件系统、元数据在 `skill` 表，两者是不同介质，因此每个写路径
- * 都必须给出补偿顺序：见 {@link SkillFacade.create} / {@link SkillFacade.update} 的说明。
- *
- * 平台抛出的 {@link ResourceAccessDeniedError} 在这里映射为对外 403；其余错误原样上抛，避免把存储
- * 或装配故障伪装成权限问题。
- */
+/** Skill 的授权与文件补偿编排；资源行与文档跨介质写入必须保留回滚。 */
 
 const log = createLogger("skill");
 
-/** 列表项：资源行投影 + 归属范围 + 当前主体有效动作 + 内容路径。 */
-export interface SkillListItem {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-  /** SKILL.md 的绝对路径（展示字段，与授权无关）。 */
-  readonly path: string;
-  readonly scope: ResourceScope;
-  readonly access: ResourceAccess;
-}
+import type {
+  SkillCreateInput,
+  SkillDetailView,
+  SkillFacadeApi,
+  SkillImportResult,
+  SkillListItem,
+  SkillSingleImportOptions,
+  SkillSingleImportResult,
+  SkillUpdateOptions,
+  SkillWriteInput,
+} from "./skill-facade-types";
 
-/** 详情：列表项 + SKILL.md 正文与元数据。 */
-export interface SkillDetailView extends SkillListItem {
-  readonly content: string;
-  readonly metadata: Record<string, string>;
-}
-
-/** 写入内容；创建与更新共用同一形状（与迁移前的 `setSkill` 数据参数一致）。 */
-export interface SkillWriteInput {
-  readonly description: string;
-  readonly content: string;
-  readonly metadata?: Record<string, string>;
-}
-
-/** 创建输入；`publicReadable` 在创建期即写入 `visibility`（成员无权创建，因此没有放权风险）。 */
-export interface SkillCreateInput {
-  readonly name: string;
-  readonly data: SkillWriteInput;
-  readonly publicReadable?: boolean;
-}
-
-/** 更新输入；`publicReadable` 不传表示"只改内容，不动公开受众"。 */
-export interface SkillUpdateOptions {
-  readonly publicReadable?: boolean;
-}
-
-/** 导入结果；`imported` 是回读后的资源视图，与列表/详情的形状一致。 */
-export interface SkillImportResult {
-  readonly imported: readonly SkillListItem[];
-  readonly skipped: readonly string[];
-  readonly conflicts: readonly ImportSkillsConflict[];
-}
-
-/**
- * 单资源导入结果：成功携带回读后的详情，命中本组织同名资源时携带冲突名。
- *
- * 冲突不是异常而是"需要调用方决策"的状态：控制台把它映射成带策略选项的 409，对外接口映射成纯 409。
- * 两者共用同一次导入与同一份冲突判定，差别只在协议表达。
- */
-export type SkillSingleImportResult =
-  | { readonly status: "imported"; readonly detail: SkillDetailView }
-  | { readonly status: "conflict"; readonly name: string };
-
-/** 单资源导入选项；`overwrite` 为真时覆盖本组织同名资源，否则冲突原样上报。 */
-export interface SkillSingleImportOptions {
-  readonly overwrite?: boolean;
-}
-
-/**
- * Skill 资源的应用接口（Facade 的契约面）。
- *
- * 路由与其它调用方只依赖本接口，不依赖 `SkillFacade` 的继承结构或私有依赖；测试可以提供实现而不
- * 构造真类（见 `@fenix/resource-skill/server/testing`）。
- *
- * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 用名称或资源键定位（用户看到的是名称），
- * 已发布的 `/api/skills/:id` 用资源 ID 定位；两者的授权与可见性判定完全一致。
- */
-export interface SkillFacadeApi {
-  list(
-    actor: ActorContext,
-    options?: { limit?: number; offset?: number },
-  ): Promise<{ items: SkillListItem[]; total: number }>;
-  get(actor: ActorContext, nameOrKey: string): Promise<SkillListItem | undefined>;
-  getById(actor: ActorContext, resourceId: string): Promise<SkillListItem | undefined>;
-  readDetail(actor: ActorContext, nameOrKey: string): Promise<SkillDetailView | undefined>;
-  readDetailById(actor: ActorContext, resourceId: string): Promise<SkillDetailView | undefined>;
-  create(actor: ActorContext, input: SkillCreateInput): Promise<SkillListItem>;
-  update(
-    actor: ActorContext,
-    nameOrKey: string,
-    data: SkillWriteInput,
-    options?: SkillUpdateOptions,
-  ): Promise<SkillListItem>;
-  /** 仅更新公开受众，不读取、不解析、不改写 SKILL.md。 */
-  setPublicReadable(actor: ActorContext, nameOrKey: string, publicReadable: boolean): Promise<SkillListItem>;
-  remove(actor: ActorContext, nameOrKey: string): Promise<void>;
-  removeById(actor: ActorContext, resourceId: string): Promise<void>;
-  importDirectories(
-    actor: ActorContext,
-    files: UploadSkillFile[],
-    strategy?: ImportConflictStrategy,
-  ): Promise<SkillImportResult>;
-  /**
-   * 上传导入**单个** Skill 目录，并回读导入后的详情（对外 `/api/skills` 已发布合同的上传语义）。
-   *
-   * 与 {@link SkillFacadeApi.importDirectories} 同为一次上传的两个产品口径，共用同一套写入、冲突判定、
-   * 回滚与授权：控制台允许多目录上传并由用户选择冲突策略，对外接口一次只接受一个目录、冲突直接上报。
-   */
-  importSingleSkill(
-    actor: ActorContext,
-    files: UploadSkillFile[],
-    options?: SkillSingleImportOptions,
-  ): Promise<SkillSingleImportResult>;
-}
+export type {
+  SkillCreateInput,
+  SkillDetailView,
+  SkillFacadeApi,
+  SkillImportResult,
+  SkillListItem,
+  SkillSingleImportOptions,
+  SkillSingleImportResult,
+  SkillUpdateOptions,
+  SkillWriteInput,
+} from "./skill-facade-types";
 
 export class SkillFacade extends AuthorizedResourceFacade implements SkillFacadeApi {
   constructor(
@@ -158,12 +64,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     super(options);
   }
 
-  /**
-   * 列表：授权谓词、排序与分页都下推到 SQL（决策 D9：`/web` 不传分页参数，`/api` 传 limit/offset）。
-   *
-   * 排序取 `SKILL_LIST_ORDER`（创建时间倒序）而不是前端传来的顺序：跨组织合并后的列表必须由数据库
-   * 给出确定次序。`total` 与 `items` 共用同一份授权谓词与业务条件，翻页不会翻出可见集合之外。
-   */
+  /** 列表排序、分页和授权均下推 SQL；计数与条目使用相同条件。 */
   async list(
     actor: ActorContext,
     options: { limit?: number; offset?: number } = {},
@@ -191,12 +92,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     return row ? this.toListItem(await this.withAccess(actor, row)) : undefined;
   }
 
-  /**
-   * 读取详情（含 SKILL.md 正文）。
-   *
-   * 内容缺失（文件被外部删除）时正文为空串、元数据取空表：描述回落到资源行的列，仍返回可读条目，
-   * 与迁移前"内容读不到不阻塞详情"的行为一致。
-   */
+  /** 读取详情；内容缺失时仍返回元数据，保持既有的文件缺失容错。 */
   async readDetail(actor: ActorContext, nameOrKey: string): Promise<SkillDetailView | undefined> {
     const row = await this.findVisible(actor, nameOrKey);
     return row ? this.buildDetail(actor, row) : undefined;
@@ -208,16 +104,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     return row ? this.buildDetail(actor, row) : undefined;
   }
 
-  /**
-   * 创建：先写资源行、再写文件内容。
-   *
-   * 顺序刻意与"先写文件再写行"相反：同组织同名由唯一索引拦下（`insert` 返回空集），若先写文件，
-   * 冲突时就已经覆盖了既有资源正在使用的内容；先写行则冲突路径完全不碰文件系统。内容写入失败时
-   * 再删除刚建的行作为补偿——行与内容都回到"不存在"，没有中间态。
-   *
-   * 冲突判定只依赖当前组织内的唯一索引，不做"先查同名再写"：跨组织公开的同名 Skill 不属于本组织，
-   * 不应被判成 CONFLICT。
-   */
+  /** 先创建资源行以原子拒绝同名，再写文档；文档失败时补偿删除新行。 */
   async create(actor: ActorContext, input: SkillCreateInput): Promise<SkillListItem> {
     const scope = await this.resolveCreateScope(actor);
     const organizationId = scope.organizationId;
@@ -264,9 +151,33 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     data: SkillWriteInput,
     options: SkillUpdateOptions = {},
   ): Promise<SkillListItem> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.updateRow(actor, await this.requireVisible(actor, nameOrKey), data, options);
+  }
+
+  /** ID 定位不经过名称解析，文件路径从授权后的行推导。 */
+  async updateById(
+    actor: ActorContext,
+    resourceId: string,
+    data: Partial<SkillWriteInput>,
+    options: SkillUpdateOptions = {},
+  ): Promise<SkillListItem> {
+    return this.updateRow(actor, await this.requireVisibleById(actor, resourceId), data, options);
+  }
+
+  private async updateRow(
+    actor: ActorContext,
+    row: ScopedSkillRow,
+    data: Partial<SkillWriteInput>,
+    options: SkillUpdateOptions,
+  ): Promise<SkillListItem> {
+    const nameOrKey = row.id;
     await this.requireAction(actor, "update", row.id);
-    const normalized = normalizeSkillWriteData(data);
+    const content = data.content ?? (await readSkillDetail(row.organizationId, row.name))?.content ?? "";
+    const normalized = normalizeSkillWriteData({
+      ...data,
+      content,
+      description: data.description ?? row.description ?? "",
+    });
 
     await writeSkillDocument({
       organizationId: row.organizationId,
@@ -296,7 +207,24 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
    * 公开受众是资源授权数据而不是文档内容，走文件写入路径会无谓重写 Skill 文档。
    */
   async setPublicReadable(actor: ActorContext, nameOrKey: string, publicReadable: boolean): Promise<SkillListItem> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.setPublicReadableRow(actor, await this.requireVisible(actor, nameOrKey), publicReadable);
+  }
+
+  /** 仅修改 ID 对应资源的受众，不写入文档。 */
+  async setPublicReadableById(
+    actor: ActorContext,
+    resourceId: string,
+    publicReadable: boolean,
+  ): Promise<SkillListItem> {
+    return this.setPublicReadableRow(actor, await this.requireVisibleById(actor, resourceId), publicReadable);
+  }
+
+  private async setPublicReadableRow(
+    actor: ActorContext,
+    row: ScopedSkillRow,
+    publicReadable: boolean,
+  ): Promise<SkillListItem> {
+    const nameOrKey = row.id;
     await this.setVisibility(actor, row.id, publicReadable ? "public" : "private");
     return this.requireItemById(actor, row.id, nameOrKey);
   }
@@ -410,17 +338,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     };
   }
 
-  /**
-   * 单资源导入：先锁定"一次一个 Skill"，再复用批量导入，最后回读详情。
-   *
-   * 「一次只允许一个 Skill」是已发布合同的产品约束（多目录上传是请求错误，不是部分成功），因此判定放
-   * 在这里而不是协议层：协议层只负责把 `overwrite` 字面量翻成策略，不自行统计目录数或挑选冲突名。
-   *
-   * 冲突名取冲突清单首个（`importDirectories` 保证清单来自本组织同名资源），清单为空时回落到上传目录名，
-   * 使 409 的 message 始终能指出是哪个 Skill——这是对外契约里唯一需要冲突名的位置。
-   *
-   * 导入结果为空（既无冲突也无导入项）与回读失败都意味着内部不变量被打破：按 500 上抛，不返回半个 DTO。
-   */
+  /** 单资源导入复用批量导入的授权、冲突和回滚；多目录输入按已发布契约拒绝。 */
   async importSingleSkill(
     actor: ActorContext,
     files: UploadSkillFile[],

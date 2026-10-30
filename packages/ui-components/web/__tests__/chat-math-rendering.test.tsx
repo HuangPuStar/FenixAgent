@@ -1,7 +1,7 @@
 // web/__tests__/chat-math-rendering.test.tsx
 // 聊天正文的数学渲染契约（2026-10-15 数学渲染批次，接入 `@streamdown/math`）。
 //
-// 为什么必须有：聊天正文的数学不是我们自己渲染的——插件注册在 `UI_SPEC_PLUGINS`，解析由 remark-math、
+// 为什么必须有：聊天正文的数学不是我们自己渲染的——插件注册在 `MESSAGE_PLUGINS`，解析由 remark-math、
 // 渲染由 rehype-katex 承担，任何一环没接上，界面上只会安静地把 `$x^2$` 当普通文本显示（不报错）。
 // 用例直接渲染 `MessageResponse`（生产路径：streamdown 惰性边界 + 插件常量），断言 DOM 里真的出现
 // KaTeX 节点；另覆盖「坏公式不得吞掉正文」的降级与代码围栏内的 `$`（否则公式会把示例代码吃掉）。
@@ -64,7 +64,7 @@ async function waitFor(host: HTMLElement, selector: string): Promise<Element> {
   throw new Error(`等待 ${selector} 超时（惰性模块未落地）`);
 }
 
-/** 渲染一条助手正文（生产路径：`MessageResponse` → 惰性 streamdown + `UI_SPEC_PLUGINS`）。 */
+/** 渲染一条助手正文（生产路径：`MessageResponse` → 惰性 streamdown + `MESSAGE_PLUGINS`）。 */
 async function renderMessage(markdown: string): Promise<HTMLElement> {
   const { MessageResponse } = await import("../chat/primitives/message");
   const host = win.document.createElement("div") as unknown as HTMLElement;

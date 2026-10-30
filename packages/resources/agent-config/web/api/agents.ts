@@ -85,25 +85,25 @@ export const agentApi = {
   list: () => request<AgentListResult>("/web/config/agents", { method: "GET" }),
 
   /** 获取单个 Agent 详情，包含 skill、MCP、知识库和 site 关联信息 */
-  get: (name: string) => request<AgentDetail>("/web/config/agents", { method: "GET", query: { name } }),
+  get: (id: string) => request<AgentDetail>("/web/config/agents/:id", { method: "GET", params: { id } }),
 
   /** 更新 Agent 配置，并同步知识库、Skill 与 MCP 关联 */
-  set: (name: string, data: Record<string, unknown>) =>
-    request<AgentSaveResult>("/web/config/agents", { method: "PUT", query: { name }, body: { data } }),
+  set: (id: string, data: Record<string, unknown>) =>
+    request<AgentSaveResult>("/web/config/agents/:id", { method: "PATCH", params: { id }, body: { data } }),
 
   /** 创建新的 Agent 配置 */
   create: (name: string, data: Record<string, unknown>) =>
     request<AgentSaveResult>("/web/config/agents", { method: "POST", body: { name, data } }),
 
   /** 使用最新配置重启该 Agent 绑定 Environment 下的活跃 runtime，保留持久 Instance。 */
-  restart: (name: string) =>
-    request<AgentRestartResult>("/web/config/agents/restart", { method: "POST", query: { name } }),
+  restart: (id: string) =>
+    request<AgentRestartResult>("/web/config/agents/:id/restart", { method: "POST", params: { id } }),
 
   /** 删除 Agent 配置（内置 Agent 不可删除） */
-  del: (name: string) => request<AgentDeleteResult>("/web/config/agents", { method: "DELETE", query: { name } }),
+  del: (id: string) => request<AgentDeleteResult>("/web/config/agents/:id", { method: "DELETE", params: { id } }),
 
   /** 删除 Agent 配置（别名，兼容 sidebark 等仍使用 .delete() 的调用方） */
-  delete: (name: string) => request<AgentDeleteResult>("/web/config/agents", { method: "DELETE", query: { name } }),
+  delete: (id: string) => request<AgentDeleteResult>("/web/config/agents/:id", { method: "DELETE", params: { id } }),
 
   /** 将指定 Agent 设为当前用户的默认 Agent */
   setDefault: (name: string) =>

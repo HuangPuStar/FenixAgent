@@ -3,7 +3,7 @@
  *
  * 两条渲染链都在这里取配置，不得各写一份：
  * 1. 聊天正文：`streamdown` + `@streamdown/math`（remark-math → rehype-katex → katex）——工厂在
- *    `web/chat/ui-spec/math-plugin.ts`（它静态引 `@streamdown/math`，因此**只能**被惰性 chunk 引入，
+ *    `web/chat/primitives/math-plugin.ts`（它静态引 `@streamdown/math`，因此**只能**被惰性 chunk 引入，
  *    见该文件头），选项来自本模块的策略常量。
  * 2. 文件预览：`.md` 的 `markdown-math-plugin`（KaTeX auto-render）与 `.tex` 的 `latex-content`
  *    （`katex.renderToString`）——分别取 `KATEX_AUTO_RENDER_DELIMITERS` 与 `katexRenderOptions()`。

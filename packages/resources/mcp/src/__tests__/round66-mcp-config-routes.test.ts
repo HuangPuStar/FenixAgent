@@ -40,13 +40,9 @@ describe("MCP 配置路由补充覆盖", () => {
 
   // 测试已保存服务器时缺少名称必须在访问组织资源前被拒绝。
   test("测试动作缺少名称返回参数校验错误", async () => {
-    const response = await request("/config/mcp/actions/test", { method: "POST" });
+    const response = await request("/config/mcp/test", { method: "POST" });
 
-    expect(response.status).toBe(400);
-    expect(await readJson(response)).toEqual({
-      success: false,
-      error: { code: "VALIDATION_ERROR", message: "缺少 'name' 查询参数" },
-    });
+    expect(response.status).toBe(404);
   });
 
   // 不可见或不存在时不得进入远程探测：探测会向地址发起出网请求。
@@ -58,13 +54,13 @@ describe("MCP 配置路由补充覆盖", () => {
     });
     installMcpModuleStub({
       facade: {
-        getWritable: async () => {
+        getWritableById: async () => {
           throw new NotFoundError("MCP server 'missing' not found");
         },
       },
     });
 
-    const response = await request("/config/mcp/actions/test?name=missing", { method: "POST" });
+    const response = await request("/config/mcp/missing/test", { method: "POST" });
 
     expect(response.status).toBe(404);
     expect(await readJson(response)).toEqual({
@@ -78,10 +74,10 @@ describe("MCP 配置路由补充覆盖", () => {
   // 保存了未知配置类型的资源不得被误当成可执行的本地或远程服务器。
   test("测试未知配置类型返回校验错误", async () => {
     installMcpModuleStub({
-      facade: { getWritable: async () => authorizedServer({ name: "remote-server", config: { type: "legacy" } }) },
+      facade: { getWritableById: async () => authorizedServer({ name: "remote-server", config: { type: "legacy" } }) },
     });
 
-    const response = await request("/config/mcp/actions/test?name=remote-server", { method: "POST" });
+    const response = await request("/config/mcp/remote-server/test", { method: "POST" });
 
     expect(response.status).toBe(400);
     expect(await readJson(response)).toEqual({
@@ -99,7 +95,7 @@ describe("MCP 配置路由补充覆盖", () => {
     });
     installMcpModuleStub({
       facade: {
-        getWritable: async () =>
+        getWritableById: async () =>
           authorizedServer({
             name: "remote-server",
             config: {
@@ -113,7 +109,7 @@ describe("MCP 配置路由补充覆盖", () => {
       },
     });
 
-    const response = await request("/config/mcp/actions/test?name=remote-server", { method: "POST" });
+    const response = await request("/config/mcp/remote-server/test", { method: "POST" });
 
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({
@@ -137,7 +133,7 @@ describe("MCP 配置路由补充覆盖", () => {
       message: "HTTP endpoint only",
     });
 
-    const response = await request("/config/mcp/actions/test-url", {
+    const response = await request("/config/mcp/test-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: "https://mcp.example.test/endpoint", timeout: 125 }),
@@ -154,7 +150,7 @@ describe("MCP 配置路由补充覆盖", () => {
 
   // 任意 URL 探测缺少 url 时必须返回校验错误，不得把 undefined 传给探测器。
   test("任意 URL 缺少地址返回校验错误", async () => {
-    const response = await request("/config/mcp/actions/test-url", {
+    const response = await request("/config/mcp/test-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -171,12 +167,12 @@ describe("MCP 配置路由补充覆盖", () => {
   test("检测本地服务器返回校验错误", async () => {
     installMcpModuleStub({
       facade: {
-        getWritable: async () =>
+        getWritableById: async () =>
           authorizedServer({ name: "local-server", config: { type: "local", command: ["npx", "server"] } }),
       },
     });
 
-    const response = await request("/config/mcp/actions/inspect?name=local-server", { method: "POST" });
+    const response = await request("/config/mcp/local-server/inspect", { method: "POST" });
 
     expect(response.status).toBe(400);
     expect(await readJson(response)).toEqual({
@@ -196,16 +192,16 @@ describe("MCP 配置路由补充覆盖", () => {
     let saved = false;
     installMcpModuleStub({
       facade: {
-        getWritable: async () =>
+        getWritableById: async () =>
           authorizedServer({ name: "remote-server", config: { type: "remote", url: "https://mcp.example.test" } }),
-        saveInspectedTools: async () => {
+        saveInspectedToolsById: async () => {
           saved = true;
           return "remote-server";
         },
       },
     });
 
-    const response = await request("/config/mcp/actions/inspect?name=remote-server", { method: "POST" });
+    const response = await request("/config/mcp/remote-server/inspect", { method: "POST" });
 
     expect(response.status).toBe(400);
     expect(saved).toBeFalse();
@@ -225,21 +221,21 @@ describe("MCP 配置路由补充覆盖", () => {
     let savedTools: readonly { name: string }[] = [];
     installMcpModuleStub({
       facade: {
-        getWritable: async () =>
+        getWritableById: async () =>
           authorizedServer({
             id: "mcp-external",
             name: "shared",
             organizationId: "org-source",
             config: { type: "remote", url: "https://mcp.example.test" },
           }),
-        saveInspectedTools: async (_actor, _nameOrKey, tools) => {
+        saveInspectedToolsById: async (_actor, _nameOrKey, tools) => {
           savedTools = tools;
           return "shared";
         },
       },
     });
 
-    const response = await request("/config/mcp/actions/inspect?name=org-source/mcp-external", { method: "POST" });
+    const response = await request("/config/mcp/mcp-external/inspect", { method: "POST" });
 
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({

@@ -100,14 +100,6 @@ export * from "./timeline/ToolCallGroup";
 export * from "./timeline/ToolCallRow";
 // types —— 结构类型契约（phase1 产出的唯一类型导入面）
 export type * from "./types";
-export type { UISpec, UISpecElement } from "./ui-spec/spec";
-// ui-spec —— 声明式展示公共契约，校验与目录实现不经 barrel 暴露。
-// 同 `web/index.ts`：`UI_SPEC_PLUGINS` 含 KaTeX，不经 barrel 转出（避免它进入口 chunk 的静态图）；
-// 语言标识仍公开。
-export { UI_SPEC_LANGUAGE } from "./ui-spec/spec";
-export { UISpecBlock } from "./ui-spec/UISpecBlock";
-export { type UISpecHostContext, UISpecHostProvider, useUISpecHost } from "./ui-spec/UISpecHostContext";
-export { UISpecView } from "./ui-spec/UISpecView";
 // view —— 消息视图层
 export * from "./view/ChatQuoteMessage";
 export * from "./view/ChatView";

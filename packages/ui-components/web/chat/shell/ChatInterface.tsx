@@ -32,6 +32,8 @@ import { CHAT_COMPOSER_TOP_CARD_INSET_CLASS, CHAT_COMPOSER_WIDTH_CLASS, ChatComp
 import { derivePendingPermissions, deriveTodoItems } from "../lib/chat-derived-state";
 import { extractChangedFiles } from "../lib/extract-changed-files";
 import { classifyToolSemantic } from "../lib/tool-semantic";
+import { type OpenUIActionHandler, OpenUIActionProvider } from "../openui/action-context";
+import { composeOpenUIActionMessage, openExternalUrl } from "../openui/action-message";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
@@ -246,6 +248,26 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     sendPromptFailedMessage: t("chat.components.chatInterface.sendPromptFailed"),
   });
 
+  // OpenUI 按钮动作：`open_url` 交给浏览器，其余动作按用户消息走同一条提交链路
+  // （无会话懒创建、运行中入队、失败回执都由 `useChatInputSubmit` 处理，这里不绕过它）。
+  // 可用性与输入岛一致：只读、会话未就绪或 turn 运行中都禁用；`send` 入口再同步校验一次，
+  // 避免 handler 在状态切换的同一帧里被已渲染的按钮触发。
+  const openUIAction = useMemo<OpenUIActionHandler>(
+    () => ({
+      enabled: !isLoading && !readonly && sessionReady,
+      send: (event) => {
+        if (readonly || !sessionReady || isLoading) return;
+        if (event.type === "open_url") {
+          openExternalUrl(event.params.url);
+          return;
+        }
+        const text = composeOpenUIActionMessage(event);
+        if (text) void handleChatInputSubmit({ text });
+      },
+    }),
+    [isLoading, readonly, sessionReady, handleChatInputSubmit],
+  );
+
   // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。
   // 使用 renderEntries 而不是直接读取 structuredMessages，确保输入框上方的 Todo
   // 列表与当前消息投影保持一致；执行计划等非消息条目不会影响此列表。
@@ -376,148 +398,150 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const { task: selectedPeriTask, select, close } = usePeriTaskSelection(taskScope, periTasks);
 
   return (
-    <div className="chat-interface-root flex h-full min-w-0 min-h-0 flex-1 overflow-hidden">
-      {/* chat-interface-column 是「唯一高度链」的语义钩子：高度链的声明已随 2026-09-28「伪深层」清理
+    <OpenUIActionProvider value={openUIAction}>
+      <div className="chat-interface-root flex h-full min-w-0 min-h-0 flex-1 overflow-hidden">
+        {/* chat-interface-column 是「唯一高度链」的语义钩子：高度链的声明已随 2026-09-28「伪深层」清理
           就近取档到本行工具类与根节点 `.chat-interface-root`（两侧同名 `chat-layout.css` 同批清空删除）。 */}
-      <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-        {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
-        {renderPeriTaskDetail && selectedPeriTask ? renderPeriTaskDetail(selectedPeriTask, close) : null}
+        <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+          {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
+          {renderPeriTaskDetail && selectedPeriTask ? renderPeriTaskDetail(selectedPeriTask, close) : null}
 
-        {/* Chat messages — unified ChatView */}
-        <ChatView
-          entries={renderEntries}
-          isLoading={isLoading && !sessionReady ? false : isLoading}
-          emptyTitle={sessionReady ? t("chat.components.chatEmpty.startConversation") : undefined}
-          emptyDescription={sessionReady ? t("chat.components.chatEmpty.startConversationDesc") : undefined}
-          sessionId={rcsSessionId ?? activeSessionId ?? undefined}
-          envId={agentId}
-          onOpenWorkspaceFile={onOpenWorkspaceFile}
-          onApplySuggestedPrompt={handleApplySuggestedPrompt}
-          onQuote={handleQuote}
-          hasEarlierHistory={timelineWindow.hasEarlier}
-          earlierMessageCount={timelineWindow.hiddenCount}
-          historyLoading={timelineWindow.loading}
-          onLoadEarlierHistory={timelineWindow.loadEarlier}
-          preWindowed
-        />
+          {/* Chat messages — unified ChatView */}
+          <ChatView
+            entries={renderEntries}
+            isLoading={isLoading && !sessionReady ? false : isLoading}
+            emptyTitle={sessionReady ? t("chat.components.chatEmpty.startConversation") : undefined}
+            emptyDescription={sessionReady ? t("chat.components.chatEmpty.startConversationDesc") : undefined}
+            sessionId={rcsSessionId ?? activeSessionId ?? undefined}
+            envId={agentId}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
+            onApplySuggestedPrompt={handleApplySuggestedPrompt}
+            onQuote={handleQuote}
+            hasEarlierHistory={timelineWindow.hasEarlier}
+            earlierMessageCount={timelineWindow.hiddenCount}
+            historyLoading={timelineWindow.loading}
+            onLoadEarlierHistory={timelineWindow.loadEarlier}
+            preWindowed
+          />
 
-        <div className="relative z-20 shrink-0 bg-white">
-          {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
-          {pendingPermissions.length > 0 ? (
-            <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />
-          ) : pendingQuestions.length > 0 ? (
-            // 提问卡片与输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
-            // （两个常量都定义在 `../composer/ChatComposer`）；卡片自身不声明宽度。
-            // 2026-09-24：此前它沿用 `panels/chat-interaction-region.css` 的 px 台阶
-            // `min(756px, calc(100% - 64px))`——那条是写死的 px，与输入岛宽度不同源，宽屏下比输入岛宽、
-            // 中宽屏下 `calc(100% - 64px)` 近似拉满（用户反馈「卡片横跨整个聊天区」）。
-            // 权限卡片仍走那条旧台阶：本次范围只含提问卡片（同样是一层包装即可切换，未顺手改）。
-            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
-              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
-                <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
+          <div className="relative z-20 shrink-0 bg-white">
+            {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
+            {pendingPermissions.length > 0 ? (
+              <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />
+            ) : pendingQuestions.length > 0 ? (
+              // 提问卡片与输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
+              // （两个常量都定义在 `../composer/ChatComposer`）；卡片自身不声明宽度。
+              // 2026-09-24：此前它沿用 `panels/chat-interaction-region.css` 的 px 台阶
+              // `min(756px, calc(100% - 64px))`——那条是写死的 px，与输入岛宽度不同源，宽屏下比输入岛宽、
+              // 中宽屏下 `calc(100% - 64px)` 近似拉满（用户反馈「卡片横跨整个聊天区」）。
+              // 权限卡片仍走那条旧台阶：本次范围只含提问卡片（同样是一层包装即可切换，未顺手改）。
+              <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+                <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                  <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
+                </div>
               </div>
-            </div>
-          ) : (
-            // 状态面板与下方的输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
-            // （`CHAT_COMPOSER_WIDTH_CLASS` + `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`，两个常量都定义在
-            // `../composer/ChatComposer`）。面板自身不声明宽度——差只来自这一条台阶，没有第二套口径
-            //（2026-09-23：此前面板自带一条与输入岛不同源的 px 台阶，先改成等宽，再改为每侧 5 刻度）。
-            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
-              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
-                <ChatStatusPanel
-                  todos={todoItems}
-                  tasks={periTasks}
-                  tasksLoaded={periTasksLoaded}
-                  reconnecting={Boolean(connectionState && connectionState !== "connected")}
-                  changedFiles={changedFiles}
-                  onOpenTask={renderPeriTaskDetail ? select : undefined}
-                  onPreviewFile={
-                    agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
-                  }
-                />
+            ) : (
+              // 状态面板与下方的输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
+              // （`CHAT_COMPOSER_WIDTH_CLASS` + `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`，两个常量都定义在
+              // `../composer/ChatComposer`）。面板自身不声明宽度——差只来自这一条台阶，没有第二套口径
+              //（2026-09-23：此前面板自带一条与输入岛不同源的 px 台阶，先改成等宽，再改为每侧 5 刻度）。
+              <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+                <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                  <ChatStatusPanel
+                    todos={todoItems}
+                    tasks={periTasks}
+                    tasksLoaded={periTasksLoaded}
+                    reconnecting={Boolean(connectionState && connectionState !== "connected")}
+                    changedFiles={changedFiles}
+                    onOpenTask={renderPeriTaskDetail ? select : undefined}
+                    onPreviewFile={
+                      agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
+                    }
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* 待发送队列（peri steer）：贴在输入岛上方，与状态面板同宽同台阶。
+            {/* 待发送队列（peri steer）：贴在输入岛上方，与状态面板同宽同台阶。
               有失败提示时即使队列为空也要渲染——否则「第一次入队就没送达」的提示无处可见。 */}
-          {queue.enabled && (queue.hasItems || queue.failure) && (
-            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
-              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
-                <UserInputQueuePanel
-                  items={queue.items}
-                  queuedIds={queue.queuedIds}
-                  canDispatch={queue.canDispatch}
-                  canTakeback={queue.canTakeback}
-                  onDispatch={queue.dispatch}
-                  onTakeback={queue.takeback}
-                  failure={queue.failure}
-                  onDismissFailure={queue.dismissFailure}
+            {queue.enabled && (queue.hasItems || queue.failure) && (
+              <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+                <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                  <UserInputQueuePanel
+                    items={queue.items}
+                    queuedIds={queue.queuedIds}
+                    canDispatch={queue.canDispatch}
+                    canTakeback={queue.canTakeback}
+                    onDispatch={queue.dispatch}
+                    onTakeback={queue.takeback}
+                    failure={queue.failure}
+                    onDismissFailure={queue.dismissFailure}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {errorMessage && (
+              <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
+                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+                  <span>{errorMessage}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setErrorMessage(null)}
+                    className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
+                  >
+                    {"\u00D7"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
+            {!readonly && (
+              <div className="flex-shrink-0">
+                <ChatComposer
+                  onSubmit={handleChatInputSubmit}
+                  isLoading={isLoading}
+                  onInterrupt={handleCancel}
+                  canCancel={canCancel}
+                  queueSubmitEnabled={queue.enabled}
+                  disabled={!sessionReady}
+                  placeholder={
+                    sessionReady
+                      ? t("chat.components.chatInterface.agentPlaceholder")
+                      : t("chat.components.chatInterface.waitingSession")
+                  }
+                  supportsImages={supportsImages}
+                  commands={availableCommands.length > 0 ? availableCommands : undefined}
+                  mcps={boundMcps}
+                  contextScope={composerContextScope}
+                  availableModes={availableModes}
+                  currentModeId={currentModeId}
+                  onModeChange={onSetMode}
+                  contextUsage={tokenUsage ?? promptUsage}
+                  onNewSession={handleNewSession}
+                  showNewSession={renderEntries.length > 0}
+                  modelName={modelName}
+                  uploadFiles={uploadFiles}
+                  compressImage={compressImage}
+                  renderFilePicker={renderFilePicker}
+                  subscribeExternal={composerSubscribe}
+                  onNotice={onNotice}
                 />
               </div>
-            </div>
-          )}
-
-          {/* Error banner */}
-          {errorMessage && (
-            <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
-              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
-                <span>{errorMessage}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setErrorMessage(null)}
-                  className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
-                >
-                  {"\u00D7"}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
-          {!readonly && (
+            )}
+          </div>
+          {readonly && (
             <div className="flex-shrink-0">
-              <ChatComposer
-                onSubmit={handleChatInputSubmit}
-                isLoading={isLoading}
-                onInterrupt={handleCancel}
-                canCancel={canCancel}
-                queueSubmitEnabled={queue.enabled}
-                disabled={!sessionReady}
-                placeholder={
-                  sessionReady
-                    ? t("chat.components.chatInterface.agentPlaceholder")
-                    : t("chat.components.chatInterface.waitingSession")
-                }
-                supportsImages={supportsImages}
-                commands={availableCommands.length > 0 ? availableCommands : undefined}
-                mcps={boundMcps}
-                contextScope={composerContextScope}
-                availableModes={availableModes}
-                currentModeId={currentModeId}
-                onModeChange={onSetMode}
-                contextUsage={tokenUsage ?? promptUsage}
-                onNewSession={handleNewSession}
-                showNewSession={renderEntries.length > 0}
-                modelName={modelName}
-                uploadFiles={uploadFiles}
-                compressImage={compressImage}
-                renderFilePicker={renderFilePicker}
-                subscribeExternal={composerSubscribe}
-                onNotice={onNotice}
-              />
+              <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
+                <span className="text-xs text-text-muted">{t("chat.components.chatInterface.readonlyMode")}</span>
+              </div>
             </div>
           )}
         </div>
-        {readonly && (
-          <div className="flex-shrink-0">
-            <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
-              <span className="text-xs text-text-muted">{t("chat.components.chatInterface.readonlyMode")}</span>
-            </div>
-          </div>
-        )}
       </div>
-    </div>
+    </OpenUIActionProvider>
   );
 });

@@ -41,8 +41,7 @@ export function AgentMcpPage() {
   const servers = catalog.data?.servers ?? [];
 
   const toggleEnabled = useRequest(
-    (server: McpServerInfo) =>
-      server.enabled ? unwrap(mcpApi.disable(server.name)) : unwrap(mcpApi.enable(server.name)),
+    (server: McpServerInfo) => (server.enabled ? unwrap(mcpApi.disable(server.id)) : unwrap(mcpApi.enable(server.id))),
     {
       manual: true,
       // 启停是「改」操作：仅靠列表状态翻转不足以确认，成功反馈要与删除/分享开关保持一致的 toast。
@@ -59,7 +58,7 @@ export function AgentMcpPage() {
     },
   );
 
-  const deleteServer = useRequest((server: McpServerInfo) => unwrap(mcpApi.del(server.name)), {
+  const deleteServer = useRequest((server: McpServerInfo) => unwrap(mcpApi.del(server.id)), {
     manual: true,
     onSuccess: () => {
       toast.success(t("toast.serverDeleted"));
@@ -78,7 +77,7 @@ export function AgentMcpPage() {
       const nextPublicReadable = server.scope.visibility !== "public";
       const detail = await unwrap(mcpApi.get(getMcpLookupKey(server)));
       await unwrap(
-        mcpApi.update(server.name, {
+        mcpApi.update(server.id, {
           ...detail.config,
           publicReadable: nextPublicReadable,
         } as McpServerConfig),
@@ -103,14 +102,14 @@ export function AgentMcpPage() {
     setInspectingKey(key);
     try {
       const tools = canWriteMcp(server)
-        ? (await unwrap(mcpApi.inspect(server.name))).tools.map((tool) => ({
+        ? (await unwrap(mcpApi.inspect(server.id))).tools.map((tool) => ({
             id: `${key}:${tool.name}`,
             toolName: tool.name,
             description: tool.description ?? null,
             inputSchema: (tool.inputSchema ?? null) as Record<string, unknown> | null,
             inspectedAt: Date.now(),
           }))
-        : (await unwrap(mcpApi.listTools(server.name))).tools;
+        : (await unwrap(mcpApi.listTools(server.id))).tools;
       setToolsByServer((current) => ({ ...current, [key]: tools }));
       toast.success(t("toast.inspectSuccessSimple", { count: tools.length }));
       if (canWriteMcp(server)) catalog.refresh();

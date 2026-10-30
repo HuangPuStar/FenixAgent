@@ -1,6 +1,7 @@
-import { ApiError } from "@fenix/web-runtime/api/request";
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import type { McpServerConfig, McpServerInfo } from "@fenix/web-runtime/types/config";
 import * as z from "zod/v4";
+import { mcpApi } from "../../../api/mcp";
 import { getMcpDisplayName, isExternalMcp } from "../../../lib/mcp-resource-access";
 
 export type McpCatalogScope = "all" | "organization" | "public";
@@ -235,4 +236,21 @@ export function isUnauthorizedError(error: unknown): boolean {
 function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {
   const valid = entries.filter((entry) => entry.key.trim());
   return valid.length > 0 ? Object.fromEntries(valid.map((entry) => [entry.key, entry.value])) : undefined;
+}
+
+/** 批量创建失败时只补偿本次返回的资源 ID，补偿错误不覆盖原始创建错误。 */
+export async function createMcpBatch(entries: McpImportEntry[]): Promise<void> {
+  const createdIds: string[] = [];
+  try {
+    for (const entry of entries) {
+      const created = await unwrap(mcpApi.create(entry.name, entry.config));
+      createdIds.push(created.id);
+    }
+  } catch (error) {
+    const rollback = await Promise.allSettled(createdIds.map((id) => unwrap(mcpApi.del(id))));
+    for (const result of rollback) {
+      if (result.status === "rejected") console.error("[mcp] Batch rollback failed", result.reason);
+    }
+    throw error;
+  }
 }

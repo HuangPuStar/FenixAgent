@@ -62,9 +62,9 @@ export function DefaultAppShell() {
   const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deletedEnvironmentIds, setDeletedEnvironmentIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
+  const [configDialog, setConfigDialog] = useState<{ open: boolean; agentConfigId: string }>({
     open: false,
-    agentName: "",
+    agentConfigId: "",
   });
 
   const activeNav = (() => {
@@ -177,7 +177,7 @@ export function DefaultAppShell() {
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}
-        onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
+        onEditAgent={(agentConfigId) => setConfigDialog({ open: true, agentConfigId })}
         onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
       />
       <div
@@ -203,7 +203,7 @@ export function DefaultAppShell() {
         open={configDialog.open}
         onOpenChange={(open) => setConfigDialog((prev) => ({ ...prev, open }))}
         mode="edit"
-        agentName={configDialog.agentName}
+        agentConfigId={configDialog.agentConfigId}
         portalContainer={panelHost}
       />
     </div>

@@ -60,6 +60,19 @@ function installSafeDb() {
 }
 
 describe("round44 Agent 配置 Web 路由", () => {
+  // 同名 Agent 详情必须按资源 ID 定位，不能进入名称解析或列表分支。
+  test("REST 详情按 ID 返回指定 Agent", async () => {
+    authenticate();
+    installSafeDb();
+    installAgentModuleStub({ facade: { getById: async (_actor, id) => authorizedAgent({ id, name: "same-name" }) } });
+    const response = await request("/config/agents/11111111-1111-4111-8111-111111111111");
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toMatchObject({
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "same-name",
+    });
+  });
+
   beforeEach(() => {
     // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
     initializeAgentConfigModuleConfig();
@@ -135,22 +148,22 @@ describe("round44 Agent 配置 Web 路由", () => {
     let receivedName = "";
     installAgentModuleStub({
       facade: {
-        get: async (_actor, name) => {
+        getById: async (_actor, name) => {
           receivedName = name;
           return authorizedAgent();
         },
       },
     });
 
-    expect((await request("/config/agents?name=researcher")).status).toBe(200);
+    expect((await request("/config/agents/researcher")).status).toBe(200);
     expect(receivedName).toBe("researcher");
   });
 
   // 不存在的详情应标准化为 NOT_FOUND，而非泄露底层实现错误。
   test("详情不存在时映射为 404", async () => {
-    installAgentModuleStub({ facade: { get: async () => undefined } });
+    installAgentModuleStub({ facade: { getById: async () => undefined } });
 
-    const response = await request("/config/agents?name=missing");
+    const response = await request("/config/agents/missing");
 
     expect(response.status).toBe(404);
     expect((await response.json()).error.code).toBe("NOT_FOUND");
@@ -159,7 +172,7 @@ describe("round44 Agent 配置 Web 路由", () => {
   // 详情响应必须包含绑定集合，供前端安全地展示关联资源。
   test("详情返回 skill、MCP 与站点绑定", async () => {
     installAgentModuleStub({
-      facade: { get: async () => authorizedAgent() },
+      facade: { getById: async () => authorizedAgent() },
       associations: {
         listSkillIds: async () => ["skill-1"],
         listMcpIds: async () => ["mcp-1"],
@@ -167,7 +180,7 @@ describe("round44 Agent 配置 Web 路由", () => {
       },
     });
 
-    const body = await (await request("/config/agents?name=researcher")).json();
+    const body = await (await request("/config/agents/researcher")).json();
 
     expect(body.data).toMatchObject({ skillIds: ["skill-1"], mcpIds: ["mcp-1"], siteAppIds: ["site-1"] });
   });
@@ -260,7 +273,7 @@ describe("round44 Agent 配置 Web 路由", () => {
       facade: {
         existsInOrganization: async () => false,
         create: async () => authorizedAgent({ id: "agent-created", name: "new-agent" }),
-        update: async () => authorizedAgent({ id: "agent-updated", name: "new-agent" }),
+        updateById: async () => authorizedAgent({ id: "agent-updated", name: "new-agent" }),
       },
     });
 
@@ -273,19 +286,19 @@ describe("round44 Agent 配置 Web 路由", () => {
       access: { actions: ["read", "create", "update", "delete", "use"] },
     });
 
-    const updated = await readJson(await json("/config/agents?name=new-agent", "PUT", { data: {} }));
+    const updated = await readJson(await json("/config/agents/new-agent", "PATCH", { data: {} }));
     expect(Object.keys(updated.data as Record<string, unknown>).sort()).toEqual(["access", "id", "name", "scope"]);
     expect(updated.data).toMatchObject({ id: "agent-updated", name: "new-agent" });
   });
 
   // 更新缺少目标名称时不得触发任何应用层写入。
-  test("更新缺少名称返回 400", async () => {
+  test("更新缺少 ID 不匹配单资源路由", async () => {
     const update = mock(async () => authorizedAgent());
-    installAgentModuleStub({ facade: { update } });
+    installAgentModuleStub({ facade: { updateById: update } });
 
-    const response = await json("/config/agents", "PUT", { data: {} });
+    const response = await json("/config/agents", "PATCH", { data: {} });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(404);
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -293,13 +306,13 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("更新拒绝共享只读 Agent", async () => {
     installAgentModuleStub({
       facade: {
-        update: async () => {
+        updateById: async () => {
           throw new ForbiddenError("只读共享资源");
         },
       },
     });
 
-    const response = await json("/config/agents?name=org-source/shared", "PUT", { data: { description: "changed" } });
+    const response = await json("/config/agents/shared", "PATCH", { data: { description: "changed" } });
 
     expect(response.status).toBe(403);
     expect((await response.json()).error.code).toBe("FORBIDDEN");
@@ -309,13 +322,13 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("更新不存在 Agent 返回 404", async () => {
     installAgentModuleStub({
       facade: {
-        update: async () => {
+        updateById: async () => {
           throw new NotFoundError("Agent 'missing' not found");
         },
       },
     });
 
-    const response = await json("/config/agents?name=missing", "PUT", { data: { description: "changed" } });
+    const response = await json("/config/agents/missing", "PATCH", { data: { description: "changed" } });
 
     expect(response.status).toBe(404);
     expect((await response.json()).error.code).toBe("NOT_FOUND");
@@ -326,7 +339,7 @@ describe("round44 Agent 配置 Web 路由", () => {
     let updateData: AgentConfigWriteData | undefined;
     installAgentModuleStub({
       facade: {
-        update: async (_actor, _name, data) => {
+        updateById: async (_actor, _name, data) => {
           updateData = data;
           return authorizedAgent();
         },
@@ -335,7 +348,7 @@ describe("round44 Agent 配置 Web 路由", () => {
 
     expect(
       (
-        await json("/config/agents?name=researcher", "PUT", {
+        await json("/config/agents/researcher", "PATCH", {
           data: { description: "safe", organizationId: "org-attacker" },
         })
       ).status,
@@ -347,7 +360,7 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("更新同步 skill 绑定", async () => {
     let skillIds: readonly string[] = [];
     installAgentModuleStub({
-      facade: { update: async () => authorizedAgent() },
+      facade: { updateById: async () => authorizedAgent() },
       associations: {
         syncSkills: async (_id, ids) => {
           skillIds = ids;
@@ -357,7 +370,7 @@ describe("round44 Agent 配置 Web 路由", () => {
 
     expect(
       (
-        await json("/config/agents?name=researcher", "PUT", {
+        await json("/config/agents/researcher", "PATCH", {
           data: { skillIds: ["11111111-1111-4111-8111-111111111111"] },
         })
       ).status,
@@ -371,7 +384,7 @@ describe("round44 Agent 配置 Web 路由", () => {
     let receivedName = "";
     installAgentModuleStub({
       facade: {
-        restartInstances: async (actor, name) => {
+        restartInstancesById: async (actor, name) => {
           receivedActor = actor;
           receivedName = name;
           return { environmentIds: ["env-1"], restartedInstanceIds: ["inst-1"] };
@@ -379,7 +392,7 @@ describe("round44 Agent 配置 Web 路由", () => {
       },
     });
 
-    const response = await json("/config/agents/restart?name=researcher", "POST");
+    const response = await json("/config/agents/researcher/restart", "POST");
 
     expect(response.status).toBe(200);
     expect(receivedActor).toMatchObject({ activeOrganizationId: "org-1", userId: "user-1" });
@@ -392,26 +405,27 @@ describe("round44 Agent 配置 Web 路由", () => {
 
   // 删除内置 Agent 必须在应用层删除调用前拒绝。
   test("删除内置 Agent 返回 403", async () => {
-    const remove = mock(async () => {});
-    installAgentModuleStub({ facade: { remove } });
+    const remove = mock(async () => {
+      throw new ForbiddenError("Cannot delete built-in agent");
+    });
+    installAgentModuleStub({ facade: { removeById: remove } });
 
-    const response = await request("/config/agents?name=build", { method: "DELETE" });
+    const response = await request("/config/agents/build", { method: "DELETE" });
 
     expect(response.status).toBe(403);
-    expect(remove).not.toHaveBeenCalled();
   });
 
   // 删除共享只读 Agent 必须复用应用层的可写权限边界。
   test("删除拒绝共享只读 Agent", async () => {
     installAgentModuleStub({
       facade: {
-        remove: async () => {
+        removeById: async () => {
           throw new ForbiddenError("只读共享资源");
         },
       },
     });
 
-    const response = await request("/config/agents?name=org-source/shared", { method: "DELETE" });
+    const response = await request("/config/agents/shared", { method: "DELETE" });
 
     expect(response.status).toBe(403);
     expect((await response.json()).error.code).toBe("FORBIDDEN");
@@ -421,13 +435,13 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("删除竞态目标消失时返回 404", async () => {
     installAgentModuleStub({
       facade: {
-        remove: async () => {
+        removeById: async () => {
           throw new NotFoundError("Agent 'researcher' not found");
         },
       },
     });
 
-    const response = await request("/config/agents?name=researcher", { method: "DELETE" });
+    const response = await request("/config/agents/researcher", { method: "DELETE" });
 
     expect(response.status).toBe(404);
   });

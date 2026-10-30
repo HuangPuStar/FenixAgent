@@ -272,7 +272,7 @@ export function useAgentSidebarTree({
         .filter(([, agentConfigId]) => agentConfigId === agent.id)
         .map(([environmentId]) => environmentId);
 
-      await unwrap(agentApi.delete(agent.name));
+      await unwrap(agentApi.delete(agent.id));
       toast.success(t("deleteSuccess"));
       onDeleteAgentEnvironments?.(deletingEnvironmentIds);
 

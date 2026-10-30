@@ -84,6 +84,10 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   ["streamdown", '流式 Markdown 渲染（chat/primitives/message 传递依赖；详情正文 mode="static" 走它），浏览器安全'],
   [
+    "@peri-code/sdk",
+    "OpenUI 围栏切分与画布渲染（chat/primitives/message 与 chat/openui 传递依赖；openui 出口为纯 TS + React，渲染器经动态 import 懒加载），浏览器安全",
+  ],
+  [
     "@streamdown/math",
     "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",
   ],

@@ -12,6 +12,7 @@ import {
 import type { AgentConfigWriteData, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
 import { AGENT_CONFIG_LIST_ORDER } from "../repositories/agent-config-resource";
 import type { AgentConfigService } from "../services/agent-config-service";
+import { isBuiltInAgent } from "../services/config/agent-config";
 
 /**
  * AgentConfig 的资源应用 Facade：授权编排 + 跨资源（Environment / 运行实例）编排。
@@ -91,6 +92,17 @@ export interface AgentConfigFacadeApi {
     data: AgentConfigWriteData,
     options?: AgentConfigUpdateOptions,
   ): Promise<AuthorizedAgentConfig>;
+  /** 按数据库 ID 更新配置，保留与名称入口相同的授权与绑定语义。 */
+  updateById(
+    actor: ActorContext,
+    resourceId: string,
+    data: AgentConfigWriteData,
+    options?: AgentConfigUpdateOptions,
+  ): Promise<AuthorizedAgentConfig>;
+  /** 按数据库 ID 删除资源及其运行实例。 */
+  removeById(actor: ActorContext, resourceId: string): Promise<void>;
+  /** 按数据库 ID 重启运行实例。 */
+  restartInstancesById(actor: ActorContext, resourceId: string): Promise<AgentConfigRestartResult>;
   remove(actor: ActorContext, nameOrKey: string): Promise<void>;
   /** 重启绑定 Environment 下的持久 Instance runtime；需要 `use` 动作（成员默认具备）。 */
   restartInstances(actor: ActorContext, nameOrKey: string): Promise<AgentConfigRestartResult>;
@@ -205,7 +217,26 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     data: AgentConfigWriteData,
     options: AgentConfigUpdateOptions = {},
   ): Promise<AuthorizedAgentConfig> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.updateRow(actor, await this.requireVisible(actor, nameOrKey), data, options);
+  }
+
+  /** 按 ID 定位后复用配置写入编排。 */
+  async updateById(
+    actor: ActorContext,
+    resourceId: string,
+    data: AgentConfigWriteData,
+    options: AgentConfigUpdateOptions = {},
+  ): Promise<AuthorizedAgentConfig> {
+    return this.updateRow(actor, await this.requireVisibleById(actor, resourceId), data, options);
+  }
+
+  private async updateRow(
+    actor: ActorContext,
+    row: ScopedAgentConfigRow,
+    data: AgentConfigWriteData,
+    options: AgentConfigUpdateOptions,
+  ): Promise<AuthorizedAgentConfig> {
+    const nameOrKey = row.id;
     await this.requireAction(actor, "update", row.id);
 
     const updated = await this.service.update({ resourceId: row.id, data });
@@ -227,7 +258,18 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
    * spawn 恢复），比"先删后停、stop 失败 → 实例彻底孤儿"更安全。
    */
   async remove(actor: ActorContext, nameOrKey: string): Promise<void> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.removeRow(actor, await this.requireVisible(actor, nameOrKey));
+  }
+
+  /** 按 ID 删除，内置名称保护依据真实资源行。 */
+  async removeById(actor: ActorContext, resourceId: string): Promise<void> {
+    const row = await this.requireVisibleById(actor, resourceId);
+    if (isBuiltInAgent(row.name)) throw new ForbiddenError(`Cannot delete built-in agent '${row.name}'`);
+    return this.removeRow(actor, row);
+  }
+
+  private async removeRow(actor: ActorContext, row: ScopedAgentConfigRow): Promise<void> {
+    const nameOrKey = row.id;
     await this.requireAction(actor, "delete", row.id);
 
     const environmentIds = await this.service.listBoundEnvironmentIds({
@@ -255,7 +297,15 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
    * 被**保持**而不是收紧——收紧的是配置写入（见资源注册的动作收敛说明）。
    */
   async restartInstances(actor: ActorContext, nameOrKey: string): Promise<AgentConfigRestartResult> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.restartRow(actor, await this.requireVisible(actor, nameOrKey));
+  }
+
+  /** 按 ID 重启，复用原有 runtime 生命周期。 */
+  async restartInstancesById(actor: ActorContext, resourceId: string): Promise<AgentConfigRestartResult> {
+    return this.restartRow(actor, await this.requireVisibleById(actor, resourceId));
+  }
+
+  private async restartRow(actor: ActorContext, row: ScopedAgentConfigRow): Promise<AgentConfigRestartResult> {
     await this.requireAction(actor, "use", row.id);
 
     const environmentIds = await this.service.listBoundEnvironmentIds({
@@ -284,6 +334,13 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
       if (internal) return internal;
     }
     return this.service.findByName({ access, name: nameOrKey });
+  }
+
+  private async requireVisibleById(actor: ActorContext, resourceId: string): Promise<ScopedAgentConfigRow> {
+    const access = await this.listConstraint(actor, "read");
+    const row = await this.service.findById({ access, resourceId });
+    if (!row) throw new NotFoundError(`Agent '${resourceId}' not found`);
+    return row;
   }
 
   private async requireVisible(actor: ActorContext, nameOrKey: string): Promise<ScopedAgentConfigRow> {

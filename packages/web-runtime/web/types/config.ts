@@ -156,8 +156,8 @@ export interface OpenCodeConfig {
  * 必填，消费点不得再回退读取旧栈的 `resourceAccess`。
  */
 export interface ProviderInfo extends ResourceAccessView {
-  /** 数据库主键；Provider 配置 API 的 id 字段仍表示名称。 */
-  providerId: string;
+  displayName: string;
+  /** 所属 Provider 数据库 ID。 */
   id: string;
   name: string;
   kind: "direct" | "gateway";
@@ -170,6 +170,7 @@ export interface ProviderInfo extends ResourceAccessView {
 
 /** Provider 下的模型配置；模型不独立持有归属与授权，可访问性完全继承所属 Provider。 */
 export interface ProviderModel {
+  modelId: string;
   id: string;
   name: string;
   modalities: unknown;
@@ -180,6 +181,7 @@ export interface ProviderModel {
 
 /** Provider 详情（编辑用）；`scope` / `access` 必填的原因同 {@link ProviderInfo}。 */
 export interface ProviderDetail extends ResourceAccessView {
+  displayName: string;
   id: string;
   name: string;
   kind: "direct" | "gateway";
@@ -310,7 +312,7 @@ export interface ResourceAccessView {
  * 处理缺失情况（缺失按「本组织私有、不可写」保守降级），避免部分响应或旧缓存导致越权展示。
  */
 export interface SkillInfo extends Partial<ResourceAccessView> {
-  id?: string;
+  id: string;
   name: string;
   enabled: boolean;
   description: string;

@@ -4,11 +4,11 @@
  * 提供 Skill 的完整 CRUD 操作，包括创建、读取、更新、删除和批量上传。
  *
  * GET    /config/skills        → 列出所有 Skill（当前主体可见）
- * GET    /config/skills/:name  → 获取单个 Skill 详情
+ * GET    /config/skills/:id  → 获取单个 Skill 详情
  * POST   /config/skills        → 创建新 Skill
- * PUT    /config/skills/:name  → 更新已有 Skill
- * PUT    /config/skills/:name/access → 只更新公开受众
- * DELETE /config/skills/:name  → 删除 Skill
+ * PATCH  /config/skills/:id  → 更新已有 Skill
+ * PATCH  /config/skills/:id/access → 只更新公开受众
+ * DELETE /config/skills/:id  → 删除 Skill
  * POST   /config/skills/upload → 批量上传技能目录（multipart/form-data）
  */
 
@@ -47,8 +47,8 @@ import {
 
 interface SkillWriteBody {
   data?: {
-    description: string;
-    content: string;
+    description?: string;
+    content?: string;
     metadata?: Record<string, string>;
     publicReadable?: boolean;
   };
@@ -81,10 +81,10 @@ async function handleList(actor: ActorContext): Promise<WebHandlerResult> {
 }
 
 /** 获取单个 Skill 的完整详情（含 SKILL.md 正文）。 */
-async function handleGet(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
+async function handleGet(actor: ActorContext, resourceId: string): Promise<WebHandlerResult> {
   const { facade, identity } = getSkillServerModule();
-  const detail = await facade.readDetail(actor, nameOrKey);
-  if (!detail) throw new NotFoundError(`Skill '${nameOrKey}' not found`);
+  const detail = await facade.readDetailById(actor, resourceId);
+  if (!detail) throw new NotFoundError(`Skill '${resourceId}' not found`);
   const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
   return {
     success: true,
@@ -124,19 +124,26 @@ async function handleCreate(actor: ActorContext, body: CreateSkillBody | undefin
 /** 更新已有 Skill；公开受众请使用独立的 access 接口。 */
 async function handleUpdate(
   actor: ActorContext,
-  nameOrKey: string,
+  resourceId: string,
   body: SkillWriteBody | undefined,
 ): Promise<WebHandlerResult> {
   const { identity } = getSkillServerModule();
   const data = body?.data;
-  if (!data?.content) throw new ValidationError("Missing required field: data.content");
-
-  const skill = await getSkillServerModule().facade.update(
+  if (
+    !data ||
+    ![data.content, data.description, data.metadata, data.publicReadable].some((value) => value !== undefined)
+  ) {
+    throw new ValidationError("Missing fields to update");
+  }
+  if (data.content !== undefined && (typeof data.content !== "string" || data.content.length === 0)) {
+    throw new ValidationError("Missing required field: data.content");
+  }
+  const skill = await getSkillServerModule().facade.updateById(
     actor,
-    nameOrKey,
+    resourceId,
     {
-      description: data.description ?? "",
-      content: data.content,
+      ...(data.description === undefined ? {} : { description: data.description }),
+      ...(data.content === undefined ? {} : { content: data.content }),
       ...(data.metadata === undefined ? {} : { metadata: data.metadata }),
     },
     { ...(data.publicReadable === undefined ? {} : { publicReadable: data.publicReadable }) },
@@ -151,14 +158,14 @@ async function handleUpdate(
 /** 仅更新 Skill 的公开受众，不触碰 SKILL.md。 */
 async function handleUpdateAccess(
   actor: ActorContext,
-  nameOrKey: string,
+  resourceId: string,
   body: UpdateSkillAccessBody | undefined,
 ): Promise<WebHandlerResult> {
   const { identity } = getSkillServerModule();
   if (typeof body?.publicReadable !== "boolean") {
     throw new ValidationError("Missing required field: publicReadable");
   }
-  const skill = await getSkillServerModule().facade.setPublicReadable(actor, nameOrKey, body.publicReadable);
+  const skill = await getSkillServerModule().facade.setPublicReadableById(actor, resourceId, body.publicReadable);
   const organizationNames = await resolveOrganizationNames(identity, [skill.scope.organizationId]);
   return {
     success: true,
@@ -167,15 +174,15 @@ async function handleUpdateAccess(
 }
 
 /** 删除指定 Skill（资源行与文件内容）。 */
-async function handleDelete(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
-  await getSkillServerModule().facade.remove(actor, nameOrKey);
+async function handleDelete(actor: ActorContext, resourceId: string): Promise<WebHandlerResult> {
+  await getSkillServerModule().facade.removeById(actor, resourceId);
   return { success: true, data: null };
 }
 
 /** 为当前主体可读 Skill 生成带顶层目录的 Web 下载 zip。 */
-async function handleDownload(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
-  const detail = await getSkillServerModule().facade.get(actor, nameOrKey);
-  if (!detail) throw new NotFoundError(`Skill '${nameOrKey}' not found`);
+async function handleDownload(actor: ActorContext, resourceId: string): Promise<WebHandlerResult> {
+  const detail = await getSkillServerModule().facade.getById(actor, resourceId);
+  if (!detail) throw new NotFoundError(`Skill '${resourceId}' not found`);
   // 内容只存在于归属组织的目录下：跨组织公开的 Skill 也从归属组织的目录取归档。
   const sourceOrganizationId = detail.scope.organizationId;
   if (sourceOrganizationId === undefined) {
@@ -227,11 +234,11 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
   /** 宽松对象响应 schema：各 handler 的 data 结构不同，统一用宽松映射保持 OpenAPI 可读。 */
   const looseOkSchema = WebOkSchema(z.union([z.looseObject({}), z.null()]));
 
-  const nameOrKeyParam = {
-    name: "name",
+  const resourceIdParam = {
+    name: "id",
     in: "path" as const,
     required: true,
-    description: "Skill 名称或跨组织资源键（org_id/skill-uuid）。",
+    description: "Skill 数据库资源 ID。",
     schema: { type: "string" as const },
   };
 
@@ -251,30 +258,29 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
     },
   );
 
-  /** 获取单个 Skill 详情（GET /config/skills/:name） */
+  /** 获取单个 Skill 详情（GET /config/skills/:id） */
   app.get(
-    "/config/skills/:name",
+    "/config/skills/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-    ({ store, params, status }: any) =>
-      runWebHandler(status, store, (actor) => handleGet(actor, params.name as string)),
+    ({ store, params, status }: any) => runWebHandler(status, store, (actor) => handleGet(actor, params.id as string)),
     {
       sessionAuth: true,
       response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema, 404: WebErrSchema },
       detail: {
         tags: ["SkillConfig"],
         summary: "获取单个 Skill 详情",
-        description: "按名称或跨组织资源键返回 Skill 详情，包含 SKILL.md 正文与元数据。",
-        parameters: [nameOrKeyParam],
+        description: "按资源 ID 返回 Skill 详情，包含 SKILL.md 正文与元数据。",
+        parameters: [resourceIdParam],
       },
     },
   );
 
-  /** 直接下载单个 Skill（GET /config/skills/:name/download） */
+  /** 直接下载单个 Skill（GET /config/skills/:id/download） */
   app.get(
-    "/config/skills/:name/download",
+    "/config/skills/:id/download",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
     async ({ store, params, status, set }: any) => {
-      const result = await runWebHandler(status, store, (actor) => handleDownload(actor, params.name as string));
+      const result = await runWebHandler(status, store, (actor) => handleDownload(actor, params.id as string));
       // 归档是二进制流：失败响应由 runWebHandler 映射好后原样返回，只有成功态才需要写响应头。
       if (!isWebSuccess(result)) return result;
       const data = result.data as { archiveBuffer: Buffer; fileName: string };
@@ -293,7 +299,7 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
         tags: ["SkillConfig"],
         summary: "下载 Skill 压缩包",
         description: "基于当前 Web 登录态与资源可见性校验后，直接返回 Skill zip 文件流。",
-        parameters: [nameOrKeyParam],
+        parameters: [resourceIdParam],
       },
     },
   );
@@ -314,12 +320,12 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
     },
   );
 
-  /** 更新已有 Skill（PUT /config/skills/:name） */
-  app.put(
-    "/config/skills/:name",
+  /** 更新已有 Skill（PATCH /config/skills/:id） */
+  app.patch(
+    "/config/skills/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
     ({ store, params, body, status }: any) =>
-      runWebHandler(status, store, (actor) => handleUpdate(actor, params.name as string, body)),
+      runWebHandler(status, store, (actor) => handleUpdate(actor, params.id as string, body)),
     {
       sessionAuth: true,
       response: {
@@ -333,17 +339,17 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
         tags: ["SkillConfig"],
         summary: "更新已有 Skill",
         description: "更新指定 Skill 的内容、描述与元数据；公开受众请使用独立 access 接口。",
-        parameters: [nameOrKeyParam],
+        parameters: [resourceIdParam],
       },
     },
   );
 
-  /** 更新 Skill 公开受众（PUT /config/skills/:name/access） */
-  app.put(
-    "/config/skills/:name/access",
+  /** 更新 Skill 公开受众（PATCH /config/skills/:id/access） */
+  app.patch(
+    "/config/skills/:id/access",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
     ({ store, params, body, status }: any) =>
-      runWebHandler(status, store, (actor) => handleUpdateAccess(actor, params.name as string, body)),
+      runWebHandler(status, store, (actor) => handleUpdateAccess(actor, params.id as string, body)),
     {
       sessionAuth: true,
       response: {
@@ -357,17 +363,17 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
         tags: ["SkillConfig"],
         summary: "更新 Skill 公开受众",
         description: "仅更新资源公开受众，不读取、解析或改写 SKILL.md。",
-        parameters: [nameOrKeyParam],
+        parameters: [resourceIdParam],
       },
     },
   );
 
-  /** 删除 Skill（DELETE /config/skills/:name） */
+  /** 删除 Skill（DELETE /config/skills/:id） */
   app.delete(
-    "/config/skills/:name",
+    "/config/skills/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
     ({ store, params, status }: any) =>
-      runWebHandler(status, store, (actor) => handleDelete(actor, params.name as string)),
+      runWebHandler(status, store, (actor) => handleDelete(actor, params.id as string)),
     {
       sessionAuth: true,
       response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema, 404: WebErrSchema },
@@ -375,7 +381,7 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
         tags: ["SkillConfig"],
         summary: "删除 Skill",
         description: "删除指定的 Skill 配置及其文件系统中的内容。",
-        parameters: [nameOrKeyParam],
+        parameters: [resourceIdParam],
       },
     },
   );

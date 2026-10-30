@@ -142,10 +142,6 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "ToolJsonBlock",
     "ToolOutput",
     "ToolPermissionButtons",
-    "UISpecBlock",
-    "UISpecHostProvider",
-    "UISpecView",
-    "UI_SPEC_LANGUAGE",
     "UserBubble",
     "blobToBase64",
     "buildChatRenderBlocks",
@@ -199,7 +195,6 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "useProviderAttachments",
     "useReasoning",
     "useSemiControlledState",
-    "useUISpecHost",
   ],
   components: [
     "AgentCardList",

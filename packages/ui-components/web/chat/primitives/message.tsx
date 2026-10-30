@@ -15,19 +15,9 @@
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import "./message.css";
+import { splitOpenUI } from "@peri-code/sdk/openui";
 import type { ComponentProps, HTMLAttributes, ReactElement, ReactNode } from "react";
-import {
-  Component,
-  createContext,
-  lazy,
-  memo,
-  Suspense,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Components } from "streamdown";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -36,10 +26,9 @@ import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
-import { repairUnclosedUISpecFence } from "../ui-spec/fence-repair";
-import { UISpecHostProvider } from "../ui-spec/UISpecHostContext";
+import { OpenUIBlock } from "../openui/openui-block";
 import { IframePreview } from "./iframe-preview";
-import { MARKDOWN_CONTENT_CLASS } from "./internal/markdown-classes";
+import { MessageMarkdown } from "./message-markdown";
 
 export {
   MessageAttachment,
@@ -47,44 +36,6 @@ export {
   MessageAttachments,
   type MessageAttachmentsProps,
 } from "./message-attachments";
-
-class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallback?: string }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch() {
-    // 异常及组件栈可能携带正文，只记录稳定原因码。
-    console.error("Streamdown failed to load: render-error");
-  }
-  render() {
-    if (this.state.hasError) {
-      // 兜底分支同样承载 `.chat-markdown-response` 的元素级声明（未分层 → 压过 `break-words`，按生效值写）。
-      return (
-        <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere [word-break:normal]">
-          {this.props.fallback}
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/**
- * 正文渲染器：streamdown 与**插件配置**一起在这条惰性边界上取。
- *
- * 为什么插件配置也要动态取：`UI_SPEC_PLUGINS` 含数学插件，而数学插件静态拉起 `@streamdown/math` →
- * `rehype-katex` → KaTeX。若本模块静态引入它，KaTeX 会顺着 barrel 进入口 chunk（2026-10-15 实测到
- * `index.html` 里出现 `modulepreload katex-*.js`）；两者同源加载后，KaTeX 与 streamdown 一样只在
- * 真正渲染正文时才下载。
- */
-const LazyStreamdown = lazy(async () => {
-  const [streamdown, { UI_SPEC_PLUGINS }] = await Promise.all([import("streamdown"), import("../ui-spec/plugins")]);
-  const StreamdownWithPlugins = (props: ComponentProps<typeof streamdown.Streamdown>) => (
-    <streamdown.Streamdown {...props} plugins={UI_SPEC_PLUGINS} />
-  );
-  return { default: StreamdownWithPlugins };
-});
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -363,7 +314,6 @@ const renderMediaLink = ({ src, children, className: _cx, ...rest }: Record<stri
 
 export const MessageResponse = memo(
   ({ className, children, envId, sessionId, mode = "streaming", isStreaming = false }: MessageResponseProps) => {
-    const hostContext = useMemo(() => ({ envId }), [envId]);
     const urlTransform = useCallback(
       (url: string) => {
         if (!envId) return url;
@@ -424,43 +374,56 @@ export const MessageResponse = memo(
       return { ...base, ...registered } as Components;
     }, []);
 
-    // 未闭合的 ui-spec 围栏会吞掉其后全部正文（CommonMark 语义），在交给 streamdown 前先补全：
-    // JSON 回到围栏内解析、说明文字回到正文渲染，见 `ui-spec/fence-repair.ts`。
-    // 只在非流式做——流式中的未闭合是正常中间态，提前补全会让后续增量落到围栏外。
-    const content = useMemo(
-      () => (!isStreaming && typeof children === "string" ? repairUnclosedUISpecFence(children) : children),
+    // OpenUI 围栏切分：只做行扫描，不解析 DSL；非流式下裸程序（`root = Stack(` 开头）也会被识别，
+    // 这是 SDK 的既有契约，保留。多个围栏或无围栏时 `program === null`，按普通 Markdown 渲染。
+    const openui = useMemo(
+      () => (typeof children === "string" ? splitOpenUI(children, isStreaming) : null),
       [children, isStreaming],
     );
 
+    // 标识稳定：OpenUI 的围栏前后文本与失败回退都经这里渲染，回调变化会让整块重挂。
+    const renderText = useCallback(
+      (text: string) => (
+        <MessageMarkdown
+          allowedTags={allowedTags}
+          className={className}
+          components={components}
+          isStreaming={isStreaming}
+          mode={mode}
+          text={text}
+          urlTransform={urlTransform}
+        />
+      ),
+      [allowedTags, className, components, isStreaming, mode, urlTransform],
+    );
+
+    // 切换环境/会话/解析模式时重挂，避免将解析器输出差异误判为正文增量。
+    const renderKey = JSON.stringify([sessionId, envId, mode]);
+    const text = String(children ?? "");
+
+    if (!openui || openui.program === null) {
+      return (
+        <MessageMarkdown
+          key={renderKey}
+          allowedTags={allowedTags}
+          className={className}
+          components={components}
+          isStreaming={isStreaming}
+          mode={mode}
+          text={text}
+          urlTransform={urlTransform}
+        />
+      );
+    }
+
     return (
-      <StreamdownErrorBoundary fallback={children}>
-        <Suspense
-          fallback={
-            // 兜底分支沿用 `.chat-markdown-response` 的元素级声明（未分层 → 压过 `break-words`，按生效值写）。
-            <div className={cn("min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere [word-break:normal]", className)}>
-              {children}
-            </div>
-          }
-        >
-          {/* 切换环境/会话/解析模式时重挂，避免将解析器输出差异误判为正文增量。 */}
-          <UISpecHostProvider key={JSON.stringify([sessionId, envId, mode])} value={hostContext}>
-            <LazyStreamdown
-              allowedTags={allowedTags}
-              components={components}
-              urlTransform={urlTransform}
-              mode={mode}
-              isAnimating={isStreaming}
-              // markdown 排版（标题/列表/引用/代码块/表格与 streamdown 内部 DOM）全部挂在容器上：
-              // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
-              // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
-              // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
-              className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
-            >
-              {content}
-            </LazyStreamdown>
-          </UISpecHostProvider>
-        </Suspense>
-      </StreamdownErrorBoundary>
+      <OpenUIBlock
+        key={renderKey}
+        document={openui}
+        fallbackText={text}
+        isStreaming={isStreaming}
+        renderText={renderText}
+      />
     );
   },
   (prevProps, nextProps) =>
