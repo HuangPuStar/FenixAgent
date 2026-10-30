@@ -117,10 +117,14 @@ export async function getAgentKnowledgeConfigById(agentConfigId: string): Promis
 
 /**
  * Replaces all agent knowledge bindings for an agent config with the provided ordered knowledge base ids.
+ *
+ * 只接受归属 `organizationId`（Agent 归属组织）的知识库：运行时不按调用方身份再判组织，绑定表必须是
+ * 可信任的授权来源，否则知道知识库 ID 就能把它挂到自己的 Agent 上越权检索。
  */
 export async function syncAgentKnowledgeBindingsById(
   agentConfigId: string,
   knowledge: AgentKnowledgeConfig | null | undefined,
+  organizationId: string,
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
   const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;
@@ -133,7 +137,7 @@ export async function syncAgentKnowledgeBindingsById(
   const existingIds = new Set<string>();
   for (const kbId of knowledgeBaseIds) {
     const kb = await knowledgeBaseRepo.getById(kbId);
-    if (!kb) continue;
+    if (!kb || kb.organizationId !== organizationId) continue;
 
     existingIds.add(kb.id);
   }

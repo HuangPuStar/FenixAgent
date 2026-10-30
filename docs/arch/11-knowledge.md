@@ -49,7 +49,7 @@ Agent 运行时
 - `status`：empty / indexing / ready / error
 - `lastError`：最近一次错误信息
 
-控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404；Agent 检索按认证上下文的组织过滤绑定。全局 RAGFlow key 仅是上游连接凭据，不赋予跨组织读取权限。
+控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404。Agent 检索（MCP 的 `kb_search` / `kb_read` / `kb_graph_get`）的授权来源是 Agent 的绑定表本身，不按调用方组织或用户过滤：跨组织运行共享 Agent 时环境属调用方、知识库属提供方，按调用方过滤会让绑定整体失效。绑定写入时校验知识库归属与 Agent 归属组织一致，运行时不加组织过滤仍不会越过组织边界。全局 RAGFlow key 仅是上游连接凭据，不赋予跨组织读取权限。
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 

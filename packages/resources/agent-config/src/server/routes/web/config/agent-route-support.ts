@@ -295,7 +295,7 @@ async function handleSet(
   const bindingRequest = readAgentBindingRequest(data);
   // 没有任何绑定字段时不必经过编写面：这条保存只改配置，绑定集合保持不变。
   if (hasAgentBindings(bindingRequest)) {
-    await authoring.applyBindings(actor, agent.id, bindingRequest);
+    await authoring.applyBindings(actor, agent.id, agent.scope.organizationId, bindingRequest);
   }
 
   return {
@@ -342,7 +342,7 @@ async function handleCreate(
   }
   const bindingRequest = readAgentBindingRequest(data);
   if (hasAgentBindings(bindingRequest)) {
-    await authoring.applyBindings(actor, agent.id, bindingRequest);
+    await authoring.applyBindings(actor, agent.id, agent.scope.organizationId, bindingRequest);
   }
 
   return {

@@ -1,4 +1,5 @@
 import type { ActorContext } from "@fenix/platform-sdk";
+import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { getSkillServerModule } from "@fenix/resource-skill/server/runtime";
 import type { AgentAssociations } from "../services/agent-associations";
 import { type AgentBindingRequest, isSkillIdentifier, resolveSkillIdentifiers } from "../services/agent-bindings";
@@ -26,9 +27,14 @@ export interface AgentAuthoringFacadeApi {
    * 把请求里的绑定写入绑定表；未出现的字段保持原样。
    *
    * `skillIds` 在这里解析成 UUID 后再交给领域服务，因此领域服务不需要 actor，也不会因为知道名称而
-   * 引用到不可见的 Skill。
+   * 引用到不可见的 Skill。`organizationId` 是刚保存的 Agent 归属组织，知识库绑定按它校验归属。
    */
-  applyBindings(actor: ActorContext, agentConfigId: string, request: AgentBindingRequest): Promise<void>;
+  applyBindings(
+    actor: ActorContext,
+    agentConfigId: string,
+    organizationId: string | undefined,
+    request: AgentBindingRequest,
+  ): Promise<void>;
 }
 
 export class AgentAuthoringFacade implements AgentAuthoringFacadeApi {
@@ -49,9 +55,18 @@ export class AgentAuthoringFacade implements AgentAuthoringFacadeApi {
     return resolveSkillIdentifiers({ identifiers, skills: await this.listVisibleSkills(actor) });
   }
 
-  async applyBindings(actor: ActorContext, agentConfigId: string, request: AgentBindingRequest): Promise<void> {
+  async applyBindings(
+    actor: ActorContext,
+    agentConfigId: string,
+    organizationId: string | undefined,
+    request: AgentBindingRequest,
+  ): Promise<void> {
     if (request.knowledge !== undefined) {
-      await this.associations.syncKnowledge(agentConfigId, request.knowledge);
+      // 归属组织在库里非空，投影类型是通用的可空形状；收窄失败说明读到了不合规的行，按绑定非法拒绝。
+      if (organizationId === undefined) {
+        throw new InvalidKnowledgeBindingError("Agent 缺少归属组织，无法校验知识库绑定");
+      }
+      await this.associations.syncKnowledge(agentConfigId, request.knowledge, organizationId);
     }
     if (request.skillIds !== undefined) {
       await this.associations.syncSkills(agentConfigId, await this.resolveSkillIds(actor, request.skillIds));

@@ -278,7 +278,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
         });
         const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
         if (hasAgentBindings(bindingRequest)) {
-          await authoring.applyBindings(actor, agent.id, bindingRequest);
+          await authoring.applyBindings(actor, agent.id, agent.scope.organizationId, bindingRequest);
         }
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
@@ -339,7 +339,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
         );
         const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
         if (hasAgentBindings(bindingRequest)) {
-          await authoring.applyBindings(actor, agent.id, bindingRequest);
+          await authoring.applyBindings(actor, agent.id, agent.scope.organizationId, bindingRequest);
         }
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);

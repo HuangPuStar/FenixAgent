@@ -435,13 +435,12 @@ describe("第35轮知识服务真实业务边界", () => {
     ["指定已绑定知识库", "kb-1", true],
     ["指定未绑定知识库", "kb-other", false],
     ["未指定时选择首个图谱", undefined, true],
-    ["不同组织仍按绑定返回", "kb-1", true],
   ])("Agent 图谱%s遵守绑定边界", async (_caseName, knowledgeBaseId, allowed) => {
     const provider = new ServiceProvider();
     agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId = mock(async () => [boundRow()]);
     setKnowledgeRuntimeProviderForTesting(provider);
 
-    const call = getKnowledgeGraphForAgent({ agentConfigId: "agent-1", organizationId: "org-1", knowledgeBaseId });
+    const call = getKnowledgeGraphForAgent({ agentConfigId: "agent-1", knowledgeBaseId });
     if (allowed) {
       await expect(call).resolves.toMatchObject({ knowledgeBaseId: "kb-1", graph: { nodes: [{ id: "node-1" }] } });
     } else {
@@ -452,7 +451,6 @@ describe("第35轮知识服务真实业务边界", () => {
   test.each([
     ["缺失资源", null, "Knowledge resource not found"],
     ["缺失远端 ID", { remoteId: null }, "Knowledge resource remote id is missing"],
-    ["用户不匹配", { remoteId: "remote-resource-1", kbUserId: "other-user" }, "Knowledge resource not accessible"],
     ["未绑定 Agent", { remoteId: "remote-resource-1" }, "Knowledge resource is not bound to the agent"],
   ])("读取资源在%s时阻断越权访问", async (_caseName, override, expectedMessage) => {
     const base = {
@@ -479,8 +477,6 @@ describe("第35轮知识服务真实业务边界", () => {
       readKnowledgeResourceForAgent({
         agentConfigId: "agent-1",
         resourceId: "resource-1",
-        userId: "owner-1",
-        organizationId: "org-1",
       }),
     ).rejects.toThrow(expectedMessage);
   });
