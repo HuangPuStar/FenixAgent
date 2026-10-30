@@ -62,10 +62,10 @@ function toolCallsOf(item: ChatRenderItem): ToolCallData[] {
 }
 
 /**
- * 判断活动链是否仍在运行：工具未终态，或加载中且末项是当前会话正在产出的助手消息。
+ * 判断活动链是否仍在运行：工具未终态，或加载中且会话末条条目属于本链。
  *
- * `lastEntry` 参与比较的原因：加载新回复时旧活动链的末项仍是历史助手消息，
- * 只凭 `isLoading` 会把已结束的旧链重新展开，故只有会话末条条目才算流式内容。
+ * `lastEntry` 参与比较的原因：加载新回复时旧活动链的条目仍是历史内容，
+ * 只凭 `isLoading` 会把已结束的旧链重新展开，故只有含末条条目的链才算流式内容。
  */
 export function isActivityChainActive(
   items: readonly ChatRenderItem[],
@@ -73,9 +73,19 @@ export function isActivityChainActive(
   lastEntry?: ThreadEntry,
 ): boolean {
   if (items.some((item) => toolCallsOf(item).some((tool) => isToolActive(tool.status)))) return true;
-  if (!isLoading) return false;
-  const last = items.at(-1);
-  return last?.type === "entry" && last.entry.type === "assistant_message" && last.entry === lastEntry;
+  if (!isLoading || !lastEntry) return false;
+  return items.some((item) => itemContainsEntry(item, lastEntry));
+}
+
+/**
+ * 本链是否包含该条目。
+ *
+ * 判定用「末条条目」而不是「末个渲染项」：工具刚完成时链的末项是工具组，
+ * 到下一个条目之间本轮仍在加载，链必须保持展开。
+ */
+function itemContainsEntry(item: ChatRenderItem, entry: ThreadEntry): boolean {
+  if (item.type === "tool_group") return item.entries.some((toolEntry) => toolEntry === entry);
+  return item.entry === entry;
 }
 
 function isToolActive(status: ToolCallData["status"]): boolean {

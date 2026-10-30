@@ -151,4 +151,46 @@ describe("活动链折叠", () => {
     expect(toggle()?.getAttribute("aria-expanded")).toBe("true");
     expect(body()).not.toBeNull();
   });
+
+  // 工具已完成但本轮仍在加载：工具完成到下一动作之间的空档，链不能收起。
+  test("工具完成但本轮仍在加载时保持展开", async () => {
+    await act(async () => root.render(<ChatView entries={entries("complete")} isLoading preWindowed />));
+
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true");
+    expect(body()).not.toBeNull();
+  });
+
+  // 同一轮出现多条活动链时，只有最后一条随加载展开，前面的链保持折叠。
+  test("同一轮只展开最后一条活动链", async () => {
+    const timeline: ThreadEntry[] = [
+      { type: "assistant_message", id: "thought-1", chunks: [{ type: "thought", text: "先读文件" }] },
+      { type: "tool_call", toolCall: { id: "tool-1", title: "Read", kind: "read-file", status: "complete" } },
+      { type: "assistant_message", id: "message-1", chunks: [{ type: "message", text: "已读完配置文件。" }] },
+      { type: "assistant_message", id: "thought-2", chunks: [{ type: "thought", text: "再查引用" }] },
+      { type: "tool_call", toolCall: { id: "tool-2", title: "Grep", kind: "grep", status: "complete" } },
+    ];
+    await act(async () => root.render(<ChatView entries={timeline} isLoading preWindowed />));
+
+    const chains = host.querySelectorAll('[data-slot="chat-activity-chain"]');
+    const toggles = host.querySelectorAll('[data-slot="chat-activity-chain-toggle"]');
+    expect(chains.length).toBe(2);
+    expect(toggles[0]?.getAttribute("aria-expanded")).toBe("false");
+    expect(toggles[1]?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  // plan 由状态面板展示、不进时间线；它落在末尾时活动链仍应按本轮加载保持展开。
+  test("末尾是 plan 条目时仍保持展开", async () => {
+    const timeline: ThreadEntry[] = [
+      ...entries("complete"),
+      {
+        type: "plan",
+        id: "plan-1",
+        entries: [{ content: "读取配置", priority: "high", status: "in_progress" }],
+      },
+    ];
+    await act(async () => root.render(<ChatView entries={timeline} isLoading preWindowed />));
+
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true");
+    expect(body()).not.toBeNull();
+  });
 });
