@@ -8,11 +8,12 @@ import {
   ResourceAccessDeniedError,
   type ResourceAction,
   type ResourceScope,
+  ValidationError,
 } from "@fenix/platform-sdk";
 import type { AgentConfigWriteData, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
 import { AGENT_CONFIG_LIST_ORDER } from "../repositories/agent-config-resource";
 import type { AgentConfigService } from "../services/agent-config-service";
-import { isBuiltInAgent } from "../services/config/agent-config";
+import { isBuiltInAgent, isValidAgentName } from "../services/config/agent-config";
 
 /**
  * AgentConfig 的资源应用 Facade：授权编排 + 跨资源（Environment / 运行实例）编排。
@@ -42,6 +43,8 @@ export interface AgentConfigCreateInput {
 /** 更新输入；`publicReadable` 不传表示"只改配置，不动公开受众"。 */
 export interface AgentConfigUpdateOptions {
   readonly publicReadable?: boolean;
+  /** 新名称；省略时保留原名，内置名称不能改入或改出。 */
+  readonly name?: string;
 }
 
 /** 重启结果：绑定该 Agent 的 Environment 与已完成 runtime 重启的持久 Instance。 */
@@ -56,8 +59,7 @@ export interface AgentConfigRestartResult {
  * 路由与其它调用方只依赖本接口，不依赖 `AgentConfigFacade` 的继承结构或私有依赖；测试可以提供实现
  * 而不构造真类（见 `@fenix/agent-config/server/testing`）。
  *
- * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 用名称或资源键定位（用户看到的是名称），
- * 已发布的 `/api/agents/:id` 用资源 ID 定位；两者的授权与可见性判定完全一致。
+ * `/web` 与 `/api` 都以资源 ID 管理配置；名称入口保留给偏好与系统编排，授权与可见性判定一致。
  */
 export interface AgentConfigFacadeApi {
   list(
@@ -239,7 +241,16 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     const nameOrKey = row.id;
     await this.requireAction(actor, "update", row.id);
 
-    const updated = await this.service.update({ resourceId: row.id, data });
+    if (options.name !== undefined) {
+      if (!isValidAgentName(options.name)) throw new ValidationError("Invalid agent name");
+      if (options.name !== row.name && (isBuiltInAgent(row.name) || isBuiltInAgent(options.name))) {
+        throw new ForbiddenError("Cannot rename from or to a built-in agent name");
+      }
+    }
+    const updated = await this.service.update({
+      resourceId: row.id,
+      data: { ...data, ...(options.name === undefined ? {} : { name: options.name }) },
+    });
     if (!updated) throw new NotFoundError(`Agent '${nameOrKey}' not found`);
 
     if (options.publicReadable !== undefined) {

@@ -144,11 +144,24 @@ function hasLabel(
   return candidates.includes(element?.getAttribute("aria-label") ?? "");
 }
 
-function EditorSectionFixture({ section = "capabilities" }: { section?: AgentEditorSection }) {
-  const form = useForm({ defaultValues: createAgentEditorDefaults() });
+function EditorSectionFixture({
+  section = "capabilities",
+  mode = "create",
+  name = "",
+  readOnly = false,
+  builtIn = false,
+}: {
+  section?: AgentEditorSection;
+  mode?: "create" | "edit";
+  name?: string;
+  readOnly?: boolean;
+  builtIn?: boolean;
+}) {
+  const form = useForm({ defaultValues: createAgentEditorDefaults(name) });
   const data: AgentEditorData = {
-    initialValues: createAgentEditorDefaults(),
+    initialValues: createAgentEditorDefaults(name),
     agentId: null,
+    builtIn,
     hindsightEnabled: false,
     sandboxEnabled: false,
     models: [],
@@ -165,14 +178,33 @@ function EditorSectionFixture({ section = "capabilities" }: { section?: AgentEdi
       section={section}
       form={form}
       data={data}
-      mode="create"
-      readOnly={false}
+      mode={mode}
+      readOnly={readOnly}
       onCopyAgentId={() => undefined}
     />
   );
 }
 
 describe("AgentResourcePicker 组件交互", () => {
+  // 名称字段只对内置身份或只读资源锁定，普通 Agent 编辑时应允许输入新名称。
+  test.each([
+    { name: "普通助手", builtIn: false, readOnly: false, disabled: false },
+    { name: "meta", builtIn: true, readOnly: false, disabled: true },
+    { name: "build", builtIn: true, readOnly: false, disabled: true },
+    { name: "普通助手", builtIn: false, readOnly: true, disabled: true },
+  ])("编辑名称输入状态 $name / readonly=$readOnly", async ({ name, builtIn, readOnly, disabled }) => {
+    const container = win.document.createElement("div");
+    win.document.body.appendChild(container);
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () =>
+      root?.render(
+        <EditorSectionFixture section="identity" mode="edit" name={name} builtIn={builtIn} readOnly={readOnly} />,
+      ),
+    );
+    const input = container.querySelector("#agent-editor-name");
+    expect(input?.hasAttribute("disabled")).toBe(disabled);
+  });
+
   // Stepper 必须限制知识库返回条数边界，并在达到边界时禁用对应操作。
   test("Stepper 限制范围并支持禁用状态", async () => {
     const values: number[] = [];

@@ -290,7 +290,11 @@ async function handleSet(
   const { facade, authoring } = getAgentConfigModule();
   const agent = await authoring.save(
     actor,
-    () => facade.updateById(actor, nameOrKey, toAgentConfigWriteData(data), { publicReadable }),
+    () =>
+      facade.updateById(actor, nameOrKey, toAgentConfigWriteData(data), {
+        publicReadable,
+        ...(typeof data.name === "string" ? { name: data.name } : {}),
+      }),
     readAgentBindingRequest(data),
     { enableMemory },
   );

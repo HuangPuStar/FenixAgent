@@ -129,7 +129,10 @@ export const AgentMutationBodySchema = z
 
 export const UpdateAgentRequestSchema = z
   .object({
-    data: z.record(z.string(), z.unknown()).describe("待更新的 Agent 字段。"),
+    data: z
+      .object({ name: z.string().optional().describe("新名称；内置名称不能改入或改出，同组织内须唯一。") })
+      .catchall(z.unknown())
+      .describe("待更新的 Agent 字段；省略的字段保留原值。"),
   })
   .describe("更新 Agent 请求体。");
 

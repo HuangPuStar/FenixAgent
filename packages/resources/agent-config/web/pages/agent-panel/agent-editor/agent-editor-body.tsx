@@ -153,7 +153,7 @@ export function AgentEditorBody(
   useEffect(() => props.registerCloseHandler(requestClose), [props.registerCloseHandler, requestClose]);
   const submit = form.handleSubmit(
     async (next) => {
-      if (props.mode === "create" && !isValidAgentNameInput(next.name.trim())) {
+      if (!isValidAgentNameInput(next.name.trim())) {
         form.setError("name", { message: "invalid" });
         setActiveSection("identity");
         toast.warning(t("editor.validationSummary"));

@@ -337,7 +337,10 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
               actor,
               toAgentResourceKey(organizationId, id),
               toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
-              { ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }) },
+              {
+                ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+                ...(payload.name === undefined ? {} : { name: payload.name }),
+              },
             ),
           readAgentBindingRequest(payload as unknown as Record<string, unknown>),
         );
@@ -359,6 +362,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
         401: ApiErrorResponseSchema,
         403: ApiErrorResponseSchema,
         404: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
         500: ApiErrorResponseSchema,
       },
       detail: {

@@ -37,6 +37,8 @@ import {
 export interface AgentEditorData {
   initialValues: AgentEditorValues;
   agentId: string | null;
+  /** 服务端按资源真实名称判定的内置身份。 */
+  builtIn?: boolean;
   /** 归属范围；缺失按本组织私有保守降级。 */
   scope?: ResourceScopeView;
   /** 当前主体对该 Agent 的有效动作；缺失按不可写保守降级。 */
@@ -129,6 +131,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     setProgressiveData({
       initialValues,
       agentId: detail?.id ?? null,
+      builtIn: detail?.builtIn,
       scope: detail?.scope,
       access: detail?.access,
       organizationName: detail?.organizationName,
@@ -236,6 +239,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     return {
       initialValues: resolvedInitialValues,
       agentId: typedDetail?.id ?? null,
+      builtIn: typedDetail?.builtIn,
       scope: typedDetail?.scope,
       access: typedDetail?.access,
       organizationName: typedDetail?.organizationName,
