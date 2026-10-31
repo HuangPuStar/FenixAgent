@@ -315,7 +315,8 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
       detail: {
         tags: ["SkillConfig"],
         summary: "创建新 Skill",
-        description: "创建新的 Skill；当前组织下已有同名 Skill 时返回 409 CONFLICT。",
+        description:
+          "创建新的 Skill；名称须为 1–64 字符的 ASCII kebab-case（小写英文字母、数字、单连字符，无首尾连字符）。当前组织下已有同名 Skill 时返回 409 CONFLICT。",
       },
     },
   );

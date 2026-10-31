@@ -11,6 +11,7 @@
 
 import { error as logError } from "@fenix/logger";
 import { ValidationError } from "@fenix/platform-sdk";
+import { isValidSkillName } from "../../skill-name";
 import { getSkillConfig } from "../config";
 import type {
   ImportConflictStrategy,
@@ -106,7 +107,7 @@ export function getGlobalSkillsDir(): string {
 // ────────────────────────────────────────────
 
 /**
- * 校验并规范化技能名称（去空白、拒绝空名称与路径穿越）。
+ * 校验新写入的技能名称（ASCII kebab-case，1–64 字符），不自动去空白或转小写。
  *
  * 写路径必须在**写资源行之前**调用一次：名称不合法属于请求错误，不应该在库里留下行之后才发现。
  *
@@ -114,11 +115,12 @@ export function getGlobalSkillsDir(): string {
  * AppError 子类"，协议层因此不必各自识别错误形状。
  */
 export function validateSkillName(name: string): string {
-  try {
-    return _deps.skillFs.assertValidSkillName(name);
-  } catch (error) {
-    throw new ValidationError(error instanceof Error ? error.message : "Skill 名称不合法");
+  if (!isValidSkillName(name)) {
+    throw new ValidationError(
+      "Skill 名称不合法：须为 1–64 个小写英文字母、数字或 '-'，不能以 '-' 开头或结尾，也不能包含连续的 '--'",
+    );
   }
+  return name;
 }
 
 /** SKILL.md 的绝对路径；名称先做安全校验，避免路径穿越。 */
@@ -346,6 +348,8 @@ export function groupUploadFilesForImport(files: UploadSkillFile[]): Map<string,
   if (files.length === 0) {
     throw _deps.skillFs.createSkillValidationError("未提供任何上传文件");
   }
+  // 分组会规范化目录名，必须先检查原始输入，防止空白名称被静默改写。
+  for (const file of files) validateSkillName(file.skillName);
   const grouped = _deps.skillFs.groupUploadFiles(files);
   if (grouped.size === 0) {
     throw _deps.skillFs.createSkillValidationError("未解析出任何 skill");

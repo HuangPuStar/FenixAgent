@@ -64,6 +64,7 @@
     "contentHint": "Markdown 格式的技能指令",
     "contentPlaceholder": "输入 Markdown 内容...",
     "nameRequired": "名称不能为空",
+    "nameInvalid": "须为 1–64 个小写英文字母、数字或 '-'，不能以 '-' 开头或结尾，也不能包含连续的 '--'",
     "contentRequired": "内容不能为空"
   },
   "upload": {

@@ -64,6 +64,7 @@
     "contentHint": "Markdown-formatted skill instructions",
     "contentPlaceholder": "Enter Markdown content...",
     "nameRequired": "Name cannot be empty",
+    "nameInvalid": "Use 1–64 lowercase ASCII letters, digits or '-'; do not start or end with '-', or include '--'",
     "contentRequired": "Content cannot be empty"
   },
   "upload": {
