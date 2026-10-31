@@ -45,6 +45,8 @@ Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 
 
 **约束**：更新 AgentConfig 时，Skill / McpServer / KnowledgeBase 的绑定**全量覆盖**——新集合替换旧集合，不留残留。
 
+控制台与外部 API 的创建、更新经 `AgentAuthoringFacade.save` 原子保存配置行、显式提交的资源绑定及记忆开关。配置行的认证授权和写入仍由 `AgentConfigFacade` 执行；未提交的绑定字段保持原样。全部数据库写入共用平台 `runInTransaction` 的事务上下文，任意校验或写入失败整体回滚，不留下创建半成品或部分更新。响应视图转换在事务提交后执行，不属于该事务。
+
 **跨组织**：引用的资源可来自其他组织。Agent Config 自身也可标为公开供其他组织使用——可引用启动，不可修改。
 
 ## 上下级关系

@@ -4,7 +4,7 @@
  * ## 它解决的是什么
  *
  * 给某个用户签发上游模型网关 Key 之前，必须回答"这个用户现在还能不能用这个 Agent"。这个判断需要
- * 三样东西：身份表（用户、组织、成员关系）、`agent_config` 资源行的归属、以及 agent_config 的**真实
+ * 三样东西：身份表（用户、组织、成员关系）、`agent_config` 资源行是否存在、以及 agent_config 的**真实
  * 授权规则**（`use` 动作）。三样都在本包之外：身份与授权由 `@fenix/identity` / `@fenix/access-control`
  * 拥有，`agent_config` 的资源定义由 `@fenix/agent-config` 拥有。
  *
@@ -43,6 +43,12 @@ export type SubjectVerdict =
   | { readonly valid: false; readonly reason: SubjectRejectionReason };
 
 export interface SubjectVerificationInput {
+  /**
+   * **运行侧**组织（调用方），不是 Agent 配置的归属组织。
+   *
+   * 网关是通用池：凭证签给正在跑 Agent 的人，跨组织共享时两者不同，用量记在调用方账上。实现不得拿它
+   * 与配置归属做相等比较——那会把公开共享的 Agent 一律判成不可用。
+   */
   readonly organizationId: string;
   readonly userId: string;
   readonly agentConfigId: string;

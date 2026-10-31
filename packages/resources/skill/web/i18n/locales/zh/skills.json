@@ -64,9 +64,14 @@
     "contentHint": "Markdown 格式的技能指令",
     "contentPlaceholder": "输入 Markdown 内容...",
     "nameRequired": "名称不能为空",
+    "nameInvalid": "须为 1–64 个小写英文字母、数字或 '-'，不能以 '-' 开头或结尾，也不能包含连续的 '--'",
     "contentRequired": "内容不能为空"
   },
   "upload": {
+    "noSkillFolders": "未找到技能目录",
+    "missingSkillMdIn": "以下目录缺少 SKILL.md：{{names}}",
+    "duplicateSkillNames": "上传的技能名称重复：{{names}}",
+    "invalidSkillNames": "以下技能目录名称格式不正确：{{names}}。{{format}}",
     "selectFolder": "点击选择包含技能的文件夹",
     "selectFolderHint": "每个子目录将被识别为一个 skill，目录内需包含 SKILL.md",
     "selectedDirs": "已选择 {{count}} 个目录",

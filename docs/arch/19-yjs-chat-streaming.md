@@ -735,6 +735,8 @@ interface ClientAction<TType extends string, TPayload> {
 
 浏览器在收到确定成功回执前保留原始文本、图片与附件引用。确定拒绝后展示保留消息，用户明确选择“发送到当前会话”才建立新意图；共享投影切换不会自动改投。已交接 socket 后断线、回执丢失或 `ACTION.OUTCOME_UNKNOWN` 均显示未知结果，保留原幂等键且不提供盲目重发按钮；核对会话后由用户处理。
 
+前端命令连接的 `connected` 表示当前 socket 已打开且已收到有效命令代次；物理 open 至代次到达期间保持 `connecting`，禁止业务发送。Yjs state-vector 握手独立进行，命令就绪也不代表历史同步已完成。会话自动引导仅在命令就绪后恢复；load/resume 未成功写入 socket 不得标记已进入，自动创建只在获得本次创建回执后标记成功，在途请求须去重。断线重连须等待新 socket 的代次，旧连接迟到帧不能推进新连接状态。
+
 ```ts
 interface ActionAck {
   type: "action_ack";

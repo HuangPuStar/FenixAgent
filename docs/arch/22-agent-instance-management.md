@@ -132,8 +132,10 @@ isDefault = true
 
 - 精确查询并按 owner 与 Environment fail-closed 授权；
 - 不要求其 `creationSource` 与当前线路一致；
-- stopped/failed 时按同一 uid 懒启动；
+- stopped/failed 且没有用户停止意图时按同一 uid 懒启动；
 - uid 不存在、owner 不匹配或状态不可进入时不得回退自动 Instance。
+
+`POST /web/environments/:id/enter` 表达用户主动进入：通过环境和实例归属校验后，由服务端指定 `activation: "explicit"`，经同一个 Runtime Coordinator 的 `start` 操作复用就绪实体或启动原实例。它允许启动用户已停止的实例，保留 `instanceUid` 与会话标识；启动成功后才解除停止意图，失败保留原始错误与停止意图。并发进入共享启动槽位，较新的 stop/delete 可以取消启动。后台连接、API 和 Workflow 仍使用默认 automatic ensure，不能自行解除停止意图；显式 restart 始终停止后重新启动。
 
 ## 5. 标识与 Session 边界
 
@@ -177,19 +179,19 @@ Controller、Core 和 Machine adapter 只报告底层事实；route 不得直接
 冲突优先级固定为：
 
 ```text
-delete > stop > restart > ensure/enter
+delete > stop > start/restart > reclaim > ensure
 ```
 
 - 同一 `instanceUid` 的全部生命周期请求必须经过同一进程内 coordinator entry；
-- `enter` 完成 DB 选择与授权后调用 `ensure`，不是独立 runtime operation；
-- 并发 ensure、restart、stop、delete 在各自允许范围内 singleflight；
+- `enter` 完成 DB 选择与授权后调用 `start`；复用已就绪实体，与在途的 `start` / `ensure` 合并，成功后解除停止意图；
+- 并发 ensure、start、restart、reclaim、stop、delete 在各自允许范围内 singleflight；
 - 更高优先级操作使低优先级 generation 失效；
 - 单个 waiter 取消只取消自己的等待，不取消共享 operation；
 - 所有异步结果必须携带捕获时的 `runtimeGeneration`；迟到结果只能补偿清理，不得恢复旧状态；
 - operation、gate、generation、reservation、Promise 和 `AbortController` 全部只在内存维护；
 - coordinator 不持有 DB 事务等待 Controller、Machine、relay 或 Y.Doc。
 
-`unknown` 禁止直接 ensure、restart 或 delete，必须先完成 clean-slate/reconcile，以避免重复进程。
+`unknown` 拒绝自动 ensure，允许显式 start、stop、restart、delete 重新确认状态；start 必须先确认旧运行实体已停止，再启动新代，以避免重复进程。
 
 ## 8. Stop、Restart 与 Delete
 

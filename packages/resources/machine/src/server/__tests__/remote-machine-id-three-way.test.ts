@@ -12,24 +12,21 @@ const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";
 const AGENT_BOUND_MACHINE_ID = "mach_agent_bound";
 
-/** Agent 配置读取的入参记录：组织上下文必须原样传给端口（E2 的缺口就是这里少传了 organizationId）。 */
-const agentConfigReads: Array<{ agentConfigId: string; organizationId: string }> = [];
+/** Agent 配置读取的入参记录：按 ID 读，不带组织条件。 */
+const agentConfigReads: Array<{ agentConfigId: string }> = [];
 
 /**
  * 装配 Agent 配置取数端口的替身。
  *
- * 语义与宿主注入的真实实现一致（`getAgentConfigById(id, organizationId)` 按归属读）：配置属于
- * `ownerOrganizationId`，其余组织一律读不到。因此「环境属于另一个组织」这件事在用例里表现为端口返回
- * null——真实实现里由 owner 的归属谓词完成，本包不复制那条规则。
+ * 语义与宿主注入的真实实现一致（`getAgentConfigById(id)` 无归属读）：节点按 ID 解析，随节点返回它所属
+ * 的组织。环境属主与绑定时的可见性校验在更上游完成，本包不复制那条规则。
  */
-function stubAgentConfigOwnedBy(ownerOrganizationId: string): void {
+function stubAgentConfigDeclaringMachine(ownerOrganizationId: string): void {
   agentConfigReads.length = 0;
   stubMachineAgentConfig({
     getExecutionNode: async (input) => {
-      agentConfigReads.push({ ...input });
-      return input.organizationId === ownerOrganizationId
-        ? { kind: "machine", machineId: AGENT_BOUND_MACHINE_ID }
-        : null;
+      agentConfigReads.push({ agentConfigId: input.agentConfigId });
+      return { kind: "machine", machineId: AGENT_BOUND_MACHINE_ID, organizationId: ownerOrganizationId };
     },
     isAgentConfigBoundToMachine: async () => false,
     bindMachineIdByAgentName: async () => {},
@@ -126,19 +123,19 @@ describe("getRemoteMachineId 三分（422 vs 503 vs 返回）", () => {
         agentConfigId: "cfg-1",
       }),
     });
-    stubAgentConfigOwnedBy("org-1");
+    stubAgentConfigDeclaringMachine("org-1");
 
     const result = await getRemoteMachineId(ENV_ID);
 
     expect(result).toBe(AGENT_BOUND_MACHINE_ID);
-    expect(agentConfigReads).toEqual([{ agentConfigId: "cfg-1", organizationId: "org-1" }]);
+    expect(agentConfigReads).toEqual([{ agentConfigId: "cfg-1" }]);
   });
 
-  test("环境绑定的 Agent 配置属于别的组织 → 不按该配置路由，退回默认机器", async () => {
-    // §10.3 多租户隔离：配置属于 org-1、环境属于 org-2，归属读返回 null，文件请求不得落到别的组织的机器上。
-    // 同时钉住调用形态——读取必须带组织上下文，缺了它跨组织配置会被当成命中（E2 的缺口）。
+  test("环境绑定的 Agent 配置属于别的组织 → 仍按配置声明的机器路由", async () => {
+    // 显式机器是 Agent 的依赖：跨组织共享时实例就跑在这台机器上，文件请求必须跟过去，
+    // 否则实例在共享方的机器上运行、文件却写到调用方默认机器，形成分裂。
     stubMachineConfig({ defaultMachineId: MACHINE_ID });
-    stubMachineLookup([{ id: MACHINE_ID }]);
+    stubMachineLookup([{ id: AGENT_BOUND_MACHINE_ID }]);
     stubFileWsTransport({ isFileWsConnected: () => true });
     stubMachineEnvironment({
       getEnvironmentById: async () => ({
@@ -148,11 +145,11 @@ describe("getRemoteMachineId 三分（422 vs 503 vs 返回）", () => {
         agentConfigId: "cfg-of-org-1",
       }),
     });
-    stubAgentConfigOwnedBy("org-1");
+    stubAgentConfigDeclaringMachine("org-1");
 
     const result = await getRemoteMachineId(ENV_ID);
 
-    expect(result).toBe(MACHINE_ID);
-    expect(agentConfigReads).toEqual([{ agentConfigId: "cfg-of-org-1", organizationId: "org-2" }]);
+    expect(result).toBe(AGENT_BOUND_MACHINE_ID);
+    expect(agentConfigReads).toEqual([{ agentConfigId: "cfg-of-org-1" }]);
   });
 });

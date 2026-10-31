@@ -4,6 +4,8 @@ import type {
   UploadSkillFileItem,
   UploadSkillSummary,
 } from "@fenix/web-runtime/types/config";
+import type { TFunction } from "i18next";
+import { isValidSkillName } from "../../src/skill-name";
 
 function normalizeRelativePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");
@@ -48,15 +50,16 @@ export function parseSkillUploadFiles(files: File[]): UploadSkillSummary[] {
   return nestedItems.length > 0 ? nestedItems : topLevelItems;
 }
 
-export function validateUploadBatch(items: UploadSkillSummary[]): string | null {
+/** 校验实际导入的目录，并使用界面语言报告批次错误。 */
+export function validateUploadBatch(items: UploadSkillSummary[], t: TFunction): string | null {
   if (items.length === 0) {
-    return "No skill folders found";
+    return t("upload.noSkillFolders");
   }
 
   const validItems = items.filter((item) => item.hasSkillMd);
   const missingSkillMd = items.filter((item) => !item.hasSkillMd).map((item) => item.skillName);
   if (validItems.length === 0 && missingSkillMd.length > 0) {
-    return `Missing SKILL.md in: ${missingSkillMd.join(", ")}`;
+    return t("upload.missingSkillMdIn", { names: missingSkillMd.join(", ") });
   }
 
   const seen = new Set<string>();
@@ -70,7 +73,12 @@ export function validateUploadBatch(items: UploadSkillSummary[]): string | null 
     seen.add(normalizedName);
   }
   if (duplicates.size > 0) {
-    return `Duplicate skill names in upload: ${[...duplicates].join(", ")}`;
+    return t("upload.duplicateSkillNames", { names: [...duplicates].join(", ") });
+  }
+
+  const invalidNames = validItems.filter((item) => !isValidSkillName(item.skillName)).map((item) => item.skillName);
+  if (invalidNames.length > 0) {
+    return t("upload.invalidSkillNames", { names: invalidNames.join(", "), format: t("form.nameInvalid") });
   }
 
   return null;

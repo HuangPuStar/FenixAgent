@@ -5,10 +5,7 @@ import { Window } from "happy-dom";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useForm } from "react-hook-form";
-import { AgentEditorSections } from "../pages/agent-panel/agent-editor/AgentEditorSections";
-import { AgentResourcePicker } from "../pages/agent-panel/agent-editor/AgentResourcePicker";
-import { EditorPagination, EditorStepperField } from "../pages/agent-panel/agent-editor/agent-editor-controls";
-import { createAgentEditorDefaults } from "../pages/agent-panel/agent-editor/agent-editor-model";
+import type { AgentEditorSection } from "../pages/agent-panel/agent-editor/AgentEditorSections";
 import type { AgentEditorData } from "../pages/agent-panel/agent-editor/use-agent-editor";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,8 +17,12 @@ const originalGlobals = new Map(
     "document",
     "navigator",
     "HTMLElement",
+    "HTMLInputElement",
+    "customElements",
     "Element",
     "Node",
+    "NodeFilter",
+    "Event",
     "CustomEvent",
     "getComputedStyle",
     "MutationObserver",
@@ -36,8 +37,12 @@ globals.window = win;
 globals.document = win.document;
 globals.navigator = win.navigator;
 globals.HTMLElement = win.HTMLElement;
+globals.HTMLInputElement = win.HTMLInputElement;
+globals.customElements = win.customElements;
 globals.Element = win.Element;
 globals.Node = win.Node;
+globals.NodeFilter = win.NodeFilter;
+globals.Event = win.Event;
 globals.CustomEvent = win.CustomEvent;
 globals.getComputedStyle = win.getComputedStyle.bind(win);
 globals.MutationObserver = win.MutationObserver;
@@ -51,6 +56,14 @@ globals.cancelAnimationFrame = win.cancelAnimationFrame.bind(win);
 Object.defineProperty(win, "matchMedia", {
   value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
 });
+
+// Radix Portal 的布局 effect 在模块加载时判断 DOM，必须先安装浏览器环境才能验证弹框焦点。
+const { AgentEditorSections } = await import("../pages/agent-panel/agent-editor/AgentEditorSections");
+const { AgentResourcePicker } = await import("../pages/agent-panel/agent-editor/AgentResourcePicker");
+const { EditorPagination, EditorStepperField } = await import(
+  "../pages/agent-panel/agent-editor/agent-editor-controls"
+);
+const { createAgentEditorDefaults } = await import("../pages/agent-panel/agent-editor/agent-editor-model");
 
 let root: Root | null = null;
 afterEach(() => {
@@ -131,7 +144,7 @@ function hasLabel(
   return candidates.includes(element?.getAttribute("aria-label") ?? "");
 }
 
-function CapabilitiesFixture() {
+function EditorSectionFixture({ section = "capabilities" }: { section?: AgentEditorSection }) {
   const form = useForm({ defaultValues: createAgentEditorDefaults() });
   const data: AgentEditorData = {
     initialValues: createAgentEditorDefaults(),
@@ -149,7 +162,7 @@ function CapabilitiesFixture() {
   };
   return (
     <AgentEditorSections
-      section="capabilities"
+      section={section}
       form={form}
       data={data}
       mode="create"
@@ -315,7 +328,7 @@ describe("AgentResourcePicker 组件交互", () => {
     const container = win.document.createElement("div");
     win.document.body.appendChild(container);
     root = createRoot(container as unknown as HTMLElement);
-    await act(async () => root?.render(<CapabilitiesFixture />));
+    await act(async () => root?.render(<EditorSectionFixture />));
     const tabs = Array.from(container.querySelectorAll<"button">("button")).filter(
       (button) => button.getAttribute("role") === "tab",
     );
@@ -333,3 +346,32 @@ describe("AgentResourcePicker 组件交互", () => {
     expect(win.document.activeElement?.id).toBe(tabs[1].id);
   });
 });
+
+for (const action of ["dialog.cancel", "resource.publicWarningConfirm"] as const) {
+  // 无论取消还是确认公开，关闭确认框后焦点都应回到共享开关，方便继续键盘操作。
+  test(`共享确认框 ${action} 后恢复开关焦点`, async () => {
+    const container = win.document.createElement("div");
+    win.document.body.appendChild(container);
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () => root?.render(<EditorSectionFixture section="sharing" />));
+    const toggle = Array.from(container.querySelectorAll("button")).find(
+      (item) => item.getAttribute("role") === "switch",
+    );
+    if (!toggle) throw new Error("expected sharing switch");
+    act(() => toggle?.focus());
+    await act(async () => toggle?.click());
+    const dialog = win.document.querySelector('[role="alertdialog"]');
+    expect(dialog).not.toBeNull();
+    const candidates = copyCandidates(action, {});
+    const button = Array.from(dialog?.querySelectorAll<"button">("button") ?? []).find((item) =>
+      candidates.includes(item.textContent ?? ""),
+    );
+    expect(button).toBeDefined();
+    act(() => button?.focus());
+    await act(async () => button?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(win.document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(win.document.activeElement).toBe(toggle);
+    expect(toggle?.getAttribute("aria-checked")).toBe(String(action !== "dialog.cancel"));
+  });
+}

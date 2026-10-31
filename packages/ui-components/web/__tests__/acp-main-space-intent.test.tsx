@@ -128,8 +128,8 @@ async function renderMain(overrides: Record<string, unknown> = {}): Promise<Main
         created.push(1);
         return createImpl();
       },
-      onLoadSession: () => {},
-      onResumeSession: () => {},
+      onLoadSession: () => true,
+      onResumeSession: () => true,
       onRenameSession: () => {},
       onDeleteSession: () => {},
       onRespondPermission: () => {},

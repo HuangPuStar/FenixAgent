@@ -13,8 +13,9 @@ import { launchSpecDeps, modelRow, providerRow, scopedAgent } from "./fixtures";
  * `modelId` 时取组织内第一个可用模型）、**网关凭证**（`kind = "gateway"` 的 Provider 用宿主注入的
  * 凭证解析器换密钥，而不是用 Provider 行里的明文 key）。
  *
- * 两个用户标识必须分开：回退选模型用 **Agent 配置属主**，网关凭证用 **实例属主**——后者与主体复验同源，
- * 写成同一个会让"谁在跑这个 Agent"与"这个配置归谁"混为一谈。
+ * 组织与用户都取**运行侧**（调用方组织 + 实例属主）：网关是通用池，凭证与预算记在跑 Agent 的人账上；
+ * 缺省 modelId 的兜底也只能用调用方自己的模型。显式 `modelId` 指向的 Provider/Model 是 Agent 的依赖，
+ * 按行自身的组织解析，跨组织共享时照常可用。
  *
  * 迁移说明（W4b）：本文件承接 `agent-runtime` 的 `round43` / `launch-spec-provider-model-access` /
  * `launch-spec-agent-sharing-access` / `launch-spec-model-gateway` / `launch-spec-builder-errors` 里的
@@ -64,7 +65,11 @@ describe("显式模型引用", () => {
       provider: providerRow(),
     });
 
-    const model = await resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1");
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1" }),
+      organizationId: "org-1",
+      userId: "user-1",
+    });
 
     expect(model).toEqual({
       provider: "openai",
@@ -84,7 +89,11 @@ describe("显式模型引用", () => {
       provider: providerRow({ protocol: "anthropic", name: "anthropic-direct" }),
     });
 
-    const model = await resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1");
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1" }),
+      organizationId: "org-1",
+      userId: "user-1",
+    });
 
     expect(model.protocol).toBe("anthropic");
     expect(model.provider).toBe("anthropic-direct");
@@ -94,7 +103,11 @@ describe("显式模型引用", () => {
   test("未配置 modalities 时省略该字段", async () => {
     const deps = depsWithModels({ model: modelRow(), provider: providerRow() });
 
-    const model = await resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1");
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1" }),
+      organizationId: "org-1",
+      userId: "user-1",
+    });
 
     expect(model.modalities).toBeUndefined();
   });
@@ -107,7 +120,11 @@ describe("显式模型引用", () => {
     });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("INVALID_CONFIG");
@@ -118,7 +135,11 @@ describe("显式模型引用", () => {
   test("未解析的环境变量引用退化为空密钥", async () => {
     const deps = depsWithModels({ model: modelRow(), provider: providerRow({ apiKey: "{env:MISSING_KEY}" }) });
 
-    const model = await resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1");
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1" }),
+      organizationId: "org-1",
+      userId: "user-1",
+    });
 
     expect(model.apiKey).toBe("");
   });
@@ -128,7 +149,11 @@ describe("显式模型引用", () => {
     const deps = depsWithModels({ model: undefined, provider: providerRow() });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("INVALID_CONFIG");
@@ -140,7 +165,11 @@ describe("显式模型引用", () => {
     const deps = depsWithModels({ model: modelRow(), provider: undefined });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("INVALID_CONFIG");
@@ -156,7 +185,11 @@ describe("显式模型引用", () => {
       provider: providerRow({ id: "provider-1", organizationId: "org-other", name: "openai-shared" }),
     });
 
-    const model = await resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1");
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1" }),
+      organizationId: "org-1",
+      userId: "user-1",
+    });
 
     expect(model.provider).toBe("openai-shared");
     expect(model.model).toBe("gpt-4o");
@@ -172,7 +205,11 @@ describe("显式模型引用", () => {
     });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("INVALID_CONFIG");
@@ -181,25 +218,30 @@ describe("显式模型引用", () => {
 });
 
 describe("无 modelId 时的模型回退", () => {
-  // 配置没指定模型时取组织内第一个可用模型：回退用的用户标识取配置属主（表达"这个配置自己没有指定"）。
-  test("按配置属主的组织取首个可用模型", async () => {
+  // 配置没指定模型时取运行组织内第一个可用模型："这个配置自己没有指定"，只能用调用方自己的模型。
+  test("按运行组织取首个可用模型", async () => {
+    const listedOrganizations: string[] = [];
     const deps = launchSpecDeps({
       models: createModelService({
         modelRepository: createStubModelRepository({ findFirstByProviderUnscoped: async () => modelRow() }),
         providerRepository: createStubProviderRepository({
-          listByOrganizationUnscoped: async () => [providerRow()],
+          listByOrganizationUnscoped: async ({ organizationId }) => {
+            listedOrganizations.push(organizationId);
+            return [providerRow()];
+          },
         }),
       }),
     });
 
-    const model = await resolveModelConfig(
-      deps,
-      scopedAgent({ modelId: null, organizationId: "org-1", ownerUserId: "owner-1" }),
-      "user-1",
-    );
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: null, organizationId: "org-owner", ownerUserId: "owner-1" }),
+      organizationId: "org-caller",
+      userId: "user-1",
+    });
 
     expect(model.model).toBe("gpt-4o");
     expect(model.apiKey).toBe("resolved-key");
+    expect(listedOrganizations).toEqual(["org-caller"]);
   });
 
   // 组织内一个模型都没有时失败并引导先配置模型：这条回退不能静默产出一个不可运行的默认模型。
@@ -224,9 +266,9 @@ describe("模型网关凭证", () => {
   /** 网关 Provider：行里的 apiKey 是占位，真实密钥由凭证服务签发。 */
   const gatewayProvider = () => providerRow({ kind: "gateway", gatewayType: "litellm", apiKey: "inline-key" });
 
-  // 网关 Provider 用凭证服务的签发结果，而不是 Provider 行里的 apiKey；请求主体是**实例属主**，
-  // 与主体复验同源（网关凭证按"谁在跑这个 Agent"签发）。
-  test("用凭证服务签发的密钥并携带实例属主", async () => {
+  // 网关 Provider 用凭证服务的签发结果，而不是 Provider 行里的 apiKey；请求主体是**运行侧**的
+  // 组织 + 实例属主，与主体复验同源（网关凭证按"谁在跑这个 Agent"签发，跨组织共享时花调用方的预算）。
+  test("用凭证服务签发的密钥并携带运行侧组织与实例属主", async () => {
     const seen: unknown[] = [];
     const resolver: RuntimeCredentialResolver = async (input) => {
       seen.push(input);
@@ -242,15 +284,20 @@ describe("模型网关凭证", () => {
       resolveRuntimeCredential: resolver,
     });
 
-    const model = await resolveModelConfig(
-      deps,
-      scopedAgent({ modelId: "model-1", organizationId: "org-1" }),
-      "instance-owner",
-    );
+    const model = await resolveModelConfig(deps, {
+      agentConfig: scopedAgent({ modelId: "model-1", organizationId: "org-owner" }),
+      organizationId: "org-caller",
+      userId: "instance-owner",
+    });
 
     expect(model.apiKey).toBe("issued-key");
     expect(seen).toEqual([
-      { gatewayProviderId: "provider-1", organizationId: "org-1", userId: "instance-owner", agentConfigId: "agent-1" },
+      {
+        gatewayProviderId: "provider-1",
+        organizationId: "org-caller",
+        userId: "instance-owner",
+        agentConfigId: "agent-1",
+      },
     ]);
   });
 
@@ -267,7 +314,11 @@ describe("模型网关凭证", () => {
     });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("MODEL_GATEWAY_BUDGET_EXHAUSTED");
@@ -286,7 +337,11 @@ describe("模型网关凭证", () => {
     });
 
     const error = await captureConfigError(() =>
-      resolveModelConfig(deps, scopedAgent({ modelId: "model-1" }), "user-1"),
+      resolveModelConfig(deps, {
+        agentConfig: scopedAgent({ modelId: "model-1" }),
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
     );
 
     expect(error.code).toBe("INVALID_CONFIG");

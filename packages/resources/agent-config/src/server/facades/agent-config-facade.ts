@@ -308,9 +308,13 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
   private async restartRow(actor: ActorContext, row: ScopedAgentConfigRow): Promise<AgentConfigRestartResult> {
     await this.requireAction(actor, "use", row.id);
 
+    // `use` 也由公开受众授予：重启只作用于调用方当前组织的绑定环境，否则跨组织用户能停掉资源
+    // 所属组织的实例，而前端对话框展示的是调用方自己的实例。
+    const organizationId = actor.activeOrganizationId;
+    if (organizationId === undefined) return { environmentIds: [], restartedInstanceIds: [] };
     const environmentIds = await this.service.listBoundEnvironmentIds({
       resourceId: row.id,
-      organizationId: row.organizationId,
+      organizationId,
     });
     if (environmentIds.length === 0) return { environmentIds: [], restartedInstanceIds: [] };
 

@@ -59,6 +59,9 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   "btn.edit": "Edit",
   "btn.delete": "Delete",
   "btn.createSkill": "Add Skill",
+  "btn.uploadSkill": "Import",
+  "upload.invalidSkillNames": "Invalid skill folder names: {{names}}. {{format}}",
+  "form.nameInvalid": "Use lowercase letters, digits or '-'",
   "toast.skillUpdated": "Skill updated",
   "toast.skillDeleted": "Skill deleted",
 };
@@ -366,6 +369,29 @@ describe("AgentSkillsPage 列表加载状态", () => {
 });
 
 describe("AgentSkillsPage 写入反馈", () => {
+  // 选择无效目录时立即给出名称提示，提交也不能把无效批次发送到服务端。
+  test("无效上传目录显示提示并阻止提交", async () => {
+    const writes: string[] = [];
+    handler = (url, init) => {
+      if (init?.method && init.method !== "GET") writes.push(url);
+      return listSuccess([skill]);
+    };
+    await render();
+    await click(buttonByText(TEXT.btn.uploadSkill) as HTMLButtonElement);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(["# demo"], "SKILL.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "Demo/SKILL.md" });
+    Object.defineProperty(input, "files", { value: [file] });
+    await act(async () => {
+      input?.dispatchEvent(new win.Event("change", { bubbles: true }) as unknown as Event);
+    });
+    expect(text()).toContain("Invalid skill folder names: Demo.");
+    await click(buttonByTestId("form-dialog-submit") as HTMLButtonElement);
+    expect(writes).toEqual([]);
+    expect(toastErrorCalls).toContain("Invalid skill folder names: Demo. Use lowercase letters, digits or '-'");
+  });
+
   // 更新成功后必须有可见反馈，否则用户只能从「对话框关了」推断保存是否生效。
   test("更新成功后给出 toast 反馈并刷新列表", async () => {
     const methods: string[] = [];

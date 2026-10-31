@@ -61,21 +61,6 @@ export function readAgentBindingRequest(data: Record<string, unknown>): AgentBin
 }
 
 /**
- * 请求里是否显式出现了任何一个绑定字段。
- *
- * 调用方（协议层）用它跳过"没有任何绑定要写"的保存：既不产生多余的跨资源调用，也不让"未出现绑定字段"
- * 的请求经过绑定编写路径。
- */
-export function hasAgentBindings(request: AgentBindingRequest): boolean {
-  return (
-    request.knowledge !== undefined ||
-    request.skillIds !== undefined ||
-    request.mcpIds !== undefined ||
-    request.siteAppIds !== undefined
-  );
-}
-
-/**
  * 将 skill 标识符数组（可能是 UUID 或名称）统一解析为 UUID。
  * 模板和 AI 生成的流程可能传入 skill 名称而非 UUID，需要在此解析。
  *

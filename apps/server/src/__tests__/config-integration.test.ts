@@ -16,7 +16,12 @@ import {
   resetModelManagementModuleForTesting,
 } from "@fenix/model-management/server/testing";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb, stubModuleConfig } from "@fenix/platform-sdk/testing";
+import {
+  initializeTestApplicationInfrastructure,
+  resetAllStubs,
+  stubDb,
+  stubModuleConfig,
+} from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -142,6 +147,8 @@ describe("Config Route Integration", () => {
     stubModuleConfig("skill", { skillDir: tempSkillDir, baseUrl: "http://rcs.test" });
     process.env.RCS_API_KEYS = "test-key";
     stubDb({
+      transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) =>
+        callback({ execute: async () => {} }),
       select: () => ({
         from: () => ({ where: async () => [] }),
       }),
@@ -296,6 +303,7 @@ describe("Config Route Integration", () => {
 
   // 共享只读 Agent 的写入拒绝由 Facade 抛出宿主错误，路由映射为 403。
   test("agents set 拒绝修改外部共享 Agent", async () => {
+    initializeTestApplicationInfrastructure();
     installAgentConfigModule(
       createStubAgentConfigServerModule({
         facade: createStubAgentConfigFacade({

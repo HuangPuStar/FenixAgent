@@ -47,6 +47,8 @@ function json(path: string, method: string, body: Record<string, unknown> = {}) 
 /** 关联资源标签解析会在绑定集合非空时查 DB；这些用例只关心绑定 ID，因此让查询整体返回空表。 */
 function installSafeDb() {
   stubDb({
+    transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) =>
+      callback({ execute: async () => {} }),
     select: () => ({
       from: () => ({
         where: () => ({

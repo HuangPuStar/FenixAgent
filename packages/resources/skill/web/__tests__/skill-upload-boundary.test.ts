@@ -1,6 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import type { UploadSkillSummary } from "@fenix/web-runtime/types/config";
-import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../lib/skill-upload";
+import { createInstance } from "i18next";
+import { skillResources } from "../i18n";
+import {
+  buildSkillUploadFormData,
+  parseSkillUploadFiles,
+  validateUploadBatch as validateBatch,
+} from "../lib/skill-upload";
+
+const i18n = createInstance();
+await i18n.init({
+  lng: "en",
+  fallbackLng: "en",
+  interpolation: { escapeValue: false },
+  resources: { en: { translation: skillResources.en }, zh: { translation: skillResources.zh } },
+});
+const validateUploadBatch = (items: UploadSkillSummary[]) => validateBatch(items, i18n.getFixedT("en"));
 
 function file(path: string): File {
   const item = new File(["content"], path.split(/[\\/]/).at(-1) ?? "file.txt");
@@ -74,6 +89,18 @@ describe("技能上传纯逻辑边界", () => {
   test("接受单个完整技能", () => expect(validateUploadBatch([skill("demo", true)])).toBeNull());
   // 不同名称的完整技能可同批上传。
   test("接受不同名称技能", () => expect(validateUploadBatch([skill("one", true), skill("two", true)])).toBeNull());
+  // 上传前应按界面语言列出不合法目录，并复用创建技能的格式提示。
+  test("中英文提示不合法目录名", () => {
+    const items = parseSkillUploadFiles([file("bundle/Demo/SKILL.md"), file("bundle/中文/SKILL.md")]);
+    for (const language of ["en", "zh"] as const) {
+      const error = validateBatch(items, i18n.getFixedT(language));
+      expect(error).toContain("Demo, 中文");
+      expect(error).toContain(skillResources[language].form.nameInvalid);
+    }
+  });
+  // 不含入口文件的目录不会导入，因此不应因其名称阻止其他合法技能上传。
+  test("忽略不导入目录的名称", () =>
+    expect(validateUploadBatch([skill("good", true), skill("Invalid_Draft", false)])).toBeNull());
   // 表单清单必须排除无入口技能。
   test("清单排除无效技能", () =>
     expect(getManifest(buildSkillUploadFormData([skill("good", true), skill("bad", false)]))).toEqual([

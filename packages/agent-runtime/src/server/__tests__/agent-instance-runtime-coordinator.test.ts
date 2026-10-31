@@ -5,7 +5,8 @@ import type {
   IAgentInstanceRepo,
   InstanceCreationSource,
 } from "../repositories";
-import { AgentInstanceRuntimeCoordinator, type RuntimeAdapter } from "../services/agent-instance-runtime-coordinator";
+import { AgentInstanceRuntimeCoordinator } from "../services/agent-instance-runtime-coordinator";
+import type { RuntimeAdapter } from "../services/agent-instance-runtime-types";
 import { AgentInstanceService } from "../services/agent-instance-service";
 
 const instance: AgentInstanceRecord = {

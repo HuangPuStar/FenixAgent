@@ -18,13 +18,16 @@ export type AgentExecutionNode =
 /**
  * 已解析的配置投影。
  *
- * 刻意不是资源行：不含归属列、不含授权模型、也不含 `access` 元数据。调用方要的是"这个 Agent 叫什么、
- * 跑在哪"，多给字段只会诱使调用方自己判权限。
+ * 刻意不是资源行：不含授权元数据与 `access`，调用方要的是"这个 Agent 叫什么、跑在哪"。`organizationId`
+ * 是资源归属事实，不是授权输入：调用方不得据此自行判权限。跨组织共享的 Agent 照常继承它声明的执行节点
+ * （显式机器 / 显式沙盒池是它的依赖），只有"未指定"才由调用方的默认链决定，故本字段用于区分这两种情形。
  */
 export interface AgentConfigLookupResult {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  /** 资源归属组织；用于区分"资源声明的节点"与"调用方组织的默认池"。 */
+  readonly organizationId: string;
   /** 未绑定任何执行节点时为 null（空 `agentNode` 且无 `machineId`）。 */
   readonly node: AgentExecutionNode | null;
 }
@@ -36,6 +39,8 @@ export interface AgentConfigLookupResult {
  * null 决定列值是否生效，因此这里原样透传两列、不做归一（节点解析规则只有 `resolveAgentNode` 一份）。
  */
 export interface AgentConfigExecutionFields {
+  /** 资源归属组织；显式沙盒池按它解析（池查询按池所属组织收窄），实例仍归调用方。 */
+  readonly organizationId: string;
   /** `agent_config.machine_id` 列值原样透传（空串表示未绑定，`||` 语义由调用方保留）。 */
   readonly machineId: string | null;
   /** `agent_config.agent_node` 原始 JSON；null（历史数据）与 `{}`（显式清空）对调用方含义不同。 */

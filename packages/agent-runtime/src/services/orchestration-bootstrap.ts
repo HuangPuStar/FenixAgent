@@ -143,6 +143,7 @@ export function createExecutionNodeResolver(
   return async function resolveExecutionNode(input: {
     envId: string;
     organizationId: string | null;
+    configOrganizationId: string | null;
     userId?: string;
     agentNode: unknown;
     configMachineId: string | null;
@@ -166,9 +167,14 @@ export function createExecutionNodeResolver(
       configMachineId: input.configMachineId,
     });
 
-    // 显式 sandbox：环境绑定沙盒资源池，准备执行节点（含 ACP 回连等待）
+    // 显式 sandbox：池是 Agent 的依赖，按池所属组织（Agent 配置的组织）解析；沙盒实例仍按调用方 userId
+    // 创建/复用，跨组织共享时拿到的是调用方自己的实例而不是共享方的。
     if (explicitSandboxPoolId) {
-      return prepareSandbox(explicitSandboxPoolId, input.userId ?? "", input.organizationId);
+      return prepareSandbox(
+        explicitSandboxPoolId,
+        input.userId ?? "",
+        input.configOrganizationId ?? input.organizationId,
+      );
     }
     // 显式 machine：agentNode 中显式声明的机器，或回退到的 machineId 列
     if (explicitMachineId) {

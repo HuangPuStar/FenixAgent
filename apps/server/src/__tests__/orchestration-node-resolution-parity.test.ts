@@ -40,6 +40,7 @@ async function canonicalFromAgentRuntime(agentNode: unknown, configMachineId: st
   return resolver({
     envId: "env-parity",
     organizationId: "org-1",
+    configOrganizationId: "org-1",
     userId: "user-1",
     agentNode,
     configMachineId,

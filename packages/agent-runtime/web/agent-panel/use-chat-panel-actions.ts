@@ -196,12 +196,12 @@ export function useChatPanelActions({
       onLoadSession: (sid) => {
         localCreateEpochRef.current = 0;
         localCreateBindingRef.current = NO_LOCAL_CREATE;
-        sendAction({ action: "load_session", sessionId: sid });
+        return sendAction({ action: "load_session", sessionId: sid });
       },
       onResumeSession: (sid) => {
         localCreateEpochRef.current = 0;
         localCreateBindingRef.current = NO_LOCAL_CREATE;
-        sendAction({ action: "resume_session", sessionId: sid });
+        return sendAction({ action: "resume_session", sessionId: sid });
       },
       onRenameSession: (sid, title) => {
         sendAction({ action: "rename_session", sessionId: sid, title });

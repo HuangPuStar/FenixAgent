@@ -3,15 +3,16 @@ import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentInstanceRecord } from "./server/repositories/agent-instance";
 import type { EnvironmentRecord } from "./server/repositories/environment";
 import type {
-  RuntimeSnapshot,
-  RuntimeState,
-  RuntimeStopMode,
-} from "./server/services/agent-instance-runtime-coordinator";
-import type {
   InstanceActivityInfo,
   InstanceReclaimReason,
   SpawnedInstance,
 } from "./server/services/agent-instance-runtime-projection";
+import type {
+  RuntimeActivation,
+  RuntimeSnapshot,
+  RuntimeState,
+  RuntimeStopMode,
+} from "./server/services/agent-instance-runtime-types";
 import type { AutomaticInstanceSelection } from "./server/services/agent-instance-service";
 import type { ExternalRelayConnectionSnapshot } from "./server/transport/relay/external-relay";
 import type {
@@ -136,6 +137,8 @@ export interface EnsureInstanceInput {
   readonly requestedInstanceUid?: string;
   /** 未指定实例时的自动选择类别（chat / api / workflow 各自的持久实例）。 */
   readonly automaticSelection: AutomaticInstanceSelection;
+  /** 默认按后台 ensure 处理；控制台主动进入由服务端指定 explicit，允许启动已停止实例。 */
+  readonly activation?: RuntimeActivation;
   /** 取消信号：启动过程中断时不再继续（实例记录已存在时保持既有语义）。 */
   readonly signal?: AbortSignal;
 }

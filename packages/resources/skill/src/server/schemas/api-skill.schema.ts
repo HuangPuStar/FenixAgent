@@ -33,7 +33,12 @@ export const ApiSkillIdParamsSchema = z
  */
 export const ApiSkillUploadManifestEntrySchema = z
   .object({
-    skillName: z.string().min(1).describe("待导入的 Skill 名称。一次请求内所有条目必须属于同一个 Skill。"),
+    skillName: z
+      .string()
+      .min(1)
+      .describe(
+        "待导入的 Skill 名称，1–64 字符的 ASCII kebab-case（小写英文字母、数字、单连字符，无首尾连字符）。一次请求内所有条目必须属于同一个 Skill。",
+      ),
     relativePath: z.string().min(1).describe("Skill 目录内文件相对路径，例如 `SKILL.md` 或 `scripts/tool.sh`。"),
   })
   .describe("Skill 上传 manifest 条目。");

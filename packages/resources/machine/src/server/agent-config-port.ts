@@ -17,6 +17,11 @@
 // 绑定方是宿主 `apps/server`，形态与 `host-port.ts` / `environment-port.ts` 一致（装配阶段一次绑定，用例
 // 用浅合并替换层打桩）。与 `sandbox-route-port.ts` 的差别只在失败语义：本端口未绑定即失败，因为三件事都
 // 有「取不到」与「确实没有」两种结果，静默降级会把用户文件写到默认机器上、或让仍被引用的机器被删掉。
+//
+// 执行节点读取**不按组织收窄**：显式机器 / 显式沙盒池是 Agent 配置的依赖，Agent 被跨组织共享时，
+// 使用方拿到的就是它在启动路径上解析出的同一节点，否则文件请求会落到默认机器或本地，与实例运行的位置
+// 分裂。授权发生在更上游（环境属主校验、绑定 Agent 时的可见性校验），本端口只回答「这个配置声明的节点
+// 是什么、它属于哪个组织」，不承担权限判定。
 
 /**
  * Agent 配置声明的执行节点。
@@ -25,21 +30,17 @@
  * 上游的字面量联合钉进本包契约，会让上游调整取值时无谓波及本包（与 `MachineEnvironmentRecord` 只声明四
  * 个字段同一条理由）。这里只出现**解析后**的节点，本包不重写解析规则（`agentNode` 优先、回退 `machineId`
  * 列、空值归一）——那是 agent-config 的一份实现。
+ *
+ * `organizationId` 是**节点所属组织**（Agent 配置的归属），与环境所属组织可能不同：显式沙盒池要按池的
+ * 归属组织解析。默认池不走这里——未声明节点时环境根本没有节点可取。
  */
 export type MachineAgentConfigNode =
-  | { readonly kind: "machine"; readonly machineId: string }
-  | { readonly kind: "sandbox"; readonly sandboxPoolId: string };
+  | { readonly kind: "machine"; readonly machineId: string; readonly organizationId: string }
+  | { readonly kind: "sandbox"; readonly sandboxPoolId: string; readonly organizationId: string };
 
 /** 按资源 ID 取执行节点的输入。 */
 export interface MachineAgentConfigExecutionInput {
   readonly agentConfigId: string;
-  /**
-   * 该 Agent 配置必须所属的组织。
-   *
-   * 必填而非可选：机器文件路径上「环境绑定了一个 Agent 配置」不等于「该配置属于该环境所属组织」，缺了它
-   * 就等于把归属校验降级为可选（§10.3 多租户隔离）。实现必须走 owner 的归属入口，不能在端口内自己比较。
-   */
-  readonly organizationId: string;
 }
 
 /** 机器注册路径的绑定输入（与 agent-config 的同名入口同形）。 */
@@ -53,10 +54,10 @@ export interface MachineAgentConfigBindInput {
 /** Agent 配置的取数与绑定能力。 */
 export interface MachineAgentConfigPort {
   /**
-   * 按资源 ID 读执行节点，**同时校验归属**：配置不存在、或不属于 `organizationId` 时返回 null。
+   * 按资源 ID 读执行节点，**不做组织收窄**：配置不存在（已删除）或未声明任何节点时返回 null。
    *
-   * 返回 null 是「按归属读不到」，调用方据此退回默认机器或本地 FS；实现侧不得为跨组织配置造值
-   * （那会让 `organization_id` 的匹配条件形同不存在）。
+   * 返回 null 只表示「这个配置没有声明执行节点」，调用方据此退回默认机器或本地 FS。调用方必须先完成
+   * 环境属主校验——本端口只把「环境绑定了哪个 Agent 配置」翻译成节点，不回答「调用方能不能用这个配置」。
    */
   getExecutionNode(input: MachineAgentConfigExecutionInput): Promise<MachineAgentConfigNode | null>;
 

@@ -76,8 +76,14 @@ export function ChatShellExamples({ session }: { session: MockChatSession }) {
           onSendPrompt={session.sendPrompt}
           onCancel={session.cancel}
           onCreateSession={session.createSession}
-          onLoadSession={session.selectSession}
-          onResumeSession={session.selectSession}
+          onLoadSession={(id) => {
+            session.selectSession(id);
+            return true;
+          }}
+          onResumeSession={(id) => {
+            session.selectSession(id);
+            return true;
+          }}
           onRenameSession={handleRenameSession}
           onDeleteSession={handleDeleteSession}
           onRespondPermission={session.respondPermission}
