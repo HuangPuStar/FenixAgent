@@ -132,8 +132,10 @@ isDefault = true
 
 - 精确查询并按 owner 与 Environment fail-closed 授权；
 - 不要求其 `creationSource` 与当前线路一致；
-- stopped/failed 时按同一 uid 懒启动；
+- stopped/failed 且没有用户停止意图时按同一 uid 懒启动；
 - uid 不存在、owner 不匹配或状态不可进入时不得回退自动 Instance。
+
+`POST /web/environments/:id/enter` 表达用户主动进入：通过环境和实例归属校验后，由服务端指定 `activation: "explicit"`，经同一个 Runtime Coordinator 的 `start` 操作复用就绪实体或启动原实例。它允许启动用户已停止的实例，保留 `instanceUid` 与会话标识；启动成功后才解除停止意图，失败保留原始错误与停止意图。并发进入共享启动槽位，较新的 stop/delete 可以取消启动。后台连接、API 和 Workflow 仍使用默认 automatic ensure，不能自行解除停止意图；显式 restart 始终停止后重新启动。
 
 ## 5. 标识与 Session 边界
 

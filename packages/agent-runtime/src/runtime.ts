@@ -72,7 +72,7 @@ export function createAgentRuntime(): AgentRuntime {
         requestedInstanceUid: input.requestedInstanceUid,
         automaticSelection: input.automaticSelection,
       });
-      await agentInstanceService.ensureInstanceRuntime(instance, input.signal);
+      await agentInstanceService.ensureInstanceRuntime(instance, input.signal, input.activation);
       return instance;
     },
     ensureInstanceRuntime: (instance, signal) => agentInstanceService.ensureInstanceRuntime(instance, signal),

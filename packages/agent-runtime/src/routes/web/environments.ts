@@ -285,6 +285,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
           ownerUserId: user.id,
           requestedInstanceUid: b.instanceUid,
           automaticSelection: "chat",
+          activation: "explicit",
         });
         return {
           success: true as const,
@@ -343,7 +344,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
       detail: {
         tags: ["Environments"],
         summary: "进入环境",
-        description: "为环境选择或拉起实例，并返回进入该环境所需的实例和会话信息。",
+        description: "主动进入环境：复用运行中的实例，或启动已停止的原实例，并返回实例信息。",
       },
     },
   );

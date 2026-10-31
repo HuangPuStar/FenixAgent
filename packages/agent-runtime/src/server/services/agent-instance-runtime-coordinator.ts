@@ -1,66 +1,25 @@
 import { AppError } from "@fenix/platform-sdk";
 import type { AgentInstanceRecord } from "../repositories/agent-instance";
-
-export type RuntimeStopMode = "strict" | "best-effort";
-export type RuntimeLifecycleOperation = "ensure" | "restart" | "stop" | "delete" | "reclaim";
-export type RuntimeState = "stopped" | "starting" | "running" | "stopping" | "unknown";
-
-export interface RuntimeSnapshot {
-  instanceUid: string;
-  runtimeGeneration: number;
-  /** 当前生命周期意图的身份，与实际 runtime 代次独立。 */
-  operationId: number;
-  state: RuntimeState;
-  currentOperation: RuntimeLifecycleOperation | null;
-  deleting: boolean;
-  lastFailure: string | null;
-}
-
-export interface RuntimeAdapter {
-  /** 已确认终止后释放依赖该运行实体的执行配额。 */
-  onStopped?(instanceUid: string): void;
-  start(instance: AgentInstanceRecord, generation: number, signal: AbortSignal): Promise<void>;
-  stop(instanceUid: string, generation: number, signal: AbortSignal): Promise<void>;
-  /** 返回编排层或 core 中是否仍存在该 uid 的权威 runtime。 */
-  hasActiveRuntime?(instanceUid: string): boolean;
-  /** 接管已有 runtime 时读取其实际代次，不能用操作编号代替。 */
-  getRuntimeGeneration?(instanceUid: string): number | undefined;
-  /** 运行成功快照必须匹配真实 Core 身份，Controller 残留不能作为就绪证明。 */
-  isRuntimeReady?(instanceUid: string, generation?: number): boolean;
-  /** 显式 restart 使用，不按 coordinator 的本地 generation 跳过权威 runtime。 */
-  stopActiveRuntime?(instanceUid: string, signal: AbortSignal): Promise<void>;
-}
-
-interface RuntimeEntry {
-  generation: number;
-  operationId: number;
-  runtimePresent: boolean;
-  state: RuntimeState;
-  operation: RuntimeLifecycleOperation | null;
-  operationPromise: Promise<void> | null;
-  deleting: boolean;
-  lastFailure: string | null;
-  abortController: AbortController | null;
-  /** 该条目当前 unknown 的归属机器;仅由断连事件写入,新 lifecycle intent 接管或复位后清空。 */
-  machineId: string | null;
-  /** 该机器的 clean-slate 已确认,但条目仍有在飞操作,复位需延后到操作释放槽位之后。 */
-  pendingCleanSlate: boolean;
-  /** AOS-BUG-002：停止意图独立于运行状态，重连、死亡或 clean-slate 通知不得解除。 */
-  manuallyStopped: boolean;
-}
-
-export interface RuntimeCoordinatorOptions {
-  shutdownDrainTimeoutMs?: number;
-}
-
-/** 仅由机器断连产生、且尚未被其他生命周期意图接管的恢复上下文。 */
-export interface RuntimeRecoveryContext {
-  machineId: string;
-  isCurrent(): boolean;
-}
+import type {
+  RuntimeAdapter,
+  RuntimeCoordinatorOptions,
+  RuntimeEntry,
+  RuntimeLifecycleOperation,
+  RuntimeRecoveryContext,
+  RuntimeSnapshot,
+  RuntimeState,
+  RuntimeStopMode,
+} from "./agent-instance-runtime-types";
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 10_000;
-const PRIORITY: Record<RuntimeLifecycleOperation, number> = { ensure: 0, reclaim: 1, restart: 2, stop: 3, delete: 4 };
+const PRIORITY: Record<RuntimeLifecycleOperation, number> = {
+  ensure: 0,
+  reclaim: 1,
+  start: 2,
+  restart: 2,
+  stop: 3,
+  delete: 4,
+};
 
 /**
  * 进程内 Agent Instance runtime 仲裁器。
@@ -94,6 +53,11 @@ export class AgentInstanceRuntimeCoordinator {
 
   ensureRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
     return this.#run(instance, "ensure", "strict", signal);
+  }
+
+  /** 用户主动进入：复用就绪实体，或启动原持久实例，成功后解除停止意图。 */
+  startRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
+    return this.#run(instance, "start", "strict", signal);
   }
 
   /** 在 ensure 占槽前读取恢复意图，避免与 clean-slate 的延后复位互相等待。 */
@@ -320,12 +284,17 @@ export class AgentInstanceRuntimeCoordinator {
       return Promise.reject(new Error(`Runtime state for '${instance.id}' is unknown`));
     }
     if (operation === "ensure" && entry.manuallyStopped) {
-      return Promise.reject(new AppError("Agent Instance is stopped; restart it explicitly", "INSTANCE_STOPPED", 409));
+      return Promise.reject(
+        new AppError("Agent Instance is stopped; enter or restart it explicitly", "INSTANCE_STOPPED", 409),
+      );
     }
     if (operation === "stop") entry.manuallyStopped = true;
     let previous: Promise<void> | null = null;
     if (entry.operation && entry.operationPromise) {
-      if (entry.operation === operation) return this.#wait(entry.operationPromise, waiterSignal);
+      // 主动进入不打断已经开始的正常启动；两者等待同一次运行实体就绪。
+      if (entry.operation === operation || (operation === "start" && entry.operation === "ensure")) {
+        return this.#wait(entry.operationPromise, waiterSignal);
+      }
       if (PRIORITY[entry.operation] >= PRIORITY[operation]) {
         return this.#wait(entry.operationPromise, waiterSignal).then(() =>
           this.#run(instance, operation, mode, waiterSignal, expectedGeneration, canReclaim),
@@ -334,11 +303,15 @@ export class AgentInstanceRuntimeCoordinator {
       previous = entry.operationPromise;
       entry.abortController?.abort(new Error(`Runtime operation superseded by ${operation}`));
     }
-    if (operation === "ensure" && entry.state === "running") {
+    const isStart = operation === "ensure" || operation === "start";
+    if (isStart && entry.state === "running") {
       const ready = this.adapter.isRuntimeReady
         ? this.adapter.isRuntimeReady(instance.id, entry.generation)
         : !this.adapter.hasActiveRuntime || this.adapter.hasActiveRuntime(instance.id);
-      if (ready) return Promise.resolve();
+      if (ready) {
+        if (operation === "start") entry.manuallyStopped = false;
+        return Promise.resolve();
+      }
       entry.runtimePresent = false;
       entry.state = "stopped";
     }
@@ -384,6 +357,7 @@ export class AgentInstanceRuntimeCoordinator {
     canReclaim?: () => boolean,
   ): Promise<void> {
     const entry = this.#entry(instance.id);
+    const isStart = operation === "ensure" || operation === "start";
     let startingGeneration: number | undefined;
     // 等待旧操作期间可能已有新执行绑定；自动回收必须在实际停止前再次确认占用。
     if (previous) await previous.catch(() => undefined);
@@ -391,20 +365,21 @@ export class AgentInstanceRuntimeCoordinator {
     try {
       signal.throwIfAborted();
       if (entry.operationId !== operationId) throw new Error("Runtime operation was superseded");
-      if (operation !== "ensure") {
+      if (!isStart || entry.state === "unknown") {
         entry.state = "stopping";
         await this.#stopCurrent(instance.id, entry, signal);
         signal.throwIfAborted();
         if (entry.operationId !== operationId) throw new Error("Runtime stop confirmation was superseded");
         entry.state = "stopped";
         entry.lastFailure = null;
-        if (operation !== "restart") return;
+        if (operation !== "restart" && operation !== "start") return;
       }
-      if (operation === "ensure" && this.adapter.hasActiveRuntime?.(instance.id)) {
+      if (isStart && this.adapter.hasActiveRuntime?.(instance.id)) {
         if (!this.adapter.isRuntimeReady || this.adapter.isRuntimeReady(instance.id)) {
           entry.generation = this.adapter.getRuntimeGeneration?.(instance.id) ?? entry.generation;
           entry.runtimePresent = true;
           entry.state = "running";
+          if (operation === "start") entry.manuallyStopped = false;
           entry.lastFailure = null;
           return;
         }
@@ -423,7 +398,7 @@ export class AgentInstanceRuntimeCoordinator {
       signal.throwIfAborted();
       if (entry.operationId !== operationId) throw new Error("Runtime start confirmation was superseded");
       entry.state = "running";
-      if (operation === "restart") entry.manuallyStopped = false;
+      if (operation === "restart" || operation === "start") entry.manuallyStopped = false;
       entry.lastFailure = null;
     } catch (error) {
       let failure = error;

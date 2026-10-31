@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentInstanceRecord, IAgentInstanceRepo } from "../repositories/agent-instance";
-import { AgentInstanceRuntimeCoordinator, type RuntimeAdapter } from "../services/agent-instance-runtime-coordinator";
+import { AgentInstanceRuntimeCoordinator } from "../services/agent-instance-runtime-coordinator";
+import type { RuntimeAdapter } from "../services/agent-instance-runtime-types";
 import { AgentInstanceService } from "../services/agent-instance-service";
 
 const instance: AgentInstanceRecord = {
