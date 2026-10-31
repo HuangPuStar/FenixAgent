@@ -110,7 +110,7 @@
     "sharingManageable": "You can manage the sharing scope.",
     "owner": "Owner",
     "currentVisibility": "Current visibility",
-    "currentTeam": "Current team",
+    "currentTeam": "Owning organization",
     "organizationWide": "All organizations",
     "currentTeamOnly": "Current team only",
     "decreaseMaxResults": "Decrease maximum results",
