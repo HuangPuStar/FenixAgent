@@ -131,10 +131,10 @@ export function stubMachineEnvironmentRecord(record: MachineEnvironmentRecord | 
 }
 
 /**
- * 替换 Agent 配置取数实现（执行节点读取、机器引用检查、机器注册绑定）。
+ * 替换 Agent 配置取数实现（执行节点读取、机器引用检查）。
  *
  * 用例必须显式打桩：端口未绑定即失败（见 `./agent-config-port` 的失败语义），而 Agent 配置的实现不在本包
- * ——包内用例拿不到真实实现，也不允许回头导入对方的入口。因此涉及「环境绑定 Agent 配置」或「删除 / 注册
+ * ——包内用例拿不到真实实现，也不允许回头导入对方的入口。因此涉及「环境绑定 Agent 配置」或「删除
  * 机器」的用例要在这里给出自己的答案，不能依赖一个测试专用的默认值：默认值会让「未装配」在用例里静默通过。
  */
 export function stubMachineAgentConfig(overrides: Parameters<typeof setMachineAgentConfigPort>[0]): void {

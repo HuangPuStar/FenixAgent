@@ -226,6 +226,7 @@ export function buildAgentEditorPayload(values: AgentEditorValues, mode: "create
     enableMemory: values.enableMemory,
   };
   if (mode === "edit") {
+    payload.name = values.name.trim();
     payload.modelId = values.modelId || null;
     payload.prompt = values.prompt || null;
     payload.description = values.description || null;

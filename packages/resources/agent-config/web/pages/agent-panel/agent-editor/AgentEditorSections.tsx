@@ -74,11 +74,11 @@ function Identity({
         <LabeledField
           className="md:max-lg:col-start-1 min-w-0"
           label={t("form.name")}
-          hint={mode === "edit" ? t("editor.nameImmutable") : undefined}
+          hint={mode === "edit" ? t(data.builtIn ? "editor.builtInNameImmutable" : "editor.renameHint") : undefined}
         >
           <EditorInput
             id="agent-editor-name"
-            disabled={mode === "edit" || disabled}
+            disabled={(mode === "edit" && data.builtIn) || disabled}
             placeholder={t("form.namePlaceholder")}
             {...form.register("name")}
           />

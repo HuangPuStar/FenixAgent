@@ -1,15 +1,14 @@
 /**
  * Agent 配置取数端口的宿主实现（`@fenix/resource-machine` 的 `MachineAgentConfigPort`）。
  *
- * machine 声明了窄端口（执行节点读取 / 机器引用检查 / 注册绑定），但不依赖 `agent-config`：那正是 §2.3
+ * machine 声明了窄端口（执行节点读取 / 机器引用检查），但不依赖 `agent-config`：那正是 §2.3
  * 矩阵外的反向边 `machine → agent-config`——它与 agent-config → agent-runtime、agent-runtime → sandbox、
  * sandbox → machine 共同闭合 4 包环族。本文件把端口接到 owner 的公开入口上，方向固定为
  * `apps/server → agent-config`（宿主可以依赖任何包的公开入口）。
  *
- * 三个原语都不是"直读对方的表"，而是各自领域规则的复用：
+ * 两个原语都不是"直读对方的表"，而是各自领域规则的复用：
  *   - `getExecutionNode`：`agentNode` 优先、回退 `machineId` 列的解析规则只在 agent-config 一份；
  *   - `isAgentConfigBoundToMachine`：`machine_id` 列的归属条件与存在性判定归对方；
- *   - `bindMachineIdByAgentName`：按名称匹配本组织配置、同名多条一起绑定归对方（§4.8 第 7 条的写入口）。
  *
  * 归属：`getExecutionNode` 按 ID 无归属读（`getAgentConfigById(id)`），并把配置的 `organizationId` 随节点
  * 一起返回。这不绕过授权——显式执行节点是 Agent 配置的依赖，跨组织共享时调用方用的就是同一节点；环境属主
@@ -19,12 +18,7 @@
  * 资源包端口的适配，不是任何一方的领域逻辑；放在服务层让"谁实现端口"在目录上直接可查。
  */
 
-import {
-  bindMachineIdByAgentName,
-  getAgentConfigById,
-  isAgentConfigBoundToMachine,
-  resolveAgentNode,
-} from "@fenix/agent-config/server";
+import { getAgentConfigById, isAgentConfigBoundToMachine, resolveAgentNode } from "@fenix/agent-config/server";
 import type { MachineAgentConfigNode, MachineAgentConfigPort } from "@fenix/resource-machine/server";
 
 export const machineAgentConfigPort: MachineAgentConfigPort = {
@@ -44,5 +38,4 @@ export const machineAgentConfigPort: MachineAgentConfigPort = {
     return null;
   },
   isAgentConfigBoundToMachine,
-  bindMachineIdByAgentName,
 };

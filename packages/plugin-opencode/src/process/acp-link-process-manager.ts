@@ -1,4 +1,5 @@
 import { type AcpServerHandle, createAcpServer } from "acp-link";
+import { adaptOpencodeConnection } from "../runtime/opencode-session-connection";
 import { resolveExecutable } from "./executable";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -55,6 +56,7 @@ export class AcpLinkProcessManager {
       args: ["acp"],
       cwd: input.workspace,
       env: input.env,
+      adaptConnection: adaptOpencodeConnection,
       agentType: (input.agentType as "opencode" | "ccb" | undefined) ?? "opencode",
     });
 

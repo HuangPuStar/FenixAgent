@@ -219,6 +219,8 @@ sequenceDiagram
 
 LaunchSpec 不包含 `agentNodeId`、Machine 本机绝对路径、`instanceId`、ACP session ID、聊天内容或 YJS 数据。敏感运行凭据仅经认证信道传递，禁止写入日志、前端响应或持久化记录。
 
+OpenCode 的平台主 Agent 键固定为 `fenix`，不随 AgentConfig 展示名称变化；历史失效键的恢复统一由 OpenCode 插件的连接适配入口处理，acp-link 不承载恢复规则。
+
 ### 4.3 Machine 运行面
 
 Machine Runtime 收到启动载荷后创建内部 `WorkspaceRef`、将 cwd 解析为受控 Workspace 并在其中启动 Agent Process。主服务只传递可信执行范围与派生 cwd，不拼接 Machine 本机路径。

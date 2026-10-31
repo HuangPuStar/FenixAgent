@@ -59,8 +59,8 @@ agent 编辑器 / 站点页面的浏览器实现方。
   取数，每个函数只取消费者真正需要的列——只读的 `findAgentConfigNamesByIds`、
   `listAgentConfigsByOrganization`（含 `AgentConfigOwnershipRow`，服务 observer 人员树）、
   `searchAgentConfigsSystem`（服务 model-management 的系统管理面全局检索）、`isAgentConfigBoundToMachine`
-  （服务 machine 删除前的悬空引用守卫），以及该文件**唯一**的写入口 `bindMachineIdByAgentName`（machine
-  注册时按 `agentName` 绑定机器）。调用方因此拿不到整行去自行解释 `machineId` / `agentNode`。
+  （服务 machine 删除前的悬空引用守卫）。调用方因此拿不到整行去自行解释 `machineId` / `agentNode`；
+  机器注册不按引擎名匹配或改写 Agent 配置。
 - **模块配置**：`src/server/config.ts` 经 `getModuleConfig("agent-config")` 读取，并用 zod `strictObject`
   校验四个字段（`hiddenSidebarTabs`、`agentSitesBaseUrl`、`agentSitesMasterKey`、`agentGenerationModel`）。
   包内不读运行环境变量，值由宿主装配阶段注入。

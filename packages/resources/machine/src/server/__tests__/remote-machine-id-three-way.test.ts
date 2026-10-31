@@ -29,7 +29,6 @@ function stubAgentConfigDeclaringMachine(ownerOrganizationId: string): void {
       return { kind: "machine", machineId: AGENT_BOUND_MACHINE_ID, organizationId: ownerOrganizationId };
     },
     isAgentConfigBoundToMachine: async () => false,
-    bindMachineIdByAgentName: async () => {},
   });
 }
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   type AgentEditorOption,
+  buildAgentEditorPayload,
+  createAgentEditorDefaults,
   paginateAgentEditorOptions,
   shouldConfirmAgentEditorClose,
   shouldDisableAgentEditor,
@@ -12,6 +14,12 @@ import {
 } from "../pages/agent-panel/agent-editor/use-agent-editor";
 
 describe("Agent Editor 关闭保护与分页", () => {
+  // 编辑保存必须携带用户输入的新名称，否则界面会显示保存成功但名称保持不变。
+  test("更新 payload 携带去除首尾空白后的名称", () => {
+    const payload = buildAgentEditorPayload(createAgentEditorDefaults(" 新助手 "), "edit");
+    expect(payload.name).toBe("新助手");
+  });
+
   // 创建态和编辑态的 Escape 都应在存在可写草稿时触发关闭确认。
   test("可写脏表单统一触发 dirty guard", () => {
     expect(shouldConfirmAgentEditorClose(true, false)).toBe(true);

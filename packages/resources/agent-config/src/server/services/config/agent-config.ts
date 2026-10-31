@@ -108,6 +108,9 @@ export function isValidAgentName(name: string): boolean {
 
 /** 校验 agent 数据字段，返回错误码或 null */
 export function validateAgentData(data: Record<string, unknown>): string | null {
+  if (data.name !== undefined && (typeof data.name !== "string" || !isValidAgentName(data.name))) {
+    return "INVALID_AGENT_NAME";
+  }
   if (data.agentNode !== undefined && data.agentNode !== null && !normalizeAgentNode(data.agentNode)) {
     return "INVALID_AGENT_NODE";
   }

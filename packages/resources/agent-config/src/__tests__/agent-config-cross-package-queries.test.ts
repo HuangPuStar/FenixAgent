@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import {
-  bindMachineIdByAgentName,
-  isAgentConfigBoundToMachine,
-  searchAgentConfigsSystem,
-} from "../server/repositories/agent-config";
+import { isAgentConfigBoundToMachine, searchAgentConfigsSystem } from "../server/repositories/agent-config";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import { collectColumnNames, collectParamValues } from "./fixtures";
 
@@ -66,25 +62,6 @@ function stubSelectWithLimit(rows: unknown[]) {
         }),
       };
     },
-  });
-  return captured;
-}
-
-/** 捕获「update set + where」的链式形状。 */
-function stubUpdate() {
-  const captured: { values?: Record<string, unknown>; where?: unknown } = {};
-  stubDb({
-    update: () => ({
-      set: (values: Record<string, unknown>) => {
-        captured.values = values;
-        return {
-          where: (condition: unknown) => {
-            captured.where = condition;
-            return Promise.resolve(undefined);
-          },
-        };
-      },
-    }),
   });
   return captured;
 }
@@ -162,21 +139,6 @@ describe("agent_config 跨包取数面", () => {
       stubSelectWithLimit([]);
 
       expect(await isAgentConfigBoundToMachine("org-1", "machine-1")).toBe(false);
-    });
-  });
-
-  describe("bindMachineIdByAgentName（机器注册路径的绑定写入口）", () => {
-    // 机器上报的 agentName 是唯一身份线索：谓词落在「本组织 + 同名」上，且同步刷新 updatedAt。
-    test("按组织与名称写入 machineId 并刷新 updatedAt", async () => {
-      const captured = stubUpdate();
-
-      await bindMachineIdByAgentName({ organizationId: "org-1", agentName: "demo-agent", machineId: "machine-1" });
-
-      expect(captured.values?.machineId).toBe("machine-1");
-      expect(captured.values?.updatedAt).toBeInstanceOf(Date);
-      expect(Object.keys(captured.values ?? {}).sort()).toEqual(["machineId", "updatedAt"]);
-      expect(collectColumnNames(captured.where).sort()).toEqual(["name", "organization_id"]);
-      expect(collectParamValues(captured.where)).toEqual(["org-1", "demo-agent"]);
     });
   });
 });

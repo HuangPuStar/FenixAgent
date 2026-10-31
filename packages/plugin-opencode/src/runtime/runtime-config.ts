@@ -1,5 +1,8 @@
 import type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
 
+/** OpenCode 的平台主 Agent 固定键，与 AgentConfig 展示名称无关。 */
+export const OPENCODE_AGENT_NAME = "fenix";
+
 export interface InstalledSkillReference {
   name: string;
   path: string;
@@ -109,14 +112,13 @@ export function buildOpencodeRuntimeConfig(
 ): OpencodeRuntimeConfig {
   const providerId = launchSpec.model.provider;
   const modelId = launchSpec.model.modelName ?? launchSpec.model.model;
-  const agentName = launchSpec.agent.name;
   const providerModelRef = `${providerId}/${modelId}`;
 
   return {
     $schema: "https://opencode.ai/config.json",
     // 禁止 opencode 自动更新，避免新版本在未验证前引入兼容性问题。
     autoupdate: false,
-    default_agent: agentName,
+    default_agent: OPENCODE_AGENT_NAME,
     enabled_providers: [providerId],
     provider: {
       [providerId]: {
@@ -151,7 +153,7 @@ export function buildOpencodeRuntimeConfig(
     },
     model: providerModelRef,
     agent: {
-      [agentName]: {
+      [OPENCODE_AGENT_NAME]: {
         model: providerModelRef,
         mode: "primary",
         steps: (launchSpec.agent.extra?.steps as number) ?? 1000,
