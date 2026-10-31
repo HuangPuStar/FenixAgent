@@ -3,7 +3,7 @@ import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 
 /**
- * Agent 配置的**跨包取数面**：调用期只读投影，以及一处系统写入口（machine 注册时按名称绑定机器）。
+ * Agent 配置的**跨包取数面**：调用期只读投影。
  *
  * 本包不向别的包交出资源行：调用方要的是"叫什么、谁拥有、跑在哪"这类投影，给整行会诱使它们自己判归属、
  * 自己解释 `machineId` / `agentNode` 的优先级（§4.8 第 4 条：调用期只能经 owner 的公开 service / DTO
@@ -125,27 +125,4 @@ export async function isAgentConfigBoundToMachine(organizationId: string, machin
     .where(and(eq(agentConfig.organizationId, organizationId), eq(agentConfig.machineId, machineId)))
     .limit(1);
   return rows.length > 0;
-}
-
-/** 机器注册路径的绑定输入：按名称匹配本组织的 Agent 配置。 */
-export interface BindMachineIdByAgentNameInput {
-  organizationId: string;
-  agentName: string;
-  machineId: string;
-}
-
-/**
- * 把机器 ID 写进本组织同名的 Agent 配置行（machine 注册路径的系统写入，无 actor）。
- *
- * 这是本文件唯一的写入口，也是全包唯一对 `machineId` 列的跨包写：机器注册时上报的 `agentName` 是它的
- * 唯一身份线索，匹配与写入都必须落在本包——列语义与"同名多条一起绑定"这条规则都属于 Agent 配置
- * （§4.8 第 7 条：调用期跨包写随表迁出收敛为 owner 的写入口）。`updatedAt` 同步刷新，与资源行写入口径
- * 一致。
- */
-export async function bindMachineIdByAgentName(input: BindMachineIdByAgentNameInput): Promise<void> {
-  const { organizationId, agentName, machineId } = input;
-  await getAgentConfigDatabase()
-    .update(agentConfig)
-    .set({ machineId, updatedAt: new Date() })
-    .where(and(eq(agentConfig.organizationId, organizationId), eq(agentConfig.name, agentName)));
 }

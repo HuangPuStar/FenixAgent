@@ -68,12 +68,11 @@ beforeEach(async () => {
   // 初始化基础设施（真实 deleteMachine / writeRegistryEvent 都要读 DB，未初始化会直接抛错）
   initializeMachineModuleConfig();
   // Agent 配置的引用检查不在本包：用例按「该组织没有配置引用这台机器」装配（与真实实现的语义一致），
-  // 不依赖测试专用默认值——端口未绑定即失败是本包刻意的失败语义。端口是整体契约，三个原语必须齐备；
-  // 本文件只走删除路径，故其余两个给出无副作用的答案。
+  // 不依赖测试专用默认值——端口未绑定即失败是本包刻意的失败语义。端口是整体契约，两个原语必须齐备；
+  // 本文件只走删除路径，故执行节点读取返回无节点。
   stubMachineAgentConfig({
     getExecutionNode: async () => null,
     isAgentConfigBoundToMachine: async () => false,
-    bindMachineIdByAgentName: async () => {},
   });
   const handler = await import("@fenix/resource-machine/server");
   handler.closeAllFileWsConnections();

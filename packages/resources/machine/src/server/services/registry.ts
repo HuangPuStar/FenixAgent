@@ -269,8 +269,8 @@ export async function deleteSandboxMachine(id: string): Promise<void> {
  * 未预创建的连接将被拒绝（不再支持自动注册）。
  *
  * @param params.machineId - 客户端指定的 machine ID，对应管理面预创建记录
- * @param params.agentName - 引擎名称，用于 bindAgentConfigs 自动匹配
- * @param params.tenantId - 组织 ID，用于 bindAgentConfigs 范围限定
+ * @param params.agentName - 机器上报的引擎名称，不用于定位 Agent 配置
+ * @param params.tenantId - 机器连接的组织上下文
  */
 export async function registerMachine(params: {
   agentName: string;
@@ -318,7 +318,6 @@ export async function registerMachine(params: {
     });
 
   await getMachineLifecyclePort()?.notifyMachineRegistered(params.machineId, now);
-  await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
   return { id: params.machineId, isNew: isFirstRegistration };
 }
 
@@ -458,22 +457,6 @@ export async function deleteMachine(scope: MachineScope, id: string): Promise<{ 
   }
 
   return { deleted: true };
-}
-
-/**
- * 机器注册时按 `agentName` 绑定 Agent 配置。
- *
- * 机器注册上报的 `agentName` 是它与 Agent 配置之间唯一的身份线索；本包只表达「这台机器上线了、引擎是
- * `agentName`」这个意图。**为什么匹配与写入都归 owner**：「按名称匹配本组织同名配置、同名多条一起绑定、
- * 绑定同时刷新 `updatedAt`」都是 `machine_id` 列的语义，属 Agent 配置领域（§4.8 第 7 条：调用期跨包写随
- * 表迁出收敛为 owner 的写入口），本包不再自持归属条件，也不直接触碰该表——写入口经宿主注入的
- * `MachineAgentConfigPort`（见 `../agent-config-port`）调用，本包不导入对方的入口。
- *
- * `tenantId` 为空表示无法确定组织范围，此时不绑定（既有前置条件，与"无组织即无匹配范围"一致）。
- */
-async function bindAgentConfigs(machineId: string, agentName: string, tenantId: string | null): Promise<void> {
-  if (!tenantId) return;
-  await getMachineAgentConfigPort().bindMachineIdByAgentName({ organizationId: tenantId, agentName, machineId });
 }
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */

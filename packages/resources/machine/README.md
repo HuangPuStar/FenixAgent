@@ -83,7 +83,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
 - **测试装配**：`/server/testing` 提供 `createMachineModuleConfig` / `initializeMachineModuleConfig` /
   `stubMachineConfig` / `stubMachineEnvironment(Record)` / `stubMachineAgentConfig` / `stubFileWsTransport`
   与三个句柄替换入口（lifecycle / heartbeat / registry 路由）；
-  包内用例另用 `src/__tests__/guard-stubs.ts` 注入守卫替身。`stubMachineAgentConfig` 必须显式给出三个原语：
+  包内用例另用 `src/__tests__/guard-stubs.ts` 注入守卫替身。`stubMachineAgentConfig` 必须显式给出两个查询原语：
   端口是整体契约，未绑定即失败——用例不能依赖测试专用的默认值，否则「未装配」会在用例里静默通过。
 
 ## web 面与 i18n
@@ -206,7 +206,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   1.4 的「宿主运行态端口」清零，方向固定为 `sandbox → machine`、`agent-runtime → machine`；台账里的两条
   `special-dependency` 与一条 `no-circular` 同批删除。`machine → agent-config`（§2.3 矩阵外的反向边，也是
   4 包环族的共同闭合边）随 2026-09-24 E1 清零：`remote-file-service.ts` 的 `getAgentConfigById` /
-  `resolveAgentNode` 与 `registry.ts` 的 `isAgentConfigBoundToMachine` / `bindMachineIdByAgentName` 改经本包
+  `resolveAgentNode` 与 `registry.ts` 的 `isAgentConfigBoundToMachine` 改经本包
   声明的 `MachineAgentConfigPort`（宿主装配注入，见「宿主运行态端口」），本包源码对 `@fenix/agent-config`
   的引用数为 0（实测 `grep -rn '@fenix/agent-config' src/ fenix.module.ts` 仅剩注释文本；
   `machine-package-contract.test.ts` 的「包内不引用 agent-config 的入口」用例常驻守护）。**环**随之消解：
@@ -225,7 +225,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
 |------|--------|-----------|
 | `MachineHostPort`（`src/server/host-port.ts`） | 宿主 `apps/server` | workspace 根路径、Core runtime 节点查询 / 注销、file-ws 连接索引、断连清理 |
 | `MachineEnvironmentPort`（`src/server/environment-port.ts`） | 宿主 `apps/server` | 环境记录读取与归属校验（实现仍在 agent-runtime） |
-| `MachineAgentConfigPort`（`src/server/agent-config-port.ts`） | 宿主 `apps/server` | Agent 配置的执行节点读取（带组织归属）、机器引用检查、机器注册绑定（实现来自 agent-config） |
+| `MachineAgentConfigPort`（`src/server/agent-config-port.ts`） | 宿主 `apps/server` | Agent 配置的执行节点读取（带组织归属）、机器引用检查（实现来自 agent-config） |
 | `MachineSandboxRoutePort`（`src/server/sandbox-route-port.ts`） | `@fenix/resource-sandbox` | 「环境该路由到哪台机器」的沙盒判定（读 sandbox 自己的配置与池、实例表） |
 
 `MachineAgentConfigPort` 与 `MachineHostPort` / `MachineEnvironmentPort` 的差别在**实现来源**：前两者的实现是
@@ -285,14 +285,10 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
 - **跨包表访问已全部闭环（原「跨包表访问残留（owner §1.4）」）**：本包曾直接读写两张不属于自己的表，两条都在
   §1.7 内闭环，不再有本包不修的跨包表访问：
   1. ~~`agent_config`（owner `@fenix/agent-config`）~~：**已闭环（§1.7 B7，2026-09-22；E1 收口取数方向，
-     2026-09-24）**。此前 `registry.ts` 在删除机器前直读 `agent_config.machineId` 做引用检查，并在
-     `bindAgentConfigs` 里**写**该列，两条路径都没有对方公开 API（写路径尤其没有绑定入口）。B7 随表迁出补上
-     两个 owner 入口：读走 `isAgentConfigBoundToMachine(ctx.organizationId, id)`、写走
-     `bindMachineIdByAgentName({ organizationId, agentName, machineId })`；E1 再把这两处与
-     `remote-file-service.ts` 的执行节点读取一起改为经本包声明的 `MachineAgentConfigPort`（宿主注入 owner 的
-     实现），本包源码因此不再引用 agent-config 的任何出口。本包只表达「这台机器还能不能删」「把上报的
-     `agentName` 绑到这台机器」「这个环境该走哪台机器」三个业务意图，不解释 `machine_id` 列、不重写节点解析
-     优先级、也不在本包重写归属条件。
+     2026-09-24）**。`registry.ts` 的机器引用检查与 `remote-file-service.ts` 的执行节点读取经本包声明的
+     `MachineAgentConfigPort`，由宿主注入 owner 的实现。本包只表达「这台机器还能不能删」「这个环境该走哪台
+     机器」两个查询意图，不解释 `machine_id` 列、不重写节点解析优先级，也不在本包重写归属条件。
+     机器注册与重连不按引擎名匹配 Agent 配置，不写入 `agent_config.machineId`。
   2. ~~`sandbox_instance`（owner `@fenix/resource-sandbox`）~~：**已闭环（§1.7 B4 前置，2026-09-22）**。
      本包此前经 `src/server/services/machine-sandbox-projection.ts` 直接 UPDATE `sandbox_instance`，把机器注册 /
      心跳投影为实例状态；该表归 sandbox 后这条路径成为 §2.3 的 `machine → sandbox` 写路径，而 §6.1 的组装期例外
