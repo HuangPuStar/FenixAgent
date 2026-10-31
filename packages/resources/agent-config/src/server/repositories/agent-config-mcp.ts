@@ -27,8 +27,7 @@ export async function listAgentMcpIds(agentConfigId: string): Promise<string[]> 
 /**
  * 全量覆盖 Agent 的 MCP 关联（先删后插）。
  *
- * 两条语句不包事务：调用点（控制台保存 Agent 配置、`services/agent-bindings.ts`）本身运行在宿主既有
- * 的事务语义之外，引入事务会改变锁范围，超出本次边界收敛的范围；`agent_config_skill` 同形同理。
+ * 保存 Facade 提供事务边界，两条语句使用当前事务连接，与配置及其它关联一起提交或回滚。
  */
 export async function syncAgentMcps(agentConfigId: string, mcpServerIds: string[]): Promise<void> {
   await getAgentConfigDatabase().delete(agentConfigMcp).where(eq(agentConfigMcp.agentConfigId, agentConfigId));

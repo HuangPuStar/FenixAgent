@@ -69,6 +69,8 @@ Agent 运行时
 
 管理"哪个 Agent 用哪些知识库"的绑定关系。存在 `agent_knowledge_binding` 表中，支持优先级排序。
 
+替换绑定时，先校验全部知识库存在且归属 Agent 所在组织，再在同一事务内删除旧集合并写入新集合。独立调用使用自己的事务；Agent 保存时加入外层保存事务。校验失败不改旧集合，插入失败整体回滚，显式空集合表示清空绑定。
+
 当 Instance spawn 时，会检查绑定关系，把知识库的 MCP 端点注入到 workspace 的运行时配置中。
 
 ### KnowledgeProvider（外部索引抽象）

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { runInTransaction } from "@fenix/platform-sdk/server";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo } from "@fenix/resource-knowledge/server";
 
 export interface AgentKnowledgePolicy {
@@ -128,12 +129,6 @@ export async function syncAgentKnowledgeBindingsById(
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
   const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;
-  await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
-
-  if (knowledgeBaseIds.length === 0) {
-    return;
-  }
-
   const existingIds = new Set<string>();
   for (const kbId of knowledgeBaseIds) {
     const kb = await knowledgeBaseRepo.getById(kbId);
@@ -146,17 +141,21 @@ export async function syncAgentKnowledgeBindingsById(
     throw new InvalidKnowledgeBindingError(`知识库不存在或无权限访问: ${missingIds.join(", ")}`);
   }
 
-  const now = new Date();
-  await agentKnowledgeBindingRepo.createMany(
-    knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
-      id: generateBindingId(),
-      agentConfigId,
-      knowledgeBaseId,
-      config: normalizedPolicy,
-      priority,
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  );
+  // 先完成整批校验；替换加入调用方事务，独立调用时也保证插入失败不会清空旧绑定。
+  await runInTransaction(async () => {
+    await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
+    const now = new Date();
+    await agentKnowledgeBindingRepo.createMany(
+      knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
+        id: generateBindingId(),
+        agentConfigId,
+        knowledgeBaseId,
+        config: normalizedPolicy,
+        priority,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    );
+  });
 }

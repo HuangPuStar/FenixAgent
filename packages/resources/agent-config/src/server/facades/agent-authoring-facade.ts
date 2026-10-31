@@ -1,9 +1,11 @@
 import type { ActorContext } from "@fenix/platform-sdk";
+import { runInTransaction } from "@fenix/platform-sdk/server";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { getSkillServerModule } from "@fenix/resource-skill/server/runtime";
 import type { AgentAssociations } from "../services/agent-associations";
 import { type AgentBindingRequest, isSkillIdentifier, resolveSkillIdentifiers } from "../services/agent-bindings";
 import { type AgentGenerationResult, generateAgentConfig, type VisibleSkill } from "../services/agent-generation";
+import type { AuthorizedAgentConfig } from "./agent-config-facade";
 
 /**
  * Agent 编写面（智能生成 + 关联绑定）的 Facade。
@@ -14,9 +16,16 @@ import { type AgentGenerationResult, generateAgentConfig, type VisibleSkill } fr
  * 已算好的显式参数（提示词、可见 Skill 投影、已解析的 ID 集合）。
  *
  * 与 `facades/agent-config-facade.ts` 的分工：那边是 AgentConfig 资源行本身的授权与生命周期，这边是
- * "以某个主体的身份编写 Agent 配置"的应用动作，不触碰资源行的归属与可见性。
+ * "以某个主体的身份编写 Agent 配置"的应用动作。保存事务在本层编排，配置行的授权与写入仍由资源 Facade 执行。
  */
 export interface AgentAuthoringFacadeApi {
+  /** 原子保存配置、记忆开关和显式绑定；配置写入回调必须经 AgentConfigFacade 完成授权。 */
+  save(
+    actor: ActorContext,
+    persist: () => Promise<AuthorizedAgentConfig>,
+    request: AgentBindingRequest,
+    options?: { enableMemory?: boolean },
+  ): Promise<AuthorizedAgentConfig>;
   /** 当前主体可见的 Skill 投影（含其他组织公开的只读 Skill）。 */
   listVisibleSkills(actor: ActorContext): Promise<VisibleSkill[]>;
   /** 智能生成：候选 Skill 已按主体可见范围收敛，生成结果可以直接绑定。 */
@@ -39,6 +48,23 @@ export interface AgentAuthoringFacadeApi {
 
 export class AgentAuthoringFacade implements AgentAuthoringFacadeApi {
   constructor(private readonly associations: AgentAssociations) {}
+
+  /** 所有参与保存的仓储通过平台事务上下文使用同一连接，异常原样抛出并整体回滚。 */
+  async save(
+    actor: ActorContext,
+    persist: () => Promise<AuthorizedAgentConfig>,
+    request: AgentBindingRequest,
+    options: { enableMemory?: boolean } = {},
+  ): Promise<AuthorizedAgentConfig> {
+    return runInTransaction(async () => {
+      const agent = await persist();
+      if (options.enableMemory !== undefined) {
+        await this.associations.setMemoryEnabled(agent.id, options.enableMemory);
+      }
+      await this.applyBindings(actor, agent.id, agent.scope.organizationId, request);
+      return agent;
+    });
+  }
 
   async listVisibleSkills(actor: ActorContext): Promise<VisibleSkill[]> {
     const { items } = await getSkillServerModule().facade.list(actor);

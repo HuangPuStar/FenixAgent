@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import type { KnowledgeBaseRow } from "../server/repositories/knowledge-base";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo } from "../server/repositories/knowledge-base";
 import { InvalidKnowledgeBindingError, syncAgentKnowledgeBindingsById } from "../server/services/agent-knowledge";
@@ -40,10 +41,22 @@ const originals = {
 };
 
 let createdBindings: Array<{ knowledgeBaseId: string }> = [];
+let storedBindings: string[] = [];
 
 describe("Agent 知识库绑定写入", () => {
   beforeEach(() => {
     initializeKnowledgeModuleConfig();
+    stubDb({
+      transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) => {
+        const snapshot = [...storedBindings];
+        try {
+          return await callback({ execute: async () => {} });
+        } catch (error) {
+          storedBindings = snapshot;
+          throw error;
+        }
+      },
+    });
     knowledgeBaseRepo.getById = mock(async (id: string) =>
       id === "kb-own"
         ? knowledgeBaseRow("kb-own", "org-1")
@@ -51,13 +64,15 @@ describe("Agent 知识库绑定写入", () => {
           ? knowledgeBaseRow("kb-foreign", "org-2")
           : null,
     ) as unknown as typeof knowledgeBaseRepo.getById;
-    agentKnowledgeBindingRepo.deleteByAgentConfigId = mock(
-      async () => {},
-    ) as unknown as typeof agentKnowledgeBindingRepo.deleteByAgentConfigId;
+    agentKnowledgeBindingRepo.deleteByAgentConfigId = mock(async () => {
+      storedBindings = [];
+    }) as unknown as typeof agentKnowledgeBindingRepo.deleteByAgentConfigId;
     agentKnowledgeBindingRepo.createMany = mock(async (rows: Array<{ knowledgeBaseId: string }>) => {
       createdBindings = rows;
+      storedBindings = rows.map((row) => row.knowledgeBaseId);
     }) as unknown as typeof agentKnowledgeBindingRepo.createMany;
     createdBindings = [];
+    storedBindings = ["kb-old"];
   });
 
   afterEach(() => {
@@ -80,5 +95,34 @@ describe("Agent 知识库绑定写入", () => {
     ).rejects.toBeInstanceOf(InvalidKnowledgeBindingError);
 
     expect(createdBindings).toEqual([]);
+    expect(storedBindings).toEqual(["kb-old"]);
+    expect(agentKnowledgeBindingRepo.deleteByAgentConfigId).not.toHaveBeenCalled();
+  });
+
+  // 知识库已被删除时，失败请求同样必须保留原有绑定。
+  test("不存在的知识库不改变旧绑定", async () => {
+    await expect(
+      syncAgentKnowledgeBindingsById("agent-1", { knowledgeBaseIds: ["kb-missing"] }, "org-1"),
+    ).rejects.toBeInstanceOf(InvalidKnowledgeBindingError);
+    expect(storedBindings).toEqual(["kb-old"]);
+    expect(agentKnowledgeBindingRepo.deleteByAgentConfigId).not.toHaveBeenCalled();
+  });
+
+  // 校验通过也可能遇到数据库写入失败，删除与插入必须一起回滚。
+  test("插入失败恢复原绑定并保留原始异常", async () => {
+    const failure = new Error("binding insert failed");
+    agentKnowledgeBindingRepo.createMany = async () => {
+      throw failure;
+    };
+    await expect(syncAgentKnowledgeBindingsById("agent-1", { knowledgeBaseIds: ["kb-own"] }, "org-1")).rejects.toBe(
+      failure,
+    );
+    expect(storedBindings).toEqual(["kb-old"]);
+  });
+
+  // 显式提交空集合仍表示清空，而不是保留历史绑定。
+  test("空集合清空原绑定", async () => {
+    await syncAgentKnowledgeBindingsById("agent-1", { knowledgeBaseIds: [] }, "org-1");
+    expect(storedBindings).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -7,6 +7,7 @@ import {
   resetSkillServerModuleForTesting,
 } from "@fenix/resource-skill/server/testing";
 import { createApiAgentsRoutes } from "../server/routes/api/agents";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
@@ -54,7 +55,11 @@ function installVisibleSkill() {
 
 describe("API Agents Routes", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeAgentConfigModuleConfig();
+    stubDb({
+      transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) =>
+        callback({ execute: async () => {} }),
+    });
     resetAgentModuleStub();
     resetSkillServerModuleForTesting();
     setTestAuth({ organizationId: "org-1", userId: "user-1" });
