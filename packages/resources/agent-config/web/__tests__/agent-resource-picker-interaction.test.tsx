@@ -354,8 +354,10 @@ for (const action of ["dialog.cancel", "resource.publicWarningConfirm"] as const
     win.document.body.appendChild(container);
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<EditorSectionFixture section="sharing" />));
-    const toggle = container.querySelector<"button">('[role="switch"]');
-    expect(toggle).not.toBeNull();
+    const toggle = Array.from(container.querySelectorAll("button")).find(
+      (item) => item.getAttribute("role") === "switch",
+    );
+    if (!toggle) throw new Error("expected sharing switch");
     act(() => toggle?.focus());
     await act(async () => toggle?.click());
     const dialog = win.document.querySelector('[role="alertdialog"]');
