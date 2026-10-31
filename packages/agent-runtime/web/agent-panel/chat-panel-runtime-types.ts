@@ -28,8 +28,10 @@ export interface PreservedPrompt {
    * 本页本次创建，而不是把共享 active session 的任何变化当成创建结果。
    */
   onCreateSession: () => Promise<string | null>;
-  onLoadSession: (sid: string) => void;
-  onResumeSession: (sid: string) => void;
+  /** 返回命令是否真正写入 socket；false 时不得标记已进入会话。 */
+  onLoadSession: (sid: string) => boolean;
+  /** 返回命令是否真正写入 socket；false 时不得标记已进入会话。 */
+  onResumeSession: (sid: string) => boolean;
   onRenameSession: (sid: string, title: string) => void;
   onDeleteSession: (sid: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;

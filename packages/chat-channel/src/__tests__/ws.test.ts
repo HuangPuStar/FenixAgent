@@ -44,6 +44,7 @@ class FakeWebSocket {
   open(): void {
     this.readyState = FakeWebSocket.OPEN;
     this.onopen?.();
+    this.receiveFromServer({ type: "yjs:command-epoch", epoch: "11111111-1111-4111-8111-111111111111" });
   }
 
   closeFromServer(code = 1006, reason = "connection_lost"): void {

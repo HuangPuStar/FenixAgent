@@ -115,8 +115,8 @@ function AcpMainHarness({ onOpenWorkspaceFile }: { onOpenWorkspaceFile: (envId: 
       onSendPrompt={mock.sendPrompt}
       onCancel={mock.cancel}
       onCreateSession={mock.createSession}
-      onLoadSession={() => {}}
-      onResumeSession={() => {}}
+      onLoadSession={() => true}
+      onResumeSession={() => true}
       onRenameSession={() => {}}
       onDeleteSession={() => {}}
       onRespondPermission={mock.respondPermission}

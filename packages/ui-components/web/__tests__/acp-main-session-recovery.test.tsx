@@ -83,8 +83,11 @@ describe("ACPMain 会话恢复", () => {
           onSendPrompt: async () => {},
           onCancel: () => {},
           onCreateSession: async () => {},
-          onLoadSession: (sessionId: string) => loadedSessionIds.push(sessionId),
-          onResumeSession: () => {},
+          onLoadSession: (sessionId: string) => {
+            loadedSessionIds.push(sessionId);
+            return true;
+          },
+          onResumeSession: () => true,
           onRenameSession: () => {},
           onDeleteSession: () => {},
           onRespondPermission: () => {},

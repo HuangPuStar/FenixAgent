@@ -502,8 +502,8 @@ describe("待发送队列（peri steer）", () => {
           onSendPrompt={() => {}}
           onCancel={() => {}}
           onCreateSession={() => {}}
-          onLoadSession={() => {}}
-          onResumeSession={() => {}}
+          onLoadSession={() => true}
+          onResumeSession={() => true}
           onRenameSession={() => {}}
           onDeleteSession={() => {}}
           onRespondPermission={() => {}}

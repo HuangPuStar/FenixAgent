@@ -398,6 +398,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 8.2 连接生命周期
 - **建立**：`gateway.handleOpen` 认证 → `ensureRunning` → 打开 Chat Doc / Session Doc → **`relayReady = true` 之前发送初始快照** → `connect` 握手 → flush 缓冲消息。
 - **前端建连守卫**：`use-chat-panel-runtime.ts` 在登录态 loading / failed 时早退，无 `sessionId` 不建连——**登录态未就绪不得建连**。
+- **命令就绪**：物理 WebSocket open 后仍为 `connecting`；当前连接收到有效 `yjs:command-epoch` 才报告 `connected`，`isConnected()` 与业务 `send()` 使用相同守卫。Yjs state-vector 同步不等待命令代次；断连后重新握手。自动会话引导只在命令就绪后执行，load/resume 返回发送结果，发送失败不能标记已进入；自动创建的在途请求单独去重，拿到创建回执才标记成功。
 - **断开**：`handleClose` 释放连接级资源与 relay 引用计数；Agent 实例存活时重连后由 `handleOpen` 重新同步；`relay_closed`（实例断链）才销毁 Doc。
 - **心跳**：前端每 30s 发 `{ type: "keep_alive" }`（仅页面可见时），服务端每 30s 下发 `keep_alive`；**服务端不再因客户端心跳超时而关闭连接**（页面冻结暂停心跳是被允许的）；`ping` / `pong` 属 acp-link 机器侧协议，不是前端聊天通道的心跳。
 

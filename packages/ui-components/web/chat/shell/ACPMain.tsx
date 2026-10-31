@@ -57,8 +57,10 @@ interface ACPMainProps {
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void> | void;
   onCancel: () => void;
   onCreateSession: () => SessionCreateReceipt | Promise<SessionCreateReceipt>;
-  onLoadSession: (sessionId: string) => void;
-  onResumeSession: (sessionId: string) => void;
+  /** 返回操作是否发出；false 时会话引导与侧栏高亮必须保留失败状态。 */
+  onLoadSession: (sessionId: string) => boolean;
+  /** 返回操作是否发出；false 时会话引导与侧栏高亮必须保留失败状态。 */
+  onResumeSession: (sessionId: string) => boolean;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;

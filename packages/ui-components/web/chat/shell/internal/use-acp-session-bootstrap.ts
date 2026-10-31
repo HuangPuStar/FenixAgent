@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
 import type { ChatStateSnapshot } from "../../types";
 import type { ChatInterfaceHandle } from "../ChatInterface";
-import type { ChatNotice } from "../chat-interface-types";
+import type { ChatNotice, SessionCreateReceipt } from "../chat-interface-types";
 import type { SessionSelectFallback } from "../sidebar-session-list";
 
 interface UseAcpSessionBootstrapOptions {
@@ -13,11 +13,11 @@ interface UseAcpSessionBootstrapOptions {
   chatRef: RefObject<ChatInterfaceHandle | null>;
   supportsLoadSession: boolean;
   supportsResumeSession: boolean;
-  onLoadSession: (sessionId: string) => void;
-  onResumeSession: (sessionId: string) => void;
+  onLoadSession: (sessionId: string) => boolean;
+  onResumeSession: (sessionId: string) => boolean;
   onNotice?: (notice: ChatNotice) => void;
-  /** 新建会话；回执由调用方（`ACPMain`）消费，本 hook 只触发不读取结果 */
-  handleCreateSession: () => Promise<unknown> | undefined;
+  /** 创建回执用于确认本次引导成功，空回执不得标记已进入。 */
+  handleCreateSession: () => Promise<SessionCreateReceipt> | undefined;
   /** 用户主动切换会话时的副作用（收起移动端抽屉）；自动恢复不触发 */
   onUserSessionSelected?: () => void;
 }
@@ -52,6 +52,8 @@ export function useAcpSessionBootstrap({
   // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
   // 用于防止重复进入 session 以及处理延迟到达的 activeSessionId
   const sessionEnteredRef = useRef(false);
+  const creatingRef = useRef(false);
+  const connectionEpochRef = useRef(0);
   // 防抖：sessions 增量更新可能分多次到达（list_sessions 返回 N 条 registerSession 逐条广播），
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,6 +77,8 @@ export function useAcpSessionBootstrap({
   // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 作为重连触发器参与依赖，非冗余依赖
   useEffect(() => {
     sessionEnteredRef.current = false;
+    creatingRef.current = false;
+    connectionEpochRef.current += 1;
     clearBootstrapTimer();
   }, [connectionState, clearBootstrapTimer]);
 
@@ -106,10 +110,10 @@ export function useAcpSessionBootstrap({
         return;
       }
       try {
-        if (supportsLoadSession) {
-          onLoadSession(session.sessionId);
-        } else {
-          onResumeSession(session.sessionId);
+        const sent = supportsLoadSession ? onLoadSession(session.sessionId) : onResumeSession(session.sessionId);
+        if (!sent) {
+          rollbackSessionHighlight();
+          return;
         }
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(session.sessionId);
@@ -146,7 +150,7 @@ export function useAcpSessionBootstrap({
   // 可对话，无需用户手动输入第一条消息触发懒创建（见下方分支）。
   useEffect(() => {
     if (connectionState !== "connected") return;
-    if (sessionEnteredRef.current) return;
+    if (sessionEnteredRef.current || creatingRef.current) return;
 
     // 清除上一次的防抖定时器，重新计时
     if (bootstrapTimerRef.current) {
@@ -155,17 +159,15 @@ export function useAcpSessionBootstrap({
 
     bootstrapTimerRef.current = setTimeout(() => {
       bootstrapTimerRef.current = null;
-      if (sessionEnteredRef.current) return;
+      if (sessionEnteredRef.current || creatingRef.current) return;
 
       // 如果 chatState 已有 activeSessionId，直接使用
       // 但仍需发送 load_session 初始化当前客户端的 Session Doc 同步，
       // 否则新客户端看不到已有消息（第二个客户端接入同一会话时会卡在加载状态）
       if (chatState?.activeSessionId) {
-        setInitialActiveSessionId(chatState.activeSessionId);
         const activeSession = sessions.find((s) => s.sessionId === chatState.activeSessionId);
         if (activeSession) {
-          sessionEnteredRef.current = true;
-          handleSelectSession(activeSession, "restore");
+          void handleSelectSession(activeSession, "restore");
         }
         return;
       }
@@ -178,9 +180,7 @@ export function useAcpSessionBootstrap({
       })[0];
 
       if (latest) {
-        sessionEnteredRef.current = true;
-        setInitialActiveSessionId(latest.sessionId);
-        handleSelectSession(latest, "restore");
+        void handleSelectSession(latest, "restore");
         return;
       }
 
@@ -189,8 +189,19 @@ export function useAcpSessionBootstrap({
       // 页面无数据）；session_list 到达后本 effect 因 sessions 变化重新触发，
       // 确认空列表即自动进入可对话状态，用户无需手动输入第一条消息触发懒创建。
       if (chatState?.sessionListLoaded && sessions.length === 0) {
-        sessionEnteredRef.current = true;
-        void handleCreateSession();
+        creatingRef.current = true;
+        const epoch = connectionEpochRef.current;
+        // 在途创建只阻止重复请求；拿到本次回执才算进入，旧连接的迟到回执不能覆盖新引导。
+        void (async () => {
+          try {
+            const created = await handleCreateSession();
+            if (connectionEpochRef.current === epoch && created != null) sessionEnteredRef.current = true;
+          } catch (error) {
+            console.error("[ACPMain] Bootstrap session creation failed:", error);
+          } finally {
+            if (connectionEpochRef.current === epoch) creatingRef.current = false;
+          }
+        })();
         return;
       }
     }, 300);
@@ -216,18 +227,12 @@ export function useAcpSessionBootstrap({
     // 会话（与 bootstrap effect 共享同一守卫，避免两处条件不一致）
     if (connectionState !== "connected") return;
     const sid = chatState?.activeSessionId;
-    if (!sid || sessionEnteredRef.current) return;
+    if (!sid || sessionEnteredRef.current || creatingRef.current) return;
     // 确认 sessions 中包含该 activeSessionId 对应的会话
     const activeSession = sessions.find((s) => s.sessionId === sid);
     if (!activeSession) return;
 
-    sessionEnteredRef.current = true;
-    setInitialActiveSessionId(sid);
-    try {
-      handleSelectSession(activeSession, "restore");
-    } catch (err) {
-      console.error("[ACPMain] Delayed session enter failed:", err);
-    }
+    void handleSelectSession(activeSession, "restore");
   }, [chatState?.activeSessionId, sessions, connectionState, handleSelectSession]);
 
   return {
