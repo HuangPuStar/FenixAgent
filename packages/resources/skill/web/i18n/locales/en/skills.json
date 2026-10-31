@@ -68,6 +68,10 @@
     "contentRequired": "Content cannot be empty"
   },
   "upload": {
+    "noSkillFolders": "No skill folders found",
+    "missingSkillMdIn": "Missing SKILL.md in: {{names}}",
+    "duplicateSkillNames": "Duplicate skill names in upload: {{names}}",
+    "invalidSkillNames": "Invalid skill folder names: {{names}}. {{format}}",
     "selectFolder": "Click to select a folder containing skills",
     "selectFolderHint": "Each subdirectory will be recognized as a skill, and must contain SKILL.md",
     "selectedDirs": "Selected {{count}} directories",

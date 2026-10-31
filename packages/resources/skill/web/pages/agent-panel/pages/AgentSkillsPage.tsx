@@ -208,12 +208,12 @@ export function AgentSkillsPage() {
   const selectUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const items = parseSkillUploadFiles(Array.from(event.target.files ?? []));
     setUploadItems(items);
-    setUploadError(validateUploadBatch(items));
+    setUploadError(validateUploadBatch(items, t));
     setConflicts([]);
   };
 
   const upload = (strategy?: SkillUploadConflictStrategy) => {
-    const validationError = validateUploadBatch(uploadItems);
+    const validationError = validateUploadBatch(uploadItems, t);
     if (validationError) {
       setUploadError(validationError);
       toast.error(validationError);
