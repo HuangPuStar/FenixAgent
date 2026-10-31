@@ -1,6 +1,7 @@
 // packages/chat-channel/src/state/turn-machine.ts
 // turn 退出收敛（唯一权威入口）：「turn 离开活动态」必须同时收敛
-// assistant entry / pendingPermissions / 该 turn 全部工具调用。
+// assistant entry / pendingPermissions / 该 turn 全部工具调用 /
+// 因取消而失去终态事件的同步子任务。
 //
 // 历史教训：同一语义曾分裂在三个入口（终态事件 / 权限全部失效 / 用户连发），
 // 每处只收敛一部分——权限残留 pending、running 工具永久转圈、assistant entry
@@ -11,6 +12,7 @@ import type { PublicError, TurnStatus } from "../schema";
 import {
   getEntry,
   getPendingPermissions,
+  getPeriTasksMap,
   getToolCallsMap,
   readActiveTurn,
   setActiveTurn,
@@ -31,6 +33,11 @@ export interface TurnExitOptions {
   entryStatus?: "completed" | "cancelled" | "error";
   /** 终态事件附带的元数据（error 仅在非空时写入；usage 仅 completed 事件携带，null 不写） */
   meta?: { error?: PublicError | null; usage?: Record<string, unknown> | null };
+  /**
+   * 取消/中断语义下，将仍在运行的同步子任务收敛为 cancelled。
+   * 同步子任务随 turn 级联取消，终态事件可能随取消丢失；后台任务独立于 turn，不在此列。
+   */
+  cancelSyncSubagentTasks?: boolean;
 }
 
 /**
@@ -52,6 +59,7 @@ export function convergeTurnExit(pair: DocPair, turnId: string, opts: TurnExitOp
   }
   expireTurnPermissions(pair, turnId);
   cancelTurnToolCalls(pair, turnId);
+  if (opts.cancelSyncSubagentTasks) cancelRunningSyncSubagentTasks(pair, new Date().toISOString());
 }
 
 /** turn 退出时该 turn 的 pending 权限请求失效迁移（expired），不残留 pending 项 */
@@ -79,6 +87,26 @@ export function cancelTurnToolCalls(pair: DocPair, turnId: string): number {
       tool.set("status", "cancelled");
       count++;
     }
+  }
+  return count;
+}
+
+/**
+ * turn 取消/中断时收敛仍在运行的同步子任务：
+ * session/cancel 会级联取消同步 subagent，但 SubagentStopped 可能随取消丢失，
+ * 卡片会永久停在「运行中」并持续计时。后台 subagent 独立于 turn 生命周期
+ * （isBackground=true），必须保持原状态继续计时。
+ * 返回收敛数量（供调用方观测）。
+ */
+export function cancelRunningSyncSubagentTasks(pair: DocPair, at: string): number {
+  let count = 0;
+  for (const task of getPeriTasksMap(pair.session).values()) {
+    if (task.get("status") !== "running") continue;
+    if (task.get("kind") !== "subagent" || task.get("isBackground") === true) continue;
+    task.set("status", "cancelled");
+    task.set("completedAt", at);
+    task.set("updatedAt", at);
+    count++;
   }
   return count;
 }
