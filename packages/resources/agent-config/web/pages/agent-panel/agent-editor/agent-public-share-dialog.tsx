@@ -23,16 +23,18 @@ const EXPOSED_RESOURCES = ["skill", "mcp", "model", "knowledgeBase", "machine", 
 export function AgentPublicShareDialog({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
   onConfirm: () => void;
 }) {
   const { t } = useTranslation(NS.AGENTS);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("resource.publicWarningTitle")}</AlertDialogTitle>
           <AlertDialogDescription>{t("resource.publicWarningDescription")}</AlertDialogDescription>

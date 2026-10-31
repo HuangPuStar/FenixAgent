@@ -3,7 +3,7 @@ import { Badge } from "@fenix/ui-components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
@@ -283,10 +283,11 @@ function Sharing({
   const { t } = useTranslation(NS.AGENTS);
   // 开启公开是"把依赖资源一并交出去"的动作，先弹固定文案确认框，确认后才落值
   const [publicConfirmOpen, setPublicConfirmOpen] = useState(false);
+  const sharingSectionRef = useRef<HTMLElement>(null);
   const manageable =
     mode === "create" || canManageAgentSharing({ name: form.watch("name"), scope: data.scope, access: data.access });
   return (
-    <section className={SECTION}>
+    <section ref={sharingSectionRef} className={SECTION}>
       <Intro
         eyebrow="ACCESS"
         title={t("editor.sections.sharing")}
@@ -328,6 +329,10 @@ function Sharing({
       <AgentPublicShareDialog
         open={publicConfirmOpen}
         onOpenChange={setPublicConfirmOpen}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          sharingSectionRef.current?.querySelector<HTMLButtonElement>('[role="switch"]')?.focus();
+        }}
         onConfirm={() => {
           form.setValue("publicReadable", true, { shouldDirty: true, shouldTouch: true });
           setPublicConfirmOpen(false);
