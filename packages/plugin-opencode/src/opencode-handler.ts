@@ -5,6 +5,7 @@ import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
 import { prepareLaunchWorkspace } from "./runtime/environment-preparer";
+import { adaptOpencodeConnection } from "./runtime/opencode-session-connection";
 
 export interface OpencodeHandlerOptions {
   /**
@@ -48,10 +49,11 @@ export function createOpencodeHandler(
 
       const {
         process: proc,
-        connection,
+        connection: rawConnection,
         capabilities,
         resolvePermissionOutcome,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
+      const connection = adaptOpencodeConnection(rawConnection);
 
       // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
       (proc as any).on("exit", (code: number | null) => {
