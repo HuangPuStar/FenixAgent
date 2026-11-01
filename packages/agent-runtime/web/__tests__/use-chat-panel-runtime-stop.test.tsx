@@ -10,6 +10,19 @@ import {
 afterEach(restoreFakeWebSocket);
 
 describe("useChatPanelRuntime 主动停止实例", () => {
+  // 鉴权拒绝须结束重连轻提示，并把权限语义交给面板，而不是继续显示重连中。
+  test("4003 停止重连并暴露权限错误", () => {
+    installFakeWebSocket();
+    const harness = renderRuntime();
+    try {
+      act(() => FakeWebSocket.instances[0]?.closeFromServer(4003, "unauthorized"));
+      expect(harness.latest.current?.autoReconnecting).toBe(false);
+      expect(harness.latest.current?.terminalUiCode).toBe("unauthorized");
+      expect(harness.latest.current?.connectionState).toBe("error");
+    } finally {
+      harness.unmount();
+    }
+  });
   // 4002 是用户主动停止的预期终态：停止自动重连，并把「实例已停止」交给渲染层，不再产生错误卡。
   test("4002 终态：不自动重连，terminalUiCode 为 instance_stopped", () => {
     installFakeWebSocket();

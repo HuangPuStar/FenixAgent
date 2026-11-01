@@ -172,6 +172,29 @@ function createHarness(overrides: Partial<SyncChatSessionOptions> = {}) {
 }
 
 describe("同步会话 1012 换代重连", () => {
+  // 无权限重连不会改变凭据，必须保留错误并且不安排下一轮连接。
+  test("4003 鉴权失败终止同步连接重试", () => {
+    const harness = createHarness();
+    try {
+      harness.first.closeFromServer(4003, "unauthorized");
+      expect(harness.states.at(-1)).toMatchObject({ status: "closed", error: { code: "unauthorized" } });
+      expect(harness.scheduled).toHaveLength(0);
+    } finally {
+      harness.session.dispose();
+    }
+  });
+
+  // 普通网络断开仍通过退避重试恢复，不能因新增权限终态而一并停止。
+  test("1006 网络断开仍安排同步重连", () => {
+    const harness = createHarness();
+    try {
+      harness.first.closeFromServer(1006, "connection_lost");
+      expect(harness.states.at(-1)?.status).toBe("reconnecting");
+      expect(harness.scheduled).toHaveLength(1);
+    } finally {
+      harness.session.dispose();
+    }
+  });
   // 服务端以 1012 宣告投影替换时按非终态重连，并丢弃旧代次帧、绑定新 MANIFEST 代次。
   test("1012 重连后只应用新代次内容", async () => {
     const harness = createHarness();

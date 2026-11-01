@@ -73,6 +73,7 @@ describe("yjs websocket adapter", () => {
     expect(getTerminalYjsWsErrorCode(4001)).toBe("instance_idle_reclaimed");
     // 4002：用户主动停止实例（2026-10-10 补入策略表）——终态且是预期内结果，渲染层据此展示中性空态
     expect(getTerminalYjsWsErrorCode(4002)).toBe("instance_stopped");
+    expect(getTerminalYjsWsErrorCode(4003)).toBe("unauthorized");
     expect(getTerminalYjsWsErrorCode(4004)).toBe("environment_unavailable");
     expect(getTerminalYjsWsErrorCode(4500)).toBe("machine_unavailable");
     expect(getTerminalYjsWsErrorCode(4501)).toBe("client_keepalive_timeout");
@@ -84,7 +85,6 @@ describe("yjs websocket adapter", () => {
     // 未知码 / 非终态码不产生 UI 语义
     expect(getTerminalYjsWsErrorCode(1000)).toBeNull();
     expect(getTerminalYjsWsErrorCode(1006)).toBeNull();
-    expect(getTerminalYjsWsErrorCode(4003)).toBeNull();
   });
 
   // 1013 的两个语义来源按 close reason 区分；例外只对该码生效。
