@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as claudeAgentSdk from "@anthropic-ai/claude-agent-sdk";
+import { AcpDispatcher, createAcpSessionState } from "../acp-dispatcher";
 import { createClaudeAcpConnection } from "../client/claude-acp-adapter";
 
 interface FakeQuery {
@@ -55,6 +56,55 @@ afterEach(async () => {
 });
 
 describe("Claude ACP adapter round65 SDK 内存分支", () => {
+  // 无效恢复必须返回错误并保留双端原会话，后续 prompt 继续使用原 SDK 恢复上下文。
+  test("未知恢复失败后原会话仍可继续对话", async () => {
+    const path = await workspace();
+    await mkdir(join(path, ".claude", "acp-sessions"), { recursive: true });
+    await writeFile(
+      join(path, ".claude", "acp-sessions", "active.json"),
+      JSON.stringify({ sessionId: "active", cwd: path, createdAt: 1, title: "当前会话", ccSessionId: "cc-active" }),
+    );
+    const sent: unknown[] = [];
+    const queryCalls: QueryCall[] = [];
+    spyOn(claudeAgentSdk, "query").mockImplementation((request) => {
+      queryCalls.push(request as unknown as QueryCall);
+      return fakeQuery([{ type: "assistant", message: { content: [{ type: "text", text: "继续成功" }] } }]) as never;
+    });
+    const connection = createClaudeAcpConnection(path, "round65", (message) => sent.push(message));
+    await connection.loadSession({ sessionId: "active" });
+    const state = createAcpSessionState();
+    state.connection = connection;
+    state.sessionId = "active";
+    state.agentCapabilities = { sessionCapabilities: { resume: {} } };
+    const responses: unknown[] = [];
+    const dispatcher = new AcpDispatcher(state, { workspace: path, send: (message) => responses.push(message) });
+
+    await dispatcher.handleMessage({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "session/resume",
+      params: { sessionId: "missing" },
+    });
+
+    expect(responses[0]).toMatchObject({
+      id: 1,
+      error: { message: "Failed to resume session: Session not found" },
+    });
+    expect(state.sessionId).toBe("active");
+    await dispatcher.handleMessage({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "session/prompt",
+      params: { content: [{ type: "text", text: "继续" }] },
+    });
+
+    expect(responses[1]).toMatchObject({ id: 2, result: { stopReason: "end_turn" } });
+    expect(queryCalls[0]).toMatchObject({ prompt: "", options: { resume: "cc-active" } });
+    const sessionUpdates = updates(sent);
+    expect(sessionUpdates.length).toBeGreaterThan(0);
+    for (const message of sessionUpdates) expect(message).toMatchObject({ params: { sessionId: "active" } });
+  });
+
   // 首次提示必须隔离 SDK 工作目录、链接工作区配置，并将 SDK 会话标识持久化到目标会话。
   test("首次提示创建隔离目录并持久化 SDK 会话", async () => {
     const path = await workspace();

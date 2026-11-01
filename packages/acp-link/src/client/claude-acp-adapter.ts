@@ -600,7 +600,8 @@ export function createClaudeAcpConnection(
     },
 
     async resumeSession(_params: { sessionId?: string }) {
-      const requestedId = _params?.sessionId as string | undefined;
+      const requestedId = _params?.sessionId;
+      if (!requestedId) throw new Error("Session ID is required");
       // 从内存或磁盘恢复 session
       let sess = requestedId ? sessions.get(requestedId) : undefined;
       if (requestedId && !sess) {
@@ -610,6 +611,8 @@ export function createClaudeAcpConnection(
           sess = disk;
         }
       }
+      // 上层会绑定请求的 ID，未知目标不能回退到当前活跃会话。
+      if (!sess) throw new Error("Session not found");
       if (requestedId && sess) {
         activeSessionId = requestedId;
         const ccId = sess.ccSessionId;

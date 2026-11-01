@@ -215,22 +215,20 @@ describe("Claude ACP adapter round64 持久化与恢复边界", () => {
     expect(sent).toEqual([]);
   });
 
-  // 未知恢复请求不能伪造会话，应返回空标识及当前协商能力。
-  test("恢复未知会话返回空标识和协商能力", async () => {
-    const resumed = await connection(await workspace()).resumeSession({ sessionId: "missing" });
-
-    expect(resumed).toMatchObject({
-      sessionId: "",
-      models: { currentModelId: "claude-sonnet-4-6" },
-      modes: { currentModeId: "acceptEdits" },
-    });
-  });
-
-  // 空恢复参数同样不能创建隐式会话。
-  test("恢复缺少会话标识时保持空会话", async () => {
+  // 未知恢复目标必须拒绝，不能让上层把不存在的会话视为恢复成功。
+  test("恢复未知会话报错且不创建会话", async () => {
     const conn = connection(await workspace());
 
-    expect((await conn.resumeSession({})).sessionId).toBe("");
+    await expect(conn.resumeSession({ sessionId: "missing" })).rejects.toThrow("Session not found");
+    expect((await conn.listSessions({})).sessions).toEqual([]);
+  });
+
+  // 缺失或空标识必须显式报错，避免隐式恢复当前活跃会话。
+  test("恢复缺少或空会话标识时报错", async () => {
+    const conn = connection(await workspace());
+
+    await expect(conn.resumeSession({})).rejects.toThrow("Session ID is required");
+    await expect(conn.resumeSession({ sessionId: "" })).rejects.toThrow("Session ID is required");
     expect((await conn.listSessions({})).sessions).toEqual([]);
   });
 
