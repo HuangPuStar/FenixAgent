@@ -1425,8 +1425,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     bindSession(ws, sessionId);
     try {
       const sessionCwd = (params.cwd as string) || cwd;
-      // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface but not resolved
-      const result = await state.connection.unstable_resumeSession({
+      const result = await state.connection.resumeSession({
         sessionId,
         cwd: sessionCwd,
       });

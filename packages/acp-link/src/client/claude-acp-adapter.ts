@@ -251,7 +251,7 @@ export function createClaudeAcpConnection(
   });
   // 标记：下次 prompt 需要 resume 的 CC session UUID
   let pendingResumeSessionId: string | null = null;
-  // 标记：历史消息已由 unstable_resumeSession 发送到前端，prompt 中跳过 SDK resume 回放
+  // 标记：历史消息已由 resumeSession 发送到前端，prompt 中跳过 SDK resume 回放
   let historyReplayed = false;
 
   // send 回调已由 InstanceManager.start() 包裹 relay 信封（type/instance_id/session_id）
@@ -409,7 +409,7 @@ export function createClaudeAcpConnection(
       });
       activeQueries.register(targetSessionId, q);
 
-      // historyReplayed 时 unstable_resumeSession 已发送历史消息
+      // historyReplayed 时 resumeSession 已发送历史消息
       // 仍需 streamInput 推送新 prompt，但 ProtocolAdapter 跳过 SDK resume 回放的消息
       const skipReplay = historyReplayed && resumeId != null;
       historyReplayed = false;
@@ -433,7 +433,7 @@ export function createClaudeAcpConnection(
 
       const adapter = new ProtocolAdapter((type: string, payload?: unknown) => {
         if (type === "prompt_complete") return;
-        // 跳过 resume 回放的历史消息（已由 unstable_resumeSession 发送到前端）
+        // 跳过 resume 回放的历史消息（已由 resumeSession 发送到前端）
         if (skipReplay && (type === "user_message_chunk" || type === "agent_message_chunk")) return;
         sendJsonRpc(null, { sessionId: targetSessionId!, update: { sessionUpdate: type, content: payload } });
       });
@@ -599,8 +599,7 @@ export function createClaudeAcpConnection(
       currentModel = newModel;
     },
 
-    // biome-ignore lint/suspicious/noExplicitAny: unstable API
-    async unstable_resumeSession(_params: any) {
+    async resumeSession(_params: { sessionId?: string }) {
       const requestedId = _params?.sessionId as string | undefined;
       // 从内存或磁盘恢复 session
       let sess = requestedId ? sessions.get(requestedId) : undefined;

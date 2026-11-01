@@ -309,12 +309,11 @@ export class SessionManager {
           break;
         case "resume_session":
           try {
-            // biome-ignore lint/suspicious/noExplicitAny: unstable_resumeSession not in SDK types
-            const r = await (this.sharedConnection as any).unstable_resumeSession({
+            const r = await this.sharedConnection.resumeSession({
               sessionId: (payload.sessionId as string) ?? "",
               cwd: this.cwd,
             });
-            this.currentAcpSessionId = r.sessionId ?? (payload.sessionId as string);
+            this.currentAcpSessionId = payload.sessionId as string;
             this.emit(sessionId, "session_data", {
               type: "session_resumed",
               payload: { ...r, models: extractModelState(r.configOptions), modes: extractModeState(r.configOptions) },
@@ -461,12 +460,11 @@ export class SessionManager {
           break;
         }
         case ACP_METHOD.SESSION_RESUME: {
-          // biome-ignore lint/suspicious/noExplicitAny: unstable_resumeSession not in SDK types
-          const r = await (this.sharedConnection as any).unstable_resumeSession({
+          const r = await this.sharedConnection!.resumeSession({
             sessionId: (p.sessionId as string) ?? "",
             cwd: this.cwd,
           });
-          this.currentAcpSessionId = r.sessionId ?? (p.sessionId as string);
+          this.currentAcpSessionId = p.sessionId as string;
           this.emit(
             sessionId,
             "session_data",

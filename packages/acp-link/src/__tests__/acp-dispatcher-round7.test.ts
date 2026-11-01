@@ -8,7 +8,7 @@ interface FakeConnection {
   newSession?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
   listSessions?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
   loadSession?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  unstable_resumeSession?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  resumeSession?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
   setSessionConfigOption?: (params: Record<string, unknown>) => Promise<void>;
   setSessionMode?: (params: Record<string, unknown>) => Promise<void>;
   deleteSession?: (params: Record<string, unknown>) => Promise<void>;
@@ -122,11 +122,51 @@ describe("AcpDispatcher round7 纯协议状态", () => {
     expect(sent[0]).toMatchObject({ id: 5, result: { sessionId: "ses-target" } });
   });
 
+  // 恢复必须使用标准 SDK 方法，并忽略客户端提供的工作目录。
+  test("session/resume 成功后绑定历史会话并可继续 prompt", async () => {
+    const { dispatcher, sent, state } = createHarness({
+      async resumeSession(params) {
+        expect(params).toEqual({ sessionId: "ses-history", cwd: "/safe/workspace" });
+        return { configOptions: [] };
+      },
+      async prompt(params) {
+        expect(params.sessionId).toBe("ses-history");
+        return { stopReason: "end_turn" };
+      },
+    });
+    state.agentCapabilities = { sessionCapabilities: { resume: {} } };
+
+    await dispatcher.handleMessage(request(61, "session/resume", { sessionId: "ses-history", cwd: "/untrusted" }));
+    expect(sent[0]).toMatchObject({ id: 61, result: { sessionId: "ses-history" } });
+    expect(state.sessionId).toBe("ses-history");
+    await dispatcher.handleMessage(request(62, "session/prompt", { content: [] }));
+    expect(sent.at(-1)).toMatchObject({ id: 62, result: { stopReason: "end_turn" } });
+  });
+
+  // 恢复失败必须保留已有会话状态并返回原始诊断信息。
+  test("session/resume 失败不切换已有会话", async () => {
+    const { dispatcher, sent, state } = createHarness({
+      async resumeSession() {
+        throw new Error("Session unavailable");
+      },
+    });
+    state.sessionId = "ses-current";
+    state.agentCapabilities = { sessionCapabilities: { resume: {} } };
+
+    await dispatcher.handleMessage(request(63, "session/resume", { sessionId: "ses-missing" }));
+
+    expect(state.sessionId).toBe("ses-current");
+    expect(sent[0]).toMatchObject({
+      id: 63,
+      error: { code: -32603, message: "Failed to resume session: Session unavailable" },
+    });
+  });
+
   // session/resume 在未协商 resume 能力时不得触发连接调用。
   test("session/resume 在未协商能力时拒绝", async () => {
     let called = false;
     const { dispatcher, sent, state } = createHarness({
-      async unstable_resumeSession() {
+      async resumeSession() {
         called = true;
         return {};
       },

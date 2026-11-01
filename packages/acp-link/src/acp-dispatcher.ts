@@ -421,8 +421,7 @@ export class AcpDispatcher {
       return;
     }
     try {
-      // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface
-      const result = await this.state.connection.unstable_resumeSession({
+      const result = await this.state.connection.resumeSession({
         sessionId: params.sessionId,
         cwd: this.workspace,
       });

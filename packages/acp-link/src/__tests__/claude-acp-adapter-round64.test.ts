@@ -210,14 +210,14 @@ describe("Claude ACP adapter round64 持久化与恢复边界", () => {
     const sent: unknown[] = [];
     await writeSession(path, "plain.json", { sessionId: "plain", cwd: path, createdAt: 1, title: "普通" });
 
-    const resumed = await connection(path, sent).unstable_resumeSession({ sessionId: "plain" });
+    const resumed = await connection(path, sent).resumeSession({ sessionId: "plain" });
     expect(resumed.sessionId).toBe("plain");
     expect(sent).toEqual([]);
   });
 
   // 未知恢复请求不能伪造会话，应返回空标识及当前协商能力。
   test("恢复未知会话返回空标识和协商能力", async () => {
-    const resumed = await connection(await workspace()).unstable_resumeSession({ sessionId: "missing" });
+    const resumed = await connection(await workspace()).resumeSession({ sessionId: "missing" });
 
     expect(resumed).toMatchObject({
       sessionId: "",
@@ -230,7 +230,7 @@ describe("Claude ACP adapter round64 持久化与恢复边界", () => {
   test("恢复缺少会话标识时保持空会话", async () => {
     const conn = connection(await workspace());
 
-    expect((await conn.unstable_resumeSession({})).sessionId).toBe("");
+    expect((await conn.resumeSession({})).sessionId).toBe("");
     expect((await conn.listSessions({})).sessions).toEqual([]);
   });
 
@@ -240,7 +240,7 @@ describe("Claude ACP adapter round64 持久化与恢复边界", () => {
     const sent: unknown[] = [];
     await writeSession(path, "permission.json", { sessionId: "permission", cwd: path, createdAt: 1, title: "权限" });
     const conn = connection(path, sent);
-    await conn.unstable_resumeSession({ sessionId: "permission" });
+    await conn.resumeSession({ sessionId: "permission" });
     await conn.requestPermission({ toolName: "Read", toolArgs: {} });
 
     expect(sent[0]).toMatchObject({ params: { sessionId: "permission" } });

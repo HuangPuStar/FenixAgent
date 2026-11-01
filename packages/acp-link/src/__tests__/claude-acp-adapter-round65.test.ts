@@ -148,7 +148,7 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     );
 
     const connection = createClaudeAcpConnection(path, "round65", (message) => sent.push(message));
-    const resumed = await connection.unstable_resumeSession({ sessionId: "restored" });
+    const resumed = await connection.resumeSession({ sessionId: "restored" });
     const result = await connection.prompt({ sessionId: "restored", prompt: [{ type: "text", text: "继续" }] });
 
     expect(resumed.sessionId).toBe("restored");
