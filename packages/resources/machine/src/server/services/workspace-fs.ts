@@ -120,11 +120,13 @@ const WORKSPACE_BLACKLIST = new Set([
 
 /**
  * 路径是否属于 user/ 作用域。
+ * 空路径表示 workspace 根（文件 API 契约：`POST /fs/` 上传到根目录），不属于 user/，
+ * 与远程机器端 `resolveAndValidate` 对空串的解析保持一致。
  * 除 resolveWorkspacePath 内部 user/ 分支外，仍被对外稳定 API
  * `/api/workspaces`（api-workspace.ts）用于上传路径校验，属对外契约，不得删除。
  */
 export function isUserPath(path: string): boolean {
-  return path === "" || path === "user" || path.startsWith("user/");
+  return path === "user" || path.startsWith("user/");
 }
 
 /**
