@@ -37,7 +37,7 @@ export interface WebFileEventsRouteDependencies {
    * 显式请求认证入口（宿主 `authenticateRequest`）。
    *
    * 与 `authGuardPlugin` 同源：必须来自宿主同一份实现，否则 WS 端点会用另一套解析规则判定身份。
-   * 认证阶段抛出的 `RATE_LIMITED` 由路由映射为 close(4008)，其余异常向上抛。
+   * 认证限流映射为 close(4008)，真实认证/授权拒绝映射为 close(4003)，依赖异常映射为可重试的 close(1011)。
    */
   readonly authenticateRequest: (request: Request) => Promise<MachineRequestAuthResult | null>;
 }

@@ -51,64 +51,73 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
 
   // 先提取 activeOrgId，以便与缓存比对
   const activeOrgId = extractActiveOrgId(request);
-  const cached = await orgCache.get<AuthContext>(user.id);
-  if (cached && (!activeOrgId || cached.organizationId === activeOrgId)) return cached;
-
   try {
-    const directory = getIdentityDirectory();
-    const memberships = await directory.listMemberships(user.id);
+    const cached = await orgCache.get<AuthContext>(user.id);
+    if (cached && (!activeOrgId || cached.organizationId === activeOrgId)) return cached;
+  } catch (error) {
+    log.warn("Failed to read organization context cache", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
-    const requested = activeOrgId ? memberships.find((item) => item.organizationId === activeOrgId) : undefined;
-    if (activeOrgId && !requested) {
-      // activeOrgId 指定了但用户不是成员 → 记录差异后回退
-      log.warn("active org not found in members, falling back to first org", {
-        requestedOrgId: activeOrgId,
-        userId: user.id,
-      });
-    }
+  const directory = getIdentityDirectory();
+  const memberships = await directory.listMemberships(user.id);
 
-    const resolved = requested ?? memberships[0];
-    if (!resolved) {
-      // 无组织 → 返回 null（由上层处理首次组织创建）
-      return null;
-    }
+  const requested = activeOrgId ? memberships.find((item) => item.organizationId === activeOrgId) : undefined;
+  if (activeOrgId && !requested) {
+    // activeOrgId 指定了但用户不是成员 → 记录差异后回退
+    log.warn("active org not found in members, falling back to first org", {
+      requestedOrgId: activeOrgId,
+      userId: user.id,
+    });
+  }
 
-    // 组织名只是展示信息：名录读取失败不能让已经确定的成员关系整体失败（改动前该查询有独立
-    // try/catch，迁移时若并入外层 try 会变成"名录故障 = 无组织上下文"的行为回归）。
-    let organization: OrganizationSummary | undefined;
-    try {
-      organization = await directory.getOrganization(resolved.organizationId);
-    } catch (nameError) {
-      log.warn("Failed to load organization name for org context", {
-        organizationId: resolved.organizationId,
-        error: nameError instanceof Error ? nameError.message : String(nameError),
-      });
-    }
-    if (!requested) {
-      log.warn("org context resolved to first available organization", {
-        organizationId: resolved.organizationId,
-        organizationName: organization?.name,
-        userId: user.id,
-      });
-    }
+  const resolved = requested ?? memberships[0];
+  if (!resolved) {
+    // 无组织 → 返回 null（由上层处理首次组织创建）
+    return null;
+  }
 
-    const result: AuthContext = {
+  // 组织名只是展示信息：名录读取失败不能让已经确定的成员关系整体失败（改动前该查询有独立
+  // try/catch，迁移时若并入外层 try 会变成"名录故障 = 无组织上下文"的行为回归）。
+  let organization: OrganizationSummary | undefined;
+  try {
+    organization = await directory.getOrganization(resolved.organizationId);
+  } catch (nameError) {
+    log.warn("Failed to load organization name for org context", {
+      organizationId: resolved.organizationId,
+      error: nameError instanceof Error ? nameError.message : String(nameError),
+    });
+  }
+  if (!requested) {
+    log.warn("org context resolved to first available organization", {
       organizationId: resolved.organizationId,
       organizationName: organization?.name,
       userId: user.id,
-      role: resolved.role,
-      // 全量成员关系：授权只在其中查"当前组织那一条"来定角色（组织资源的可见范围就是当前组织，
-      // 其他组织的资源一律不可见），但身份投影必须完整——切组织后的角色、系统管理视图都以全量为
-      // 前提，因此成员关系解析成功就必须整体带上，不能只带当前组织。
-      memberships: memberships.map((membership) => ({
-        organizationId: membership.organizationId,
-        role: membership.role,
-      })),
-    };
-    await orgCache.set(user.id, result);
-    return result;
-  } catch (e: unknown) {
-    console.error("[org-context] Failed to load:", e instanceof Error ? e.message : String(e));
+    });
   }
-  return null;
+
+  const result: AuthContext = {
+    organizationId: resolved.organizationId,
+    organizationName: organization?.name,
+    userId: user.id,
+    role: resolved.role,
+    // 全量成员关系：授权只在其中查"当前组织那一条"来定角色（组织资源的可见范围就是当前组织，
+    // 其他组织的资源一律不可见），但身份投影必须完整——切组织后的角色、系统管理视图都以全量为
+    // 前提，因此成员关系解析成功就必须整体带上，不能只带当前组织。
+    memberships: memberships.map((membership) => ({
+      organizationId: membership.organizationId,
+      role: membership.role,
+    })),
+  };
+  try {
+    await orgCache.set(user.id, result);
+  } catch (error) {
+    log.warn("Failed to write organization context cache", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return result;
 }

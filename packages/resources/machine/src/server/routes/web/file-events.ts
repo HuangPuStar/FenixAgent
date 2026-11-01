@@ -236,7 +236,13 @@ export function createWebFileEventsRoutes(deps: WebFileEventsRouteDependencies) 
           adaptWs(ws).close(WS_CLOSE_RATE_LIMITED, "rate_limited");
           return;
         }
-        throw err;
+        if (err instanceof AppError && (err.statusCode === 401 || err.statusCode === 403)) {
+          adaptWs(ws).close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
+          return;
+        }
+        logError("[file-events] Authentication failed", err);
+        adaptWs(ws).close(1011, "authentication unavailable");
+        return;
       }
       const client = handleFileEventsOpen(
         adaptWs(ws),
