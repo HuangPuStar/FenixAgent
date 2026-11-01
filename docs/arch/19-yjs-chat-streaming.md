@@ -87,7 +87,7 @@ flowchart TB
 4. **同一 Instance ACP session 的消息按其协议顺序处理**：服务端必须将其数据单写入对应 `rcsSessionId` 的 Y.Doc，避免重连或复用实例产生混写。
 5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端在有界去重窗口内通过 `commandId`、`turnId` 和状态机实现幂等。
 6. **流式增量可丢、最终状态不可丢**：短暂的 token delta 可以合并；turn 完成、错误、取消、工具调用和权限决策必须可靠落盘。
-7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。
+7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。浏览器 WS 握手通过 query `activeOrganizationId` 显式传递当前组织，不依赖组织缓存或 `active_org_id` cookie 恢复当前选择。
 8. **慢消费者不能阻塞 Agent**：广播与 ACP 读取解耦；连接达到背压阈值后重新同步当前实时 Doc 或断开重连，而不是无限缓存。
 9. **投影世代必须有界且可替换**：`load_session` / `create_session` 不得在旧 Y.Doc 上执行 clear + 全量回放；Chat Doc 与 Session Doc 必须以同一个 projection generation 成对替换，确保已删除 CRDT struct 不随切换次数累积。
 10. **同步以 generation + state vector 为边界**：连接初始化先协商客户端当前世代和 state vector，仅发送缺失 update；generation 不一致时发送当前世代 replacement。空 state-vector payload 表示客户端没有当前世代状态，不得当作合法 YJS state vector 解码。
@@ -241,7 +241,9 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 | 1011 / 1013 | 通用失败 / 连接配额超限 | 可按退避策略重连 |
 | 4004 | 环境不存在（env not found，重试相同 URL 永远失败） | 终态，不重试 |
 
-**locator 校验在建连前完成，4004 只留给不可恢复场景（防无限重连）**：`/acp/yjs/:agentId` 打开时先要求 `instanceUid` 与 `rcsSessionId` 同时存在（任一缺失 → `close(4000, "invalid chat locator")`），再用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推比对（不一致），并校验环境归属（不属于当前用户/组织）——两者都 `close(4003, "unauthorized")`。4000 与 4003 都不在客户端终态码策略表（`packages/chat-channel/src/transport/ws-close-codes.ts`）里，客户端按非终态自动重连；4004（`INVALID_REFERENCE`）在策略表内（停自动重连），因此只能用于确定性不可恢复的场景（环境不存在）。历史书签或已回收实例的 `instanceUid` **不会**被忽略后按默认路径继续连接：它原样进入 `resolveInstanceForOperation`，以 `NOT_FOUND` 结束，经机器离线（`isMachineOfflineError`）与永久失败（`classifyPermanentSpawnFailure`）判定均不命中，最终 `close(1011, "spawn failed")`（可重连）。
+组织上下文缓存只用于加速：缓存读写失败会记录诊断，成员关系仍由身份目录确认；确实没有成员关系时返回空上下文。成员查询失败保留异常，由 YJS、外部 relay 与文件事件 WS 的认证边界记录并以 `1011` 关闭，依赖恢复后可重连。`4003` 只表达真实认证或授权拒绝，不用于暂时性依赖故障。
+
+**locator 校验在建连前完成，4004 只留给不可恢复场景（防无限重连）**：`/acp/yjs/:agentId` 打开时先要求 `instanceUid` 与 `rcsSessionId` 同时存在（任一缺失 → `close(4000, "invalid chat locator")`），再用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推比对（不一致），并校验环境归属（不属于当前用户/组织）——两者都 `close(4003, "unauthorized")`。4000 不在客户端终态码策略表（`packages/chat-channel/src/transport/ws-close-codes.ts`）里，客户端按非终态自动重连；4003 是鉴权失败终态，新旧聊天传输均停止自动重连，面板提示检查登录状态和当前组织权限后重新进入；4004（`INVALID_REFERENCE`）在策略表内（停自动重连），因此只能用于确定性不可恢复的场景（环境不存在）。历史书签或已回收实例的 `instanceUid` **不会**被忽略后按默认路径继续连接：它原样进入 `resolveInstanceForOperation`，以 `NOT_FOUND` 结束，经机器离线（`isMachineOfflineError`）与永久失败（`classifyPermanentSpawnFailure`）判定均不命中，最终 `close(1011, "spawn failed")`（可重连）。
 
 **共享 relay 语义**：`ConnectionRegistry` 按 `instanceId + userId + rcsSessionId` 管理 `SharedRelay` 引用计数——同组多标签页共享同一 relay handle 与入站监听，引用计数归零才释放（YJS 不变量 8）。首个客户端建立时 `markRelayAttached`（idle 监控附着），并启动 `session/list` 定时轮询（Agent status 到达前不发送，`translateSimpleAction` 注入 cwd 与 rpcId）。
 

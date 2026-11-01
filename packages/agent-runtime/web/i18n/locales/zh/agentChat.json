@@ -8,6 +8,8 @@
   "instanceStopped": "实例已停止",
   "instanceStoppedDesc": "该实例已被主动停止，当前不会再自动连接；在左侧边栏重新启动该实例后即可继续对话",
   "agentDisconnected": "Agent 未连接",
+  "agentAccessDenied": "无法访问此智能体",
+  "agentAccessDeniedDesc": "请检查登录状态和当前组织权限，再重新进入智能体。",
   "agentOfflineDesc": "Agent 尚未上线，请确保 acp-link 已启动",
   "reconnecting": "重连中...",
   "reconnectingDesc": "连接已断开，正在自动重连；如长时间未恢复可点击重试",

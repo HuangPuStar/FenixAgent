@@ -1,4 +1,5 @@
-import KeyvRedis from "@keyv/redis";
+import { createLogger } from "@fenix/logger";
+import KeyvRedis, { defaultReconnectStrategy, type RedisClientOptions, type RedisClusterOptions } from "@keyv/redis";
 import Redis, { type Cluster } from "ioredis";
 import Keyv from "keyv";
 
@@ -26,10 +27,17 @@ function getEnv(key: string): string | undefined {
 type Backend = "memory" | "redis" | "redis-cluster";
 
 let _backend: Backend = "memory";
-/** 全局共享的 Redis 连接（单实例或集群），所有 Keyv 实例复用 */
+/** 供实时通道等直接使用的 ioredis 连接。 */
 let _redis: Redis | Cluster | null = null;
+let _cacheConnect: RedisClientOptions | RedisClusterOptions | null = null;
+const redisStores = new Set<KeyvRedis<unknown>>();
+const log = createLogger("cache");
 
-function buildRedisConnection(): { redis: Redis | Cluster; backend: Backend } | null {
+function buildRedisConnection(): {
+  redis: Redis | Cluster;
+  cacheConnect: RedisClientOptions | RedisClusterOptions;
+  backend: Backend;
+} | null {
   const clusterStr = getEnv("RCS_REDIS_CLUSTER");
   const redisUrl = getEnv("RCS_REDIS_URL");
   const redisPassword = getEnv("RCS_REDIS_PASSWORD");
@@ -49,7 +57,18 @@ function buildRedisConnection(): { redis: Redis | Cluster; backend: Backend } | 
       redisOptions: { password: redisPassword || undefined },
       lazyConnect: true,
     });
-    return { redis: cluster, backend: "redis-cluster" };
+    const cacheConnect: RedisClusterOptions = {
+      rootNodes: nodes.map(({ host, port }) => ({
+        url: `redis://${host}:${port}`,
+        socket: { socketTimeout: 5000 },
+      })),
+      defaults: {
+        password: redisPassword || undefined,
+        socket: { reconnectStrategy: defaultReconnectStrategy },
+        disableOfflineQueue: true,
+      },
+    };
+    return { redis: cluster, cacheConnect, backend: "redis-cluster" };
   }
 
   if (redisUrl) {
@@ -57,7 +76,13 @@ function buildRedisConnection(): { redis: Redis | Cluster; backend: Backend } | 
       password: redisPassword || undefined,
       lazyConnect: true,
     });
-    return { redis: client, backend: "redis" };
+    const cacheConnect: RedisClientOptions = {
+      url: redisUrl,
+      password: redisPassword || undefined,
+      socket: { reconnectStrategy: false },
+      disableOfflineQueue: true,
+    };
+    return { redis: client, cacheConnect, backend: "redis" };
   }
 
   return null;
@@ -88,15 +113,25 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
     const result = buildRedisConnection();
     if (result) {
       _redis = result.redis;
+      _cacheConnect = result.cacheConnect;
       _backend = result.backend;
     }
   }
 
-  if (_redis) {
-    // 每个 namespace 创建独立的 KeyvRedis 包装器（内部共享同一个 Redis 连接）
-    // biome-ignore lint/suspicious/noExplicitAny: KeyvRedis accepts Redis | Cluster but type mismatch
-    const store = new KeyvRedis(_redis as any);
+  if (_cacheConnect) {
+    // 传配置而非外部客户端，让官方适配器负责并发握手、超时清理和失败后的连接替换。
+    const store = new KeyvRedis(_cacheConnect, { throwOnErrors: true, connectionTimeout: 5000 });
+    redisStores.add(store);
     kv = new Keyv({ store, namespace, ttl: defaultTtlMs });
+    // 后台连接错误只记录；操作错误仍由 adapter 拒绝，经 Keyv 原样抛给调用方。
+    // 若在 Keyv 上注册日志监听器，Keyv 6 会把操作失败改成返回空值或 false。
+    store.removeAllListeners("error");
+    store.on("error", (error: unknown) => {
+      log.warn("Redis cache connection error", {
+        namespace,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   } else {
     kv = new Keyv({ namespace, ttl: defaultTtlMs });
     _backend = "memory";
@@ -106,7 +141,7 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
   return kv;
 }
 
-/** 测试用：清除所有缓存实例的底层数据 */
+/** 测试用：清除所有缓存实例的底层数据并释放适配器连接。 */
 export async function clearAllCache(): Promise<void> {
   const promises: Promise<void>[] = [];
   for (const kv of instances.values()) {
@@ -114,16 +149,27 @@ export async function clearAllCache(): Promise<void> {
   }
   await Promise.all(promises);
   instances.clear();
+  const stores = [...redisStores];
+  redisStores.clear();
+  await Promise.all(stores.map((store) => store.disconnect(true)));
 }
 
-/** 优雅关闭：断开 Redis 连接 */
+/** 优雅关闭 Redis 连接；失败保留诊断，继续后续宿主资源清理。 */
 export async function closeCache(): Promise<void> {
   instances.clear();
-  if (_redis) {
-    await _redis.quit().catch(() => {
-      // quit 可能抛错（连接已断开），忽略
-    });
-    _redis = null;
+  const redis = _redis;
+  const stores = [...redisStores];
+  redisStores.clear();
+  _redis = null;
+  _cacheConnect = null;
+  _backend = "memory";
+  const results = await Promise.allSettled([redis?.quit(), ...stores.map((store) => store.disconnect(true))]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      log.error("Redis cache shutdown failed", {
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
   }
 }
 

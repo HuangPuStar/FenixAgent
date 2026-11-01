@@ -512,6 +512,16 @@ describe("createYjsWsClient", () => {
     expect(timers).toHaveLength(0);
   });
 
+  // 鉴权拒绝应直接终止，而不是不断重复使用相同凭据重连。
+  test("4003 关闭码不安排重连且进入 error 终态", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4003, "unauthorized");
+    expect(states).toEqual(["connecting", "error"]);
+    expect(timers).toHaveLength(0);
+  });
+
   // 发送背压在阈值内不得干预：正常帧照常写入 socket 且返回 true，调用方据此判定"已发出"。
   test("阈值内的发送正常写入 socket 并返回 true", () => {
     const client = createClient();

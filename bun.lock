@@ -49,7 +49,7 @@
         "@fenix/web-runtime": "workspace:*",
         "@fenix/workflow-engine": "workspace:*",
         "@hookform/resolvers": "^5.4.0",
-        "@keyv/redis": "^5.1.6",
+        "@keyv/redis": "^6.1.0",
         "@lobehub/icons": "^5.10.0",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@noble/ciphers": "^2.2.0",
@@ -100,7 +100,7 @@
         "ioredis": "^5.10.1",
         "js-yaml": "^5.1.0",
         "katex": "^0.16.47",
-        "keyv": "^5.6.0",
+        "keyv": "^6.1.0",
         "lucide-react": "^1.16.0",
         "mammoth": "^1.12.0",
         "motion": "^12.40.0",
@@ -193,11 +193,11 @@
         "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
-        "@keyv/redis": "^5.1.6",
+        "@keyv/redis": "^6.1.0",
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
         "ioredis": "^5.10.1",
-        "keyv": "^5.6.0",
+        "keyv": "^6.1.0",
         "pg": "^8.23.0",
         "zod": "^4.4.3",
       },
@@ -1489,9 +1489,7 @@
 
     "@kenjiuno/msgreader": ["@kenjiuno/msgreader@1.28.0", "https://registry.npmmirror.com/@kenjiuno/msgreader/-/msgreader-1.28.0.tgz", { "dependencies": { "@kenjiuno/decompressrtf": "^0.1.3", "iconv-lite": "^0.6.3" } }, "sha512-+iv2rWCGRHmX/3sBwXZzkThEuuywGJjnYsvxj6Kp1L/FDMICQcFrtqN+6MFrnh2d+umtfGtX904wxaYEDZ52MQ=="],
 
-    "@keyv/redis": ["@keyv/redis@5.1.6", "https://registry.npmmirror.com/@keyv/redis/-/redis-5.1.6.tgz", { "dependencies": { "@redis/client": "^5.10.0", "cluster-key-slot": "^1.1.2", "hookified": "^1.13.0" }, "peerDependencies": { "keyv": "^5.6.0" } }, "sha512-eKvW6pspvVaU5dxigaIDZr635/Uw6urTXL3gNbY9WTR8d3QigZQT+r8gxYSEOsw4+1cCBsC4s7T2ptR0WC9LfQ=="],
-
-    "@keyv/serialize": ["@keyv/serialize@1.1.1", "https://registry.npmmirror.com/@keyv/serialize/-/serialize-1.1.1.tgz", {}, "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="],
+    "@keyv/redis": ["@keyv/redis@6.1.0", "https://registry.npmmirror.com/@keyv/redis/-/redis-6.1.0.tgz", { "dependencies": { "@redis/client": "^6.2.1", "cluster-key-slot": "^1.1.2", "hookified": "^3.0.3" }, "peerDependencies": { "keyv": "^6.1.0" } }, "sha512-H1nYM70uS+LtYWLJOqnaFJrFAm3MpEgjOEeFfHd7VaE3RKfEJKr8pnKOfmftBx5KfWuNnKzP1VBViuVHAJR+MA=="],
 
     "@konghayao/opencode-hindsight": ["@konghayao/opencode-hindsight@workspace:packages/opencode-hindsight"],
 
@@ -1777,7 +1775,7 @@
 
     "@react-dnd/shallowequal": ["@react-dnd/shallowequal@2.0.0", "https://registry.npmmirror.com/@react-dnd/shallowequal/-/shallowequal-2.0.0.tgz", {}, "sha512-Pc/AFTdwZwEKJxFJvlxrSmGe/di+aAOBn60sremrpLo6VI/6cmiUYNNwlI5KNYttg7uypzA3ILPMPgxB2GYZEg=="],
 
-    "@redis/client": ["@redis/client@5.12.1", "https://registry.npmmirror.com/@redis/client/-/client-5.12.1.tgz", { "dependencies": { "cluster-key-slot": "1.1.2" }, "peerDependencies": { "@node-rs/xxhash": "^1.1.0", "@opentelemetry/api": ">=1 <2" }, "optionalPeers": ["@node-rs/xxhash", "@opentelemetry/api"] }, "sha512-7aPGWeqA3uFm43o19umzdl16CEjK/JQGtSXVPevplTaOU3VJA/rseBC1QvYUz9lLDIMBimc4SW/zrW4S89BaCA=="],
+    "@redis/client": ["@redis/client@6.3.1", "https://registry.npmmirror.com/@redis/client/-/client-6.3.1.tgz", { "peerDependencies": { "@node-rs/xxhash": "^1.1.0", "@opentelemetry/api": ">=1 <2" }, "optionalPeers": ["@node-rs/xxhash", "@opentelemetry/api"] }, "sha512-masbfVKULdoAofwddepZxRhWa4w6zvBHn6TRn90TRPrRkVIlGCur3pFqwWaCbMxtYI9twepkz63e/T/tEH8GjA=="],
 
     "@reduxjs/toolkit": ["@reduxjs/toolkit@2.12.0", "https://registry.npmmirror.com/@reduxjs/toolkit/-/toolkit-2.12.0.tgz", { "dependencies": { "@standard-schema/spec": "^1.0.0", "@standard-schema/utils": "^0.3.0", "immer": "^11.0.0", "redux": "^5.0.1", "redux-thunk": "^3.1.0", "reselect": "^5.1.0" }, "peerDependencies": { "react": "^16.9.0 || ^17.0.0 || ^18 || ^19", "react-redux": "^7.2.1 || ^8.1.3 || ^9.0.0" }, "optionalPeers": ["react", "react-redux"] }, "sha512-KiT+RzZbp6mQET+Mg+h2c97+9j1sNflUxQkIHI7Yuzf6Peu+OYpmkn6nbHWmLLWj+1ZODUJFwGZ7gx3L9R9EOw=="],
 
@@ -2679,7 +2677,7 @@
 
     "hookable": ["hookable@5.5.3", "https://registry.npmmirror.com/hookable/-/hookable-5.5.3.tgz", {}, "sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ=="],
 
-    "hookified": ["hookified@1.15.1", "https://registry.npmmirror.com/hookified/-/hookified-1.15.1.tgz", {}, "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg=="],
+    "hookified": ["hookified@3.1.0", "https://registry.npmmirror.com/hookified/-/hookified-3.1.0.tgz", {}, "sha512-G2jPVpzwIiV7pcYcg62ngNvY+y0iCkKmuJIaQpomFdvtY89UiSvWuPiNo1AalSr1t2op1cdz21ZThZc3DSbmvA=="],
 
     "html-parse-stringify": ["html-parse-stringify@3.0.1", "https://registry.npmmirror.com/html-parse-stringify/-/html-parse-stringify-3.0.1.tgz", { "dependencies": { "void-elements": "3.1.0" } }, "sha512-KknJ50kTInJ7qIScF3jeaFRpMpE8/lfiTdzf/twXyPBLAGrLRTmkz3AdTnKeh40X8k9L2fdYwEp/42WGXIRGcg=="],
 
@@ -2805,7 +2803,7 @@
 
     "katex": ["katex@0.16.47", "https://registry.npmmirror.com/katex/-/katex-0.16.47.tgz", { "dependencies": { "commander": "^8.3.0" }, "bin": { "katex": "cli.js" } }, "sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg=="],
 
-    "keyv": ["keyv@5.6.0", "https://registry.npmmirror.com/keyv/-/keyv-5.6.0.tgz", { "dependencies": { "@keyv/serialize": "^1.1.1" } }, "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw=="],
+    "keyv": ["keyv@6.1.0", "https://registry.npmmirror.com/keyv/-/keyv-6.1.0.tgz", { "dependencies": { "hookified": "^3.0.3" } }, "sha512-0OO64DxKOITdyQljNCcO+vc+iyaPmm3OV5eKOWRxWCp3V0QnXenpqcKfjGjycNILUJNV+erm1ose6Hsgr1fNFA=="],
 
     "khroma": ["khroma@2.1.0", "https://registry.npmmirror.com/khroma/-/khroma-2.1.0.tgz", {}, "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw=="],
 
