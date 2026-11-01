@@ -141,7 +141,7 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
   return kv;
 }
 
-/** 测试用：清除所有缓存实例的底层数据 */
+/** 测试用：清除所有缓存实例的底层数据并释放适配器连接。 */
 export async function clearAllCache(): Promise<void> {
   const promises: Promise<void>[] = [];
   for (const kv of instances.values()) {
@@ -149,9 +149,12 @@ export async function clearAllCache(): Promise<void> {
   }
   await Promise.all(promises);
   instances.clear();
+  const stores = [...redisStores];
+  redisStores.clear();
+  await Promise.all(stores.map((store) => store.disconnect(true)));
 }
 
-/** 优雅关闭：断开 Redis 连接 */
+/** 优雅关闭 Redis 连接；失败保留诊断，继续后续宿主资源清理。 */
 export async function closeCache(): Promise<void> {
   instances.clear();
   const redis = _redis;
@@ -160,7 +163,14 @@ export async function closeCache(): Promise<void> {
   _redis = null;
   _cacheConnect = null;
   _backend = "memory";
-  await Promise.all([redis?.quit(), ...stores.map((store) => store.disconnect(true))]);
+  const results = await Promise.allSettled([redis?.quit(), ...stores.map((store) => store.disconnect(true))]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      log.error("Redis cache shutdown failed", {
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
+  }
 }
 
 /** 获取底层 Redis 连接（供 yjs provider 等直接使用） */

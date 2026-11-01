@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import KeyvRedis from "@keyv/redis";
-import { closeCache, getCache, getCacheBackend, getRedisConnection } from "../services/cache";
+import { clearAllCache, closeCache, getCache, getCacheBackend, getRedisConnection } from "../services/cache";
 
 const originalEnv = {
   RCS_REDIS_URL: process.env.RCS_REDIS_URL,
@@ -212,6 +212,46 @@ describe("Redis 缓存适配", () => {
     const store = getCache("redis-background-error").store;
     if (!(store instanceof KeyvRedis)) throw new Error("非 Redis 存储");
     expect(() => store.client.emit("error", new Error("fixture connection lost"))).not.toThrow();
+  });
+
+  // 任一 Redis 关闭失败都不能阻断宿主后续关闭阶段。
+  test.each(["runtime", "adapter"] as const)("%s 关闭失败后仍可继续关闭其他宿主资源", async (source) => {
+    const store = getCache("redis-shutdown-failure").store;
+    const redis = getRedisConnection();
+    if (!(store instanceof KeyvRedis) || !redis) throw new Error("非 Redis 存储");
+    const error = new Error(`fixture ${source} shutdown failed`);
+    const cleanup =
+      source === "runtime"
+        ? spyOn(redis, "quit").mockRejectedValue(error)
+        : spyOn(store, "disconnect").mockRejectedValue(error);
+    try {
+      await expect(closeCache()).resolves.toBeUndefined();
+      expect(getRedisConnection()).toBeNull();
+      expect(getCacheBackend()).toBe("memory");
+    } finally {
+      cleanup.mockRestore();
+      await store.disconnect(true);
+      redis.disconnect();
+    }
+  });
+
+  // 清空并重建命名空间时必须关闭旧连接，避免重复测试逐轮积累客户端。
+  test.skipIf(!process.env.TEST_CACHE_REDIS_URL)("真实 Redis 全量清理释放旧连接并支持重建", async () => {
+    const namespace = `cache-clear-regression-${crypto.randomUUID()}`;
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      const first = getCache(`${namespace}-a`);
+      const second = getCache(`${namespace}-b`);
+      await Promise.all([first.set("organization", "org-a"), second.set("organization", "org-b")]);
+      const stores = [first.store, second.store];
+      await clearAllCache();
+      for (const store of stores) {
+        if (!(store instanceof KeyvRedis)) throw new Error("非 Redis 存储");
+        expect(store.client.isOpen).toBe(false);
+      }
+      const reopened = getCache(`${namespace}-a`);
+      expect(reopened).not.toBe(first);
+      expect(await reopened.get("organization")).toBeUndefined();
+    }
   });
 
   // 真实 Redis 验证首次写入、并发复用、租户隔离、TTL 与关闭后重建，不依赖模拟客户端。
