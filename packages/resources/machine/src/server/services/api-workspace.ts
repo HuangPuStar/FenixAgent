@@ -148,15 +148,10 @@ export async function uploadWorkspaceFiles(
       }),
     );
 
-    const remoteDir = dirPath.replace(/^user\/?/, "");
-    const result = await deps.remoteUploadFiles(machineId, environmentId, remoteDir, remoteFiles);
-    return {
-      environmentId,
-      files: result.files.map((file) => ({
-        ...file,
-        path: file.path.startsWith("user/") ? file.path : deps.normalizeUserRoutePath(file.path),
-      })),
-    };
+    // 机器端以 workspace 根为基准解析 dir，user/ 必须原样下发；剥掉前缀会落到 workspace 根，
+    // 与接口契约（写入 workspace/user 目录）不符。
+    const result = await deps.remoteUploadFiles(machineId, environmentId, dirPath, remoteFiles);
+    return { environmentId, files: result.files };
   }
 
   const resolved = await deps.resolveWorkspacePath(environmentId, dirPath);

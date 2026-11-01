@@ -75,6 +75,42 @@ describe("API Workspace Routes", () => {
     await rm(workspaceDir, { recursive: true, force: true });
   });
 
+  // 远程分支必须把 user/ 前缀原样下发给机器端，否则文件落在 workspace 根而响应仍声称在 user/。
+  test("POST /api/environments/:environmentId/workspace/files keeps user/ prefix for remote uploads", async () => {
+    const dirs: string[] = [];
+    setApiWorkspaceDeps({
+      getRemoteMachineId: async () => "machine-1",
+      remoteUploadFiles: async (_machineId, _envId, dir) => {
+        dirs.push(dir);
+        return { files: [{ name: "demo.txt", path: `${dir}/demo.txt`, size: 5 }] };
+      },
+    });
+
+    const explicitForm = new FormData();
+    explicitForm.append("path", "docs");
+    explicitForm.append("files", new File(["hello"], "demo.txt", { type: "text/plain" }));
+    const explicitRes = await request("/api/environments/env-1/workspace/files", {
+      method: "POST",
+      body: explicitForm,
+    });
+    const explicitJson = await explicitRes.json();
+
+    expect(explicitRes.status).toBe(200);
+    expect(explicitJson.files).toEqual([{ name: "demo.txt", path: "user/docs/demo.txt", size: 5 }]);
+
+    const defaultForm = new FormData();
+    defaultForm.append("files", new File(["hello"], "demo.txt", { type: "text/plain" }));
+    const defaultRes = await request("/api/environments/env-1/workspace/files", {
+      method: "POST",
+      body: defaultForm,
+    });
+    const defaultJson = await defaultRes.json();
+
+    expect(defaultRes.status).toBe(200);
+    expect(defaultJson.files[0]?.path).toBe("user/demo.txt");
+    expect(dirs).toEqual(["user/docs", "user"]);
+  });
+
   // workspace 上传必须在调用本地或远程写入前拒绝目录穿越路径。
   test("POST /api/environments/:environmentId/workspace/files rejects traversal paths", async () => {
     let remoteCalled = false;
