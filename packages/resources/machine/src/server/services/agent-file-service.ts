@@ -51,6 +51,12 @@ export function assertSafePath(path: string): void {
 // upload relativePath 规范化/校验（D16 逃逸修复）——实现迁至 validator，接口不变
 export { normalizeUploadRelativePath };
 
+/** 删除/写入的空路径（splat 为空串、批量删除 body 中的空项）在协议上与「workspace 根」
+ *  不可区分，放行会让一次 DELETE 递归删除整个用户文件区，必须在执行面前统一拒绝。 */
+function assertNonEmptyTargetPath(path: string): void {
+  if (!path.trim()) throw new ValidationError("路径不能为空");
+}
+
 /** upload 入参整批校验（D16 逃逸修复，W2 语义随迁）：relativePath 与 file.name
  *  （multipart filename 可伪造 `../`，同源漏洞）任一非法即整批拒绝，避免部分
  *  文件已落盘后才发现越界；file.name 无回退目标，空名也拒绝。 */
@@ -153,7 +159,10 @@ class AgentFileServiceImpl implements AgentFileService {
     return this.run((b) => b.read(this.scope.environmentId, path, mode), validate);
   }
   async write(path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
-    const validate = () => assertSafePath(path);
+    const validate = () => {
+      assertNonEmptyTargetPath(path);
+      assertSafePath(path);
+    };
     return this.run((b) => b.write(this.scope.environmentId, path, content, this.writeOptions(options)), validate);
   }
   async upload(dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult> {
@@ -166,7 +175,10 @@ class AgentFileServiceImpl implements AgentFileService {
     }, validate);
   }
   async delete(path: string, options?: FileWriteOptions): Promise<void> {
-    const validate = () => assertSafePath(path);
+    const validate = () => {
+      assertNonEmptyTargetPath(path);
+      assertSafePath(path);
+    };
     return this.run((b) => b.delete(this.scope.environmentId, path, this.writeOptions(options)), validate);
   }
   async mkdir(path: string, options?: FileWriteOptions): Promise<void> {

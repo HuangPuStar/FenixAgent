@@ -459,6 +459,14 @@ describe("门面统一错误映射与能力常量", () => {
     });
   });
 
+  test("空路径的删除/写入 → 400 validation_error（不得解析为目录本身）", async () => {
+    // 空路径与用户文件区根不可区分，放行会让 DELETE 递归删光用户文件区
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await expect(fs.delete("")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    await expect(fs.delete("   ")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    await expect(fs.write("", "x")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+  });
+
   test("能力上限常量：本地 / 远程均为 92MB", async () => {
     // 能力不对称条款：常量声明即契约（W8b 据此实施检查）
     expect(LOCAL_UPLOAD_MAX_BYTES).toBe(92 * 1024 * 1024);

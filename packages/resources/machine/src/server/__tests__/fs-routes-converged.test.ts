@@ -250,6 +250,54 @@ describe("本地环境（无 machine 配置）", () => {
     expect(treeBody.data.paths).toContain("README.md");
   });
 
+  test("DELETE /fs/ 空路径返回 400，不会递归删掉用户文件区", async () => {
+    // 空路径与用户文件区根在解析上不可区分，删除必须显式给出路径
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/", { method: "DELETE" });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "validation_error", message: "路径不能为空" },
+    });
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
+  test("PUT /fs/ 空路径返回 400，不写入任何文件", async () => {
+    const response = await handle("/fs/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "x" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "validation_error", message: "路径不能为空" },
+    });
+  });
+
+  test("批量删除中的空路径在请求校验阶段被拒绝", async () => {
+    // 批量删除 body 由 schema 拒绝空路径项（min(1)），不会进入门面逐条执行
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/batch", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: [""] }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
   test("本地错误契约：400（越界/绝对路径）+ 404（环境不可见）", async () => {
     // 本地场景错误码与远程一致（门面统一校验与归属检查，不依赖执行后端）
     await expectCommonErrorContract();
