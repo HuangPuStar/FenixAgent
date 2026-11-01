@@ -301,6 +301,30 @@ describe("本地环境（无 machine 配置）", () => {
     });
   });
 
+  test("批量删除中的 '.' 逐条失败，不会删除工作区根目录", async () => {
+    // "." 等价于工作区根，批量删除通道可直达该路径，必须在门面拒绝并保留已有文件
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/batch", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: ["."] }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { deleted: string[]; failed: Array<{ path: string; error: string }> };
+    };
+    expect(body.data.deleted).toEqual([]);
+    expect(body.data.failed).toEqual([{ path: ".", error: "不能删除工作区根目录" }]);
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
   test("批量删除中的空路径在请求校验阶段被拒绝", async () => {
     // 批量删除 body 由 schema 拒绝空路径项（min(1)），不会进入门面逐条执行
     await handle("/fs/user/keep.txt", {

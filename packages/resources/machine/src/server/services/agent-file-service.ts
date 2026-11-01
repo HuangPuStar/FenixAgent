@@ -57,6 +57,15 @@ function assertNonEmptyTargetPath(path: string): void {
   if (!path.trim()) throw new ValidationError("路径不能为空");
 }
 
+/** 归一化后只剩空段或 `.` 的路径（`"."`、`"./"` 等）指向工作区根本身；删除会递归清空
+ *  整个工作区。`..` 段已由 assertSafePath 在前拒绝，这里只需识别域内根等价写法。 */
+function isWorkspaceRootTarget(path: string): boolean {
+  return path
+    .trim()
+    .split(/[\\/]+/)
+    .every((segment) => segment === "" || segment === ".");
+}
+
 /** upload 入参整批校验（D16 逃逸修复，W2 语义随迁）：relativePath 与 file.name
  *  （multipart filename 可伪造 `../`，同源漏洞）任一非法即整批拒绝，避免部分
  *  文件已落盘后才发现越界；file.name 无回退目标，空名也拒绝。 */
@@ -178,6 +187,7 @@ class AgentFileServiceImpl implements AgentFileService {
     const validate = () => {
       assertNonEmptyTargetPath(path);
       assertSafePath(path);
+      if (isWorkspaceRootTarget(path)) throw new ValidationError("不能删除工作区根目录");
     };
     return this.run((b) => b.delete(this.scope.environmentId, path, this.writeOptions(options)), validate);
   }

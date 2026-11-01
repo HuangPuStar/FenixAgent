@@ -455,7 +455,7 @@ sequenceDiagram
 - 主服务在发送 file_op 前对 `path` 做基础校验：拒绝绝对路径、拒绝 `..` 段、拒绝 NUL 与控制字符；resolve 后对真实路径做越界检查（realpath，防 symlink 逃逸，与本地约束同构）。用例：`user/link → /tmp/outside` 的 symlink 下读/写/删/rename 一律拒绝。
 - 机器端承担**最终隔离**（按 environmentId → WorkspaceRef 解析），主服务校验是防线而非依赖。
 - 校验失败返回 400 `validation_error`，不透传机器端。
-- **空路径语义**：`DELETE` / `PUT` 的空路径与目录本身不可区分，一律 400 `validation_error`，不得解析为目标目录（否则一次删除会递归清空整个文件区）；上传（`POST /fs/`，空目录）的落点是 workspace 根，`user/` 必须显式作为路径前缀，本地与远程机器端一致。
+- **空路径语义**：`DELETE` / `PUT` 的空路径与目录本身不可区分，一律 400 `validation_error`，不得解析为目标目录（否则一次删除会递归清空整个文件区）；删除目标归一化后指向工作区根（`.`、`./`）同样 400；上传（`POST /fs/`，空目录）的落点是 workspace 根，`user/` 必须显式作为路径前缀，本地与远程机器端一致。
 - **本地 upload relativePath 越界修复（D16）**：`join(resolved, relPath)` 前必须规范化 + 越界检查（现状 `../` 可逃逸 workspace，现网漏洞）。
 
 ### 7.8 读文件错误语义（修复 D9）
