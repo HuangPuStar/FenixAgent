@@ -251,8 +251,6 @@ export function createClaudeAcpConnection(
   });
   // 标记：下次 prompt 需要 resume 的 CC session UUID
   let pendingResumeSessionId: string | null = null;
-  // 标记：历史消息已由 resumeSession 发送到前端，prompt 中跳过 SDK resume 回放
-  let historyReplayed = false;
 
   // send 回调已由 InstanceManager.start() 包裹 relay 信封（type/instance_id/session_id）
   // 此处只需发送原始 JSON-RPC payload
@@ -371,7 +369,7 @@ export function createClaudeAcpConnection(
 
       const isFollowUp = targetSession?.ccSessionId != null;
 
-      // 加载历史 session 时用 resume 回放消息；follow-up 用 continue
+      // 恢复会话用 resume 加载上下文；follow-up 用 continue。
       const resumeId = pendingResumeSessionId;
       pendingResumeSessionId = null;
 
@@ -392,7 +390,8 @@ export function createClaudeAcpConnection(
       }
 
       const q = query({
-        prompt: resumeId && !historyReplayed ? "" : text,
+        // SDK resume 只加载上下文，新提示在此提交一次；历史展示由 resumeSession 负责。
+        prompt: text,
         options: {
           cwd: sessionCwd,
           systemPrompt,
@@ -409,32 +408,8 @@ export function createClaudeAcpConnection(
       });
       activeQueries.register(targetSessionId, q);
 
-      // historyReplayed 时 resumeSession 已发送历史消息
-      // 仍需 streamInput 推送新 prompt，但 ProtocolAdapter 跳过 SDK resume 回放的消息
-      const skipReplay = historyReplayed && resumeId != null;
-      historyReplayed = false;
-
-      if (resumeId && text.trim()) {
-        const rq = new AsyncQueue<{
-          type: "user";
-          message: { role: "user"; content: Array<{ type: "text"; text: string }> };
-          parent_tool_use_id: null;
-        }>();
-        rq.push({
-          type: "user",
-          message: { role: "user", content: [{ type: "text", text }] },
-          parent_tool_use_id: null,
-        });
-        rq.end();
-        try {
-          await q.streamInput(rq);
-        } catch {}
-      }
-
       const adapter = new ProtocolAdapter((type: string, payload?: unknown) => {
         if (type === "prompt_complete") return;
-        // 跳过 resume 回放的历史消息（已由 resumeSession 发送到前端）
-        if (skipReplay && (type === "user_message_chunk" || type === "agent_message_chunk")) return;
         sendJsonRpc(null, { sessionId: targetSessionId!, update: { sessionUpdate: type, content: payload } });
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
@@ -562,7 +537,7 @@ export function createClaudeAcpConnection(
       if (requestedId && sessions.has(requestedId)) {
         activeSessionId = requestedId;
         const s = sessions.get(requestedId)!;
-        // 标记下次 prompt 需要 resume，以便 SDK 回放历史消息
+        // 标记下次 prompt 需要 resume，以便 SDK 加载历史上下文。
         // 优先内存，其次从 workspace 磁盘恢复
         const disk = !s.ccSessionId ? loadSessionFromDiskSync(cwd, requestedId) : null;
         const ccId = s.ccSessionId || disk?.ccSessionId;
@@ -620,8 +595,6 @@ export function createClaudeAcpConnection(
           sess.ccSessionId = ccId;
           pendingResumeSessionId = ccId;
           // 从 SDK session 中读取历史消息并推送到前端
-          // 标记 historyReplayed，避免 prompt() 中 SDK resume 再次回放
-          historyReplayed = true;
           try {
             // 使用 session 隔离目录读取消息，避免不同 session 的消息混合
             const msgDir = sess.sessionCwd || cwd;

@@ -32,9 +32,11 @@ async function workspace(): Promise<string> {
   return path;
 }
 
-function fakeQuery(messages: Array<Record<string, unknown>>): FakeQuery {
+function fakeQuery(messages: Array<Record<string, unknown>>, streamedInputs: unknown[] = []): FakeQuery {
   return {
-    async streamInput(_input) {},
+    async streamInput(input) {
+      for await (const message of input) streamedInputs.push(message);
+    },
     async interrupt() {},
     async *[Symbol.asyncIterator]() {
       yield* messages;
@@ -99,9 +101,16 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     });
 
     expect(responses[1]).toMatchObject({ id: 2, result: { stopReason: "end_turn" } });
-    expect(queryCalls[0]).toMatchObject({ prompt: "", options: { resume: "cc-active" } });
+    expect(queryCalls[0]).toMatchObject({ prompt: "继续", options: { resume: "cc-active" } });
     const sessionUpdates = updates(sent);
-    expect(sessionUpdates.length).toBeGreaterThan(0);
+    expect(sessionUpdates).toContainEqual(
+      expect.objectContaining({
+        params: {
+          sessionId: "active",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "继续成功" } },
+        },
+      }),
+    );
     for (const message of sessionUpdates) expect(message).toMatchObject({ params: { sessionId: "active" } });
   });
 
@@ -169,11 +178,12 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     expect(sent).toHaveLength(1);
   });
 
-  // 恢复带 SDK 标识的会话时，应仅回放可展示的文本与工具块，并在后续提示中使用 resume。
-  test("恢复会话回放历史并让后续提示使用 resume", async () => {
+  // 历史展示不得屏蔽新回答；SDK 流式和完整消息两种输出均只展示一次，且新提示只提交一次。
+  test.each([true, false])("恢复后新回答正常展示且不重复（流式：%s）", async (streaming) => {
     const path = await workspace();
     const sent: unknown[] = [];
     const queryCalls: QueryCall[] = [];
+    const streamedInputs: unknown[] = [];
     const historySpy = spyOn(claudeAgentSdk, "getSessionMessages").mockResolvedValue([
       { type: "user", message: { content: [{ type: "text", text: "历史问题" }, { type: "image" }] } },
       {
@@ -188,7 +198,21 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     ] as never);
     spyOn(claudeAgentSdk, "query").mockImplementation((request) => {
       queryCalls.push(request as unknown as QueryCall);
-      return fakeQuery([]) as never;
+      return fakeQuery(
+        [
+          ...(streaming
+            ? [
+                {
+                  type: "stream_event",
+                  event: { type: "content_block_delta", delta: { type: "text_delta", text: "新的回答" } },
+                },
+              ]
+            : []),
+          { type: "assistant", message: { content: [{ type: "text", text: "新的回答" }] } },
+          { type: "result", subtype: "success" },
+        ],
+        streamedInputs,
+      ) as never;
     });
     const metadataDir = join(path, ".claude", "acp-sessions");
     await mkdir(metadataDir, { recursive: true });
@@ -218,7 +242,14 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     expect(sessionUpdates).toContainEqual(
       expect.objectContaining({ sessionUpdate: "tool_call", content: expect.objectContaining({ type: "tool_use" }) }),
     );
+    expect(sessionUpdates.filter((update) => update.sessionUpdate === "agent_message_chunk")).toEqual([
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "历史回答" } },
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "新的回答" } },
+    ]);
+    for (const message of updates(sent)) expect(message).toMatchObject({ params: { sessionId: "restored" } });
+    expect(queryCalls).toHaveLength(1);
     expect(queryCalls[0]).toMatchObject({ prompt: "继续", options: { resume: "cc-restored" } });
-    expect(result).toEqual({ stopReason: "end_turn", content: [] });
+    expect(streamedInputs).toEqual([]);
+    expect(result).toEqual({ stopReason: "end_turn", content: [{ type: "text", text: "新的回答" }] });
   });
 });
