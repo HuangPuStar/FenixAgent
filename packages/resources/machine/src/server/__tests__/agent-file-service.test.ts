@@ -459,6 +459,24 @@ describe("门面统一错误映射与能力常量", () => {
     });
   });
 
+  test("空路径的删除/写入 → 400 validation_error（不得解析为目录本身）", async () => {
+    // 空路径与用户文件区根不可区分，放行会让 DELETE 递归删光用户文件区
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await expect(fs.delete("")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    await expect(fs.delete("   ")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    await expect(fs.write("", "x")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+  });
+
+  test("删除解析为 workspace 根的路径 → 400 且不删除工作区", async () => {
+    // "." / "./" 等价于工作区根，批量删除可直达该路径，必须与其他根等价写法一致拒绝
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await fs.write("user/keep.txt", "keep");
+    await expect(fs.delete(".")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    await expect(fs.delete("./")).rejects.toMatchObject({ type: "validation_error", statusCode: 400 });
+    const scopedDir = join(workspaceRoot, ORG_ID, USER_ID, ENV_ID);
+    expect(await readFile(join(scopedDir, "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
   test("能力上限常量：本地 / 远程均为 92MB", async () => {
     // 能力不对称条款：常量声明即契约（W8b 据此实施检查）
     expect(LOCAL_UPLOAD_MAX_BYTES).toBe(92 * 1024 * 1024);
