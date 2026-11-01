@@ -12,10 +12,12 @@ process.stdin.on("data", chunk => {
     buffered = buffered.slice(newline + 1);
     if (request.id === undefined) continue;
     const result = request.method === "initialize"
-      ? { protocolVersion: 1, agentCapabilities: {} }
+      ? { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } } }
       : request.method === "session/new"
         ? { sessionId: "ses-adapter" }
-        : { stopReason: "end_turn" };
+        : request.method === "session/resume"
+          ? { configOptions: [] }
+          : { stopReason: "end_turn" };
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
   }
 });
@@ -82,6 +84,25 @@ afterEach(async () => {
 });
 
 describe("acp-link 可选连接适配", () => {
+  // 使用真实 SDK 和 stdio 验证 WS resume 入口，不让旧方法名的测试替身掩盖问题。
+  test("通过标准 SDK 恢复会话后可继续 prompt", async () => {
+    const h = createHarness();
+    await h.send({ type: "connect" });
+    await waitUntil(() => h.ws.messages.some((message) => message.type === "status"));
+    await h.send({ jsonrpc: "2.0", id: 11, method: "session/resume", params: { sessionId: "ses-history" } });
+    await waitUntil(() => h.ws.messages.some((message) => message.id === 11));
+    expect(h.ws.messages.find((message) => message.id === 11)).toMatchObject({ result: { sessionId: "ses-history" } });
+
+    await h.send({
+      jsonrpc: "2.0",
+      id: 12,
+      method: "session/prompt",
+      params: { sessionId: "ses-history", content: [] },
+    });
+    await waitUntil(() => h.ws.messages.some((message) => message.id === 12));
+    expect(h.ws.messages.find((message) => message.id === 12)).toMatchObject({ result: { stopReason: "end_turn" } });
+  });
+
   // 适配返回的新连接必须用于后续协议操作，不能丢弃返回值或破坏 SDK 的上下文。
   test("使用适配后的连接完成新建与 prompt", async () => {
     const h = createHarness(

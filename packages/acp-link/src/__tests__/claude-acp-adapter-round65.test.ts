@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as claudeAgentSdk from "@anthropic-ai/claude-agent-sdk";
+import { AcpDispatcher, createAcpSessionState } from "../acp-dispatcher";
 import { createClaudeAcpConnection } from "../client/claude-acp-adapter";
 
 interface FakeQuery {
@@ -31,9 +32,11 @@ async function workspace(): Promise<string> {
   return path;
 }
 
-function fakeQuery(messages: Array<Record<string, unknown>>): FakeQuery {
+function fakeQuery(messages: Array<Record<string, unknown>>, streamedInputs: unknown[] = []): FakeQuery {
   return {
-    async streamInput(_input) {},
+    async streamInput(input) {
+      for await (const message of input) streamedInputs.push(message);
+    },
     async interrupt() {},
     async *[Symbol.asyncIterator]() {
       yield* messages;
@@ -55,6 +58,62 @@ afterEach(async () => {
 });
 
 describe("Claude ACP adapter round65 SDK 内存分支", () => {
+  // 无效恢复必须返回错误并保留双端原会话，后续 prompt 继续使用原 SDK 恢复上下文。
+  test("未知恢复失败后原会话仍可继续对话", async () => {
+    const path = await workspace();
+    await mkdir(join(path, ".claude", "acp-sessions"), { recursive: true });
+    await writeFile(
+      join(path, ".claude", "acp-sessions", "active.json"),
+      JSON.stringify({ sessionId: "active", cwd: path, createdAt: 1, title: "当前会话", ccSessionId: "cc-active" }),
+    );
+    const sent: unknown[] = [];
+    const queryCalls: QueryCall[] = [];
+    spyOn(claudeAgentSdk, "query").mockImplementation((request) => {
+      queryCalls.push(request as unknown as QueryCall);
+      return fakeQuery([{ type: "assistant", message: { content: [{ type: "text", text: "继续成功" }] } }]) as never;
+    });
+    const connection = createClaudeAcpConnection(path, "round65", (message) => sent.push(message));
+    await connection.loadSession({ sessionId: "active" });
+    const state = createAcpSessionState();
+    state.connection = connection;
+    state.sessionId = "active";
+    state.agentCapabilities = { sessionCapabilities: { resume: {} } };
+    const responses: unknown[] = [];
+    const dispatcher = new AcpDispatcher(state, { workspace: path, send: (message) => responses.push(message) });
+
+    await dispatcher.handleMessage({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "session/resume",
+      params: { sessionId: "missing" },
+    });
+
+    expect(responses[0]).toMatchObject({
+      id: 1,
+      error: { message: "Failed to resume session: Session not found" },
+    });
+    expect(state.sessionId).toBe("active");
+    await dispatcher.handleMessage({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "session/prompt",
+      params: { content: [{ type: "text", text: "继续" }] },
+    });
+
+    expect(responses[1]).toMatchObject({ id: 2, result: { stopReason: "end_turn" } });
+    expect(queryCalls[0]).toMatchObject({ prompt: "继续", options: { resume: "cc-active" } });
+    const sessionUpdates = updates(sent);
+    expect(sessionUpdates).toContainEqual(
+      expect.objectContaining({
+        params: {
+          sessionId: "active",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "继续成功" } },
+        },
+      }),
+    );
+    for (const message of sessionUpdates) expect(message).toMatchObject({ params: { sessionId: "active" } });
+  });
+
   // 首次提示必须隔离 SDK 工作目录、链接工作区配置，并将 SDK 会话标识持久化到目标会话。
   test("首次提示创建隔离目录并持久化 SDK 会话", async () => {
     const path = await workspace();
@@ -119,11 +178,12 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     expect(sent).toHaveLength(1);
   });
 
-  // 恢复带 SDK 标识的会话时，应仅回放可展示的文本与工具块，并在后续提示中使用 resume。
-  test("恢复会话回放历史并让后续提示使用 resume", async () => {
+  // 历史展示不得屏蔽新回答；SDK 流式和完整消息两种输出均只展示一次，且新提示只提交一次。
+  test.each([true, false])("恢复后新回答正常展示且不重复（流式：%s）", async (streaming) => {
     const path = await workspace();
     const sent: unknown[] = [];
     const queryCalls: QueryCall[] = [];
+    const streamedInputs: unknown[] = [];
     const historySpy = spyOn(claudeAgentSdk, "getSessionMessages").mockResolvedValue([
       { type: "user", message: { content: [{ type: "text", text: "历史问题" }, { type: "image" }] } },
       {
@@ -138,7 +198,21 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     ] as never);
     spyOn(claudeAgentSdk, "query").mockImplementation((request) => {
       queryCalls.push(request as unknown as QueryCall);
-      return fakeQuery([]) as never;
+      return fakeQuery(
+        [
+          ...(streaming
+            ? [
+                {
+                  type: "stream_event",
+                  event: { type: "content_block_delta", delta: { type: "text_delta", text: "新的回答" } },
+                },
+              ]
+            : []),
+          { type: "assistant", message: { content: [{ type: "text", text: "新的回答" }] } },
+          { type: "result", subtype: "success" },
+        ],
+        streamedInputs,
+      ) as never;
     });
     const metadataDir = join(path, ".claude", "acp-sessions");
     await mkdir(metadataDir, { recursive: true });
@@ -148,7 +222,7 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     );
 
     const connection = createClaudeAcpConnection(path, "round65", (message) => sent.push(message));
-    const resumed = await connection.unstable_resumeSession({ sessionId: "restored" });
+    const resumed = await connection.resumeSession({ sessionId: "restored" });
     const result = await connection.prompt({ sessionId: "restored", prompt: [{ type: "text", text: "继续" }] });
 
     expect(resumed.sessionId).toBe("restored");
@@ -168,7 +242,14 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     expect(sessionUpdates).toContainEqual(
       expect.objectContaining({ sessionUpdate: "tool_call", content: expect.objectContaining({ type: "tool_use" }) }),
     );
+    expect(sessionUpdates.filter((update) => update.sessionUpdate === "agent_message_chunk")).toEqual([
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "历史回答" } },
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "新的回答" } },
+    ]);
+    for (const message of updates(sent)) expect(message).toMatchObject({ params: { sessionId: "restored" } });
+    expect(queryCalls).toHaveLength(1);
     expect(queryCalls[0]).toMatchObject({ prompt: "继续", options: { resume: "cc-restored" } });
-    expect(result).toEqual({ stopReason: "end_turn", content: [] });
+    expect(streamedInputs).toEqual([]);
+    expect(result).toEqual({ stopReason: "end_turn", content: [{ type: "text", text: "新的回答" }] });
   });
 });
