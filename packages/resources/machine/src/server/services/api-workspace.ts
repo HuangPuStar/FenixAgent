@@ -1,6 +1,7 @@
 import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import { AppError } from "@fenix/platform-sdk";
+import { assertSafePath } from "./file-path-validator";
 import { getRemoteMachineId, remoteUploadFiles } from "./remote-file-service";
 import { isUserPath, normalizeUserRoutePath, resolveWorkspacePath } from "./workspace-fs";
 
@@ -115,6 +116,9 @@ export async function uploadWorkspaceFiles(
   const rawPath = formData.get("path");
   const targetPath = typeof rawPath === "string" && rawPath.trim().length > 0 ? rawPath : "user";
   const dirPath = deps.normalizeUserRoutePath(targetPath);
+  // 归一化只解码并补 user/ 前缀，不会消解 `..`；remote 分支原样下发目录，机器端会把
+  // `user/..` 解析到 workspace 根，写入后才在校验响应路径时失败，必须先于派发拒绝。
+  assertSafePath(dirPath);
   if (!deps.isUserPath(dirPath)) {
     throw new AppError("Only user/ paths are writable", "VALIDATION_ERROR", 400);
   }

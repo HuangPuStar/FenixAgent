@@ -111,6 +111,33 @@ describe("API Workspace Routes", () => {
     expect(dirs).toEqual(["user/docs", "user"]);
   });
 
+  // 上传目录中的 .. 段必须在派发机器前拒绝，否则会被解析到 user/ 之外并先写盘后报错。
+  test("POST /api/environments/:environmentId/workspace/files rejects '..' segments in upload dir", async () => {
+    let remoteCalled = false;
+    setApiWorkspaceDeps({
+      getRemoteMachineId: async () => "machine-1",
+      remoteUploadFiles: async () => {
+        remoteCalled = true;
+        return { files: [] };
+      },
+    });
+
+    for (const path of ["user/..", "user/%2e%2e/secret"]) {
+      const formData = new FormData();
+      formData.append("path", path);
+      formData.append("files", new File(["secret"], "demo.txt", { type: "text/plain" }));
+      const res = await request("/api/environments/env-1/workspace/files", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error.code).toBe("VALIDATION_ERROR");
+    }
+    expect(remoteCalled).toBe(false);
+  });
+
   // workspace 上传必须在调用本地或远程写入前拒绝目录穿越路径。
   test("POST /api/environments/:environmentId/workspace/files rejects traversal paths", async () => {
     let remoteCalled = false;

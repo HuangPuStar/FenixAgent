@@ -456,6 +456,7 @@ sequenceDiagram
 - 机器端承担**最终隔离**（按 environmentId → WorkspaceRef 解析），主服务校验是防线而非依赖。
 - 校验失败返回 400 `validation_error`，不透传机器端。
 - **空路径语义**：`DELETE` / `PUT` 的空路径与目录本身不可区分，一律 400 `validation_error`，不得解析为目标目录（否则一次删除会递归清空整个文件区）；删除目标归一化后指向工作区根（`.`、`./`）同样 400；上传（`POST /fs/`，空目录）的落点是 workspace 根，`user/` 必须显式作为路径前缀，本地与远程机器端一致。
+- **上传目录的 `..` 段**：`/api` workspace 上传的 `path` 在派发前拒绝 `..` 段，避免机器端把 `user/..` 解析到工作区根（写入先于响应校验发生）。
 - **本地 upload relativePath 越界修复（D16）**：`join(resolved, relPath)` 前必须规范化 + 越界检查（现状 `../` 可逃逸 workspace，现网漏洞）。
 
 ### 7.8 读文件错误语义（修复 D9）
