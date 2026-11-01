@@ -45,25 +45,25 @@ describe("yjs websocket adapter", () => {
   });
 
   // 组织参数只经契约（@fenix/web-runtime/lib/active-org）读取：设置持久值后 URL 必须带上
-  // active_org_id——WS 握手无法带 X-Active-Org-Id 头，这是该值唯一的传递通道。
+  // activeOrganizationId——WS 握手无法带 X-Active-Org-Id 头，这是该值唯一的传递通道。
   test("URL 的组织参数经契约读取", () => {
     stubLocalStorage("org-1");
     const url = new URL(buildYjsUrl("agent_1", locator));
 
     expect(url.protocol).toBe("ws:");
     expect(url.pathname).toBe("/acp/yjs/agent_1");
-    expect(url.searchParams.get("active_org_id")).toBe("org-1");
+    expect(url.searchParams.get("activeOrganizationId")).toBe("org-1");
     expect(url.searchParams.get("instanceUid")).toBe("inst-1");
     expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
   });
 
   // 契约未取到组织（未登录/未解析出组织）时不得拼出空参数：服务端按 header → query → cookie
   // 的优先级提取组织，空串会被当成一个值参与判定。
-  test("无持久化组织时不拼 active_org_id 参数", () => {
+  test("无持久化组织时不拼 activeOrganizationId 参数", () => {
     stubLocalStorage();
     const url = new URL(buildYjsUrl("agent_1", locator));
 
-    expect(url.searchParams.has("active_org_id")).toBe(false);
+    expect(url.searchParams.has("activeOrganizationId")).toBe(false);
     expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
   });
 

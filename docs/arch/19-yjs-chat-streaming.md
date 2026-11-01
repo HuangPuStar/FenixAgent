@@ -87,7 +87,7 @@ flowchart TB
 4. **同一 Instance ACP session 的消息按其协议顺序处理**：服务端必须将其数据单写入对应 `rcsSessionId` 的 Y.Doc，避免重连或复用实例产生混写。
 5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端在有界去重窗口内通过 `commandId`、`turnId` 和状态机实现幂等。
 6. **流式增量可丢、最终状态不可丢**：短暂的 token delta 可以合并；turn 完成、错误、取消、工具调用和权限决策必须可靠落盘。
-7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。
+7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。浏览器 WS 握手通过 query `activeOrganizationId` 显式传递当前组织，不依赖组织缓存或 `active_org_id` cookie 恢复当前选择。
 8. **慢消费者不能阻塞 Agent**：广播与 ACP 读取解耦；连接达到背压阈值后重新同步当前实时 Doc 或断开重连，而不是无限缓存。
 9. **投影世代必须有界且可替换**：`load_session` / `create_session` 不得在旧 Y.Doc 上执行 clear + 全量回放；Chat Doc 与 Session Doc 必须以同一个 projection generation 成对替换，确保已删除 CRDT struct 不随切换次数累积。
 10. **同步以 generation + state vector 为边界**：连接初始化先协商客户端当前世代和 state vector，仅发送缺失 update；generation 不一致时发送当前世代 replacement。空 state-vector payload 表示客户端没有当前世代状态，不得当作合法 YJS state vector 解码。

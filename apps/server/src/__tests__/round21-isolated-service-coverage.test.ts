@@ -312,6 +312,24 @@ describe("round21 隔离服务边界", () => {
     await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-b"));
     expect(calls).toBe(2);
   });
+  // WS 显式组织必须在冷缓存及缓存仍指向个人组织时都生效，无需组织 cookie。
+  test.each([
+    ["/acp/yjs/env-b", false],
+    ["/acp/yjs/env-b", true],
+    ["/web/file-events", false],
+    ["/web/file-events", true],
+  ] as const)("WS %s 在个人组织缓存=%s 时解析到指定组织", async (path, warmPersonalOrg) => {
+    stubOrganizationName("Shared");
+    stubMemberships([
+      { organizationId: "org-personal", role: "owner" },
+      { organizationId: "org-shared", role: "member" },
+    ]);
+    if (warmPersonalOrg) {
+      await loadOrgContext({ id: USER_ID }, request("/", { "x-active-org-id": "org-personal" }));
+    }
+    const context = await loadOrgContext({ id: USER_ID }, request(`${path}?activeOrganizationId=org-shared`));
+    expect(context).toMatchObject({ organizationId: "org-shared", role: "member", userId: USER_ID });
+  });
   // 清理缓存后必须重新查询。
   test("组织上下文清理缓存后重新查询", async () => {
     let calls = 0;

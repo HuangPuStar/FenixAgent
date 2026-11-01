@@ -391,7 +391,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ## 8. WebSocket / 实时通信
 ### 8.1 实时通道登记
 - 前端与后端的实时连接**只有三条**（第三条 SSE 的前端消费方已注销，见下方本条），新增通道必须先在此登记（路径 / 建连点 / 鉴权方式 / 重连策略）；**不得在组件里拼装后端 URL（含 WebSocket URL）**——组件/页面目录下不得出现 `new WebSocket(` / `new EventSource(`，全仓前端源码里读 `active_org_id` 的只允许是契约模块一处（`apps/web/src/__tests__/file-events-org-contract.test.ts` 静态守护）。
-- Chat 状态同步（Yjs）：`ws(s)://<host>/acp/yjs/:agentId`；建连点 `packages/agent-runtime/web/yjs/yjs-ws.ts` 的 `buildYjsUrl` → `@fenix/chat-channel` 的 `createYjsWsClient`；鉴权 会话 cookie + query `active_org_id`（经 §3.3 的组织契约读取），无 `Authorization` 头；重连 指数退避、终态码不重连（§8.3）。
+- Chat 状态同步（Yjs）：`ws(s)://<host>/acp/yjs/:agentId`；建连点 `packages/agent-runtime/web/yjs/yjs-ws.ts` 的 `buildYjsUrl` → `@fenix/chat-channel` 的 `createYjsWsClient`；鉴权 会话 cookie + query `activeOrganizationId`（经 §3.3 的组织契约读取；localStorage 键仍为 `active_org_id`），无 `Authorization` 头；重连 指数退避、终态码不重连（§8.3）。
 - 文件树事件：`ws(s)://<host>/web/file-events`；域模块 `@fenix/resource-machine/web/api/file-events.ts` 的 `openFileEventsConnection`（URL / 订阅帧 / 帧解析都在此），组件 `use-file-tree-events.ts` 只消费入口；鉴权同上；退避、可见性与去抖是调用方策略。
 - ~~Workflow 运行事件（SSE）~~：**前端消费方已注销（2026-09-29，2F）**——自研 workflow 前端的 `packages/resources/workflow/web/api/workflow-sse.ts` 随该前端整体删除，前端已无 `EventSource`，故本通道当前**没有前端建连点**。服务端 `/web/workflow/:id/events`（`createWebWorkflowSseRoutes`）仍在装配面上；接入新消费方时按原协议重新登记：`withCredentials: true`、每个 workflowId 一条独立 `EventSource`（禁止模块级单例）、前端以 `?fromSeqNum=` 续传、服务端另接受 `Last-Event-ID` 头。
 
