@@ -21,7 +21,7 @@ export function taskElapsedSeconds(task: PeriTaskViewProjection, now: number): n
 /**
  * 「子任务」区（`ChatStatusPanel` 的 tasks 页签）唯一的任务行列表实现：状态、运行高亮、
  * 失败原因（投影里的脱敏摘要）、按 `startedAt`/`completedAt` 计算的耗时；运行中每秒刷新计时，
- * 终态停止。不以静默或主 turn 结束推断任务终态。
+ * 终态停止。状态只由任务自身终态事件或 turn 取消/中断收敛决定，不对正常完成做推断。
  *
  * 行内为**单行**排布：名称、状态、耗时同一行；失败原因不丢，改为单行截断并以 `title` 承载全文
  * （用户反馈：右侧状态与耗时堆两行会抬高每行高度、挤压输入区）。耗时用 `tabular-nums`，

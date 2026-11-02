@@ -181,6 +181,9 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent, entryIdOverride
     convergeTurnExit(pair, active.turnId, {
       finalStatus: isReplayTurn ? "completed" : "cancelled",
       entryStatus: isReplayTurn ? "completed" : "cancelled",
+      // 实时旧 turn 被新消息终结即用户放弃等待，同步子任务随 turn 级联取消；
+      // 回放 turn 只是历史回显，不得触碰当前仍在运行的子任务
+      cancelSyncSubagentTasks: !isReplayTurn,
     });
   }
 
@@ -578,9 +581,13 @@ function applyTurnTerminal(
         : status === "cancelled"
           ? "cancelled"
           : "interrupted";
+  const isReplayTurn = active.turnId.startsWith("turn_replay_");
   convergeTurnExit(pair, active.turnId, {
     entryStatus: status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
     finalStatus: turnStatus,
+    // 取消/中断会级联终止同步子任务；其终态事件可能丢失，必须在此收敛卡片状态。
+    // 回放 turn 只是历史回显，不得触碰当前仍在运行的同步子任务。
+    cancelSyncSubagentTasks: !isReplayTurn && (status === "cancelled" || status === "interrupted"),
     meta: {
       error: status === "error" ? extractPublicError(event.update) : null,
       usage: status === "completed" ? (event.update.usage as Record<string, unknown> | null) : null,
@@ -681,7 +688,9 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
 
 /**
  * 处理 Peri Task 事件（切片 1）：状态收敛 + 幂等 upsert + 终态保护。
- * 与消息/turn 状态机完全解耦：background task 无 active turn 也可写入。
+ * 正常完成与消息/turn 状态机解耦：background task 无 active turn 也可写入；
+ * 仅取消/中断时由 turn 收敛入口把仍在运行的同步 subagent 置为 cancelled
+ * （后台任务不受影响，见 turn-machine.cancelRunningSyncSubagentTasks）。
  *
  * 状态收敛规则（规格 §二.3，无 wire sequence 时的保守状态机）：
  * - missing + terminal → 创建 terminal task（terminal-first）

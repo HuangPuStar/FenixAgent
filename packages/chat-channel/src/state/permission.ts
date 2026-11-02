@@ -128,6 +128,7 @@ export function applyPermissionExpiration(pair: DocPair, permissionId: string): 
           convergeTurnExit(pair, active.turnId, {
             entryStatus: "cancelled",
             finalStatus: "cancelled",
+            cancelSyncSubagentTasks: true,
           });
         }
       }
