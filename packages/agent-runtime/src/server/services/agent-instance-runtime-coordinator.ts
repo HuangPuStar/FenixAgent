@@ -409,12 +409,12 @@ export class AgentInstanceRuntimeCoordinator {
       if (operation === "restart" || operation === "start") entry.manuallyStopped = false;
       entry.lastFailure = null;
     } catch (error) {
-      if (startingGeneration !== undefined)
-        finishAgentRun(instance.id, signal.aborted ? "cancelled" : "failure", startingGeneration);
       let failure = error;
+      let startTerminationConfirmed = startingGeneration === undefined;
       if (startingGeneration !== undefined) {
         try {
           await this.adapter.stop(instance.id, startingGeneration, new AbortController().signal);
+          startTerminationConfirmed = true;
           if (entry.generation === startingGeneration) {
             entry.runtimePresent = false;
             this.adapter.onStopped?.(instance.id);
@@ -429,9 +429,13 @@ export class AgentInstanceRuntimeCoordinator {
           entry.state = "unknown";
         }
       }
+      // 终止未确认时保留运行事实（state=unknown），由权威死亡/复位事件结算。
+      if (startingGeneration !== undefined && startTerminationConfirmed)
+        finishAgentRun(instance.id, signal.aborted ? "cancelled" : "failure", startingGeneration);
       if (entry.operationId === operationId) {
         entry.lastFailure = failure instanceof Error ? failure.message : "Runtime operation failed";
         entry.state = startingGeneration !== undefined && !entry.runtimePresent ? "stopped" : "unknown";
+        if (entry.state === "unknown") agentRunDisconnected(instance.id);
       }
       // 死亡/clean-slate 事件已给出更强事实，不能被取消操作的结束状态覆盖。
       if (mode === "strict") throw failure;
