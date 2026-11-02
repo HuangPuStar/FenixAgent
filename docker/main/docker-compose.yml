@@ -6,7 +6,7 @@
 #   - 两者同项目名 `fenix`、同网络 `fenix-server`：**二选一运行**，同时执行会互相接管容器；
 #   - dev（本地构建）：仓库根文件 `docker compose up -d --build`。它就地内联 `postgres` / `redis`，
 #     并 include `docker/dev/` 下的可选组件（各用 `--profile <组件名>` 启动，见 docker/dev/README.md）；
-#   - 生产/模拟生产：本文件，镜像一律来自 GHCR 固定 tag，不构建。
+#   - 生产/模拟生产：本文件，镜像来自 GHCR 发布 tag；主服务 tag 由同目录 .env 的 RCS_IMAGE_TAG 提供，不构建。
 #
 # 用法（官方入口，/部署到目标机时随 `docker/` 目录整体交付）：
 #   ./docker/deploy.sh deploy              # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
@@ -80,10 +80,13 @@ services:
             - fenix-server
 
     rcs:
-        # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）。
+        # 发布 tag 由 docker/main/.env 的 RCS_IMAGE_TAG 显式提供（CI 产出的 sha-<commit>）；
+        # 缺省值只服务 down / ps 等不启动容器的命令，up / deploy 前由 deploy.sh 校验必填。
         # 生产形态不声明 `build:`：目标机上没有 Dockerfile 与源码，镜像必须先 pull。
-        image: ghcr.io/huangpustar/fenixagent:sha-17b2f2b
+        image: ghcr.io/huangpustar/fenixagent:${RCS_IMAGE_TAG:-sha-17b2f2b}
         restart: unless-stopped
+        # 覆盖 5s 请求排空 + 10s 宿主清理 + 5s SDK flush，留出容器退出余量。
+        stop_grace_period: 30s
         networks:
             - fenix-server
         # 将同目录 .env 中的可选应用配置（包括模型网关）传给容器；缺失时仍可直接启动。
@@ -103,8 +106,10 @@ services:
             # OPENAI_API_KEY:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
-            # 服务公开基址：影响生成的回链与 skill 下载链接（见 .env.example 同名键说明）。
-            RCS_BASE_URL: ${RCS_BASE_URL:-http://localhost:3000}
+            # 服务公开基址：影响生成的回链与 skill 下载链接。
+            RCS_BASE_URL: ${RCS_BASE_URL:-}
+            # 生产默认标记 production；staging 等环境通过 .env 显式覆盖 deployment.environment.name。
+            OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.namespace=fenix,deployment.environment.name=production}
             # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：生产必须用本目录 .env 换成
             # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
             RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}

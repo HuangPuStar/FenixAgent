@@ -1,7 +1,10 @@
 import { createLogger } from "@fenix/logger";
 import KeyvRedis, { defaultReconnectStrategy, type RedisClientOptions, type RedisClusterOptions } from "@keyv/redis";
+import { metrics } from "@opentelemetry/api";
 import Redis, { type Cluster } from "ioredis";
-import Keyv from "keyv";
+import Keyv, { KeyvEvents } from "keyv";
+
+const cacheRequests = metrics.getMeter("fenix-server").createCounter("fenix.cache.requests");
 
 /**
  * 缓存模块 — 基于 Keyv，自动选择存储后端：
@@ -137,6 +140,16 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
     _backend = "memory";
   }
 
+  const backend = _backend;
+  // Keyv 6 先 emit("error") 再 emit "stat:error"；无 error 监听器时前者直接抛出，
+  // 因此错误计数必须挂在 error 事件上，并原样重抛以保持操作失败向调用方传播。
+  kv.on("error", (error: unknown) => {
+    cacheRequests.add(1, { cache: backend, result: "error" });
+    throw error instanceof Error ? error : new Error(String(error));
+  });
+  // Keyv 6 的遥测事件与存储适配器解耦，命中与未命中在内存和 Redis 后端都走同一组计数。
+  kv.on(KeyvEvents.STAT_HIT, () => cacheRequests.add(1, { cache: backend, result: "hit" }));
+  kv.on(KeyvEvents.STAT_MISS, () => cacheRequests.add(1, { cache: backend, result: "miss" }));
   instances.set(namespace, kv);
   return kv;
 }

@@ -152,6 +152,7 @@ export default defineConfig({
         {
           text: "可观测性",
           items: [
+            { text: "标准观测", link: "/arch/observability" },
             { text: "Observer Service", link: "/arch/21-observability-observer-service" },
           ],
         },
@@ -178,6 +179,7 @@ export default defineConfig({
             { text: "总览", link: "/operations/" },
             { text: "部署", link: "/operations/deployment" },
             { text: "Docker 编排体系", link: "/operations/docker-topology" },
+            { text: "标准观测", link: "/operations/observability" },
             { text: "Workflow V2 部署", link: "/operations/workflow-deployment" },
             { text: "公共 Git（Forgejo）", link: "/operations/common-git" },
             { text: "工单（Tickets）", link: "/operations/tickets" },

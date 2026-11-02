@@ -1,17 +1,9 @@
-// packages/chat-channel/src/channel/sync-close-diagnostics.ts
-// 同步协议连接关闭诊断：写到可读取的文件（data/logs/sync-close.log），不依赖终端。
-//
-// 记录：时间、关闭码、原始 reason、来源（gateway-route / sync-provider）、wsId、
-// entry 是否存在、pending 文本/二进制帧数、organizationId/rcsSessionId。
-// 只含标识与关闭原因，不记录 cookie/token/消息内容。写失败静默降级，不影响连接。
-
-import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { createLogger } from "@fenix/logger";
 import type { DocManager } from "../state/doc-manager";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ClientConnection, WsConnection } from "./connection-types";
 
-const LOG_FILE = resolve("data/logs/sync-close.log");
+const logger = createLogger("sync-close");
 
 export interface SyncCloseContext {
   readonly wsId: string;
@@ -27,7 +19,6 @@ export interface SyncCloseContext {
 }
 
 const contexts = new WeakMap<object, SyncCloseContext>();
-let directoryReady: Promise<void> | null = null;
 
 /** 在每次入站帧处理前刷新上下文；关闭发生在任意 async 分支时仍能取到最近事实。 */
 export function setSyncCloseContext(ws: WsConnection, context: SyncCloseContext): void {
@@ -58,13 +49,13 @@ export function setSyncCloseContextForConnection(
   });
 }
 
-/** 记录一次关闭；fire-and-forget，文件不可写时静默忽略。 */
+/** 关闭诊断与主日志共享脱敏、追踪关联和唯一采集路径。 */
 export function logSyncClose(
   ws: WsConnection,
   input: { readonly code: number; readonly reason: string; readonly source: "gateway-route" | "sync-provider" },
 ): void {
   const context = contexts.get(ws);
-  const line = JSON.stringify({
+  logger.info("同步连接关闭", {
     at: new Date().toISOString(),
     code: input.code,
     reason: input.reason.slice(0, 500),
@@ -80,10 +71,4 @@ export function logSyncClose(
     sessionLoaded: context?.sessionLoaded ?? null,
     activeTurnId: context?.activeTurnId ?? null,
   });
-  directoryReady ??= mkdir(dirname(LOG_FILE), { recursive: true }).then(() => undefined);
-  void directoryReady
-    .then(() => appendFile(LOG_FILE, `${line}\n`, "utf8"))
-    .catch(() => {
-      // 诊断写入失败不得影响连接关闭。
-    });
 }

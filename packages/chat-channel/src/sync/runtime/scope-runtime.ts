@@ -26,6 +26,7 @@ import { type BuildBlockFn, HistoryImportService } from "../history/import-servi
 import { HistorySpool } from "../history/spool";
 import { createLiveWriter } from "../live/live-writer";
 import { createRotationController, type RotationController } from "../live/rotation";
+import { registerSyncDiagnostics, syncDisconnects } from "../metrics";
 import { SyncProtocolError } from "../protocol/errors";
 import type { SyncScope } from "../protocol/identity";
 import { createAckLedger } from "../provider/ack-ledger";
@@ -304,9 +305,33 @@ export async function createSyncScopeRuntime(input: {
    * 投递登记与额度、账本同属这条连接的传输状态：连接终止后它的条目再无结算机会，留着只会让「已发送未回执」
    * 在观测里永久停在一个死连接的数字上（`dispose` 路径同此口径）。
    */
-  function convergeClosedConnection(): void {
+  const unregisterMetrics = registerSyncDiagnostics(() => ({
+    connected: gateway !== null && !connectionClosed && !disposed,
+    ...transportDiagnostics(),
+  }));
+  function transportDiagnostics(): SyncTransportDiagnostics {
+    const snapshot = quota.snapshot();
+    return {
+      outstandingBytes: snapshot.outstandingBytes,
+      pendingTasks: snapshot.pendingTasks,
+      unackedDeliveries: ledger.outstandingCount(),
+    };
+  }
+
+  function convergeClosedConnection(reason = DISPOSED_REASON): void {
     if (connectionClosed) return;
     connectionClosed = true;
+    unregisterMetrics();
+    syncDisconnects.add(1, {
+      channel: "sync",
+      reason: disposed
+        ? "disposed"
+        : reason.startsWith("ack timeout")
+          ? "ack_timeout"
+          : reason.includes("withheld")
+            ? "backpressure"
+            : "transport_closed",
+    });
     session.close();
     ledger.reset();
     quota.reset();
@@ -341,7 +366,7 @@ export async function createSyncScopeRuntime(input: {
         // 刻意不传 onProtocolMismatch：版本不符也是「连接进入终态」的一种，收敛只需下面这一个通知（避免两条回调
         // 各做一半：原先只有它改标记、无人清账）。宿主要记录客户端版本时可自行在网关装配处接该钩子。
         // 连接进入终态的唯一通知：任何关闭原因（ACK 超时、搁置超期、版本不符、宿主主动 close）都在这里清账一次。
-        onConnectionClosed: () => convergeClosedConnection(),
+        onConnectionClosed: (reason) => convergeClosedConnection(reason),
       });
       return gateway;
     },
@@ -376,14 +401,7 @@ export async function createSyncScopeRuntime(input: {
       releaseExpiredCoexistence();
     },
 
-    transportDiagnostics(): SyncTransportDiagnostics {
-      const snapshot = quota.snapshot();
-      return {
-        outstandingBytes: snapshot.outstandingBytes,
-        pendingTasks: snapshot.pendingTasks,
-        unackedDeliveries: ledger.outstandingCount(),
-      };
-    },
+    transportDiagnostics,
 
     history,
 

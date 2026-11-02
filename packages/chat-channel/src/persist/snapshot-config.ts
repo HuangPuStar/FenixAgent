@@ -10,6 +10,8 @@
 // 归一后投影进模块配置的那一份是两个来源；默认值再留一份，两处漂移会在部署后静默生效。
 // 宿主未注入时由 `safeProvider` 明确失败。
 
+import { snapshotPersistDuration, snapshotSize } from "../sync/metrics";
+
 /** 快照节流 / TTL 参数（`RCS_YJS_SNAPSHOT_*` 三项的装配投影值）。 */
 export interface SnapshotPersistConfig {
   /** trailing 节流窗口：距上次成功 CAS 的最小间隔（毫秒） */
@@ -47,6 +49,8 @@ export function reportSnapshotCasMetric(
   casMs: number,
   persisted: boolean,
 ): void {
+  snapshotSize.record(bytes, { storage: "redis" });
+  snapshotPersistDuration.record(casMs / 1000, { storage: "redis", result: persisted ? "success" : "failure" });
   if (!log) return;
 
   const now = Date.now();

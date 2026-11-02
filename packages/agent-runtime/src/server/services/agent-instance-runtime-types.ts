@@ -23,6 +23,8 @@ export interface RuntimeSnapshot {
 
 /** 仲裁器调用的进程操作与权威运行事实。 */
 export interface RuntimeAdapter {
+  /** 仅用于低基数观测，不参与实例路由。 */
+  getEngineType?(instanceUid: string): string | undefined;
   /** 已确认终止后释放依赖该运行实体的执行配额。 */
   onStopped?(instanceUid: string): void;
   start(instance: AgentInstanceRecord, generation: number, signal: AbortSignal): Promise<void>;

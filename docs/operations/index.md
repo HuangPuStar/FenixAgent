@@ -6,6 +6,7 @@
 | --- | --- |
 | [部署](./deployment.md) | 依赖服务、必需环境变量、环境文件从哪来，以及本地 / 单机 / 生产三种形态的真实启动顺序与启动后自检。 |
 | [Docker 编排体系](./docker-topology.md) | 编排实现权威：主服务编排（dev 根文件 / 生产 `docker/main/`）与 `docker/<name>/` 依赖目录的分工、两层网络、feature 开关、`docker/deploy.sh` 入口与旧体系退役路径。 |
+| [标准观测](./observability.md) | Collector/OpenObserve 独立部署、服务端 OTLP 接入、升级备份回滚、A01–A26/G01–G07 验收清单与告警启用。 |
 | [Workflow V2 部署](./workflow-deployment.md) | 平台与上游双仓交付、画布子路径构建、容器组网、配置、迁移、初始化、验收与回滚边界。 |
 | [公共 Git（Forgejo）](./common-git.md) | 公共 Git 模块的启用：连接配置、四枚环境变量、启动顺序、共享 PostgreSQL 的库创建、排障与回滚边界。 |
 | [工单（Tickets）](./tickets.md) | 工单模块的启用（`ce-tickets.json` 与浏览器产物）、组织工单开通、关闭与回滚约束，以及 202 / 409 / 503 的排障口径。 |

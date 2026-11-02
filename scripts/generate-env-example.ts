@@ -366,8 +366,11 @@ function renderTemplate(template: EnvTemplate, entries: readonly EnvEntry[]): st
   for (const owner of owners) {
     const header = `# ── ${owner} `;
     lines.push(header.padEnd(96, "─"), "");
-    for (const entry of byOwner.get(owner) ?? [])
-      lines.push(...renderEntry(entry, template.overrides?.[entry.key]), "");
+    for (const entry of byOwner.get(owner) ?? []) {
+      const scenarioDefault = template.defaultOverrides?.[entry.key];
+      const rendered = scenarioDefault === undefined ? entry : { ...entry, defaultValue: scenarioDefault };
+      lines.push(...renderEntry(rendered, template.overrides?.[entry.key]), "");
+    }
   }
 
   if (template.undeclared !== undefined && template.undeclared.length > 0) {
@@ -396,6 +399,11 @@ function assertTemplateOverrides(entries: readonly EnvEntry[]): void {
     for (const key of Object.keys(template.overrides ?? {})) {
       if (!byKey.has(key)) {
         throw new Error(`模板 ${template.path} 覆盖了声明面之外的键 ${key}；场景键请写进 undeclared`);
+      }
+    }
+    for (const key of Object.keys(template.defaultOverrides ?? {})) {
+      if (!byKey.has(key)) {
+        throw new Error(`模板 ${template.path} 覆盖了声明面之外的默认值 ${key}；场景键请写进 undeclared`);
       }
     }
     for (const item of template.undeclared ?? []) {

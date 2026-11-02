@@ -25,7 +25,7 @@ export function sendToInstanceRelay(instanceId: string, data: string): boolean {
     log("Relay → remote session_data", {
       instanceId,
       payloadType: parsed.type,
-      payload: JSON.stringify(parsed).slice(0, 300),
+      payloadBytes: Buffer.byteLength(data),
     });
     sendToWs(entry.ws, {
       type: "session_data",

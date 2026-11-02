@@ -104,6 +104,18 @@ test("三份产出各自保留场景差异", async () => {
   }
 });
 
+// 生产模板必须把 Resource 环境显示为 production，开发模板保持 development：否则只配 endpoint 的首次部署会把
+// 生产三信号标成 development，看板按 production 筛选时看不到数据（R05）。
+test("主服务模板与开发模板展示各自的 Resource 环境默认值", async () => {
+  const templates = await generatedTemplates();
+  const dev = templates.get(".env.example")?.text ?? "";
+  const prod = templates.get("docker/main/.env.example")?.text ?? "";
+
+  expect(dev).toContain("# OTEL_RESOURCE_ATTRIBUTES=service.namespace=fenix,deployment.environment.name=development");
+  expect(prod).toContain("# OTEL_RESOURCE_ATTRIBUTES=service.namespace=fenix,deployment.environment.name=production");
+  expect(prod).toContain("staging 等环境必须显式覆盖 deployment.environment.name");
+});
+
 // 场景补充键（声明面之外、但确有消费方的键）必须真的落进模板，不能只写在生成器里。
 test("声明面之外的键带消费方落进各份应用面模板", async () => {
   const templates = await generatedTemplates();

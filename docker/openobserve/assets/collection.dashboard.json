@@ -1,0 +1,226 @@
+{
+  "version": 2,
+  "dashboardId": "fenix-collection",
+  "title": "Fenix 采集链路",
+  "description": "目标 OO v1.1.2，指标映射需 A24 实测确认",
+  "role": "",
+  "owner": "",
+  "created": "2026-10-22T00:00:00.000Z",
+  "panels": [
+    {
+      "id": "Panel_collection_0",
+      "type": "line",
+      "title": "队列占用",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "otelcol_exporter_queue_size{deployment_environment_name=~\"$environment\",service_name=~\"$service\"} / otelcol_exporter_queue_capacity{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}",
+          "customQuery": true,
+          "fields": {
+            "stream": "otelcol_exporter_queue_size",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "队列占用"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6,
+        "i": 0
+      }
+    },
+    {
+      "id": "Panel_collection_1",
+      "type": "line",
+      "title": "发送失败 Span",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum(rate(otelcol_exporter_send_failed_spans_total{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}[5m]))",
+          "customQuery": true,
+          "fields": {
+            "stream": "otelcol_exporter_send_failed_spans_total",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "发送失败 Span"
+          }
+        }
+      ],
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6,
+        "i": 1
+      }
+    },
+    {
+      "id": "Panel_collection_2",
+      "type": "line",
+      "title": "发送失败日志",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum(rate(otelcol_exporter_send_failed_log_records_total{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}[5m]))",
+          "customQuery": true,
+          "fields": {
+            "stream": "otelcol_exporter_send_failed_log_records_total",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "发送失败日志"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 6,
+        "i": 2
+      }
+    },
+    {
+      "id": "Panel_collection_3",
+      "type": "line",
+      "title": "接收拒绝指标",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum(rate(otelcol_receiver_refused_metric_points_total{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}[5m]))",
+          "customQuery": true,
+          "fields": {
+            "stream": "otelcol_receiver_refused_metric_points_total",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "接收拒绝指标"
+          }
+        }
+      ],
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 6,
+        "i": 3
+      }
+    },
+    {
+      "id": "Panel_collection_4",
+      "type": "line",
+      "title": "指标发送量",
+      "description": "候选 OTLP 映射；缺数据保持缺数据，不显示为零。",
+      "config": {
+        "show_legends": true,
+        "legends_position": null
+      },
+      "queryType": "promql",
+      "queries": [
+        {
+          "query": "sum(rate(otelcol_exporter_sent_metric_points_total{deployment_environment_name=~\"$environment\",service_name=~\"$service\"}[5m]))",
+          "customQuery": true,
+          "fields": {
+            "stream": "otelcol_exporter_sent_metric_points_total",
+            "stream_type": "metrics",
+            "x": [],
+            "y": [],
+            "z": [],
+            "filter": []
+          },
+          "config": {
+            "promql_legend": "指标发送量"
+          }
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "w": 6,
+        "h": 6,
+        "i": 4
+      }
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "环境",
+        "type": "custom",
+        "value": "production",
+        "options": [
+          {
+            "label": "production",
+            "value": "production"
+          },
+          {
+            "label": "staging",
+            "value": "staging"
+          },
+          {
+            "label": "development",
+            "value": "development"
+          }
+        ]
+      },
+      {
+        "name": "service",
+        "label": "服务",
+        "type": "custom",
+        "value": "fenix-collector",
+        "options": [
+          {
+            "label": "fenix-collector",
+            "value": "fenix-collector"
+          }
+        ]
+      }
+    ]
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

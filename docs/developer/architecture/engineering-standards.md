@@ -514,7 +514,7 @@ packages/resources/agent-config/db/data-migrations/
 | 项 | 内容 | 原出处 |
 | --- | --- | --- |
 | migration smoke | CI 对空库与真实历史升级库执行迁移链，防迁移链回归（含历史 `db:push` 库的基线化路径）。迁移当前已在真实库经应用启动命令（`docker-compose.yml` 的 `bun migrate.js && …`）按**增量路径**跑通；自动化 smoke 补的是「空库一次跑完全链」与「升级库」这两条尚未验证的路径 | §6.2 规则 5；§10.7.1 |
-| 日志内容脱敏 | 不在日志中记录完整 prompt、文件内容与未脱敏外部响应正文（含为 `@fenix/logger` 补 redact 配置）。当前有 13 处调用把 prompt 正文与 Agent 响应**截断后**写入日志（形如 `text: promptText.slice(0, 200)`、`JSON.stringify(result).slice(0, 500)`）——截断不改变「明文入日志」的性质。改法：改记长度、摘要或结构化标记 | §7 |
+| 日志内容脱敏 | 不在日志中记录完整 prompt、文件内容与未脱敏外部响应正文（含为 `@fenix/logger` 补 redact 配置）。当前仍有个别原始协议日志把帧/响应**截断后**写入（如 `packages/acp-link/src/acp-dispatcher.ts` 对原始 ACP 帧的 `JSON.stringify(...).slice(0, 500)`）——截断不改变「明文入日志」的性质。改法：改记长度、类型、摘要或受控标识；会话事件与 prompt/result 日志已改为此类摘要 | §7 |
 | deploy-preflight | 部署前置的只读校验：env、DB 连通性、迁移状态、镜像版本、依赖服务。作用是把失败提前到「还没动生产」的时刻——现状只有容器启动命令 `bun migrate.js && …` 兜底，属于「边做边发现」，迁移改到一半失败会留下需补偿的不一致状态。五类中 DB 连通性与迁移状态价值最高（env 校验启动期已有）；依赖服务健康检查需先给 `ModuleManifest` 加「依赖服务 + 健康检查」字段 | §8 脚本表；§6.2 规则 5 |
 | 发布物清单 | 发布物附带版本清单、SBOM、兼容说明、migration manifest、env manifest。现状只带 `commitId`（`Dockerfile` 的构建参数仅 `GIT_COMMIT_SHA`），上述清单一项都没有；原 `build-release` 脚本（构建 server/console 并生成版本与 SBOM 信息）不存在，与本节同属一件事 | §8 脚本表；§10.6.5 |
 | readiness 与发布证据 | readiness 端点（区分进程存活与就绪）、备份点、失败回滚、不可逆迁移补偿证据。现状 `/health` 恒 ok 只表达进程存活，无 readiness 端点；备份点、回滚与补偿均无脚本或文档 | §10.6.5；§6.2 规则 5 |

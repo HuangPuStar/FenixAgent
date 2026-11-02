@@ -4,7 +4,7 @@
  * 功能：
  *   - 每个请求分配唯一 requestId 并注入 ALS（等价 Java MDC.put）
  *   - 后续所有 logger.info/error 自动携带 requestId，无需手动传参
- *   - 请求耗时 + 慢请求告警（>1s warn，>5s error）
+ *   - 耗时和慢请求判断由标准 OTel 指标承担，访问日志不另计时
  *   - /health 端点静默
  *
  * 注意：不使用 Elysia 插件封装（derive 在 .use() 中作用域被隔离，不会触发），
@@ -56,34 +56,17 @@ export function isRecoverableCtrlSpa404(request: Request, error: unknown, status
 // ─── 日志钩子函数 ───────────────────────────────────────
 // 直接挂到 Elysia 主 app 上，不通过 .use(plugin) 封装
 
-/** 注入 requestId + ALS 上下文。挂到主 app 的 derive 上。 */
+const requestIds = new WeakMap<Request, string>();
+
+/** 请求 ID 与 OTel trace ID 分离，不接受客户端标识作为授权依据。 */
 export function deriveRequestId({ request }: { request: Request }) {
   const requestId = nextRequestId();
-
-  // 注入 ALS 上下文 — 等价 Java Filter 里的 MDC.put("requestId", id)
   requestAls.enterWith({ requestId });
-
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  (request as any).__requestId = requestId;
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  (request as any).__startTime = performance.now();
+  requestIds.set(request, requestId);
   return { requestId };
 }
 
-/** 请求开始日志。挂到主 app 的 onBeforeHandle 上。 */
-export function logRequest({ request }: { request: Request }) {
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  const id = (request as any).__requestId as string;
-  const url = new URL(request.url);
-  if (url.pathname === "/health") return;
-  if (isPollingPath(url.pathname)) {
-    logger.debug(`${request.method} ${url.pathname} [${id}]`);
-  } else {
-    logger.info(`${request.method} ${url.pathname} [${id}]`);
-  }
-}
-
-/** 请求结束日志。挂在主 app 的 `onAfterHandle` 上（错误响应由 errorPlugin 自行记录）。 */
+/** 每次响应只写一条访问日志；耗时由官方 OTel 插件唯一计量。 */
 export function logResponse({
   request,
   set,
@@ -93,33 +76,16 @@ export function logResponse({
   request: Request;
   set: { status?: number | string };
   responseValue?: unknown;
-  /** Elysia 1.4.x 当前 afterHandle 运行时仍通过 response 提供原始响应值。 */
   response?: unknown;
 }) {
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  const start = (request as any).__startTime as number | undefined;
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  const id = (request as any).__requestId as string;
-  const ms = start != null ? performance.now() - start : -1;
   const status = resolveResponseStatus(set.status, responseValue ?? response);
-  const url = new URL(request.url);
-  if (url.pathname === "/health") return;
-
-  const msg = `${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id}]`;
-  if (status >= 500) {
-    logger.error(msg);
-  } else if (status >= 400) {
-    logger.warn(msg);
-  } else if (isPollingPath(url.pathname)) {
-    logger.debug(msg);
-  } else {
-    logger.info(msg);
-    if (ms >= 5000) {
-      logger.error(`SLOW REQUEST ${request.method} ${url.pathname} ${ms.toFixed(0)}ms [${id}]`);
-    } else if (ms >= 1000) {
-      logger.warn(`SLOW REQUEST ${request.method} ${url.pathname} ${ms.toFixed(0)}ms [${id}]`);
-    }
-  }
+  const pathname = new URL(request.url).pathname;
+  if (pathname === "/health") return;
+  const fields = { method: request.method, status, requestId: requestIds.get(request) };
+  if (status >= 500) logger.error("HTTP 响应", fields);
+  else if (status >= 400) logger.warn("HTTP 响应", fields);
+  else if (isPollingPath(pathname)) logger.debug("HTTP 响应", fields);
+  else logger.info("HTTP 响应", fields);
 }
 
 /**
@@ -142,9 +108,14 @@ export function resolveResponseStatus(setStatus: number | string | undefined, re
  * 向响应注入 X-Request-Id 响应头和 JSON 响应体中的 requestId 字段。
  * 挂到主 app 的 onAfterHandle 上（紧接 logResponse 之后）。
  */
-// biome-ignore lint/suspicious/noExplicitAny: Elysia AfterHandler context 签名与 set.headers 不兼容
-export function injectRequestId({ request, set }: any) {
-  const requestId = request.__requestId as string | undefined;
+export function injectRequestId({
+  request,
+  set,
+}: {
+  request: Request;
+  set: { headers: Record<string, string | number> };
+}) {
+  const requestId = requestIds.get(request);
   if (!requestId) return;
   set.headers["X-Request-Id"] = requestId;
 }
@@ -176,11 +147,7 @@ export function logError({
   error: unknown;
   set: { status?: number | string; headers: Record<string, string | number> };
 }) {
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  const start = (request as any).__startTime as number | undefined;
-  // biome-ignore lint/suspicious/noExplicitAny: custom request property
-  const id = (request as any).__requestId as string;
-  const ms = start != null ? performance.now() - start : -1;
+  const id = requestIds.get(request);
   const status = typeof set.status === "number" ? set.status : 500;
   const url = new URL(request.url);
   if (id) {
@@ -188,62 +155,26 @@ export function logError({
   }
 
   if (isRecoverableCtrlSpa404(request, err, status)) {
-    logger.info(`${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id ?? "n/a"}] SPA_FALLBACK`);
+    logger.info(`${request.method} ${url.pathname} ${status} [${id ?? "n/a"}] SPA_FALLBACK`);
     return;
   }
 
-  // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
-  // （含 unionErrors 所有分支的 issues），直接打印会刷屏。
-  // 这里改成单行诊断日志：type（request/response）+ path + 响应数据形状摘要，
-  // 既能定位是哪个 schema 不匹配，又能保留排查线索。
+  // 校验错误的 summary/value 可能包含输入正文，只保留协议字段位置。
   if (err instanceof ValidationError) {
     const firstError = err.all[0];
     const path = firstError?.path ?? "";
-    const summary = firstError?.summary ?? firstError?.message ?? "validation failed";
-    logger.error(
-      `${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id ?? "n/a"}] ` +
-        `VALIDATION type='${err.type}' path='${path}' summary='${summary}' value=${describeValue(err.value)}`,
-    );
+    logger.error("HTTP 协议校验失败", {
+      method: request.method,
+      status,
+      requestId: id,
+      validationType: err.type,
+      field: path,
+    });
     return;
   }
 
   logger.error(
-    `${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id ?? "n/a"}]`,
+    `${request.method} ${url.pathname} ${status} [${id ?? "n/a"}]`,
     err instanceof Error ? sanitizeErrorForLog(err) : new Error(String(err)),
   );
-}
-
-/**
- * 把响应/请求值压缩成单行形状描述，方便日志定位 schema 不匹配根因。
- * 数组额外打印首元素 JSON（截断 300 字符），用于直接看到字段名和可疑值。
- */
-function describeValue(value: unknown): string {
-  if (value === null) return "null";
-  if (value === undefined) return "undefined";
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "array[0]";
-    const first = value[0];
-    if (first && typeof first === "object") {
-      const keys = Object.keys(first).slice(0, 8).join(",");
-      const sample = safeJsonStringify(first, 300);
-      return `array[${value.length}]{${keys}} first=${sample}`;
-    }
-    return `array[${value.length}]<${typeof first}>`;
-  }
-  if (typeof value === "object") {
-    const keys = Object.keys(value).slice(0, 8).join(",");
-    return `object{${keys}}`;
-  }
-  const s = String(value);
-  return `${typeof value}:${s.length > 50 ? `${s.slice(0, 50)}...` : s}`;
-}
-
-/** JSON.stringify 但捕获循环引用和截断超长输出。 */
-function safeJsonStringify(value: unknown, maxLen: number): string {
-  try {
-    const s = JSON.stringify(value);
-    return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
-  } catch {
-    return "<unserializable>";
-  }
 }

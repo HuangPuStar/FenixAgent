@@ -18,6 +18,7 @@
 // 若扫描顺手删除，调用方就无法在一次 tick 里既取到证据又决定动作，第二次观测还会静默变成空集。
 
 import type { Clock } from "../clock";
+import { syncAckDuration } from "../metrics";
 import { SyncProtocolError } from "../protocol/errors";
 import { assertIdentifier } from "../protocol/identity";
 
@@ -89,6 +90,12 @@ export function createAckTimeoutTracker(options: AckTimeoutTrackerOptions): AckT
 
     settle(deliveryId: string): boolean {
       assertIdentifier(deliveryId, "deliveryId");
+      const entry = entries.get(deliveryId);
+      if (entry)
+        syncAckDuration.record(Math.max(0, clock.now() - entry.trackedAt) / 1000, {
+          channel: "sync",
+          message: "delivery",
+        });
       return entries.delete(deliveryId);
     },
 

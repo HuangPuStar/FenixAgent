@@ -99,6 +99,8 @@ services:
             context: .
             dockerfile: Dockerfile
         restart: unless-stopped
+        # 覆盖 5s 请求排空 + 10s 宿主清理 + 5s SDK flush，留出容器退出余量。
+        stop_grace_period: 30s
         networks:
             - fenix-server
         # 将根 .env 中的可选应用配置（包括模型网关）传给容器；缺失时仍可直接启动。
@@ -119,6 +121,7 @@ services:
             # OPENAI_BASE_URL: https://api.deepseek.com/v1/
             # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
+            OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.namespace=fenix,deployment.environment.name=development}
             # 兜底值与宿主 schema 的 LOCAL_DEV_API_KEY 同值、是公开值：本地零配置可起，生产必须换成
             # 长随机值（`openssl rand -hex 32`），否则 skill 下载令牌可被伪造。
             RCS_API_KEYS: ${RCS_API_KEYS:-rcs-local-dev-signing-key}

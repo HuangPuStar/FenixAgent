@@ -92,7 +92,7 @@ Agent 引擎、RAG、MCP、Sandbox、部署目标等天然多实现能力，只�
 
 ```text
 apps/server/src/
-├── main.ts / bootstrap.ts     # 进程入口与装配
+├── entry.ts / main.ts / bootstrap.ts # 观测初始化与动态主入口 / 业务入口与装配
 ├── bootstrap/                 # assembly 解析、路由槽装配、启动序列、宿主端口注入
 ├── routes/                    # 协议聚合器：web/、api/（业务路由由模块贡献）
 ├── plugins/                   # auth、cors、error-handler、logger、static、system-api-auth

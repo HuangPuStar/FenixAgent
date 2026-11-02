@@ -47,7 +47,10 @@ docker compose up --build -d
 - 主服务编排分两份：**dev** 是仓库根 `docker-compose.yml`（带 `build:`，本地构建），**生产**是 `docker/main/docker-compose.yml`
   （无 `build:`，只用发布镜像，`docker/deploy.sh` 的操作对象）。两份文件同项目名 `fenix`、同网络 `fenix-server`，
   **二选一运行**（同时执行会互相接管容器，见 [`docker-topology.md`](./docker-topology.md) §4）。
-- `rcs` 的 `image:` 是固定 tag（当前为 `ghcr.io/huangpustar/fenixagent:sha-da5eb54`），发布时**两份编排的同一行都要改**。
+- `rcs` 的 `image:` 由 `docker/main/.env` 的 `RCS_IMAGE_TAG` 显式提供：生产填 CI 产出的 `sha-<commit>`，
+  dev 根编排固定跟随 `main` 滚动 tag。发布时先确认 CI 已产出目标提交的镜像，再把
+  `RCS_IMAGE_TAG=sha-<新commit>` 写入生产 `.env`；`validate` / `up` / `deploy` 缺它会失败，compose 的缺省值只服务
+  `down` / `ps` 等不启动容器的命令。
   CI 在 main 与 `v*` tag 上构建并推送镜像（`.github/workflows/docker-publish.yml`，标签含分支名、semver 与 `sha-<commit>`）。
 - 数据一律 bind 到各编排同级的 `./data/`：主服务在 dev 落仓库根的 `data/`、`workflow/`、`workspaces/`，生产落
   `docker/main/` 下的同名目录；基础服务（`postgres` / `redis`）落各份编排同级的 `data/{postgres,redis}`，
@@ -59,12 +62,17 @@ docker compose up --build -d
 - 依赖实例**随组件自带**，不再有 `docker/common/` 那样的共享实例编排：`docker/litellm/` 自带 `litellm-postgres`
   （库 `litellm`）、`docker/workflow/` 自带 `mysql` 与 `rustfs`（库 `opencoze`、桶 `opencoze` / `milvus`）、
   `docker/ragflow/` 自带 `ragflow-mysql` 与 `ragflow-rustfs`（库 `rag_flow`，桶由 RAGFlow 运行期按知识库 /
-  文件目录自建）。数据与凭据都只属于各自目录，跨栈互不影响；依赖仍在**主服务项目之后**启动（`fenix-server`
-  由主服务项目创建），库 / 桶的创建由各栈自己承担（镜像初始化时建好，或由它栈内的一次性初始化服务建）。
+  文件目录自建）。数据与凭据都只属于各自目录，跨栈互不影响；普通依赖仍在 rcs 之后启动，观测依赖是例外（先于 rcs，
+  见 §2.3）；`fenix-server` 由主项目 `postgres` 先创建，库 / 桶的创建由各栈自己承担（镜像初始化时建好，或由它栈内的一次性初始化服务建）。
 - 开关只门控该依赖自己那一套编排：`FENIX_FEATURE_WORKFLOW=true` 起的就是 workflow 项目（连同它的 `mysql` /
   `rustfs`），不存在另需打开的共享实例开关。
 - 修改主服务 env 或 `docker/deploy.env` 后，`./docker/deploy.sh up` 会声明式收敛；只有依赖目录的
   `docker-compose.yml` 或 `.env` 改动才需要单独重启该项目。
+- `down` 不是简单逆序：先 `stop rcs` 让应用完成有界关闭，再停普通依赖，随后依次停 `otel-collector`、
+  `openobserve`，最后清理 `fenix-server`。应用退出期间观测出口保持可用，顺序与验收方法见
+  [`observability.md`](./observability.md) §7；脚本会用容器退出码提示 137/强杀。
+- `up` / `deploy` 首次启动先起主项目 `postgres` 创建 `fenix-server`，再按开关起 `openobserve`、`otel-collector`，
+  最后起 rcs 与普通依赖；不引入跨项目 `depends_on`，保证应用首批遥测有接收端。
 - 本节的命令都在**交付面**里执行，不在仓库工作区里执行——见 §2.4。
 
 ### 2.4 交付面：生产不在仓库工作区里跑
@@ -88,6 +96,8 @@ cd /opt/fenix/docker                        # 之后所有命令在交付面里�
   `compose-explorer/`（读仓库根的本地只读工具）。
 - 目标目录里**已存在的文件一律不覆盖**，内容不同时逐条列出，由人 diff 后决定。升级已部署环境的编排走这一步，
   而不是让导出直接改生产。
+- 工作区里**未提交的删除**会从导出清单中跳过并计数（删除是当前工作区的事实）；除此以外的文件缺失会直接报错，
+  避免导出缺文件的交付面。
 - 目标目录不能落在仓库内（脚本直接拒绝）。
 - 反过来也拦：`docker/` 在 git 工作区内时，`init` / `validate` / `up` / `deploy` / `config` 被直接拒绝并提示先
   `export`（`down` / `ps` / `logs` 只告警，应急停止不被挡）。判定用 `git rev-parse --show-toplevel`，部署机上
@@ -122,20 +132,23 @@ OpenSandbox / 端口等部署注意事项见 `docker/README.md`。
 1. 本地开发（dev）：`cp .env.example .env`，按需取消注释；Bun 启动时自动读取仓库根 `.env`。
 2. 单机 / 生产编排：`./docker/deploy.sh init` 生成模板（已存在则跳过），再填 `docker/main/.env` 的应用配置与密钥，以及 `docker/deploy.env` 的依赖开关。
 3. 其他部署平台（K8s、系统服务、受控文件）：以 `docker/main/.env.example`（同键集的完整清单，含元信息行）逐行核对要配哪些键，把**非密钥**项写进部署清单、**密钥**项交给平台的 secret store；不要把它们合并回仓库文件。填完后用「启动日志 + `GET /health`」验证：必填项缺失会在启动期直接失败并指出键名。
+4. 启用标准观测时，首次部署在 `docker/main/.env` 显式写出 `OTEL_RESOURCE_ATTRIBUTES=service.namespace=fenix,deployment.environment.name=production`；staging 改成 `deployment.environment.name=staging`。生产编排的缺省注入也是 production，显式写出用于核对，并避免 staging 沿用 development 后在看板筛选下消失。
+5. 发布生产版本前先等 CI 产出目标提交的 `sha-<commit>` 镜像，再在 `docker/main/.env` 设置 `RCS_IMAGE_TAG=sha-<commit>`；`validate` / `up` / `deploy` 缺该键会失败。离线交付时先把 `docker load` 的镜像 retag 为 `ghcr.io/huangpustar/fenixagent:sha-<commit>`，不要沿用 compose 里仅服务 `down`/`ps` 的缺省 tag。
 
 ## 4. 启动顺序（代码事实）
 
-入口是 `apps/server/src/main.ts`，启动序与关闭序集中在 `apps/server/src/bootstrap/host-startup.ts`，两侧都不可重排：
+入口是 `apps/server/src/entry.ts`：先初始化观测 SDK，再动态加载 `apps/server/src/main.ts`。启动序与关闭序集中在 `apps/server/src/bootstrap/host-startup.ts`，两侧都不可重排：
 
-1. `interceptConsole()` 必须在其他代码之前执行，统一接管 `console.*` 日志。
-2. `resolveAssemblyEnv()` 读取装配 profile：路径默认由 `RCS_APPLICATION_ROOT` 决定（镜像 runtime 阶段固定为 `/app`），即 `<root>/deploy/assembly/ce.json`；源码运行时按模块位置反推仓库根。要换别的 profile 就设 `RCS_ASSEMBLY_PROFILE_PATH`（绝对路径，覆盖上面的默认值）。**文件缺失会直接 ENOENT 退出**。profile 只能选择已编译进 `apps/generated/module-registry.ts` 的模块 ID，选择未注册模块会在启动时抛错而不是静默降级。
-3. `applyEnv(env)` 之后进入宿主启动序：
+1. `entry.ts` 在任何业务模块首次加载前初始化观测 SDK（未配置 endpoint 时为 No-op），再动态导入 `main.ts`，保证 Pino、PG 与 ioredis 的社区补丁先于业务使用。
+2. `main.ts` 首先执行 `interceptConsole()`，统一接管后续 `console.*` 日志。
+3. `resolveAssemblyEnv()` 读取装配 profile：路径默认由 `RCS_APPLICATION_ROOT` 决定（镜像 runtime 阶段固定为 `/app`），即 `<root>/deploy/assembly/ce.json`；源码运行时按模块位置反推仓库根。要换别的 profile 就设 `RCS_ASSEMBLY_PROFILE_PATH`（绝对路径，覆盖上面的默认值）。**文件缺失会直接 ENOENT 退出**。profile 只能选择已编译进 `apps/generated/module-registry.ts` 的模块 ID，选择未注册模块会在启动时抛错而不是静默降级。
+4. `applyEnv(env)` 之后进入宿主启动序：
    - 关键序列：`initDb` → 模块装配（`wirePermissions`）→ 模型网关（`initModelGateway`，其中包含系统管理员 `ensureSystemAdmin` 与沙盒 provider 投影）。
    - 随后依次是：启动前取数端口绑定 → 沙盒默认池初始化与崩溃恢复 → Core runtime → 调度器（`RCS_DISABLE_SCHEDULER=true` 时跳过启动，注意它**不是**全局只读模式）→ builtin 同步 → 自定义节点工具注册 → RagFlow 体检 → 巡检定时器 → 空闲监视。
    - 业务数据迁移**不在**这条序列里，由发布任务承担（见[升级](./upgrade.md)）。
-4. 构造 Elysia app：注册 CORS、OpenAPI、`/health`、`/`（302 → `/ctrl/`）、`/ctrl/*` 静态资源、`/web/*`、`/api/*` 以及各模块在装配期登记的顶层协议入口（`/acp/*`、`/hooks/*`、`/workflow-ui/*` 等，通配兜底最后注册），最后 `app.listen({ port, hostname })`。
+5. 构造 Elysia app：注册观测插件与 CORS、OpenAPI、`/health`、`/`（302 → `/ctrl/`）、`/ctrl/*` 静态资源、`/web/*`、`/api/*` 以及各模块在装配期登记的顶层协议入口（`/acp/*`、`/hooks/*`、`/workflow-ui/*` 等，通配兜底最后注册），最后 `app.listen({ port, hostname })`。
    前置约束：应用请求体上限为 108MiB，为固定 92MiB 上传文件上限预留 multipart 余量（见 `apps/server/src/plugins/body-limit.ts`）；前置反向代理的请求体上限不得低于 108MiB。WebSocket 消息预算统一为 128MiB，`RCS_WS_MAX_PAYLOAD_MB` 与 `RCS_FILE_WS_MAX_PAYLOAD_MB` 默认及最高允许值均为 128；远程单文件和 ZIP 下载实际大小上限也为 92MiB。主服务与远程 acp-link 需同步更新下载限制，原有大于 128 的 WS 配置值须删除或调低。
-5. 关闭：`SIGINT` / `SIGTERM` 触发 `shutdownHostRuntime`（总预算 10s，逐阶段独立超时，超时只记日志不阻断后续阶段），完成后 `process.exit(0)`。并发或重复信号只关一次。
+6. 关闭：`SIGINT` / `SIGTERM` 触发有界排空：只调用一次 `app.stop(false)` 停止接收新请求并等待活跃请求，5s 超时后不再重复 stop，继续执行 `shutdownHostRuntime`（总预算 10s，逐阶段独立超时，超时只记日志不阻断后续阶段），最后写入「宿主资源清理结束」并刷新观测 SDK（总预算 5s），由显式进程退出关闭剩余连接。stop/清理失败会使退出码为 1；并发或重复信号只关一次。三阶段合计约 20s，两份主服务编排都设置 `stop_grace_period: 30s`；不要用更短的 `docker stop -t` 或脚本 timeout 停 rcs。启动完成前收到的信号按默认行为终止，不走这条关闭序；排空超时也只记 WARN、退出码仍为 0，两者的验收口径见 [`observability.md`](./observability.md) §7「已知限制」。
 
 ## 5. 启动后自检
 

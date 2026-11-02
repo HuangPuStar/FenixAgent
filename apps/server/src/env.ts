@@ -1,6 +1,7 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod/v4";
 import { ENGINE_TYPES } from "./services/config/types";
+import { telemetryEnvSchema } from "./telemetry/config";
 
 const databaseConnectionPoolSchema = z.object({
   RCS_DB_POOL_MAX: z.coerce.number().int().positive().default(20),
@@ -50,7 +51,7 @@ export const LOCAL_DEV_API_KEY = "rcs-local-dev-signing-key";
  * `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT`）——它们的宿主字段已无任何读取点，理由与重建条件见
  * `config.ts` 的同名说明，不要加回。
  */
-const envSchema = databaseConnectionPoolSchema.extend({
+const envSchema = databaseConnectionPoolSchema.extend(telemetryEnvSchema.shape).extend({
   // ── 必填 ──
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   // 宿主 schema 里唯一带兜底值的键：本地零配置可起，生产由编排显式覆盖（见 CLAUDE.md「环境变量」）。
