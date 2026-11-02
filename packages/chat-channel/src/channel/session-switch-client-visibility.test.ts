@@ -45,6 +45,7 @@ class FakeWs implements WsConnection {
 /** 双向 fake relay：send 记录出站请求，emit 注入入站帧 */
 class FakeRelay implements EngineRelayHandle {
   readonly state = "open" as const;
+  readonly sessionContinuity = {};
   readonly sent: Record<string, unknown>[] = [];
   private listener: ((message: EngineRelayMessage) => Promise<void>) | undefined;
 
@@ -204,6 +205,7 @@ function createHarness(): Harness {
     resolveWorkspacePath: () => "/trusted-workspace",
     ensureRunning: async () => "instance-1",
     connectAgentRelay: async () => relay,
+    getRuntimeIdentity: () => JSON.stringify(["visibility-test", 1]),
     markRelayAttached: () => {},
     markRelayDetached: () => {},
     reportLog: () => {},
@@ -425,4 +427,51 @@ describe("会话切换后客户端可见性", () => {
 
     expect(harness.client.timelineTexts()).toEqual(["来自会话 B 的历史消息"]);
   });
+});
+
+// 页面刷新后既保留已有回复，也能继续收到同会话的增量，不触发 Agent 重载。
+test("回复中刷新直接恢复消息并继续流式输出", async () => {
+  const h = createHarness();
+  try {
+    await openChat(h);
+    await emitLoadResult(h, "ses-A", await startSwitch(h, "ses-A"));
+    await h.gateway.handleMessage(
+      h.ws,
+      "ws-1",
+      JSON.stringify({
+        action: "send_prompt",
+        sessionId: "ses-A",
+        content: [{ type: "text", text: "问题" }],
+        commandId: h.ws.commandEpoch + "." + randomUUID(),
+      }),
+    );
+    await emitAssistantDelta(h, "ses-A", "尚未完成");
+    expect(h.client.timelineTexts()).toEqual(["问题", "尚未完成"]);
+    const original = h.docManager.getChatYdoc(RCS_SESSION_ID);
+    const loads = h.relay.sent.filter((rpc) => rpc.method === "session/load").length;
+    for (let i = 0; i < 2; i++) {
+      h.gateway.handleClose("ws-1");
+      await openChat(h);
+      await h.gateway.handleMessage(
+        h.ws,
+        "ws-1",
+        JSON.stringify({
+          action: "load_session",
+          sessionId: "ses-A",
+          commandId: h.ws.commandEpoch + "." + randomUUID(),
+        }),
+      );
+      expect(h.docManager.getChatYdoc(RCS_SESSION_ID)).toBe(original);
+      expect(h.client.timelineTexts()).toEqual(["问题", "尚未完成" + "继续".repeat(i)]);
+      await emitAssistantDelta(h, "ses-A", "继续");
+    }
+    expect(h.client.timelineTexts()).toEqual(["问题", "尚未完成继续继续"]);
+    expect(h.relay.sent.filter((rpc) => rpc.method === "session/load")).toHaveLength(loads);
+    expect(h.ws.sent.filter((frame) => typeof frame === "string" && JSON.parse(frame).type === "action_error")).toEqual(
+      [],
+    );
+  } finally {
+    h.gateway.handleClose("ws-1");
+    await h.docManager.closeAll();
+  }
 });

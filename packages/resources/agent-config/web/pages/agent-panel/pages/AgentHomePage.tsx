@@ -12,6 +12,7 @@
 // `agent-home-template-pills.tsx`，「创建并解析实例目标」的编排移到 `agent-home-creation.ts`：
 // 页面保留用户可见决策（提示文案、跳哪条路由），模块只回判别式结果。
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { ArrowLeft, Wand2 } from "lucide-react";
@@ -41,6 +42,7 @@ export function hasAgentGenerationPrompt(value: string): boolean {
 export function AgentHomePage() {
   const { t } = useTranslation(AGENT_HOME_NS);
   const navigate = useNavigate();
+  const { organizationId } = useOrgSession();
 
   // 随机选择标题（挂载时决定）
   const titleKey = useMemo(() => {
@@ -85,7 +87,7 @@ export function AgentHomePage() {
   /** 创建 agent 配置 → 创建 environment → 跳转聊天页 */
   const { run: runCreateAndNavigate, loading: creating } = useRequest(
     async (data: GenerationFormData) => {
-      const outcome = await createAgentAndResolveChatTarget(data);
+      const outcome = await createAgentAndResolveChatTarget(data, organizationId ?? undefined);
       // 两句提示分属两种「走到这里但没得跳」的形态，见 `AgentCreationOutcome` 的说明。
       if (outcome.status === "no-model") {
         toast.error(t("noModel"));

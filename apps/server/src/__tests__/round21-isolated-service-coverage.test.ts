@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   getAcpEventBus,
   getAllEventBuses,
@@ -8,6 +8,7 @@ import {
 } from "@fenix/agent-runtime/server";
 import { resetAllStubs, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { toInvocationDate } from "@fenix/resource-task/server";
+import Keyv from "keyv";
 import { clearAllCache, getCache, getCacheBackend } from "../services/cache";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
 
@@ -280,12 +281,31 @@ describe("round21 隔离服务边界", () => {
       "org-first",
     );
   });
-  // 身份目录故障时保守返回空，不得放行任何组织上下文。
-  test("组织上下文身份目录故障返回空", async () => {
+  // 成员查询失败必须保留故障语义，由协议边界决定重试，不得伪装成无组织。
+  test("组织上下文身份目录故障抛出原始异常且恢复后可重试", async () => {
+    const error = new Error("unavailable");
     stubIdentityDirectory({
-      listMemberships: async () => Promise.reject(new Error("unavailable")),
+      listMemberships: async () => Promise.reject(error),
     });
-    expect(await loadOrgContext({ id: USER_ID }, request())).toBeNull();
+    await expect(loadOrgContext({ id: USER_ID }, request())).rejects.toBe(error);
+    stubMemberships([{ organizationId: "org-recovered", role: "member" }]);
+    expect(await loadOrgContext({ id: USER_ID }, request())).toMatchObject({ organizationId: "org-recovered" });
+  });
+  // 缓存不是授权权威，读写失败不能否定已经由成员表确认的当前组织。
+  test.each(["get", "set"] as const)("组织缓存 %s 故障仍返回已校验的组织", async (method) => {
+    stubOrganizationName("Shared");
+    stubMemberships([
+      { organizationId: "org-personal", role: "owner" },
+      { organizationId: "org-shared", role: "member" },
+    ]);
+    const operation = spyOn(Keyv.prototype, method).mockRejectedValue(new Error("fixture cache unavailable"));
+    try {
+      await expect(
+        loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-shared")),
+      ).resolves.toMatchObject({ organizationId: "org-shared", role: "member", userId: USER_ID });
+    } finally {
+      operation.mockRestore();
+    }
   });
   // 同一用户相同组织命中进程内缓存，不重复访问身份目录。
   test("组织上下文缓存避免重复查询", async () => {
@@ -311,6 +331,24 @@ describe("round21 隔离服务边界", () => {
     await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-a"));
     await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-b"));
     expect(calls).toBe(2);
+  });
+  // WS 显式组织必须在冷缓存及缓存仍指向个人组织时都生效，无需组织 cookie。
+  test.each([
+    ["/acp/yjs/env-b", false],
+    ["/acp/yjs/env-b", true],
+    ["/web/file-events", false],
+    ["/web/file-events", true],
+  ] as const)("WS %s 在个人组织缓存=%s 时解析到指定组织", async (path, warmPersonalOrg) => {
+    stubOrganizationName("Shared");
+    stubMemberships([
+      { organizationId: "org-personal", role: "owner" },
+      { organizationId: "org-shared", role: "member" },
+    ]);
+    if (warmPersonalOrg) {
+      await loadOrgContext({ id: USER_ID }, request("/", { "x-active-org-id": "org-personal" }));
+    }
+    const context = await loadOrgContext({ id: USER_ID }, request(`${path}?activeOrganizationId=org-shared`));
+    expect(context).toMatchObject({ organizationId: "org-shared", role: "member", userId: USER_ID });
   });
   // 清理缓存后必须重新查询。
   test("组织上下文清理缓存后重新查询", async () => {

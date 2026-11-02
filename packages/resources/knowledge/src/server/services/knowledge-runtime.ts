@@ -6,7 +6,8 @@
  * 「读行 + 解析 key」，控制台组织口径现在只由门面决定。
  *
  * Agent 侧入口（`readKnowledgeResourceForAgent` / `searchKnowledgeByConfigId` / `getKnowledgeGraphForAgent`）
- * 的授权来自 agent 知识库绑定，并按注入的组织上下文过滤，不经过控制台门面。
+ * 的授权只来自 agent 知识库绑定本身：绑定挂在 Agent 上，跟着 Agent 的可见范围走，调用方身份不参与
+ * 判定——跨组织运行共享 Agent 时，环境属于调用方而知识库属于提供方，按调用方过滤会让绑定整体失效。
  */
 
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
@@ -45,8 +46,6 @@ export { setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting
 export async function readKnowledgeResourceForAgent(input: {
   agentConfigId?: string;
   resourceId: string;
-  userId?: string;
-  organizationId?: string;
 }): Promise<KnowledgeResourceContent & { knowledgeBaseId: string }> {
   const result = await agentKnowledgeBindingRepo.getResourceWithKnowledgeBase(input.resourceId);
 
@@ -56,12 +55,9 @@ export async function readKnowledgeResourceForAgent(input: {
   if (!result.resource.remoteId) {
     throw new Error("Knowledge resource remote id is missing");
   }
-  if (input.userId && result.kbUserId !== input.userId) {
-    throw new Error("Knowledge resource not accessible");
-  }
 
   const boundKnowledgeBases = input.agentConfigId
-    ? await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.organizationId)
+    ? await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId)
     : [];
   if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
     throw new Error("Knowledge resource is not bound to the agent");
@@ -89,15 +85,15 @@ export async function readKnowledgeResourceForAgent(input: {
 }
 
 /**
- * Resolves the ordered bound knowledge bases for an agent config, optionally scoped to a team.
+ * Resolves the ordered bound knowledge bases for an agent config.
+ *
+ * 不做组织过滤：绑定表是唯一的授权来源，且写入侧已校验知识库归属与 Agent 归属组织一致
+ * （`syncAgentKnowledgeBindingsById`）。
  */
-export async function resolveBoundKnowledgeBasesByConfigId(
-  agentConfigId: string,
-  orgId?: string,
-): Promise<BoundKnowledgeBase[]> {
+export async function resolveBoundKnowledgeBasesByConfigId(agentConfigId: string): Promise<BoundKnowledgeBase[]> {
   const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
   return rows
-    .filter((row) => !!row.kbRemoteId && (orgId === undefined || row.kbOrganizationId === orgId))
+    .filter((row) => !!row.kbRemoteId)
     .sort((a, b) => a.priority - b.priority)
     .map((row) => ({
       id: row.kbId,
@@ -113,13 +109,12 @@ export async function resolveBoundKnowledgeBasesByConfigId(
 }
 
 /**
- * Searches across the agent config's bound knowledge bases after server-side access filtering.
+ * Searches across the agent config's bound knowledge bases.
  */
 export async function searchKnowledgeByConfigId(input: {
   agentConfigId: string;
   query: string;
   topK: number;
-  organizationId?: string;
 }): Promise<KnowledgeSearchResult[]> {
   return searchKnowledgeDetailedForAgent(input);
 }
@@ -133,8 +128,6 @@ export async function searchKnowledgeDetailedForAgent(input: {
   agentConfigId: string;
   query: string;
   topK: number;
-  organizationId?: string;
-  userId?: string;
   similarityThreshold?: number;
   vectorSimilarityWeight?: number;
   rerankId?: string | null;
@@ -144,7 +137,7 @@ export async function searchKnowledgeDetailedForAgent(input: {
   crossLanguages?: string[];
   metaDataFilter?: MetaDataFilter;
 }): Promise<KnowledgeSearchResult[]> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.organizationId);
+  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId);
   if (knowledgeBases.length === 0) return [];
 
   const provider = getKnowledgeRuntimeProvider();
@@ -391,16 +384,12 @@ export async function pollKnowledgeGraphProgressForKb(input: {
  * 获取 agent 绑定知识库的知识图谱数据（节点 + 边）。
  * 若指定 knowledgeBaseId，仅查该 KB；否则返回第一个有图谱的绑定 KB。
  */
-export async function getKnowledgeGraphForAgent(input: {
-  agentConfigId: string;
-  organizationId?: string;
-  knowledgeBaseId?: string;
-}): Promise<{
+export async function getKnowledgeGraphForAgent(input: { agentConfigId: string; knowledgeBaseId?: string }): Promise<{
   knowledgeBaseId: string;
   graph: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] };
   mind_map?: unknown;
 } | null> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.organizationId);
+  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId);
   if (knowledgeBases.length === 0) return null;
 
   const provider = getKnowledgeRuntimeProvider();

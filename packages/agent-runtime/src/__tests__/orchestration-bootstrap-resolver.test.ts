@@ -28,6 +28,7 @@ describe("createExecutionNodeResolver", () => {
     return {
       envId: "env-1",
       organizationId: "org-1",
+      configOrganizationId: null,
       userId: "user-1",
       agentNode: null,
       configMachineId: null,
@@ -61,6 +62,29 @@ describe("createExecutionNodeResolver", () => {
 
     expect(result).toBe("mach_sandbox_pool-default");
     expect(prepareCalls).toEqual([{ sandboxPoolId: "pool-default", userId: "user-1", organizationId: "org-1" }]);
+  });
+
+  // 显式池属于声明它的 Agent 配置：跨组织共享时按池所属组织准备，实例仍归调用方用户
+  test("显式 sandbox 时 prepare 收到配置组织而非环境组织", async () => {
+    const resolver = makeResolver();
+    const result = await resolver(
+      input({
+        organizationId: "org-caller",
+        configOrganizationId: "org-owner",
+        agentNode: { kind: "sandbox", sandboxPoolId: "pool-owner" },
+      }),
+    );
+
+    expect(result).toBe("mach_sandbox_pool-owner");
+    expect(prepareCalls).toEqual([{ sandboxPoolId: "pool-owner", userId: "user-1", organizationId: "org-owner" }]);
+  });
+
+  // 默认池属于环境所在组织：未显式指定节点时用调用方自己的池，不继承共享方的组织
+  test("默认 sandbox 时 prepare 收到环境组织", async () => {
+    const resolver = makeResolver({ sandboxEnabled: true, defaultSandboxPoolId: "pool-default" });
+    await resolver(input({ organizationId: "org-caller", configOrganizationId: "org-owner" }));
+
+    expect(prepareCalls).toEqual([{ sandboxPoolId: "pool-default", userId: "user-1", organizationId: "org-caller" }]);
   });
 
   // 沙盒已启用但缺少默认资源池属部署配置错误：明确拒绝而非静默回落，

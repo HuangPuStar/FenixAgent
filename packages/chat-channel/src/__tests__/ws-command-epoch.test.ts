@@ -32,10 +32,12 @@ afterEach(() => {
 test("command epoch is unavailable before handshake and retires with its socket", () => {
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: Socket });
   const received: string[] = [];
+  const states: string[] = [];
   const client = createYjsWsClient({
     url: "ws://test",
     onYjsUpdate() {},
     onCommandEpoch: (epoch) => received.push(epoch),
+    onConnectionState: (state) => states.push(state),
   });
   try {
     expect(client.getCommandEpoch()).toBeNull();
@@ -44,16 +46,23 @@ test("command epoch is unavailable before handshake and retires with its socket"
     socket.readyState = 1;
     socket.onopen?.();
     expect(client.getCommandEpoch()).toBeNull();
+    expect(client.isConnected()).toBe(false);
+    expect(states).toEqual(["connecting"]);
+    expect(client.send({ action: "load_session" })).toBe(false);
     for (const invalid of [null, 1, "x", "-".repeat(36)]) socket.receive(invalid);
     expect(received).toEqual([]);
+    expect(states).toEqual(["connecting"]);
     const first = "11111111-1111-4111-8111-111111111111";
     const next = "22222222-2222-4222-8222-222222222222";
     socket.receive(first);
     socket.receive(first);
     expect(client.getCommandEpoch()).toBe(first);
+    expect(client.isConnected()).toBe(true);
+    expect(states).toEqual(["connecting", "connected"]);
     socket.receive(next);
     expect(client.getCommandEpoch()).toBe(next);
     expect(received).toEqual([first, next]);
+    expect(states).toEqual(["connecting", "connected"]);
     const stale = socket.onmessage;
     client.disconnect();
     stale?.({ data: JSON.stringify({ type: "yjs:command-epoch", epoch: first }) } as MessageEvent);

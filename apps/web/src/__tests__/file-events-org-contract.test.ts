@@ -2,7 +2,7 @@
 // 实时通道的两条前端不变量（规范 §3.3 / §5.8 / §8.6）：
 //
 // 1. **组织 id 只经契约获取**：`packages/web-runtime/web/lib/active-org.ts` 是唯一读
-//    `active_org_id` 的地方（身份包的 fetch 拦截器与两条 WS 通道都消费它）。任何新增的
+//    `activeOrganizationId` 的地方（身份包的 fetch 拦截器与两条 WS 通道都消费它）。任何新增的
 //    `localStorage.getItem` 直读都会让"UI 显示 A、连接操作 B"的 split-brain 重新长出来，
 //    而且只在切换组织后的窗口期暴露。
 // 2. **URL 拼装不在组件里**：`/web/file-events` 的 URL 与协议解析归文件域 owner 包
@@ -112,7 +112,7 @@ async function collectFrontendSources(globs: Array<{ cwd: string; pattern: strin
 }
 
 describe("file-events 域模块（§8.1 通道二）", () => {
-  // 组织参数只经契约读取：持久层有激活组织时，URL 必须带上 active_org_id——
+  // 组织参数只经契约读取：持久层有激活组织时，URL 必须带上 activeOrganizationId——
   // WS 握手无法带自定义头，这是该值唯一的传递通道。
   test("组织参数经契约进入 WS URL", () => {
     stubActiveOrg("org-1");
@@ -120,15 +120,15 @@ describe("file-events 域模块（§8.1 通道二）", () => {
 
     expect(url.protocol).toBe("ws:");
     expect(url.pathname).toBe("/web/file-events");
-    expect(url.searchParams.get("active_org_id")).toBe("org-1");
+    expect(url.searchParams.get("activeOrganizationId")).toBe("org-1");
   });
 
   // 契约未取到组织时不得拼空参数（服务端按 header → query → cookie 判定归属，空串会被当成一个值）。
-  test("无持久化组织时不拼 active_org_id 参数", () => {
+  test("无持久化组织时不拼 activeOrganizationId 参数", () => {
     stubActiveOrg();
     const url = new URL(buildFileEventsUrl());
 
-    expect(url.searchParams.has("active_org_id")).toBe(false);
+    expect(url.searchParams.has("activeOrganizationId")).toBe(false);
     expect(url.searchParams.get("instanceUid")).toBeNull();
   });
 
@@ -150,7 +150,7 @@ describe("file-events 域模块（§8.1 通道二）", () => {
       },
     });
     const socket = FakeWebSocket.instances[0];
-    expect(socket?.url).toContain("/web/file-events?active_org_id=org-1");
+    expect(socket?.url).toContain("/web/file-events?activeOrganizationId=org-1");
 
     socket?.open();
     expect(socket?.sent).toEqual([JSON.stringify({ type: "subscribe", environments: ["env-1"] })]);

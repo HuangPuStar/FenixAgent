@@ -2,6 +2,7 @@ import { translateSimpleAction } from "../protocol/translator";
 import type { DocManager } from "../state";
 import { SyncStoreRegistry } from "../sync/runtime/store-registry";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
+import { hasActiveRelayWork, releaseGatewayRelay, watchActiveRelay } from "./active-relay-retention";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ChatSyncProtocolConfig, ClientConnection, SharedRelay, WsConnection } from "./connection-types";
@@ -13,10 +14,8 @@ import { toSessionConnection } from "./gateway-session-connection";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel } from "./session-channel";
-import { failPendingSessionMutations } from "./session-mutation";
 import { markSessionTimelineEmpty } from "./session-timeline-flag";
 import { flushPendingSyncFrames, type GatewaySyncHostOverrides } from "./sync-connection";
-import { failPendingUserInputRequests } from "./user-input-pending";
 import { ensureUserInputQueueSnapshot } from "./user-input-queue-action";
 
 const KEEPALIVE_INTERVAL = 30_000;
@@ -38,6 +37,8 @@ export interface GatewayDependencies {
   authorizeEnvironment: (userId: string, environment: GatewayEnvironment) => boolean;
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
   ensureRunning: (ownerUserId: string, agentId: string, requestedInstanceUid?: string) => Promise<string>;
+  /** 只读当前运行身份；缺省时不启用跨连接会话确认复用。 */
+  getRuntimeIdentity?: (instanceId: string) => string | undefined;
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<ClientConnection["relayHandle"]>;
   docManager: DocManager;
   markRelayAttached: (instanceId: string) => void;
@@ -164,7 +165,12 @@ export class Gateway {
     let acquired: { shared: SharedRelay; created: boolean };
     try {
       acquired = await registry.acquireRelay(instanceId, userId, resolvedRcsSessionId, async () => {
+        const runtimeIdentity = this.dependencies.getRuntimeIdentity?.(instanceId);
         const handle = await this.dependencies.connectAgentRelay(instanceId, resolvedRcsSessionId);
+        if (runtimeIdentity !== this.dependencies.getRuntimeIdentity?.(instanceId)) {
+          await handle.close(1000, "runtime changed during relay acquisition");
+          throw new Error("Runtime changed during relay acquisition");
+        }
         const shared: SharedRelay = {
           handle,
           unsubscribe: null,
@@ -172,6 +178,7 @@ export class Gateway {
           userId,
           agentId,
           instanceId,
+          runtimeIdentity,
           rcsSessionId: resolvedRcsSessionId,
           workspacePath,
           nextRpcId: 0,
@@ -253,6 +260,9 @@ export class Gateway {
       }
       return;
     }
+    shared.stopRetentionWatch?.();
+    shared.stopRetentionWatch = undefined;
+    shared.releaseRetained = undefined;
     const openedAt = Date.now();
     const keepalive = setInterval(() => {
       const entry = registry.getClient(wsId);
@@ -422,48 +432,22 @@ export class Gateway {
     }
   }
   private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
-    const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);
+    const { registry, docManager } = this.dependencies;
+    const shared = registry.getShared(instanceId, userId, rcsSessionId);
+    const retain = Boolean(shared && shared.refCount === 1 && hasActiveRelayWork(shared, docManager));
+    const released = registry.release(instanceId, userId, rcsSessionId, retain);
+    if (retain && shared && !shared.stopRetentionWatch) {
+      const release = () => {
+        if (!registry.releaseRetained(shared)) return;
+        releaseGatewayRelay(shared, this.dependencies);
+        if (shared.idleMonitorAttached) this.dependencies.markRelayDetached(instanceId);
+      };
+      shared.releaseRetained = release;
+      shared.stopRetentionWatch = watchActiveRelay(shared, docManager, release);
+    }
     if (!released) return;
-    this.closeReleasedRelay(released);
+    releaseGatewayRelay(released, this.dependencies);
     if (released.idleMonitorAttached) this.dependencies.markRelayDetached(instanceId);
-  }
-  private closeReleasedRelay(shared: SharedRelay | undefined): void {
-    if (!shared) return;
-    shared.destroyed = true;
-    // 释放连接代次的执行资源，命令结果仍在有界去重窗口内保留。
-    this.dependencies.sessionChannel.disposeRcsSession(shared.rcsSessionId);
-    if (shared.sessionListTimer) {
-      clearInterval(shared.sessionListTimer);
-      shared.sessionListTimer = undefined;
-    }
-    shared.pendingSessionSyncIds?.clear();
-    shared.latestSessionSyncRpcId = null;
-    shared.pendingPromptIds?.clear();
-    shared.pendingPromptTurns?.clear();
-    failPendingSessionMutations(shared);
-    // 在途 steer 请求随 relay 释放一并失败：回执不再可达，悬挂会让前端停在"发送中"
-    failPendingUserInputRequests(shared);
-    if (shared.replayWindowTimer) {
-      clearTimeout(shared.replayWindowTimer);
-      shared.replayWindowTimer = null;
-    }
-    shared.replaySkipSynthesis = undefined;
-    try {
-      this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
-      this.dependencies.broadcaster.unregisterYjsDocListener(`session:${shared.rcsSessionId}`);
-    } catch {
-      /* ignore */
-    }
-    try {
-      shared.unsubscribe?.();
-    } catch {
-      /* ignore */
-    }
-    try {
-      shared.handle.close(1000, "all yjs frontend clients disconnected");
-    } catch {
-      /* ignore */
-    }
   }
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);

@@ -55,6 +55,9 @@ const logger = createLogger("env-route");
 const APP_ERROR_MESSAGE: Readonly<Record<string, string>> = {
   INVALID_CONFIG:
     "Agent configuration is invalid: check that the agent's model, skills and MCP servers are available, then retry.",
+  // 共享被收回（Agent 转为私有、成员关系或公开受众变化）时的稳定文案：这不是服务故障，而是权限结论。
+  AGENT_ACCESS_DENIED: "You do not have permission to use this agent. Ask its owner to share it with you.",
+  AGENT_NOT_FOUND: "Agent not found",
 };
 
 /** 未登记文案的 `AppError`：4xx 用通用可读文案，5xx 用通用故障文案（都不含内部细节）。 */
@@ -282,6 +285,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
           ownerUserId: user.id,
           requestedInstanceUid: b.instanceUid,
           automaticSelection: "chat",
+          activation: "explicit",
         });
         return {
           success: true as const,
@@ -332,6 +336,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
       response: {
         200: "enter-environment-response",
         400: WebErrSchema,
+        403: WebErrSchema,
         404: WebErrSchema,
         500: WebErrSchema,
         503: WebErrSchema,
@@ -339,7 +344,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
       detail: {
         tags: ["Environments"],
         summary: "进入环境",
-        description: "为环境选择或拉起实例，并返回进入该环境所需的实例和会话信息。",
+        description: "主动进入环境：复用运行中的实例，或启动已停止的原实例，并返回实例信息。",
       },
     },
   );

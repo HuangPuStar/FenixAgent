@@ -10,6 +10,7 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
+import { ConflictError } from "@fenix/platform-sdk";
 import { and, asc, desc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../access/agent-config-resource";
@@ -70,6 +71,11 @@ export interface AgentConfigWriteData {
   readonly agentNode?: unknown;
 }
 
+/** 更新配置行可同时改名；创建时名称由独立的 name 输入决定。 */
+export interface AgentConfigUpdateData extends AgentConfigWriteData {
+  readonly name?: string;
+}
+
 /** 创建结果：用于区分首次资源初始化与同名请求的幂等更新。 */
 export interface AgentConfigCreateResult {
   readonly id: string;
@@ -105,7 +111,7 @@ export interface AgentConfigRepository {
     ownerUserId: string;
     visibility: string;
   }): Promise<AgentConfigCreateResult | undefined>;
-  updateById(input: { resourceId: string; data: AgentConfigWriteData }): Promise<boolean>;
+  updateById(input: { resourceId: string; data: AgentConfigUpdateData }): Promise<boolean>;
   /**
    * 删除资源行与绑定其上的 Environment（同一事务）。
    *
@@ -141,6 +147,14 @@ export interface AgentConfigRepository {
 
 /** 主表归属列的唯一定义来自资源注册，仓储不再重复声明列名。 */
 const storage = agentConfigResource.storage;
+
+/** Drizzle 会把 PG 错误包在 cause 中；只转换本资源的组织内名称唯一约束。 */
+function isAgentNameConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { code?: unknown; constraint?: unknown; cause?: unknown };
+  if (candidate.code === "23505" && candidate.constraint === "idx_agent_config_org_name") return true;
+  return isAgentNameConflict(candidate.cause);
+}
 
 export function createAgentConfigRepository(
   query: AuthorizedResourceQuery<AgentConfigQueryStorage>,
@@ -243,12 +257,19 @@ export function createAgentConfigRepository(
     },
 
     async updateById(input) {
-      const rows = await getAgentConfigDatabase()
-        .update(agentConfig)
-        .set(writeSet(input.data))
-        .where(eq(agentConfig.id, input.resourceId))
-        .returning({ id: agentConfig.id });
-      return rows.length > 0;
+      try {
+        const rows = await getAgentConfigDatabase()
+          .update(agentConfig)
+          .set(writeSet(input.data))
+          .where(eq(agentConfig.id, input.resourceId))
+          .returning({ id: agentConfig.id });
+        return rows.length > 0;
+      } catch (error) {
+        if (input.data.name !== undefined && isAgentNameConflict(error)) {
+          throw new ConflictError("Agent name already exists in this organization");
+        }
+        throw error;
+      }
     },
 
     async removeWithEnvironments(input) {

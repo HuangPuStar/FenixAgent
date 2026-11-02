@@ -18,7 +18,6 @@ import { EditorFormDialog } from "./editor-form-dialog";
 
 interface ProviderEditorDialogProps {
   target: ProviderDialogTarget | null;
-  providers: ProviderInfo[];
   saving: boolean;
   onClose: () => void;
   onSave: (draft: ProviderDraft, editing: ProviderInfo | null) => Promise<unknown>;
@@ -30,7 +29,7 @@ interface ProviderEditorDialogProps {
  * 从 `agent-models-dialogs.tsx` 拆出（§4.7）：本弹窗只服务 Provider 这一条数据流，模型侧的
  * 编辑 / 发现 / 删除弹窗留在 `agent-models-dialogs.tsx`，共用外壳在 `editor-form-dialog.tsx`。
  */
-export function ProviderEditorDialog({ target, providers, saving, onClose, onSave }: ProviderEditorDialogProps) {
+export function ProviderEditorDialog({ target, saving, onClose, onSave }: ProviderEditorDialogProps) {
   const { t } = useTranslation(MODELS_NS);
   const probeErrorText = useProviderTestErrorText();
   const editing = target && target.mode !== "create" ? target.provider : null;
@@ -41,15 +40,15 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
   const [draft, setDraft] = useState<ProviderDraft>(() =>
     editing
       ? {
-          id: editing.id,
-          displayName: { edited: false, value: editing.name !== editing.id ? editing.name : "" },
+          configName: editing.name,
+          displayName: { edited: false, value: editing.displayName },
           protocol: editing.protocol,
           apiKey: "",
           baseURL: { edited: false, value: editing.baseURL ?? "" },
           selectedModels: [],
         }
       : {
-          id: "",
+          configName: "",
           displayName: { edited: false, value: "" },
           protocol: "openai",
           apiKey: "",
@@ -63,7 +62,7 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
 
   const fetchModels = useRequest(
     async () => {
-      if (!draft.id.trim()) throw new Error(t("validation.nameEmpty"));
+      if (!draft.configName.trim()) throw new Error(t("validation.nameEmpty"));
       // 编辑态下只要 Base URL 被改动过就带内联参数：Key 留空是常态（详情只回掩码、占位符就是「留空表示不
       // 修改」），只按 Key 判断会让"改了 Base URL 但没重填 Key"这次探测落到库中的旧地址上。后端的内联分支
       // 只用请求自带的凭据（空 Key 会原样发出去），因此这里改成"带新端点、凭据随表单"。
@@ -75,7 +74,9 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             protocol: draft.protocol,
           })
         : undefined;
-      return unwrap(providerApi.fetchModels(editing ? getProviderKey(editing) : draft.id.trim(), inline));
+      return unwrap(
+        editing ? providerApi.fetchModels(getProviderKey(editing), inline) : providerApi.probeModels(inline ?? {}),
+      );
     },
     {
       manual: true,
@@ -118,14 +119,11 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!draft.id.trim()) {
+    if (!draft.configName.trim()) {
       toast.error(t("validation.nameEmpty"));
       return;
     }
-    if (!editing && providers.some((provider) => provider.id === draft.id.trim())) {
-      toast.error(t("saveProvider.duplicateName", { name: draft.id.trim() }));
-      return;
-    }
+
     try {
       await onSave(draft, editing);
       onClose();
@@ -146,8 +144,8 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
     >
       <LabeledField label={t("form.id")}>
         <Input
-          value={draft.id}
-          onChange={(event) => update("id", event.target.value)}
+          value={draft.configName}
+          onChange={(event) => update("configName", event.target.value)}
           disabled={Boolean(editing) || readOnly}
           required
         />

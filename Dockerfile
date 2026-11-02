@@ -32,6 +32,7 @@ COPY apps/web ./apps/web
 COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
+RUN bun run build:machine-runtime
 RUN bun build apps/server/src/entry.ts --target=bun --splitting --packages=external --external '@fenix/logger' --external '@fenix/logger/*' --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 

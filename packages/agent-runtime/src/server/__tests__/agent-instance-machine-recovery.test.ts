@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentInstanceRecord } from "../repositories";
-import { AgentInstanceRuntimeCoordinator, type RuntimeAdapter } from "../services/agent-instance-runtime-coordinator";
+import { AgentInstanceRuntimeCoordinator } from "../services/agent-instance-runtime-coordinator";
+import type { RuntimeAdapter } from "../services/agent-instance-runtime-types";
 
 const instance: AgentInstanceRecord = {
   id: "inst_00000000000000000000000000000001",

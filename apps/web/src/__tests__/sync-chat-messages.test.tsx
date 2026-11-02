@@ -10,7 +10,9 @@ import { createInstance } from "i18next";
 import { createElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
+import * as Y from "yjs";
 import { createSyncMessageMerger } from "../../../../packages/agent-runtime/web/hooks/sync-chat-messages";
+import { createSyncContentProjectionHub } from "../../../../packages/agent-runtime/web/yjs/sync-doc-hub";
 
 function user(id: string, content: string, ts = 10000): StructuredMessage {
   return { type: "user_message", id, content, ts, seq: 0 };
@@ -21,8 +23,12 @@ function textOf(message: StructuredMessage): string {
     : "";
 }
 
-function assistant(id: string, text: string, ts = 10000): StructuredMessage {
+function assistant(id: string, text: string, ts = 10000): Extract<StructuredMessage, { type: "assistant_message" }> {
   return { type: "assistant_message", id, chunks: [{ type: "message", text }], ts, seq: 1 };
+}
+
+function tool(id: string): StructuredMessage {
+  return { type: "tool_call", id, title: "Read", status: "complete", content: [] };
 }
 
 /** 统计 chunks 读取次数：用于证明模糊配对不再对每个 sync 消息线性扫描全部 legacy。 */
@@ -78,6 +84,220 @@ describe("新旧消息合并视图", () => {
     const merged = createSyncMessageMerger()([thoughtAndText, tool, finalAnswer], [combined]);
     expect(merged.map((message) => message.id)).toEqual(["entry-1", "tool-1", "entry-1#1"]);
     expect(merged.at(-1)).toMatchObject({ id: "entry-1#1" });
+  });
+
+  // 旧数据没有有序工具标记：尾段跨工具的位置不可判定，必须显式降级（正文完整、工具保留），
+  // 不得继续猜测位置；标记存在时的精确顺序由后续 tool_boundary 用例覆盖。
+  test("标记缺失时工具后尾文显式降级且不丢失", () => {
+    const chat = createChatDoc("rcs-stream-order", null).ydoc;
+    const session = createSessionDoc("rcs-stream-order", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问" } }, "turn-stream"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai " } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-s", title: "Read" }));
+
+    // 中间态：旧路径只有首段 + 工具，新投影是整段文本（无标记）。整条降级为单条正文 + 工具。
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merger = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    });
+    const mid = merger(chatDocEntriesToStructuredMessages(chat), [assistant("turn-stream:assistant", "ai ai", 0)]);
+    expect(mid.map((message) => message.id)).toEqual(["turn-stream:user", "turn-stream:assistant", "tool-s"]);
+    expect(textOf(mid[1]!)).toBe("ai ai");
+    expect(degradations).toContainEqual({
+      entryId: "turn-stream:assistant",
+      reason: "trailing-tools-without-markers",
+    });
+
+    // 旧路径补齐第二段：回到权威分段，不重复、不新增合成段。
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai" } }));
+    const done = merger(chatDocEntriesToStructuredMessages(chat), [assistant("turn-stream:assistant", "ai ai", 0)]);
+    expect(done.map((message) => message.id)).toEqual([
+      "turn-stream:user",
+      "turn-stream:assistant",
+      "tool-s",
+      "turn-stream:assistant#1",
+    ]);
+    expect(done.map((message) => textOf(message))).toEqual(["", "ai ", "", "ai"]);
+  });
+
+  // 多缺段且没有工具标记时无法拆分，必须整条降级：正文只出现一次，工具全部保留。
+  test("多缺段且无工具标记时安全降级", () => {
+    const chat = createChatDoc("rcs-page-middle", null).ydoc;
+    const session = createSessionDoc("rcs-page-middle", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问" } }, "turn-page"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "A" } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t1", title: "Read" }));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "B" } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t2", title: "Grep" }));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "C" } }));
+
+    // 分页只缺中段 #1（B），工具与尾段 #2（C）保留；无标记时无法把 B 拆到 t1/t2 之间。
+    const full = chatDocEntriesToStructuredMessages(chat);
+    const paged = full.filter((message) => message.id !== "turn-page:assistant#1");
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merged = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })(paged, [assistant("turn-page:assistant", "ABC", 0)]);
+
+    expect(merged.map((message) => message.id)).toEqual(["turn-page:user", "turn-page:assistant", "t1", "t2"]);
+    expect(textOf(merged[1]!)).toBe("ABC");
+    expect(merged.filter((message) => message.type === "tool_call").map((message) => message.id)).toEqual(["t1", "t2"]);
+    expect(degradations).toContainEqual({
+      entryId: "turn-page:assistant",
+      reason: "boundary-count-mismatch",
+    });
+  });
+
+  // 真实投影但没有工具边界标记：旧数据路径必须显式降级，正文与工具都不丢；
+  // 标记存在时的精确顺序由 tool_boundary 用例覆盖。
+  test("真实投影缺少工具标记时显式降级且追平后不重复", () => {
+    const chat = createChatDoc("rcs-hub-order", null).ydoc;
+    const session = createSessionDoc("rcs-hub-order", null).ydoc;
+    const pair = { chat, session };
+    const event = (
+      type: NormalizedEvent["type"],
+      update: Record<string, unknown> = {},
+      turnId?: string,
+    ): NormalizedEvent =>
+      ({ type, update, content: (update.content as Record<string, unknown>) ?? null, turnId }) as NormalizedEvent;
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "问" } }, "turn-hub"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai " } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "tool-h", title: "Read" }));
+
+    const content = new Y.Doc();
+    const records = new Y.Array<Record<string, unknown>>();
+    content.getMap("root").set("records", records);
+    const encoder = new TextEncoder();
+    records.push([
+      {
+        recordId: "r1",
+        entryId: "turn-hub:assistant",
+        entryOrder: 1,
+        contentSlot: "text",
+        partIndex: 0,
+        kind: "text",
+        payload: encoder.encode("ai "),
+      },
+      {
+        recordId: "r2",
+        entryId: "turn-hub:assistant",
+        entryOrder: 1,
+        contentSlot: "text",
+        partIndex: 1,
+        kind: "text",
+        payload: encoder.encode("ai"),
+      },
+    ]);
+    const hub = createSyncContentProjectionHub({ onProjection: () => {} });
+    hub.applyUpdate({ docId: "sync/content/gen/0/nonce", generation: "gen", payload: Y.encodeStateAsUpdate(content) });
+    const sync = hub.snapshot().messages;
+    // 真实投影把工具前后的正文压成一条、且不含工具位置（旧数据输入事实）。
+    expect(sync).toHaveLength(1);
+
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const merger = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    });
+    const mid = merger(chatDocEntriesToStructuredMessages(chat), sync);
+    expect(mid.map((message) => message.id)).toEqual(["turn-hub:user", "turn-hub:assistant", "tool-h"]);
+    expect(textOf(mid[1]!)).toBe("ai ai");
+    expect(degradations).toContainEqual({
+      entryId: "turn-hub:assistant",
+      reason: "trailing-tools-without-markers",
+    });
+
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "ai" } }));
+    const done = merger(chatDocEntriesToStructuredMessages(chat), sync);
+    expect(done.map((message) => message.id)).toEqual([
+      "turn-hub:user",
+      "turn-hub:assistant",
+      "tool-h",
+      "turn-hub:assistant#1",
+    ]);
+    expect(done.map((message) => textOf(message)).join("")).toBe("ai ai");
+    expect(done.filter((message) => message.type === "assistant_message")).toHaveLength(2);
+
+    hub.dispose();
+    content.destroy();
+  });
+
+  // 对抗验证 M02/M03/M09：多段多工具完整终态必须严格按旧结构顺序，不重排、不重复、不额外合成段。
+  test("多段多工具终态保持严格顺序且新投影不重复", () => {
+    const segments = [assistant("e", "A"), tool("t1"), assistant("e#1", "B"), tool("t2"), assistant("e#2", "C")];
+    const merged = createSyncMessageMerger()(segments, [assistant("e", "ABC", 0)]);
+    expect(merged.map((message) => message.id)).toEqual(["e", "t1", "e#1", "t2", "e#2"]);
+    expect(merged.map((message) => textOf(message))).toEqual(["A", "", "B", "", "C"]);
+  });
+
+  // 对抗验证 M04/M05：空白段与空尾段不得产生额外合成消息，也不得吞掉旧侧空白。
+  test("空白尾段与空尾段不产生多余消息", () => {
+    const blank = createSyncMessageMerger()(
+      [assistant("e", "A"), tool("t"), assistant("e#1", "  ")],
+      [assistant("e", "A  ", 0)],
+    );
+    expect(blank.map((message) => message.id)).toEqual(["e", "t", "e#1"]);
+    expect(blank.map((message) => textOf(message)).join("")).toBe("A  ");
+
+    const empty = createSyncMessageMerger()([assistant("e", "A"), tool("t")], [assistant("e", "A", 0)]);
+    expect(empty.map((message) => message.id)).toEqual(["e", "t"]);
+  });
+
+  // 对抗验证 M11：用户与助手同 id 时不能互相顶替，两侧正文都必须可见。
+  test("用户与助手同 key 时助手正文不得丢失", () => {
+    const merged = createSyncMessageMerger()([user("e", "问")], [assistant("e", "答", 0)]);
+    expect(merged.map((message) => message.id)).toEqual(["e", "sync-ext:e"]);
+    expect(merged[0]).toMatchObject({ type: "user_message", content: "问" });
+    expect(merged[1]).toMatchObject({ type: "assistant_message" });
+    expect(textOf(merged[1]!)).toBe("答");
+  });
+
+  // 对抗验证 M12：entryId 自身含 "#" 时按同一基名分组，分段顺序与工具位置不变。
+  test("entryId 含 # 时仍按分段结构保持顺序", () => {
+    const merged = createSyncMessageMerger()(
+      [assistant("e#1", "A"), tool("t"), assistant("e#1#1", "B")],
+      [{ ...assistant("e#1", "AB", 0), entryBaseId: "e#1" }],
+    );
+    expect(merged.map((message) => message.id)).toEqual(["e#1", "t", "e#1#1"]);
+    expect(merged.map((message) => textOf(message))).toEqual(["A", "", "B"]);
+  });
+
+  // 对抗验证 M08/R02：旧侧永久不追平、新侧已 final 时，尾文在任何时钟下都必须可见。
+  test("旧侧停滞且新侧 final 后尾文仍然可见", () => {
+    let clock = 10_000;
+    const merge = createSyncMessageMerger(() => clock);
+    const legacy = [assistant("e", "A"), tool("t"), assistant("e#1", "B")];
+    for (clock of [10_000, 70_000, 3_600_000]) {
+      const merged = merge(legacy, [assistant("e", "ABFINAL", 0)]);
+      expect(merged.map((message) => message.id)).toEqual(["e", "t", "e#1"]);
+      expect(merged.map((message) => textOf(message)).join("")).toBe("ABFINAL");
+    }
+
+    // 旧侧永久只有首段 + 工具：无标记时尾段位置不可判定，整条降级但正文与工具都不丢。
+    const degradations: Array<{ entryId: string; reason: string }> = [];
+    const stalled = createSyncMessageMerger(undefined, {
+      onDegraded: (degradation) => degradations.push(degradation),
+    })([assistant("e", "A"), tool("t")], [assistant("e", "ABFINAL", 0)]);
+    expect(stalled.map((message) => message.id)).toEqual(["e", "t"]);
+    expect(textOf(stalled[0]!)).toBe("ABFINAL");
+    expect(stalled.some((message) => message.type === "tool_call" && message.id === "t")).toBe(true);
+    expect(degradations).toContainEqual({ entryId: "e", reason: "trailing-tools-without-markers" });
   });
 
   // 真实 Chat Doc 切分 → 合并器：工具前后多段正文、多工具与错误终态都必须保留最终答案（B02）。

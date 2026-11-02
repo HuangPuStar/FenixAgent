@@ -62,6 +62,8 @@ export function createStubSkillFacade(overrides: Partial<SkillFacadeApi> = {}): 
     readDetail: unstubbed("facade.readDetail"),
     readDetailById: unstubbed("facade.readDetailById"),
     create: unstubbed("facade.create"),
+    updateById: unstubbed("facade.updateById"),
+    setPublicReadableById: unstubbed("facade.setPublicReadableById"),
     update: unstubbed("facade.update"),
     setPublicReadable: unstubbed("facade.setPublicReadable"),
     remove: unstubbed("facade.remove"),

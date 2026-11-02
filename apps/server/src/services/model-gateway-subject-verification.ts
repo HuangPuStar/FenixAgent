@@ -28,7 +28,7 @@ export interface ModelGatewaySubjectVerificationDeps {
   /**
    * 读取 `agent_config` 行的归属组织；不存在时返回 `undefined`。
    *
-   * 必须是无授权读取：这一步只回答"这行是否存在于该组织"，权限判断紧随其后统一走
+   * 必须是无授权读取：这一步只回答"这行是否还存在"，权限判断紧随其后统一走
    * `accessControl.authorize`，因此这里读到的结果不能作为放行依据。
    */
   readonly findAgentConfigOrganization: (agentConfigId: string) => Promise<string | undefined>;
@@ -37,11 +37,13 @@ export interface ModelGatewaySubjectVerificationDeps {
 /**
  * 构造主体复验端口。
  *
- * 判定顺序与迁移前一致（用户 → 组织 → 成员 → Agent 存在性 → 授权），因此同一种失效仍然报告同样的
- * 原因——凭据吊销检测据此决定"删除上游凭据"还是"保留映射等待权限恢复"，改变顺序会让处置方式漂移。
+ * 顺序：用户 → 组织 → Agent 存在性 → 授权。成员关系不再是一道独立的门槛——公开共享的 Agent 允许其他
+ * 组织的用户运行，能否使用由 `authorize("use")` 统一判定（公开受众也会授予 `use`）。成员关系只在
+ * 授权拒绝之后用来区分诊断原因：非成员报 `MEMBERSHIP_NOT_FOUND`，成员才是 `AGENT_ACCESS_REVOKED`；
+ * 凭据吊销检测据此决定"删除上游凭据"还是"保留映射等待权限恢复"，两种原因的处置不同。
  *
- * 只有 `ResourceAccessDeniedError` 被映射为 `AGENT_ACCESS_REVOKED`；其余异常（数据库不可用、连接超时
- * 等）原样上抛，让调用方以失败告终而不是把基础设施故障伪装成"权限已被收回"。
+ * 只有 `ResourceAccessDeniedError` 被映射为拒绝原因；其余异常（数据库不可用、连接超时等）原样上抛，
+ * 让调用方以失败告终而不是把基础设施故障伪装成"权限已被收回"。
  */
 export function createModelGatewaySubjectVerification(
   deps: ModelGatewaySubjectVerificationDeps,
@@ -56,15 +58,15 @@ export function createModelGatewaySubjectVerification(
       const organization = await deps.identity.getOrganization(organizationId);
       if (!organization) return { valid: false, reason: "ORGANIZATION_NOT_FOUND" } as const;
 
-      // 一次取全量成员关系：既判定成员资格，又用于构造 actor（actor 的 memberships 是身份投影的
-      // 全量快照；这里的 active organization 就是被校验的 organizationId）。
+      // 一次取全量成员关系：既用于构造 actor（actor 的 memberships 是身份投影的全量快照；这里的
+      // active organization 就是被校验的 organizationId），也用于授权拒绝后的原因分类。
       const memberships = await deps.identity.listMemberships(userId);
-      if (!memberships.some((membership) => membership.organizationId === organizationId)) {
-        return { valid: false, reason: "MEMBERSHIP_NOT_FOUND" } as const;
-      }
+      const isMember = memberships.some((membership) => membership.organizationId === organizationId);
 
+      // 这里只判存在性，不与 `organizationId` 比较：后者是**运行侧**组织（调用方），跨组织共享时与
+      // 配置归属本来就不同；能不能用由下面的 `authorize("use")` 决定。
       const ownerOrganizationId = await deps.findAgentConfigOrganization(agentConfigId);
-      if (ownerOrganizationId !== organizationId) return { valid: false, reason: "AGENT_NOT_FOUND" } as const;
+      if (ownerOrganizationId === undefined) return { valid: false, reason: "AGENT_NOT_FOUND" } as const;
 
       const actor: ActorContext = {
         kind: "user",
@@ -81,7 +83,8 @@ export function createModelGatewaySubjectVerification(
         });
       } catch (error) {
         if (error instanceof ResourceAccessDeniedError) {
-          return { valid: false, reason: "AGENT_ACCESS_REVOKED" } as const;
+          // 非成员只可能经公开受众获得权限：公开被收回时报告"非成员"而不是"权限收回"更准确。
+          return { valid: false, reason: isMember ? "AGENT_ACCESS_REVOKED" : "MEMBERSHIP_NOT_FOUND" } as const;
         }
         throw error;
       }

@@ -45,25 +45,25 @@ describe("yjs websocket adapter", () => {
   });
 
   // 组织参数只经契约（@fenix/web-runtime/lib/active-org）读取：设置持久值后 URL 必须带上
-  // active_org_id——WS 握手无法带 X-Active-Org-Id 头，这是该值唯一的传递通道。
+  // activeOrganizationId——WS 握手无法带 X-Active-Org-Id 头，这是该值唯一的传递通道。
   test("URL 的组织参数经契约读取", () => {
     stubLocalStorage("org-1");
     const url = new URL(buildYjsUrl("agent_1", locator));
 
     expect(url.protocol).toBe("ws:");
     expect(url.pathname).toBe("/acp/yjs/agent_1");
-    expect(url.searchParams.get("active_org_id")).toBe("org-1");
+    expect(url.searchParams.get("activeOrganizationId")).toBe("org-1");
     expect(url.searchParams.get("instanceUid")).toBe("inst-1");
     expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
   });
 
   // 契约未取到组织（未登录/未解析出组织）时不得拼出空参数：服务端按 header → query → cookie
   // 的优先级提取组织，空串会被当成一个值参与判定。
-  test("无持久化组织时不拼 active_org_id 参数", () => {
+  test("无持久化组织时不拼 activeOrganizationId 参数", () => {
     stubLocalStorage();
     const url = new URL(buildYjsUrl("agent_1", locator));
 
-    expect(url.searchParams.has("active_org_id")).toBe(false);
+    expect(url.searchParams.has("activeOrganizationId")).toBe(false);
     expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
   });
 
@@ -73,6 +73,7 @@ describe("yjs websocket adapter", () => {
     expect(getTerminalYjsWsErrorCode(4001)).toBe("instance_idle_reclaimed");
     // 4002：用户主动停止实例（2026-10-10 补入策略表）——终态且是预期内结果，渲染层据此展示中性空态
     expect(getTerminalYjsWsErrorCode(4002)).toBe("instance_stopped");
+    expect(getTerminalYjsWsErrorCode(4003)).toBe("unauthorized");
     expect(getTerminalYjsWsErrorCode(4004)).toBe("environment_unavailable");
     expect(getTerminalYjsWsErrorCode(4500)).toBe("machine_unavailable");
     expect(getTerminalYjsWsErrorCode(4501)).toBe("client_keepalive_timeout");
@@ -84,7 +85,6 @@ describe("yjs websocket adapter", () => {
     // 未知码 / 非终态码不产生 UI 语义
     expect(getTerminalYjsWsErrorCode(1000)).toBeNull();
     expect(getTerminalYjsWsErrorCode(1006)).toBeNull();
-    expect(getTerminalYjsWsErrorCode(4003)).toBeNull();
   });
 
   // 1013 的两个语义来源按 close reason 区分；例外只对该码生效。

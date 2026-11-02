@@ -39,4 +39,4 @@ AgentConfig 通过 `agentConfigMcp` 多对多表绑定 MCP。更新时全量覆�
 
 ## 跨组织共享
 
-McpServer 支持 `publicReadable` 公开可读。跨组织引用时通过 resourceKey 标识。
+控制台管理、探测与下载通过数据库 ID 定位并由 Facade 校验访问权限；名称不承担管理接口的资源键职责。运行时的领域引用保持既有约定。完整 REST 路径见 [配置系统](./06-config.md#控制台资源接口)。

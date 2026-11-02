@@ -51,10 +51,10 @@ class MemoryConnection {
     this.failIfNeeded();
   }
 
-  async unstable_resumeSession(params: Record<string, unknown>): Promise<{ sessionId?: string; configOptions: [] }> {
-    this.calls.push({ method: "unstable_resumeSession", params });
+  async resumeSession(params: Record<string, unknown>): Promise<{ configOptions: [] }> {
+    this.calls.push({ method: "resumeSession", params });
     this.failIfNeeded();
-    return { sessionId: "ses-resumed", configOptions: [] };
+    return { configOptions: [] };
   }
 
   async loadSession(params: Record<string, unknown>): Promise<{ configOptions: [] }> {
@@ -359,16 +359,30 @@ describe("SessionManager round58 内存协议分支", () => {
     ]);
   });
 
-  // resume 返回的新标识时，后续取消必须使用 agent 确认的新会话。
-  test("session/resume 采用 agent 返回的会话标识", async () => {
+  // 标准 SDK 的 resume 响应不返回 sessionId，后续请求仍绑定原目标会话。
+  test("session/resume 后继续使用请求指定的会话标识", async () => {
     const { manager, connection } = createHarness();
 
     await manager.sendData("relay-resume", rpc(13, "session/resume", { sessionId: "ses-old" }));
     await manager.sendData("relay-resume", rpc(14, "session/cancel"));
 
     expect(connection.calls).toEqual([
-      { method: "unstable_resumeSession", params: { sessionId: "ses-old", cwd: "/memory/workspace" } },
-      { method: "cancel", params: { sessionId: "ses-resumed" } },
+      { method: "resumeSession", params: { sessionId: "ses-old", cwd: "/memory/workspace" } },
+      { method: "cancel", params: { sessionId: "ses-old" } },
+    ]);
+  });
+
+  // 旧消息封装入口也必须调用标准 SDK，并保留恢复后的会话绑定。
+  test("resume_session 旧消息入口恢复后可取消同一会话", async () => {
+    const { manager, connection, events } = createHarness();
+
+    await manager.sendData("relay-resume", { type: "resume_session", payload: { sessionId: "ses-history" } });
+    await manager.sendData("relay-resume", rpc(14, "session/cancel"));
+
+    expect(events[0]).toMatchObject({ event: "session_data", payload: { type: "session_resumed" } });
+    expect(connection.calls).toEqual([
+      { method: "resumeSession", params: { sessionId: "ses-history", cwd: "/memory/workspace" } },
+      { method: "cancel", params: { sessionId: "ses-history" } },
     ]);
   });
 

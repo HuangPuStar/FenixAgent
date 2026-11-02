@@ -45,9 +45,21 @@ Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 
 
 **约束**：更新 AgentConfig 时，Skill / McpServer / KnowledgeBase 的绑定**全量覆盖**——新集合替换旧集合，不留残留。
 
+控制台与外部 API 的创建、更新经 `AgentAuthoringFacade.save` 原子保存配置行、显式提交的资源绑定及记忆开关。配置行的认证授权和写入仍由 `AgentConfigFacade` 执行；未提交的绑定字段保持原样。全部数据库写入共用平台 `runInTransaction` 的事务上下文，任意校验或写入失败整体回滚，不留下创建半成品或部分更新。响应视图转换在事务提交后执行，不属于该事务。
+
 **跨组织**：引用的资源可来自其他组织。Agent Config 自身也可标为公开供其他组织使用——可引用启动，不可修改。
 
 ## 上下级关系
 
 - **← Environment**：通过 agentConfigId 绑定，一套配置可被多个 Environment 复用
 - **→ LaunchSpecBuilder**（`packages/orchestration`）：spawn 时消费全部引用关系，产出不可变 `AgentLaunchSpec`（含 cwd）
+
+## 控制台管理身份
+
+已有 AgentConfig 的详情、更新、删除与重启使用数据库 ID，创建时提交 name；内置 Agent 保护依据真实行名称。默认 Agent 偏好保留现有语义。完整接口见 [配置系统](./06-config.md#控制台资源接口)。
+
+## 执行节点与机器注册
+
+机器注册协议的 `agent_name` 表示引擎名称，不是 AgentConfig 名称，不能据此匹配配置或写入 `machineId`。
+机器首次注册与重连只更新机器在线状态、记录注册事件并发送生命周期通知。Agent 的执行位置由配置的
+`agentNode` 与现有节点解析规则决定；机器连接不会改写该配置。

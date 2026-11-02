@@ -16,8 +16,8 @@ import { listAgentSiteAppIds, syncAgentSiteApps } from "./config/agent-config-si
  * 知识库绑定归 knowledge、记忆开关归 memory。但"谁拥有哪张绑定表"这件事只应由本模块知道：路由与
  * Facade 通过它读写绑定，不直接 import 资源包，避免每加一种关联就在协议层散落一处跨包导入。
  *
- * 本模块只做读写编排，不做授权判断：绑定集合的合法性（Skill 是否可见、知识库是否属于当前组织）
- * 由调用方在持有 actor 的层次上先完成。
+ * 本模块只做读写编排，不做授权判断：Skill 是否可见由调用方在持有 actor 的层次上先完成；知识库归属
+ * 由 knowledge 服务按 Agent 归属组织校验。
  */
 export interface AgentAssociations {
   listSkillIds(agentConfigId: string): Promise<string[]>;
@@ -28,7 +28,12 @@ export interface AgentAssociations {
   syncSiteApps(agentConfigId: string, siteAppIds: readonly string[]): Promise<void>;
   listKnowledgeBindings(agentConfigId: string): Promise<{ knowledgeBaseId: string }[]>;
   getKnowledge(agentConfigId: string): Promise<AgentKnowledgeConfig | null>;
-  syncKnowledge(agentConfigId: string, knowledge: AgentKnowledgeConfig | null | undefined): Promise<void>;
+  /** `organizationId` 是 Agent 归属组织：知识库绑定只接受该组织名下的知识库。 */
+  syncKnowledge(
+    agentConfigId: string,
+    knowledge: AgentKnowledgeConfig | null | undefined,
+    organizationId: string,
+  ): Promise<void>;
   isMemoryEnabled(agentConfigId: string): Promise<boolean>;
   setMemoryEnabled(agentConfigId: string, enabled: boolean): Promise<void>;
 }
@@ -43,7 +48,8 @@ export function createAgentAssociations(): AgentAssociations {
     syncSiteApps: (agentConfigId, siteAppIds) => syncAgentSiteApps(agentConfigId, [...siteAppIds]),
     listKnowledgeBindings: (agentConfigId) => listAgentKnowledgeBindingsById(agentConfigId),
     getKnowledge: (agentConfigId) => getAgentKnowledgeConfigById(agentConfigId),
-    syncKnowledge: (agentConfigId, knowledge) => syncAgentKnowledgeBindingsById(agentConfigId, knowledge),
+    syncKnowledge: (agentConfigId, knowledge, organizationId) =>
+      syncAgentKnowledgeBindingsById(agentConfigId, knowledge, organizationId),
     isMemoryEnabled: (agentConfigId) => isAgentMemoryEnabled(agentConfigId),
     setMemoryEnabled: async (agentConfigId, enabled) => {
       await setAgentMemoryEnabled(agentConfigId, enabled);

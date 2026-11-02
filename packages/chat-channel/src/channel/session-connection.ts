@@ -12,6 +12,10 @@ export interface SessionConnection {
   ownerUserId?: string;
   agentId: string;
   instanceId: string;
+  /** relay 建立时捕获的服务端运行代次，缺失时禁止跨连接复用确认。 */
+  runtimeIdentity?: string;
+  /** 读取当前物理连接的 Agent 连续性，子进程断开后变化。 */
+  getSessionContinuity?: () => object | undefined;
   rcsSessionId: string;
   acpSessionId: string | null;
   /** Agent status 是否已到达（确认 ACP 初始化完成，list_sessions 守卫） */

@@ -75,7 +75,7 @@ describe("round45 Agent 配置路由补充覆盖", () => {
   test("详情转换共享 Agent 的关联资源与记忆状态", async () => {
     installAgentModuleStub({
       facade: {
-        get: async () =>
+        getById: async () =>
           authorizedAgent({
             id: "agent-source",
             name: "shared-agent",
@@ -114,7 +114,7 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       agent_site_app: [{ id: "site-1", name: "站点", remoteAppId: "remote-1" }],
     });
 
-    const response = await request("/config/agents?name=org-source/agent-source");
+    const response = await request("/config/agents/agent-source");
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -135,7 +135,7 @@ describe("round45 Agent 配置路由补充覆盖", () => {
   // 读取期间发现跨组织知识库绑定无效时，路由必须返回可识别的 400 错误。
   test("详情将无效知识库绑定映射为 400", async () => {
     installAgentModuleStub({
-      facade: { get: async () => authorizedAgent() },
+      facade: { getById: async () => authorizedAgent() },
       associations: {
         getKnowledge: async () => {
           throw new InvalidKnowledgeBindingError("知识库不属于当前组织");
@@ -143,7 +143,7 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       },
     });
 
-    const response = await request("/config/agents?name=researcher");
+    const response = await request("/config/agents/researcher");
 
     expect(response.status).toBe(400);
     expect((await response.json()).error).toEqual({

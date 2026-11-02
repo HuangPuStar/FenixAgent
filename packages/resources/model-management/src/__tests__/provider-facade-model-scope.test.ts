@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { ActorContext, ResourceQueryConstraint } from "@fenix/platform-sdk";
+import {
+  type ActorContext,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ResourceAccessDeniedError,
+  type ResourceQueryConstraint,
+} from "@fenix/platform-sdk";
 import { providerResource } from "../server/access/provider-resource";
 import { ProviderFacade } from "../server/facades/provider-facade";
 import type { ModelRow } from "../server/repositories/model-resource";
@@ -73,6 +80,9 @@ function buildFacade(
     readonly items?: readonly ScopedProviderRow[];
     readonly models?: readonly ModelRow[];
     readonly findByIdRow?: ScopedProviderRow | undefined;
+    readonly service?: Parameters<typeof createStubProviderService>[0];
+    readonly modelsRepo?: Parameters<typeof createStubModelRepository>[0];
+    readonly access?: Parameters<typeof createStubAccessControl>[0];
   } = {},
 ) {
   const countCalls: { providerIds: readonly string[] }[] = [];
@@ -92,6 +102,7 @@ function buildFacade(
           serviceFindInputs.push(input);
           return overrides.findByIdRow;
         },
+        ...overrides.service,
       }),
       models: createStubModelRepository({
         countByProviderIds: async (input) => {
@@ -102,6 +113,7 @@ function buildFacade(
           listModelCalls.push(input);
           return [...(overrides.models ?? [])];
         },
+        ...overrides.modelsRepo,
       }),
     },
     {
@@ -111,6 +123,7 @@ function buildFacade(
         resolveAccess: async () => ({ actions: ["read", "update"] }),
         resolveAccessMany: async ({ resourceIds }) =>
           new Map(resourceIds.map((id) => [id, { actions: ["read", "update"] as const }])),
+        ...overrides.access,
       }),
       resource: providerResource.definition,
       scopeStore: {
@@ -126,6 +139,69 @@ function buildFacade(
 }
 
 describe("ProviderFacade 的 Model 子表授权边界", () => {
+  // 同名 Provider 不参与 UUID 探测定位；探测仍需 update 授权。
+  test("getForProbe 使用 ID 且拒绝只读资源", async () => {
+    const { facade, serviceFindInputs } = buildFacade({
+      findByIdRow: providerRow(),
+      access: {
+        authorize: async () => {
+          throw new ResourceAccessDeniedError("read only");
+        },
+      },
+    });
+    await expect(facade.getForProbe(actor, { by: "resourceId", value: "provider-1" })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(serviceFindInputs.map((input) => input.resourceId)).toEqual(["provider-1"]);
+  });
+
+  // 同组织同名的原子创建冲突必须显式失败，不能退回名称 upsert。
+  test("create 遇到唯一键冲突时返回冲突且不更新", async () => {
+    const calls: unknown[] = [];
+    const { facade } = buildFacade({
+      service: {
+        create: async (input) => {
+          calls.push(input);
+          return;
+        },
+      },
+      access: {
+        resolveInitialScope: async () => ({ organizationId: "org-1", ownerUserId: "user-1", visibility: "private" }),
+      },
+    });
+    await expect(facade.create(actor, "demo", { apiKey: "replacement" })).rejects.toBeInstanceOf(ConflictError);
+    expect(calls).toEqual([expect.objectContaining({ rejectConflict: true, name: "demo", organizationId: "org-1" })]);
+  });
+
+  // 父子关联由仓储条件保证；错误 Provider 下的模型不可更新或删除。
+  test("子模型 ID 不属于 Provider 时拒绝所有写操作", async () => {
+    const lookups: unknown[] = [];
+    const { facade } = buildFacade({
+      findByIdRow: providerRow(),
+      access: { authorize: async () => undefined },
+      modelsRepo: {
+        findById: async (input) => {
+          lookups.push(input);
+          return;
+        },
+      },
+    });
+    const ref = { by: "resourceId", value: "provider-1" } as const;
+    const child = { by: "id", value: "foreign-model" } as const;
+    await expect(facade.updateModel(actor, ref, child, {})).rejects.toBeInstanceOf(NotFoundError);
+    await expect(facade.removeModel(actor, ref, child)).rejects.toBeInstanceOf(NotFoundError);
+    expect(lookups).toEqual([
+      { providerId: "provider-1", id: "foreign-model" },
+      { providerId: "provider-1", id: "foreign-model" },
+    ]);
+  });
+
+  // 失效 ID 只允许报未找到，不得进入服务的创建分支。
+  test("saveById 不存在时不创建", async () => {
+    const { facade } = buildFacade();
+    await expect(facade.saveById(actor, "missing", {})).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   // 计数只针对授权查询返回的 Provider id：看不见的 Provider 不该因为计数而暴露其模型规模。
   test("list 只为已授权的 Provider id 计数", async () => {
     const visible = [providerRow({ id: "provider-1" }), providerRow({ id: "provider-2" })];

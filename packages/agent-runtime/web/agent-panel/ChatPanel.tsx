@@ -219,6 +219,16 @@ function ChatPanelView({
     );
   }
 
+  // 4003 不携带 error 帧，且可来自登录、组织或会话归属校验，不能依赖 classifiedError。
+  if (terminalUiCode === "unauthorized" || syncChat.connection.error?.code === "unauthorized") {
+    return (
+      <div role="alert" className="flex h-full flex-col">
+        {promptRecoveryNotice}
+        <PanelEmptyState title={t("agentAccessDenied")} description={t("agentAccessDeniedDesc")} />
+      </div>
+    );
+  }
+
   // 错误状态（容器形态复用空态骨架那一串：卡片自带底色与描边，缺的是居中与撑满）
   if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
     return (

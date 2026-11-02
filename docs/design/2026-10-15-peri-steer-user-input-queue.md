@@ -77,7 +77,7 @@ Action 契约与错误收敛详见 `docs/arch/19-yjs-chat-streaming.md` §7.1.1�
 ## 5. 前端交互
 
 - 执行中提交（不打断）：走 `enqueue_user_input`，草稿原文随 `originalDraft` 一起入队。
-- 待发送区：单条「发送」/ 全量「全部发送」→ `dispatch_user_inputs`（打断 + 注入）；单条「取回」→ `takeback_user_input` 成功后把草稿交回输入框（输入框非空时不覆盖）。
+- 待发送区：单条「发送」/ 全量「全部发送」→ `dispatch_user_inputs`（打断 + 注入）；单条「取回」→ `takeback_user_input` 成功后把草稿追加到输入框（已有内容时换行分隔，保留原草稿）。
 - 失败提示按公开错误类型区分可重试（`AGENT_UNAVAILABLE`）与不可重试（`INVALID_STATE` / `RATE_LIMITED` / `VERSION_CONFLICT`）。
 - **已知边界**：前端按"动作已写进 socket"回填草稿（不等 ack，与入队路径同一模式），不等待服务端裁决。若该项在点击瞬间已被投递（另一标签页点了发送），服务端按 §2.4 判定取回未生效并回 `INVALID_STATE`，但草稿已在输入框里——用户会看到该消息已进入对话、输入框也留着同一份文本。要彻底消除需把草稿回填改为 ack 驱动（`sendAction` 目前只报"是否写入 socket"），留待后续按需改造。
 

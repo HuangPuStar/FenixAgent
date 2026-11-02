@@ -21,6 +21,7 @@ import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 export type TerminalWsUiCode =
   | "instance_idle_reclaimed"
   | "instance_stopped"
+  | "unauthorized"
   | "environment_unavailable"
   | "machine_unavailable"
   | "client_keepalive_timeout"
@@ -65,6 +66,11 @@ export const WS_CLOSE_CODE_POLICY: readonly WsCloseCodePolicyEntry[] = [
     code: WEBSOCKET_CODES.INSTANCE_STOPPED.code,
     stopReconnect: true,
     uiCode: "instance_stopped",
+  },
+  {
+    code: WEBSOCKET_CODES.UNAUTHORIZED.code,
+    stopReconnect: true,
+    uiCode: "unauthorized",
   },
   {
     code: WEBSOCKET_CODES.INVALID_REFERENCE.code,

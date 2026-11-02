@@ -144,7 +144,7 @@ docker compose --profile agent-sites up -d
 | 键 | 默认值 | 影响 |
 | --- | --- | --- |
 | `AGENT_SITES_MASTER_KEY` | `agent-sites-master-key-123` | 站点部署密钥；rcs 侧用同一插值键自动同值 |
-| `AGENT_SITES_PORT` | `26778` | 对外发布端口（站点要供外部访问，非回环） |
+| `AGENT_SITES_PORT` | `26778` | 宿主回环端口（仅供本机调试；站点访问经 RCS 反向代理） |
 
 **主服务接入**：
 

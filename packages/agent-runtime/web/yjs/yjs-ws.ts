@@ -67,7 +67,7 @@ export function buildYjsUrl(agentId: string, locator: YjsChatLocator): string {
   // header → query → cookie 的优先级提取组织，因此这里是唯一必须走 query 的通道。
   const activeOrgId = readActiveOrgId();
   if (activeOrgId) {
-    params.set("active_org_id", activeOrgId);
+    params.set("activeOrganizationId", activeOrgId);
   }
   params.set("instanceUid", locator.instanceUid);
   params.set("rcsSessionId", locator.rcsSessionId);

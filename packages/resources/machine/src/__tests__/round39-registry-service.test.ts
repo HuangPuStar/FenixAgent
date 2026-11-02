@@ -7,8 +7,6 @@ import type { MachineScope } from "../server/types/machine-registry";
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 const registry = await import("@fenix/resource-machine/server");
 
-/** Agent 配置绑定调用的记录器（注册路径经注入端口把 machineId 绑到同名配置上，不再有 DB 写入）。 */
-const agentConfigBindings: Array<{ organizationId: string; agentName: string; machineId: string }> = [];
 /** `deleteMachine` 的引用检查答案；默认「无引用」，用例按需在自身作用域内改这一条。 */
 let agentConfigBound = false;
 
@@ -44,16 +42,10 @@ function insertRecorder(writes: unknown[], fail = false) {
 // 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
   initializeMachineModuleConfig();
-  // Agent 配置的取数不在本包：注册的绑定与删除的引用检查都经宿主注入的端口调用。端口是整体契约，三个
-  // 原语必须齐备，未绑定即失败（见 `../server/agent-config-port`）；本文件用「无引用 + 记录绑定」装配。
-  agentConfigBindings.length = 0;
   agentConfigBound = false;
   stubMachineAgentConfig({
     getExecutionNode: async () => null,
     isAgentConfigBoundToMachine: async () => agentConfigBound,
-    bindMachineIdByAgentName: async (input) => {
-      agentConfigBindings.push({ ...input });
-    },
   });
 });
 
@@ -237,8 +229,8 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     ).rejects.toThrow("not found");
   });
 
-  // pending 机器的首次连接应激活机器、写 register 事件并绑定组织引擎。
-  test("pending 机器首次注册后激活并绑定引擎", async () => {
+  // pending 机器的首次连接应激活机器并写 register 事件。
+  test("pending 机器首次注册后激活并记录事件", async () => {
     const updates: unknown[] = [];
     const inserts: unknown[] = [];
     stubDb({
@@ -254,7 +246,6 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
       isNew: true,
     });
     expect(updates).toContainEqual(expect.objectContaining({ status: "online", lastHeartbeatAt: expect.any(Date) }));
-    expect(agentConfigBindings).toEqual([{ organizationId: "org-a", agentName: "opencode", machineId: "mach-new" }]);
     expect(inserts).toEqual([expect.objectContaining({ machineId: "mach-new", type: "register" })]);
   });
 

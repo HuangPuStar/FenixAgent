@@ -23,6 +23,11 @@ export interface AgentConfigLookupResult {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  /**
+   * 资源归属组织，是依赖资源的解析坐标（显式沙盒池按它查）。
+   * 不是授权输入——可见性判定已经在读入口完成。
+   */
+  readonly organizationId: string;
   readonly node: AgentConfigExecutionNode | null;
 }
 
@@ -34,6 +39,8 @@ export interface AgentConfigLookupResult {
  * 自己按 `agentNode` 是否为 null 决定列值是否生效。语义重复会分裂，因此这里原样透传两列，不做归一。
  */
 export interface AgentConfigExecutionFields {
+  /** 资源归属组织；显式沙盒池按它解析（池查询按池所属组织收窄），实例仍归调用方。 */
+  readonly organizationId: string;
   /** `agent_config.machine_id` 列值原样透传（空串表示历史脏数据/显式未绑定，归一由调用方按旧路径 falsy 语义处理）。 */
   readonly machineId: string | null;
   /** `agent_config.agent_node` 原始 JSON；null 与 `{}` 对调用方含义不同，故不在此折叠。 */
@@ -68,6 +75,7 @@ function toLookupResult(row: AgentConfigRow | ScopedAgentConfigRow): AgentConfig
     id: row.id,
     name: row.name,
     description: row.description ?? null,
+    organizationId: row.organizationId,
     node:
       node?.kind === "machine"
         ? { kind: "machine", machineId: node.machineId }
@@ -92,7 +100,7 @@ export function createAgentConfigLookup(): AgentConfigLookup {
 
     async findAgentConfigExecutionFields(agentConfigId) {
       const row = await getAgentConfigById(agentConfigId);
-      return row ? { machineId: row.machineId, agentNode: row.agentNode } : null;
+      return row ? { organizationId: row.organizationId, machineId: row.machineId, agentNode: row.agentNode } : null;
     },
 
     findAgentConfigNamesByIds(ids) {

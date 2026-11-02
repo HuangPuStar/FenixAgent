@@ -69,6 +69,50 @@ function assistant(id: string, text: string, ts = 0): StructuredMessage {
 }
 
 describe("聊天 hydrate 门控", () => {
+  // 刷新恢复的实时输出每毫秒到达也不能推迟首次展示，之后仍按帧合并。
+  test("实时回复不等待输出静默", () => {
+    const commits: HydrationCommitReason[] = [];
+    const { gate, scheduler } = createGate({ onCommit: (reason) => commits.push(reason) });
+    gate.reset(true);
+    gate.markLive();
+    for (let index = 0; index < 15; index += 1) {
+      scheduler.advance(1);
+      gate.notify();
+    }
+    expect(commits).toEqual([]);
+    scheduler.advance(1);
+    expect(gate.phase()).toBe("live");
+    expect(commits).toEqual(["live"]);
+    gate.notify();
+    scheduler.advance(16);
+    expect(commits).toEqual(["live", "live"]);
+  });
+
+  // 初始基线未齐时不能展示；换代后也不能沿用实时标志跳过历史回放。
+  test("实时恢复仍等待基线且不影响下一次历史加载", () => {
+    const commits: HydrationCommitReason[] = [];
+    const { gate, scheduler } = createGate({ onCommit: (reason) => commits.push(reason) });
+    gate.reset(true);
+    gate.setBlocked(true);
+    gate.markLive();
+    scheduler.advance(1000);
+    expect(commits).toEqual([]);
+    gate.setBlocked(false);
+    scheduler.advance(16);
+    expect(commits).toEqual(["live"]);
+
+    gate.reset(true);
+    gate.setReplayActive(true);
+    scheduler.advance(500);
+    expect(commits).toEqual(["live"]);
+    gate.setReplayActive(false);
+    gate.markComplete();
+    scheduler.advance(249);
+    expect(commits).toEqual(["live"]);
+    scheduler.advance(1);
+    expect(commits).toEqual(["live", "settled"]);
+  });
+
   // 缺口 1：回放批次间隔 300/600/1200ms 时，回放结束前提交次数必须为 0，结束后恰好 1 次。
   test("回放间隔 300/600/1200ms 都不提前放行", () => {
     for (const interval of [300, 600, 1200]) {

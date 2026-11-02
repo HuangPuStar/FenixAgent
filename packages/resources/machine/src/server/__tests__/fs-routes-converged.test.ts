@@ -5,7 +5,7 @@
 // 本地/远程执行统一收敛到 AgentFileService 门面。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
@@ -218,6 +218,27 @@ describe("本地环境（无 machine 配置）", () => {
     expect(body.data.entries.map((e) => e.name)).toContain("user");
   });
 
+  test("POST /fs/ 上传落在 workspace 根而不是 user/", async () => {
+    // 空目录 = workspace 根（与远程机器端对空串的解析一致），普通上传与文件夹上传都不应落到 user/
+    const plainForm = new FormData();
+    plainForm.append("files", new File(["root"], "root.txt"));
+    const plainRes = await handle("/fs/", { method: "POST", body: plainForm });
+    expect(plainRes.status).toBe(200);
+    const plainBody = (await plainRes.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
+    expect(plainBody.data.files[0]?.path).toBe("root.txt");
+    expect(await readFile(join(workspaceDir(), "root.txt"), "utf-8")).toBe("root");
+    await expect(access(join(workspaceDir(), "user", "root.txt"))).rejects.toThrow();
+
+    const folderForm = new FormData();
+    folderForm.append("files", new File(["nested"], "nested.txt"));
+    folderForm.append("relativePaths", JSON.stringify(["folder/nested.txt"]));
+    const folderRes = await handle("/fs/", { method: "POST", body: folderForm });
+    expect(folderRes.status).toBe(200);
+    const folderBody = (await folderRes.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
+    expect(folderBody.data.files[0]?.path).toBe("folder/nested.txt");
+    expect(await readFile(join(workspaceDir(), "folder", "nested.txt"), "utf-8")).toBe("nested");
+  });
+
   test("非 user 路径（workspace 根 README.md）可写可读", async () => {
     // F1 回归：workspace 根内全部相对路径均合法，README.md 这类非 user/ 前缀
     // 路径可写、可读、可入树，不再被 user/ 作用域强制拦截
@@ -248,6 +269,78 @@ describe("本地环境（无 machine 配置）", () => {
     expect(treeRes.status).toBe(200);
     const treeBody = (await treeRes.json()) as { success: boolean; data: { paths: string[] } };
     expect(treeBody.data.paths).toContain("README.md");
+  });
+
+  test("DELETE /fs/ 空路径返回 400，不会递归删掉用户文件区", async () => {
+    // 空路径与用户文件区根在解析上不可区分，删除必须显式给出路径
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/", { method: "DELETE" });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "validation_error", message: "路径不能为空" },
+    });
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
+  test("PUT /fs/ 空路径返回 400，不写入任何文件", async () => {
+    const response = await handle("/fs/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "x" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "validation_error", message: "路径不能为空" },
+    });
+  });
+
+  test("批量删除中的 '.' 逐条失败，不会删除工作区根目录", async () => {
+    // "." 等价于工作区根，批量删除通道可直达该路径，必须在门面拒绝并保留已有文件
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/batch", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: ["."] }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { deleted: string[]; failed: Array<{ path: string; error: string }> };
+    };
+    expect(body.data.deleted).toEqual([]);
+    expect(body.data.failed).toEqual([{ path: ".", error: "不能删除工作区根目录" }]);
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
+  });
+
+  test("批量删除中的空路径在请求校验阶段被拒绝", async () => {
+    // 批量删除 body 由 schema 拒绝空路径项（min(1)），不会进入门面逐条执行
+    await handle("/fs/user/keep.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep" }),
+    });
+
+    const response = await handle("/fs/batch", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: [""] }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(await readFile(join(workspaceDir(), "user", "keep.txt"), "utf-8")).toBe("keep");
   });
 
   test("本地错误契约：400（越界/绝对路径）+ 404（环境不可见）", async () => {

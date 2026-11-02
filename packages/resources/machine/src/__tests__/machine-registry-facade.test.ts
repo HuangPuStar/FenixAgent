@@ -320,7 +320,6 @@ describe("Machine 注册表 Facade 的归属语义", () => {
     stubMachineAgentConfig({
       getExecutionNode: async () => null,
       isAgentConfigBoundToMachine: async () => false,
-      bindMachineIdByAgentName: async () => {},
     });
     stubIdentityDirectory({ getOrganization: async () => undefined });
   });

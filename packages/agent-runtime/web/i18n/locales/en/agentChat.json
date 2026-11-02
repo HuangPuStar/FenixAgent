@@ -8,6 +8,8 @@
   "instanceStopped": "Instance stopped",
   "instanceStoppedDesc": "This instance was stopped and will not reconnect automatically. Restart it from the sidebar to continue the conversation.",
   "agentDisconnected": "Agent not connected",
+  "agentAccessDenied": "Cannot access this agent",
+  "agentAccessDeniedDesc": "Check your sign-in status and current organization permissions, then reopen the agent.",
   "agentOfflineDesc": "Agent is not online. Please make sure acp-link is started.",
   "reconnecting": "Reconnecting...",
   "reconnectingDesc": "Connection lost, reconnecting automatically. Click retry if it does not recover.",

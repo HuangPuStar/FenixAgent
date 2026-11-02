@@ -103,6 +103,8 @@ export interface ProviderRepository {
   create(input: {
     name: string;
     data: ProviderWriteData;
+    /** 创建冲突不更新既有行；已发布的幂等入口仍使用默认行为。 */
+    rejectConflict?: boolean;
     organizationId: string;
     ownerUserId: string;
     visibility: string;
@@ -213,7 +215,7 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
 
     async create(input) {
       const set = writeSet(input.data);
-      const rows = await database()
+      const insert = database()
         .insert(provider)
         .values({
           organizationId: input.organizationId,
@@ -221,13 +223,11 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
           name: input.name,
           visibility: input.visibility,
           ...set,
-        })
-        .onConflictDoUpdate({
-          target: [provider.organizationId, provider.name],
-          // 冲突分支只更新可写列：归属列是创建期属性，重复创建不得改主或改公开受众。
-          set,
-        })
-        .returning({ id: provider.id });
+        });
+      const query = input.rejectConflict
+        ? insert.onConflictDoNothing({ target: [provider.organizationId, provider.name] })
+        : insert.onConflictDoUpdate({ target: [provider.organizationId, provider.name], set });
+      const rows = await query.returning({ id: provider.id });
       return rows[0]?.id;
     },
 

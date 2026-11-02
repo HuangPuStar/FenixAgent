@@ -132,6 +132,32 @@ afterEach(() => {
 });
 
 describe("onCreateSession 创建回执", () => {
+  // 换代保留的 Agent status 仍指向旧会话时，首条输入必须使用创建回执对应的新会话。
+  test("新建后首条消息使用当前会话而非旧 Agent locator", async () => {
+    const { latest, socket, unmount } = connect();
+    const key = createDeterministicRcsSessionId("env-1", "user-1", "inst-1");
+    const binding = createSessionDocBinding(key);
+    try {
+      act(() => {
+        binding.ydoc.getMap("root").set("agent", new Y.Map([["acpSessionId", "ses-old"]]));
+      });
+      setProjectedSession("ses-old");
+      const creating = latest.current?.callbacks.onCreateSession();
+      const commandId = lastCreateCommandId(socket);
+      setProjectedSession("ses-created");
+      act(() =>
+        socket.receiveFromServer({ type: "action_ack", commandId, status: "committed", sessionId: "ses-created" }),
+      );
+      expect(await creating).toBe("ses-created");
+      act(() => latest.current?.callbacks.onSendPrompt([{ type: "text", text: "首条消息" }]));
+      expect(lastPrompt(socket).sessionId).toBe("ses-created");
+    } finally {
+      act(() => binding.ydoc.getMap("root").delete("agent"));
+      binding.cleanup();
+      unmount();
+    }
+  });
+
   // 正常路径：committed Ack 携带 sessionId → 调用方拿到本次创建出的会话标识。
   test("committed Ack 的 sessionId 结算为回执", async () => {
     const { latest, socket, unmount } = connect();

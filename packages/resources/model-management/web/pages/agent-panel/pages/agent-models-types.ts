@@ -17,7 +17,7 @@ export interface ProviderCatalogData {
 export type ProviderTextFieldDraft = { edited: false; value: string } | { edited: true; value: string };
 
 export interface ProviderDraft {
-  id: string;
+  configName: string;
   displayName: ProviderTextFieldDraft;
   protocol: "openai" | "anthropic";
   /**
@@ -51,7 +51,7 @@ export type ModelLimitDraft =
   | { edited: true; context: string; output: string };
 
 export interface ModelDraft {
-  id: string;
+  modelId: string;
   name: string;
   limit: ModelLimitDraft;
   inputModalities: string[];

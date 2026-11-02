@@ -41,4 +41,16 @@ describe("上传校验", () => {
   test("非法技能名称抛出验证错误", () => {
     expect(() => groupUploadFilesForImport([makeFile("../escape")])).toThrow("Skill 名称不合法");
   });
+
+  // 整批导入（包括覆盖）在冲突查询和文件写入前检查原始名称，不能通过 trim 绕过格式规则。
+  test.each([
+    "中文",
+    "Demo",
+    "my_skill",
+    "demo--skill",
+    " demo ",
+    "a".repeat(65),
+  ])("混合上传拒绝非法名称 %s", (name) => {
+    expect(() => groupUploadFilesForImport([makeFile("valid-skill"), makeFile(name)])).toThrow("Skill 名称不合法");
+  });
 });

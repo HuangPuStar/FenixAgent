@@ -1,20 +1,31 @@
 import { AppError } from "@fenix/platform-sdk";
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
+import { sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { markAgentExecutionIdleReclaimable, releaseAgentExecutions } from "../../services/agent-execution-admission";
 import { releaseAgentSessionTurns } from "../../services/agent-session-admission";
 import { globalInstanceRegistry } from "../../services/instance-registry";
 import { createAgentInstanceUid, isAgentInstanceUid } from "../instance/agent-instance-id";
 import type { AgentInstanceRecord, IAgentInstanceRepo, InstanceCreationSource } from "../repositories/agent-instance";
 import { agentInstanceRepo } from "../repositories/agent-instance";
-import {
-  AgentInstanceRuntimeCoordinator,
-  type RuntimeAdapter,
-  type RuntimeSnapshot,
-  type RuntimeStopMode,
-} from "./agent-instance-runtime-coordinator";
+import { AgentInstanceRuntimeCoordinator } from "./agent-instance-runtime-coordinator";
+import type {
+  RuntimeActivation,
+  RuntimeAdapter,
+  RuntimeRecoveryContext,
+  RuntimeSnapshot,
+  RuntimeStopMode,
+} from "./agent-instance-runtime-types";
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
 export type AutomaticInstanceSelection = "chat" | "api" | "workflow";
+
+/** 沙盒恢复只接收可信实例归属与当前意图，不拥有 Instance 生命周期。 */
+export type DisconnectedRuntimeRecovery = (
+  input: RuntimeRecoveryContext & {
+    ownerUserId: string;
+    signal?: AbortSignal;
+  },
+) => Promise<void>;
 
 /** 持久实例协调器所需的编排操作，由运行时装配层绑定以避免 service 反向依赖编排实现。 */
 export interface AgentInstanceRuntimeOperations {
@@ -125,6 +136,7 @@ export class AgentInstanceService {
   constructor(
     private readonly repository: IAgentInstanceRepo,
     private readonly coordinator: AgentInstanceRuntimeCoordinator,
+    private readonly recoverDisconnectedRuntime?: DisconnectedRuntimeRecovery,
   ) {}
 
   findOrCreateDefaultInstance(environmentId: string, ownerUserId: string): Promise<AgentInstanceRecord> {
@@ -214,8 +226,20 @@ export class AgentInstanceService {
     return this.coordinator.shutdown();
   }
 
-  async ensureInstanceRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
-    await this.coordinator.ensureRuntime(instance, signal);
+  /** 确保实例就绪；仅经过授权的主动进入可使用 explicit 解除停止意图。 */
+  async ensureInstanceRuntime(
+    instance: AgentInstanceRecord,
+    signal?: AbortSignal,
+    activation: RuntimeActivation = "automatic",
+  ): Promise<void> {
+    if (this.recoverDisconnectedRuntime) {
+      const recovery = await this.coordinator.getDisconnectedRecovery(instance.id, signal);
+      if (recovery?.isCurrent()) {
+        await this.recoverDisconnectedRuntime({ ...recovery, ownerUserId: instance.ownerUserId, signal });
+      }
+    }
+    if (activation === "explicit") await this.coordinator.startRuntime(instance, signal);
+    else await this.coordinator.ensureRuntime(instance, signal);
   }
 
   /** 自动回收保留实例持久身份，后续任务可重新启动。 */
@@ -313,4 +337,8 @@ export class AgentInstanceService {
 }
 
 export const agentInstanceRuntimeCoordinator = new AgentInstanceRuntimeCoordinator(runtimeAdapter);
-export const agentInstanceService = new AgentInstanceService(agentInstanceRepo, agentInstanceRuntimeCoordinator);
+export const agentInstanceService = new AgentInstanceService(
+  agentInstanceRepo,
+  agentInstanceRuntimeCoordinator,
+  (input) => sandboxExecutionHandler.recoverDisconnectedMachine(input),
+);

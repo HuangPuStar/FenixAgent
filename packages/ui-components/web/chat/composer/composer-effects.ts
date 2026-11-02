@@ -19,11 +19,11 @@ export type ComposerExternalEvent =
   | { type: "file-reference"; file: { name: string; path: string } }
   | { type: "quote"; quote: { text: string } }
   /**
-   * 回填草稿（待发送队列「取回」用）：**只在草稿为空时**写入。
+   * 回填草稿（待发送队列「取回」用）：**追加到正文末尾**，已有内容时以换行分隔。
    *
-   * 与 `suggested-prompt`（无条件替换正文）分开的原因：取回是「把退回的内容还给用户」，
-   * 覆盖用户已经重新打的字等于丢草稿；判定必须发生在持有草稿的一侧（输入岛），调用方
-   * 无法读到半受控草稿。
+   * 与 `suggested-prompt`（无条件替换正文）分开的原因：取回是「把退回的内容还给用户」。
+   * 连续取回时输入框是队列项的唯一落点，覆盖或忽略已有内容都会丢草稿；追加判定必须发生在
+   * 持有草稿的一侧（输入岛），调用方读不到半受控草稿。
    */
   | { type: "restore-draft"; prompt: string };
 
@@ -38,7 +38,7 @@ export interface ComposerExternalHandlers {
   onFileReference: (file: { name: string; path: string }) => void;
   /** 聊天引用（源 `chat:quote`）：追加一条待发送引用，超限时按配额回调提示。 */
   onQuote: (quote: { text: string }) => void;
-  /** 回填草稿（待发送队列「取回」）：草稿非空时不覆盖。 */
+  /** 回填草稿（待发送队列「取回」）：追加到已有正文之后。 */
   onRestoreDraft: (prompt: string) => void;
 }
 

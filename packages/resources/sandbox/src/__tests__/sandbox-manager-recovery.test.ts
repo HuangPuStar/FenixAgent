@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import type { SandboxInstance, SandboxPool } from "@fenix/resource-sandbox/db";
 import { SandboxManager } from "@fenix/resource-sandbox/server";
 import { makeInstance, pool, resources } from "./sandbox-manager-fixtures";
 
@@ -170,7 +171,7 @@ describe("SandboxManager resource recovery", () => {
       } as never,
     });
 
-    const result = await manager.restart(instance.id);
+    const { instance: result } = await manager.repairRuntime(instance.id);
 
     expect(result.externalSandboxId).toBe("provider-sandbox");
     expect(resumed).toBe(true);
@@ -294,7 +295,7 @@ describe("SandboxManager resource recovery", () => {
             created = true;
             return { sandboxId: "new-provider-sandbox", status: "creating" as const };
           },
-          get: async () => null,
+          get: async () => ({ sandboxId: "old-provider-sandbox", status: "ready" as const }),
           resume: async () => ({ sandboxId: "new-provider-sandbox", status: "ready" as const }),
           destroy: async () => {
             destroyed = true;
@@ -303,7 +304,7 @@ describe("SandboxManager resource recovery", () => {
       } as never,
     });
 
-    await manager.recover(instance.id);
+    await manager.repairRuntime(instance.id, { recreate: true, expectedExternalSandboxId: "old-provider-sandbox" });
 
     expect(lockCalls).toBe(1);
     expect(destroyed).toBe(true);

@@ -41,7 +41,7 @@ export interface UseChatHydrationOptions {
   readonly sourceReady: boolean;
   /** 旧路径正在回放历史（Session Doc presenting === "replaying"）。 */
   readonly replayActive?: boolean;
-  /** 旧路径有实时 turn（presenting === "responding"），不是 hydrate。 */
+  /** 当前 scope 的初始快照已确认，且旧路径有实时 turn（presenting === "responding"）。 */
   readonly liveActive?: boolean;
   /** 新协议基线（首批 DOC_BASE 的 APPLY_ACK）尚未齐备时暂缓放行。 */
   readonly blocked?: boolean;
@@ -92,7 +92,16 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     localCreate = false,
   } = options;
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope 只作为重建合并器的驱动键，合并器函数体不读取它。
-  const merger = useMemo(() => createSyncMessageMerger(), [scope]);
+  const merger = useMemo(
+    () =>
+      createSyncMessageMerger(undefined, {
+        onDegraded: (degradation) => {
+          // 旧数据没有有序工具标记或边界不可判定：只记录内部标识与原因码，不含正文。
+          console.warn("[chat-merge] degraded", degradation.entryId, degradation.reason);
+        },
+      }),
+    [scope],
+  );
   const latest = useRef<LatestInput>({ scope, legacy, sync, merger });
 
   const [display, setDisplay] = useState<{ scope: string; messages: StructuredMessage[]; hydrating: boolean }>(() => ({
@@ -195,7 +204,7 @@ export function useChatHydration(options: UseChatHydrationOptions): ChatHydratio
     if (liveActive) {
       seenReplayRef.current = false;
       gate.setReplayActive(false);
-      gate.markComplete();
+      gate.markLive();
       return;
     }
     if (seenReplayRef.current) {

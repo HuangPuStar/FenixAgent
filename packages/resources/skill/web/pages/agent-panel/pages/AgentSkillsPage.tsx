@@ -108,8 +108,8 @@ export function AgentSkillsPage() {
   );
 
   const updateSkill = useRequest(
-    (params: { name: string; description: string; content: string }) =>
-      unwrap(skillConfigApi.update(params.name, { description: params.description, content: params.content })),
+    (params: { id: string; name: string; description: string; content: string }) =>
+      unwrap(skillConfigApi.update(params.id, { description: params.description, content: params.content })),
     {
       manual: true,
       onSuccess: () => {
@@ -195,7 +195,7 @@ export function AgentSkillsPage() {
     if (!canManageSkillSharing(skill)) return;
     const publicReadable = !isPublicSkill(skill);
     try {
-      await unwrap(skillConfigApi.updateAccess(skill.name, publicReadable));
+      await unwrap(skillConfigApi.updateAccess(skill.id, publicReadable));
       toast.success(publicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
       catalog.refresh();
       dispatchConfigChange("skills");
@@ -208,12 +208,12 @@ export function AgentSkillsPage() {
   const selectUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const items = parseSkillUploadFiles(Array.from(event.target.files ?? []));
     setUploadItems(items);
-    setUploadError(validateUploadBatch(items));
+    setUploadError(validateUploadBatch(items, t));
     setConflicts([]);
   };
 
   const upload = (strategy?: SkillUploadConflictStrategy) => {
-    const validationError = validateUploadBatch(uploadItems);
+    const validationError = validateUploadBatch(uploadItems, t);
     if (validationError) {
       setUploadError(validationError);
       toast.error(validationError);
@@ -233,7 +233,7 @@ export function AgentSkillsPage() {
       return;
     }
     const payload = { name: editingSkill?.name ?? formName, description: formDescription, content: formContent };
-    if (editingSkill) updateSkill.run(payload);
+    if (editingSkill) updateSkill.run({ ...payload, id: editingSkill.id });
     else createSkill.run(payload);
   };
 
@@ -277,7 +277,7 @@ export function AgentSkillsPage() {
         onCreate={openCreate}
         onDownload={(skill) => void download(skill)}
         onOpen={(skill) => void openSkill(skill)}
-        onDelete={(skill) => setDeleteTarget(skill.name)}
+        onDelete={(skill) => setDeleteTarget(skill.id)}
         onToggleSharing={(skill) => void toggleSharing(skill)}
         onRetry={catalog.refresh}
         onLoadDetail={loadSkillDetail}

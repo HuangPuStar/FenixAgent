@@ -319,21 +319,32 @@ export class ConnectionRegistry {
     return { shared, created };
   }
 
-  /** 释放一个引用；返回 shared relay 当且仅当引用计数归零（调用方负责最终资源释放） */
-  release(instanceId: string, userId: string, rcsSessionId: string): SharedRelay | undefined {
+  /** 释放页面引用；归零且无在途回复保留请求时返回待释放 relay。 */
+  release(instanceId: string, userId: string, rcsSessionId: string, retain = false): SharedRelay | undefined {
     const relayKey = this.makeRelayKey(instanceId, userId, rcsSessionId);
     const shared = this.sharedRelays.get(relayKey);
     if (!shared) return;
 
     shared.refCount--;
-    if (shared.refCount > 0) return;
+    if (shared.refCount > 0 || retain) return;
 
     this.sharedRelays.delete(relayKey);
     return shared;
   }
 
+  /** 按对象身份释放零引用 relay，迟到完成不能移除后继连接。 */
+  releaseRetained(shared: SharedRelay): boolean {
+    const key = this.makeRelayKey(shared.instanceId, shared.userId, shared.rcsSessionId);
+    if (this.sharedRelays.get(key) !== shared || shared.refCount !== 0) return false;
+    this.sharedRelays.delete(key);
+    return true;
+  }
+
   /** 请求指定 instance 的客户端关闭；实际资源释放统一由 gateway.handleClose 完成。 */
   closeClientsByInstance(instanceId: string, code = 1000, reason = "instance closed"): void {
+    for (const shared of [...this.sharedRelays.values()]) {
+      if (shared.instanceId === instanceId && shared.refCount === 0) shared.releaseRetained?.();
+    }
     for (const client of this.clients.values()) {
       if (client.instanceId !== instanceId) continue;
       try {
@@ -346,6 +357,9 @@ export class ConnectionRegistry {
 
   /** 关闭所有客户端连接（graceful shutdown） */
   closeAll(code?: number, reason?: string): void {
+    for (const shared of [...this.sharedRelays.values()]) {
+      if (shared.refCount === 0) shared.releaseRetained?.();
+    }
     for (const [, client] of this.clients) {
       try {
         client.relayHandle?.close?.(code ?? 1001, reason ?? "server_shutdown");

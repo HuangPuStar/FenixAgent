@@ -27,9 +27,7 @@ export async function listAgentSkillIds(agentConfigId: string): Promise<string[]
 /**
  * 全量覆盖指定 Agent 的技能关联（先删后插）。
  *
- * 两条语句不包事务：`agentConfigSkill` 上没有唯一约束以外的约束，且当前调用点（控制台保存 Agent
- * 配置、`services/agent-bindings.ts`）本身就运行在宿主既有的事务语义之外；引入事务会改变锁范围，
- * 超出本次边界收敛的范围。若后续要原子化应改在 service 层事务里。
+ * 保存 Facade 提供事务边界，两条语句使用当前事务连接，与配置及其它关联一起提交或回滚。
  */
 export async function syncAgentSkills(agentConfigId: string, skillIds: readonly string[]): Promise<void> {
   await getAgentConfigDatabase().delete(agentConfigSkill).where(eq(agentConfigSkill.agentConfigId, agentConfigId));

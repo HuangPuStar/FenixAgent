@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { runInTransaction } from "@fenix/platform-sdk/server";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo } from "@fenix/resource-knowledge/server";
 
 export interface AgentKnowledgePolicy {
@@ -117,23 +118,21 @@ export async function getAgentKnowledgeConfigById(agentConfigId: string): Promis
 
 /**
  * Replaces all agent knowledge bindings for an agent config with the provided ordered knowledge base ids.
+ *
+ * 只接受归属 `organizationId`（Agent 归属组织）的知识库：运行时不按调用方身份再判组织，绑定表必须是
+ * 可信任的授权来源，否则知道知识库 ID 就能把它挂到自己的 Agent 上越权检索。
  */
 export async function syncAgentKnowledgeBindingsById(
   agentConfigId: string,
   knowledge: AgentKnowledgeConfig | null | undefined,
+  organizationId: string,
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
   const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;
-  await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
-
-  if (knowledgeBaseIds.length === 0) {
-    return;
-  }
-
   const existingIds = new Set<string>();
   for (const kbId of knowledgeBaseIds) {
     const kb = await knowledgeBaseRepo.getById(kbId);
-    if (!kb) continue;
+    if (!kb || kb.organizationId !== organizationId) continue;
 
     existingIds.add(kb.id);
   }
@@ -142,17 +141,21 @@ export async function syncAgentKnowledgeBindingsById(
     throw new InvalidKnowledgeBindingError(`知识库不存在或无权限访问: ${missingIds.join(", ")}`);
   }
 
-  const now = new Date();
-  await agentKnowledgeBindingRepo.createMany(
-    knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
-      id: generateBindingId(),
-      agentConfigId,
-      knowledgeBaseId,
-      config: normalizedPolicy,
-      priority,
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  );
+  // 先完成整批校验；替换加入调用方事务，独立调用时也保证插入失败不会清空旧绑定。
+  await runInTransaction(async () => {
+    await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
+    const now = new Date();
+    await agentKnowledgeBindingRepo.createMany(
+      knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
+        id: generateBindingId(),
+        agentConfigId,
+        knowledgeBaseId,
+        config: normalizedPolicy,
+        priority,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    );
+  });
 }

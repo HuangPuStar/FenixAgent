@@ -16,7 +16,12 @@ import {
   resetModelManagementModuleForTesting,
 } from "@fenix/model-management/server/testing";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb, stubModuleConfig } from "@fenix/platform-sdk/testing";
+import {
+  initializeTestApplicationInfrastructure,
+  resetAllStubs,
+  stubDb,
+  stubModuleConfig,
+} from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -142,6 +147,8 @@ describe("Config Route Integration", () => {
     stubModuleConfig("skill", { skillDir: tempSkillDir, baseUrl: "http://rcs.test" });
     process.env.RCS_API_KEYS = "test-key";
     stubDb({
+      transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) =>
+        callback({ execute: async () => {} }),
       select: () => ({
         from: () => ({ where: async () => [] }),
       }),
@@ -260,7 +267,7 @@ describe("Config Route Integration", () => {
     installAgentConfigModule(
       createStubAgentConfigServerModule({
         facade: createStubAgentConfigFacade({
-          get: async () =>
+          getById: async () =>
             sharedAgent({
               prompt: "shared prompt",
               machineId: "machine-1",
@@ -271,7 +278,7 @@ describe("Config Route Integration", () => {
       }),
     );
 
-    const res = await request("/web/config/agents?name=org-source%2Fagc-external", { method: "GET" });
+    const res = await request("/web/config/agents/agc-external", { method: "GET" });
     const json = await res.json();
 
     expect(json.success).toBe(true);
@@ -285,32 +292,30 @@ describe("Config Route Integration", () => {
   });
 
   // 缺少 name 查询参数在协议层就被拒绝，不得进入应用层。
-  test("agents set 缺少 name 时返回校验错误", async () => {
+  test("agents PATCH 缺少 ID 时不匹配路由", async () => {
     const res = await request("/web/config/agents", {
-      method: "PUT",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: { prompt: "x" } }),
     });
-    const json = await res.json();
-
-    expect(json.success).toBe(false);
-    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(res.status).toBe(404);
   });
 
   // 共享只读 Agent 的写入拒绝由 Facade 抛出宿主错误，路由映射为 403。
   test("agents set 拒绝修改外部共享 Agent", async () => {
+    initializeTestApplicationInfrastructure();
     installAgentConfigModule(
       createStubAgentConfigServerModule({
         facade: createStubAgentConfigFacade({
-          update: async () => {
+          updateById: async () => {
             throw new ForbiddenError("只读共享资源");
           },
         }),
       }),
     );
 
-    const res = await request("/web/config/agents?name=org-source%2Fagc-external", {
-      method: "PUT",
+    const res = await request("/web/config/agents/agc-external", {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: { prompt: "x" } }),
     });
@@ -336,10 +341,10 @@ describe("Config Route Integration", () => {
   });
 
   // 查不到详情的 Skill：Facade 的 undefined 必须映射为 /web 的 404，而不是 500。
-  test("skills GET by name 返回 404", async () => {
+  test("skills GET by ID 返回 404", async () => {
     installSkillServerModule(
       createStubSkillServerModule({
-        facade: createStubSkillFacade({ readDetail: async () => undefined }),
+        facade: createStubSkillFacade({ readDetailById: async () => undefined }),
       }),
     );
     const res = await request("/web/config/skills/nonexistent", {
@@ -353,7 +358,7 @@ describe("Config Route Integration", () => {
     installSkillServerModule(
       createStubSkillServerModule({
         facade: createStubSkillFacade({
-          remove: async () => {
+          removeById: async () => {
             throw new NotFoundError("Skill 'nonexistent' not found");
           },
         }),
@@ -370,7 +375,7 @@ describe("Config Route Integration", () => {
     installSkillServerModule(
       createStubSkillServerModule({
         facade: createStubSkillFacade({
-          get: async () => ({
+          getById: async () => ({
             id: "skill-1",
             name: "demo",
             description: "demo",
@@ -385,7 +390,7 @@ describe("Config Route Integration", () => {
     writeFileSync(join(tempSkillDir, "test-team", "demo", "SKILL.md"), "# Demo");
     writeFileSync(join(tempSkillDir, "test-team", "demo", "references", "ref.md"), "ref");
 
-    const res = await request("/web/config/skills/demo/download", {
+    const res = await request("/web/config/skills/skill-1/download", {
       method: "GET",
     });
 
@@ -397,11 +402,11 @@ describe("Config Route Integration", () => {
   });
 
   // 跨组织公开的 Skill 也从归属组织目录取归档，资源键路径参数需先解码再定位。
-  test("skills download 支持共享 skill resourceKey 并保留根目录", async () => {
+  test("skills download 支持共享 Skill ID 并保留根目录", async () => {
     installSkillServerModule(
       createStubSkillServerModule({
         facade: createStubSkillFacade({
-          get: async () => ({
+          getById: async () => ({
             id: "skill-external",
             name: "shared-skill",
             description: "shared",
@@ -416,7 +421,7 @@ describe("Config Route Integration", () => {
     writeFileSync(join(tempSkillDir, "org-source", "shared-skill", "SKILL.md"), "# Shared");
     writeFileSync(join(tempSkillDir, "org-source", "shared-skill", "references", "guide.md"), "guide");
 
-    const res = await request("/web/config/skills/org-source%2Fskill-external/download", {
+    const res = await request("/web/config/skills/skill-external/download", {
       method: "GET",
     });
 

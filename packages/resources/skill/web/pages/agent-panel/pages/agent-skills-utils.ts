@@ -1,8 +1,9 @@
 import { ApiError } from "@fenix/web-runtime/api/request";
+import { isValidSkillName } from "../../../../src/skill-name";
 import { getSkillOptionLabel, isExternalSkill, isPublicSkill } from "../../../lib/skill-resource-access";
 import type { SkillCatalogScope, SkillInfo } from "./agent-skills-types";
 
-export type SkillFormValidationErrorKey = "form.nameRequired" | "form.contentRequired";
+export type SkillFormValidationErrorKey = "form.nameRequired" | "form.nameInvalid" | "form.contentRequired";
 
 /**
  * 授权类失败的错误码集合。
@@ -26,10 +27,11 @@ export function isSkillAccessDenied(error: unknown): boolean {
 }
 
 /**
- * 返回手动创建/编辑 skill 表单的首个必填校验错误。
+ * 返回手动创建/编辑 skill 表单的首个校验错误。
  */
 export function getSkillFormValidationError(name: string, content: string): SkillFormValidationErrorKey | null {
   if (!name.trim()) return "form.nameRequired";
+  if (!isValidSkillName(name)) return "form.nameInvalid";
   if (!content.trim()) return "form.contentRequired";
   return null;
 }

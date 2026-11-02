@@ -39,5 +39,33 @@
     "contextMenu": {
       "delete": "Delete"
     }
+  },
+  "guide": {
+    "title": "Connect a local Machine",
+    "intro": "Start the runtime on your computer or a remote server so the platform can run Agents there.",
+    "loading": "Loading connection parameters…",
+    "loadError": "Cannot load connection parameters. Check that the Machine exists and you have access.",
+    "retry": "Retry",
+    "installTitle": "1. Prepare software",
+    "installHint": "Standalone executables include their own execution environment and do not require Bun or Node.js; the JS version requires Bun. Install the engine linked below and complete login or model configuration. Install any dependencies required by the engine, plugins or MCP separately. Commands use Bash / Zsh on Linux or macOS.",
+    "opencodeVersionHint": "OpenCode requires version {{version}}, not latest or another version. Follow the official instructions for a standalone installation, or use the command below for npm installation (requires Node.js).",
+    "parametersTitle": "2. Connection parameters",
+    "secretHint": "Ask the system administrator",
+    "parametersHint": "The platform address and Machine ID are filled in. If unreachable from the target, replace RCS_URL with a reachable ws:// or wss:// address. AGENT_TYPE must match the engine.",
+    "downloadTitle": "3. Download runtime",
+    "download": "Download {{platform}}",
+    "downloadJs": "Download JS version (requires Bun)",
+    "jsHint": "If Bun is already installed, you can use the same JS file across systems and architectures. Bun website:",
+    "workspaceHint": "For a standalone executable, choose the target machine's OS and CPU architecture (Linux builds require glibc) and save it as acp-runtime; save the JS version as acp-runtime.js. Place the file in a new workspace directory and open it in your terminal. The startup directory is the workspace root; the platform creates isolated subdirectories for organizations, users and instances.",
+    "startTitle": "4. Start locally",
+    "startHint": "Replace fill-in-secret with the administrator-provided secret, then run the matching single-line command in that directory. The standalone command adds execution permission and starts the runtime directly. If macOS blocks an unidentified developer, verify the source and allow it in System Settings → Privacy & Security.",
+    "jsStartHint": "For the JS version, use this single-line command instead (requires Bun):",
+    "secretPlaceholder": "fill-in-secret",
+    "unsupportedEngine": "No startup example is available for this engine. Confirm the engine type with your administrator.",
+    "afterTitle": "5. After startup",
+    "keepRunning": "Keep the terminal running. Return to Organizations and refresh the Machine list manually to check that this Machine is online.",
+    "selectMachine": "In Agent configuration, select this Machine for execution and check engine, model and permission settings.",
+    "startChat": "Create and start an instance of the Agent, then select it in Chat to send a message. Generated files are stored in the target workspace.",
+    "stop": "Press Ctrl+C to stop. Run the startup command again in the same workspace to reconnect."
   }
 }

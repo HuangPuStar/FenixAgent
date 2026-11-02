@@ -83,7 +83,7 @@ describe("skill resource access flow", () => {
     };
 
     expect(getSkillKey(shared)).toBe("org-source/skill-9");
-    expect(getSkillLookupKey(shared)).toBe("org-source/skill-9");
+    expect(getSkillLookupKey(shared)).toBe("skill-9");
   });
 
   // 公开开关必须走独立权限接口，不能携带正文或 frontmatter。
@@ -92,7 +92,7 @@ describe("skill resource access flow", () => {
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     expect(call[0]).toContain("/web/config/skills/deploy-skill/access");
-    expect(call[1].method).toBe("PUT");
+    expect(call[1].method).toBe("PATCH");
     expect(JSON.parse(call[1].body)).toEqual({ publicReadable: true });
   });
 

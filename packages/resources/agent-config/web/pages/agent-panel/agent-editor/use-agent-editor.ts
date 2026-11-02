@@ -37,6 +37,8 @@ import {
 export interface AgentEditorData {
   initialValues: AgentEditorValues;
   agentId: string | null;
+  /** 服务端按资源真实名称判定的内置身份。 */
+  builtIn?: boolean;
   /** 归属范围；缺失按本组织私有保守降级。 */
   scope?: ResourceScopeView;
   /** 当前主体对该 Agent 的有效动作；缺失按不可写保守降级。 */
@@ -69,7 +71,7 @@ export type UseAgentEditorOptions =
   | {
       open: boolean;
       mode: "edit";
-      agentName: string;
+      agentConfigId: string;
       onOpenChange: (open: boolean) => void;
       onSuccess?: never;
       defaultName?: never;
@@ -108,7 +110,7 @@ export function appendUnavailableNodeOption(
 
 /** 集中处理编辑器加载、保存及实例重启，视图不直接消费协议 DTO。 */
 export function useAgentEditor(options: UseAgentEditorOptions) {
-  const agentName = options.mode === "edit" ? options.agentName : undefined;
+  const agentConfigId = options.mode === "edit" ? options.agentConfigId : undefined;
   const defaultName = options.mode === "create" ? options.defaultName : undefined;
   const { open, mode, onOpenChange, onSuccess, translate: t, translatePanel: tp } = options;
   const [loadError, setLoadError] = useState<Error | null>(null);
@@ -122,13 +124,14 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const activeOrganizationId = organizationId ?? undefined;
 
   const loadService = useCallback(async (): Promise<AgentEditorData> => {
-    if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));
+    if (mode === "edit" && !agentConfigId) throw new Error(t("editor.missingTarget"));
     setLoadError(null);
-    const detail = mode === "edit" ? ((await unwrap(agentApi.get(agentName!))) as AgentDetail) : null;
+    const detail = mode === "edit" ? ((await unwrap(agentApi.get(agentConfigId!))) as AgentDetail) : null;
     const initialValues = detail ? agentDetailToEditorValues(detail) : createAgentEditorDefaults(defaultName);
     setProgressiveData({
       initialValues,
       agentId: detail?.id ?? null,
+      builtIn: detail?.builtIn,
       scope: detail?.scope,
       access: detail?.access,
       organizationName: detail?.organizationName,
@@ -236,6 +239,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     return {
       initialValues: resolvedInitialValues,
       agentId: typedDetail?.id ?? null,
+      builtIn: typedDetail?.builtIn,
       scope: typedDetail?.scope,
       access: typedDetail?.access,
       organizationName: typedDetail?.organizationName,
@@ -303,11 +307,11 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       templates: templatesData.templates,
       resourceErrors,
     };
-  }, [agentName, defaultName, mode, t, activeOrganizationId]);
+  }, [agentConfigId, defaultName, mode, t, activeOrganizationId]);
 
   const loadRequest = useRequest(loadService, {
-    ready: open && (mode === "create" || !!agentName),
-    refreshDeps: [open, mode, agentName, defaultName],
+    ready: open && (mode === "create" || !!agentConfigId),
+    refreshDeps: [open, mode, agentConfigId, defaultName],
     onBefore: () => {
       setLoadError(null);
       setProgressiveData(null);
@@ -337,7 +341,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
         return;
       }
       if (options.mode !== "edit") return;
-      await unwrap(agentApi.set(options.agentName, payload));
+      await unwrap(agentApi.set(options.agentConfigId, payload));
       toast.success(t("save.successUpdate"));
       dispatchConfigChange("agents");
       setRestartDialogOpen(true);
@@ -354,7 +358,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const restartRequest = useRequest(
     async () => {
       if (options.mode !== "edit") return;
-      const result = await unwrap(agentApi.restart(options.agentName));
+      const result = await unwrap(agentApi.restart(options.agentConfigId));
       if (!result.restartedInstanceIds.length) {
         toast.info(tp("noInstancesToRestart"));
         setRestartDialogOpen(false);
@@ -379,7 +383,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     () => ({
       data: progressiveData ?? (!loadRequest.loading ? loadRequest.data : undefined),
       loading: loadRequest.loading,
-      loadError: loadError ?? (open && mode === "edit" && !agentName ? new Error(t("editor.missingTarget")) : null),
+      loadError: loadError ?? (open && mode === "edit" && !agentConfigId ? new Error(t("editor.missingTarget")) : null),
       retry: loadRequest.refresh,
       save: saveRequest.runAsync,
       saving: saveRequest.loading,
@@ -389,7 +393,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       restarting: restartRequest.loading,
     }),
     [
-      agentName,
+      agentConfigId,
       loadError,
       loadRequest,
       mode,

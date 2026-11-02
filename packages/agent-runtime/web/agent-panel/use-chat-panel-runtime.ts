@@ -70,6 +70,7 @@ export function useChatPanelRuntime({
   usePeriTaskViews: UsePeriTaskViews;
 }): ChatPanelRuntime {
   const [connectionState, setConnectionState] = useState<ChatWsConnectionState>("disconnected");
+  const [initialSyncKey, setInitialSyncKey] = useState<string | null>(null);
   const [classifiedError, setClassifiedError] = useState<PublicErrorInfo | null>(null);
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
@@ -86,9 +87,8 @@ export function useChatPanelRuntime({
     recordIncomplete,
     complete,
   } = useChatHistoryRecovery();
-  // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS。
-  // 4500、4502 等同一 URL 无法恢复的关闭码仍需用户手动触发；Chat idle/activity
-  // 与客户端 keepalive 超时不再由服务端主动断开。
+  // enter 成功后只重建失效连接，保留缓存面板、草稿和会话身份。
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
   // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
   const [autoReconnecting, setAutoReconnecting] = useState(false);
@@ -134,6 +134,7 @@ export function useChatPanelRuntime({
     sessionKey: syncSessionKey,
     // 投影换代（load/create）必须换同步连接：服务端按旧 Doc 代次隔离 store 与历史。
     projectionVersion: replacementVersion,
+    connectionAttempt: reconnectAttempt,
   });
   // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
   const mergeScope = `${docHubKey}:${replacementVersion}`;
@@ -178,7 +179,7 @@ export function useChatPanelRuntime({
     sync: syncChat.projection.messages,
     sourceReady: connectionState === "connected",
     replayActive: legacyScopeReady && legacySessionState.status === "replaying",
-    liveActive: legacyScopeReady && legacySessionState.status === "responding",
+    liveActive: legacyScopeReady && initialSyncKey === docHubKey && legacySessionState.status === "responding",
     blocked: hydrationBlockedBySync,
     syncTerminalError,
     noReplaySession,
@@ -247,7 +248,7 @@ export function useChatPanelRuntime({
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接
-  // biome-ignore lint/correctness/useExhaustiveDependencies: historyRecoveryAttempt 是刻意的引用驱动依赖——用户重试历史同步时递增该值，强制重建旧 Yjs 连接。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 两种重试计数分别由 enter 和历史同步重试驱动，强制重建失效连接。
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
@@ -265,6 +266,7 @@ export function useChatPanelRuntime({
     }
 
     setConnectionState("connecting");
+    setClassifiedError(null);
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
@@ -277,6 +279,7 @@ export function useChatPanelRuntime({
 
     let disposed = false;
     let connectionEpoch = 0;
+    let transportState: YjsWsState = "connecting";
     const yjsWs = createYjsWs({
       url: relayUrl,
       onYjsUpdate: (docName, data, generation) => {
@@ -302,7 +305,19 @@ export function useChatPanelRuntime({
       // 只有服务端显式确认本轮初始同步完成才算恢复：实时 update 会在握手期间穿插到达，
       // 若拿它当证据，缺失文档尚未交付就会提前解除发送门禁。
       onSyncComplete: (info) => {
-        if (!disposed) complete(connectionEpoch, info, getDocHubGenerations(rcsSessionKey));
+        if (disposed || !isCurrentConnection(connectionEpoch)) return;
+        const generations = getDocHubGenerations(rcsSessionKey);
+        complete(connectionEpoch, info, generations);
+        // onopen 早于快照；快速显示实时回复前须确认本轮两个 Doc 都已交付。
+        if (
+          info.generation &&
+          [`chat:${rcsSessionKey}`, `session:${rcsSessionKey}`].every(
+            (docName) =>
+              info.docs.includes(docName) &&
+              generations.some((doc) => doc.docName === docName && doc.generation === info.generation),
+          )
+        )
+          setInitialSyncKey(rcsSessionKey);
       },
       onClose: (close) => {
         if (disposed || !ownsConnection(connectionEpoch)) return;
@@ -323,9 +338,11 @@ export function useChatPanelRuntime({
       },
       onConnectionState: (state: YjsWsState) => {
         if (disposed) return;
+        transportState = state;
         if (state === "connecting") connectionEpoch = beginConnection();
         if (!ownsConnection(connectionEpoch)) return;
         if (state === "connecting") {
+          setInitialSyncKey(null);
           setAutoReconnecting(false);
           // 重试/自动重连开始：历史缺失保持到缺失文档真正重新交付，连接事件不构成恢复证明。
           // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。
@@ -360,14 +377,23 @@ export function useChatPanelRuntime({
     yjsWs.connect();
     yjsWsRef.current = yjsWs;
 
+    const onEntered = (event: Event) => {
+      const detail: unknown = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object" || !("envId" in detail) || !("instanceUid" in detail)) return;
+      if (detail.envId !== agentId || detail.instanceUid !== sessionId) return;
+      if (disposed || transportState === "connected" || transportState === "connecting") return;
+      // 同步标记避免同一帧的重复通知创建多个重试；正常连接不打断正在进行的回复。
+      transportState = "connecting";
+      setReconnectAttempt((attempt) => attempt + 1);
+    };
+    window.addEventListener("agent:entered", onEntered);
     return () => {
       disposed = true;
+      window.removeEventListener("agent:entered", onEntered);
       yjsWs.disconnect();
       yjsWsRef.current = null;
     };
-    // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
-    // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
-    // rcsSessionKey 变化触发重建（建连守卫，见上）；authState 变化驱动登录态守卫
+    // enter 成功或历史同步重试会重建连接；身份与实例变化仍走同一建连守卫。
   }, [
     agentId,
     sessionId,
@@ -384,6 +410,7 @@ export function useChatPanelRuntime({
     recordIncomplete,
     complete,
     historyRecoveryAttempt,
+    reconnectAttempt,
   ]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态

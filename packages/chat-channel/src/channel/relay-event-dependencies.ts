@@ -6,6 +6,8 @@ import type { ConnectionRegistry } from "./connection-registry";
 
 /** relay 事件规范化与会话投影的宿主依赖。 */
 export interface RelayEventHandlerDependencies {
+  /** Agent 断开时废弃频道内存确认，区别于页面连接断开。 */
+  invalidateRuntimeSession?: (rcsSessionId: string) => void;
   registry: ConnectionRegistry;
   broadcaster: YjsBroadcaster;
   docManager: DocManager;

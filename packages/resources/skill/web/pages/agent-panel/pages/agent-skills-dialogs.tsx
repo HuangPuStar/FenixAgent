@@ -230,6 +230,7 @@ function SkillTextFields({
           placeholder="my-skill"
           className="mt-1 font-mono text-sm"
         />
+        <span className="mt-1 block text-xs font-normal text-text-muted">{t("form.nameInvalid")}</span>
       </label>
       <label className="block text-sm font-medium text-text-primary">
         {t("form.description")}

@@ -51,7 +51,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   /** 一次性桩住环境行与端口；`fields` 缺省为"两列皆空"。 */
   function stubEnvRow(
     overrides: Partial<Record<string, unknown>> = {},
-    fields: AgentConfigExecutionFields | null = { machineId: null, agentNode: null },
+    fields: AgentConfigExecutionFields | null = { organizationId: "org-1", machineId: null, agentNode: null },
   ) {
     stubSelectRows([makeRow(overrides)]);
     stubLookup(fields);
@@ -84,7 +84,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 空串 machineId 应视为未绑定，沿 fallback 链落到 RCS_DEFAULT_MACHINE_ID（断裂点 4 回归）
   test("空串 machineId 且系统有默认机器时 fallback 到默认机器", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "", agentNode: null });
 
     const env = await repo.getEnvironment("env-1");
     expect(env).not.toBeNull();
@@ -94,7 +94,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 空串 machineId、无默认机器且未禁用本地执行时兜底 local-default（旧路径 falsy 语义）
   test("空串 machineId 且无默认机器时兜底 local-default", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: undefined, disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "", agentNode: null });
 
     const env = await repo.getEnvironment("env-1");
     expect(env?.machineId).toBe("local-default");
@@ -103,7 +103,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 空串 machineId、无默认机器且禁用本地执行时 machineId 为 null（由编排域拒绝启动）
   test("空串 machineId 且禁用本地执行时 machineId 为 null", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: undefined, disableLocalExecution: true });
-    stubEnvRow({}, { machineId: "", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "", agentNode: null });
 
     const env = await repo.getEnvironment("env-1");
     expect(env?.machineId).toBeNull();
@@ -156,7 +156,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 绑定了合法 machineId 的 agent config 应原样返回，忽略系统默认机器
   test("agent config 绑定 machineId 时原样返回", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "mach_bound", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "mach_bound", agentNode: null });
 
     const env = await repo.getEnvironment("env-1");
     expect(env?.machineId).toBe("mach_bound");
@@ -167,7 +167,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // （合并 main Sandbox 后引入的语义偏移回归）
   test("agentNode 为空对象时忽略 machineId 列走默认机器", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "mach_bound", agentNode: {} });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "mach_bound", agentNode: {} });
 
     const env = await repo.getEnvironment("env-1");
     expect(env?.machineId).toBe("mach_default");
@@ -176,7 +176,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // agentNode 为 null（历史数据）时 machineId 列照常生效
   test("agentNode 为 null 时 machineId 列照常生效", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "mach_bound", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "mach_bound", agentNode: null });
 
     const env = await repo.getEnvironment("env-1");
     expect(env?.machineId).toBe("mach_bound");
@@ -188,7 +188,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 注入执行节点解析器后（sandbox 适配装配点），resolver 结果优先于默认 fallback 链
   test("注入 resolver 时优先采用 resolver 解析出的 machineId", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "mach_bound", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "mach_bound", agentNode: null });
     repo.setExecutionNodeResolver(async () => "sbx_machine_1");
 
     const env = await repo.getEnvironment("env-1", "user-1");
@@ -198,7 +198,7 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // resolver 返回 null 表示无业务解析结果，回落到默认链（machineId 列 → 默认机器）
   test("resolver 返回 null 时回落默认 fallback 链", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
-    stubEnvRow({}, { machineId: "", agentNode: null });
+    stubEnvRow({}, { organizationId: "org-1", machineId: "", agentNode: null });
     repo.setExecutionNodeResolver(async () => null);
 
     const env = await repo.getEnvironment("env-1", "user-1");
@@ -209,7 +209,10 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   // 端口原样透传两列，不做归一（节点解析规则只有 resolveAgentNode 一份）
   test("resolver 收到 userId / agentNode / configMachineId 上下文", async () => {
     stubAgentRuntimeConfig({ defaultMachineId: undefined, disableLocalExecution: false });
-    stubEnvRow({}, { machineId: null, agentNode: { kind: "sandbox", sandboxPoolId: "pool-1" } });
+    stubEnvRow(
+      {},
+      { organizationId: "org-1", machineId: null, agentNode: { kind: "sandbox", sandboxPoolId: "pool-1" } },
+    );
     // 用对象容器保存捕获值：直接捕获到 let 变量会触发 TS 闭包 CFA 窄化（报 never），
     // 属性访问不受闭包赋值影响，类型始终为声明类型
     const captured: { input: Parameters<ExecutionNodeResolver>[0] | null } = { input: null };
@@ -237,5 +240,35 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
 
     await repo.getEnvironment("env-1");
     expect(capturedUserId).toBe("owner-1");
+  });
+
+  // 显式机器是 Agent 的依赖：跨组织共享时照常使用共享方声明的机器，文件与实例才会落在同一台机器上。
+  test("跨组织共享 Agent 的 machineId 列照常生效", async () => {
+    stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubEnvRow({}, { organizationId: "org-2", machineId: "mach_owner", agentNode: null });
+    repo.setExecutionNodeResolver(null);
+
+    const env = await repo.getEnvironment("env-1");
+    expect(env?.machineId).toBe("mach_owner");
+  });
+
+  // 跨组织时解析器同时拿到环境组织与配置组织：显式沙盒池按池所属组织解析，默认池走环境组织。
+  test("跨组织共享 Agent 时解析器收到配置组织与显式沙盒节点", async () => {
+    stubAgentRuntimeConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubEnvRow(
+      {},
+      { organizationId: "org-2", machineId: null, agentNode: { kind: "sandbox", sandboxPoolId: "pool-owner" } },
+    );
+    const captured: { input: Parameters<ExecutionNodeResolver>[0] | null } = { input: null };
+    repo.setExecutionNodeResolver(async (input) => {
+      captured.input = input;
+      return null;
+    });
+
+    const env = await repo.getEnvironment("env-1", "user-b");
+    expect(captured.input?.organizationId).toBe("org-1");
+    expect(captured.input?.configOrganizationId).toBe("org-2");
+    expect(captured.input?.agentNode).toEqual({ kind: "sandbox", sandboxPoolId: "pool-owner" });
+    expect(env?.machineId).toBe("mach_default");
   });
 });

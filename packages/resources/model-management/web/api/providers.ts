@@ -2,7 +2,7 @@
  * providers.ts — Provider 配置域 API 模块
  *
  * 封装 LLM Provider 的 CRUD、模型管理、模型列表获取与模型测试等操作。
- * 后端使用 REST + query-param 风格端点以支持含 / 的 resource key。
+ * 已有资源通过 ID 路径定位，创建时显式提交配置名。
  */
 
 import { request } from "@fenix/web-runtime/api/request";
@@ -15,6 +15,7 @@ interface ProviderListResult {
 
 /** 创建/更新响应 */
 interface ProviderSaveResult {
+  id: string;
   name: string;
 }
 
@@ -31,6 +32,7 @@ interface ModelTestResult {
 
 /** 模型操作（增/删/改）响应 */
 interface ModelActionResult {
+  id: string;
   modelId: string;
 }
 
@@ -53,95 +55,48 @@ interface ModelData {
   [key: string]: unknown;
 }
 
-/** 构建 provider name 查询参数 */
-function withName(name: string): { query: { name: string } } {
-  return { query: { name } };
-}
-
+/** Provider 与 Model 的控制台 REST 客户端；ID 始终为数据库资源 ID。 */
 export const providerApi = {
-  /** 获取 Provider 列表（无 name 参数）或单个 Provider 详情（有 name 参数） */
   list: () => request<ProviderListResult>("/web/config/providers"),
-
-  /** 获取单个 Provider 详情（支持含 / 的 resource key） */
-  get: (name: string) => request<ProviderDetail>("/web/config/providers", { method: "GET", ...withName(name) }),
-
-  /** 更新已有 Provider（支持含 / 的 resource key） */
-  update: (name: string, data: ProviderData) =>
-    request<ProviderSaveResult>("/web/config/providers", {
-      method: "PUT",
-      ...withName(name),
-      body: data,
-    }),
-
-  /**
-   * 创建新 Provider。
-   * 同名已存在时返回 409，调用方应检查错误码后通过 update() 重试。
-   */
+  get: (providerId: string) => request<ProviderDetail>("/web/config/providers/:providerId", { params: { providerId } }),
   create: (name: string, data: ProviderData) =>
-    request<ProviderSaveResult>("/web/config/providers", {
-      method: "POST",
-      body: { name, ...data },
-    }),
-
-  /**
-   * 创建或更新 Provider 配置（upsert）。
-   * 先尝试 PUT（更新已有 provider），不存在时回退到 POST（新建）。
-   */
-  set: async (name: string, data: ProviderData) => {
-    const putResult = await request<ProviderSaveResult>("/web/config/providers", {
-      method: "PUT",
-      ...withName(name),
+    request<ProviderSaveResult>("/web/config/providers", { method: "POST", body: { ...data, name } }),
+  update: (providerId: string, data: ProviderData) =>
+    request<ProviderSaveResult>("/web/config/providers/:providerId", {
+      method: "PATCH",
+      params: { providerId },
       body: data,
-    });
-    if (putResult.success) return putResult;
-    // 非 404 错误直接返回，不做 POST 回退
-    if (putResult.error?.code !== "NOT_FOUND") return putResult;
-    // 新建：POST 携带 name 标识符
-    return request<ProviderSaveResult>("/web/config/providers", {
+    }),
+  del: (providerId: string) =>
+    request<void>("/web/config/providers/:providerId", { method: "DELETE", params: { providerId } }),
+  fetchModels: (providerId: string, inline?: { apiKey?: string; baseURL?: string; protocol?: string }) =>
+    request<ProviderFetchModelsResult>("/web/config/providers/:providerId/fetch-models", {
       method: "POST",
-      body: { name, ...data },
-    });
-  },
-
-  /** 获取 Provider 模型列表，可选传入内联配置参数（支持含 / 的 resource key） */
-  fetchModels: (name: string, inline?: { apiKey?: string; baseURL?: string; protocol?: string }) =>
-    request<ProviderFetchModelsResult>("/web/config/providers/actions/fetch-models", {
-      method: "POST",
-      ...withName(name),
+      params: { providerId },
       body: inline ?? {},
     }),
-
-  /** 测试指定 Provider 下某个模型的连通性（支持含 / 的 resource key） */
-  testModel: (name: string, modelId: string) =>
-    request<ModelTestResult>("/web/config/providers/actions/test-model", {
+  probeModels: (inline: { apiKey?: string; baseURL?: string; protocol?: string }) =>
+    request<ProviderFetchModelsResult>("/web/config/providers/probe-models", { method: "POST", body: inline }),
+  testModel: (providerId: string, id: string) =>
+    request<ModelTestResult>("/web/config/providers/:providerId/models/:id/test", {
       method: "POST",
-      ...withName(name),
-      body: { modelId },
+      params: { providerId, id },
     }),
-
-  /** 删除 Provider（支持含 / 的 resource key） */
-  del: (name: string) => request<void>("/web/config/providers", { method: "DELETE", ...withName(name) }),
-
-  /** 为 Provider 添加模型（支持含 / 的 resource key） */
-  addModel: (name: string, modelData: ModelData) =>
-    request<ModelActionResult>("/web/config/providers/actions/models", {
+  addModel: (providerId: string, data: ModelData) =>
+    request<ModelActionResult>("/web/config/providers/:providerId/models", {
       method: "POST",
-      ...withName(name),
-      body: modelData,
+      params: { providerId },
+      body: data,
     }),
-
-  /** 更新 Provider 下的某个模型配置（支持含 / 的 resource key） */
-  updateModel: (name: string, modelId: string, modelData: ModelData) =>
-    request<ModelActionResult>(`/web/config/providers/actions/models/${encodeURIComponent(modelId)}`, {
-      method: "PUT",
-      ...withName(name),
-      body: modelData,
+  updateModel: (providerId: string, id: string, data: ModelData) =>
+    request<ModelActionResult>("/web/config/providers/:providerId/models/:id", {
+      method: "PATCH",
+      params: { providerId, id },
+      body: data,
     }),
-
-  /** 删除 Provider 下的某个模型（支持含 / 的 resource key） */
-  removeModel: (name: string, modelId: string) =>
-    request<ModelActionResult>(`/web/config/providers/actions/models/${encodeURIComponent(modelId)}`, {
+  removeModel: (providerId: string, id: string) =>
+    request<ModelActionResult>("/web/config/providers/:providerId/models/:id", {
       method: "DELETE",
-      ...withName(name),
+      params: { providerId, id },
     }),
 };

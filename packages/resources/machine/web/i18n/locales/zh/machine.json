@@ -39,5 +39,33 @@
     "contextMenu": {
       "delete": "删除"
     }
+  },
+  "guide": {
+    "title": "Machine 本地连接指引",
+    "intro": "按照以下步骤，在本机或远程服务器启动 runtime，供平台运行 Agent。",
+    "loading": "正在读取连接参数…",
+    "loadError": "无法读取连接参数，请确认 Machine 仍存在且你有访问权限。",
+    "retry": "重试",
+    "installTitle": "1. 准备软件",
+    "installHint": "独立程序已内置运行环境，无需安装 Bun 或 Node.js；JS 版需要 Bun。请自行安装下方对应的引擎，完成登录或模型配置；引擎、插件或 MCP 自身所需的环境仍按各自要求安装。命令适用于 Linux、macOS 的 Bash / Zsh。",
+    "opencodeVersionHint": "OpenCode 必须安装指定版本 {{version}}，不要安装 latest 或其他版本。可按官方说明安装独立版本；若通过 npm 安装（需 Node.js），使用下方命令。",
+    "parametersTitle": "2. 连接参数",
+    "secretHint": "向系统管理员索取",
+    "parametersHint": "平台地址和 Machine ID 已带入。目标机器无法访问此地址时，请将命令中的 RCS_URL 替换为可达的 ws:// 或 wss:// 地址。AGENT_TYPE 必须与当前引擎匹配。",
+    "downloadTitle": "3. 下载 runtime",
+    "download": "下载 {{platform}}",
+    "downloadJs": "下载 JS 版（需要 Bun）",
+    "jsHint": "已有 Bun 时可使用通用 JS 版，同一文件适用于不同系统和架构。Bun 官网：",
+    "workspaceHint": "独立程序请选择目标机器对应的系统和 CPU 架构（Linux 版本适用于 glibc 系统），保存为 acp-runtime；JS 版保存为 acp-runtime.js。新建工作区目录并将文件放入，在终端进入该目录。启动目录就是工作区根，平台会在其下按组织、用户和实例创建隔离子目录。",
+    "startTitle": "4. 本地启动",
+    "startHint": "将命令中的「自己填」替换为管理员提供的密钥，然后在上述目录执行对应的一行命令。独立程序的命令会先添加执行权限，再直接启动 runtime。macOS 若提示开发者未验证，请在「系统设置 → 隐私与安全性」中核对来源后允许打开。",
+    "jsStartHint": "使用 JS 版时，改用下面这一行命令（需要 Bun）：",
+    "secretPlaceholder": "自己填",
+    "unsupportedEngine": "当前引擎没有启动示例，请向管理员确认引擎类型。",
+    "afterTitle": "5. 启动后使用",
+    "keepRunning": "保持终端运行。回到「组织」页面手动刷新机器列表，确认该 Machine 已上线。",
+    "selectMachine": "进入 Agent 配置，选择这台 Machine 作为执行机器，并检查引擎、模型和权限设置。",
+    "startChat": "创建并启动该 Agent 的实例，然后进入聊天页面选择实例发送消息；运行生成的文件位于目标机器的工作区中。",
+    "stop": "需要停止时在终端按 Ctrl+C。再次连接时，在同一工作区重新执行启动命令。"
   }
 }

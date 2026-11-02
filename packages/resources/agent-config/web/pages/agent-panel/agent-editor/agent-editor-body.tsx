@@ -117,10 +117,10 @@ export function AgentEditorBody(
   const editor = useAgentEditor({ ...props, translate: t, translatePanel: tp });
   const form = useForm<AgentEditorValues>({
     resolver: zodResolver(agentEditorSchema),
-    defaultValues: createAgentEditorDefaults(props.mode === "create" ? props.defaultName : props.agentName),
+    defaultValues: createAgentEditorDefaults(props.mode === "create" ? props.defaultName : props.agentConfigId),
   });
 
-  const editorKey = `${props.mode}:${props.mode === "edit" ? props.agentName : (props.defaultName ?? "")}`;
+  const editorKey = `${props.mode}:${props.mode === "edit" ? props.agentConfigId : (props.defaultName ?? "")}`;
   useEffect(() => {
     if (!editor.data || initializedEditorKeyRef.current === editorKey) return;
     initializedEditorKeyRef.current = editorKey;
@@ -136,7 +136,7 @@ export function AgentEditorBody(
   const values = form.watch();
   const readOnly =
     props.mode === "edit" && editor.data
-      ? !isAgentWritable({ name: props.agentName, scope: editor.data.scope, access: editor.data.access })
+      ? !isAgentWritable({ name: props.agentConfigId, scope: editor.data.scope, access: editor.data.access })
       : false;
   const title = readOnly
     ? t("dialog.detailTitle")
@@ -153,7 +153,7 @@ export function AgentEditorBody(
   useEffect(() => props.registerCloseHandler(requestClose), [props.registerCloseHandler, requestClose]);
   const submit = form.handleSubmit(
     async (next) => {
-      if (props.mode === "create" && !isValidAgentNameInput(next.name.trim())) {
+      if (!isValidAgentNameInput(next.name.trim())) {
         form.setError("name", { message: "invalid" });
         setActiveSection("identity");
         toast.warning(t("editor.validationSummary"));
@@ -201,7 +201,7 @@ export function AgentEditorBody(
     return (
       <AgentEditorLoadingShell
         mode={props.mode}
-        name={props.mode === "create" ? (props.defaultName ?? "") : props.agentName}
+        name={props.mode === "create" ? (props.defaultName ?? "") : props.agentConfigId}
         onClose={requestClose}
       />
     );

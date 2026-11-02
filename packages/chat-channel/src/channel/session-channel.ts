@@ -8,6 +8,7 @@ import { normalizeSessionCommand } from "./session-command";
 import type { SessionChannelDependencies, SessionConnection } from "./session-connection";
 import { SessionExpirations } from "./session-expirations";
 import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
+import { SessionRestoration } from "./session-restoration";
 import {
   type ActionSinks,
   type Command,
@@ -25,6 +26,8 @@ interface SessionBinding {
   generation: number;
   loading: boolean;
   confirmed: boolean;
+  runtimeIdentity?: string;
+  continuity?: object;
 }
 
 export class SessionChannel {
@@ -41,8 +44,10 @@ export class SessionChannel {
     }
   >();
   private readonly expirations: SessionExpirations;
+  private readonly restoration: SessionRestoration;
 
   constructor(private readonly dependencies: SessionChannelDependencies) {
+    this.restoration = new SessionRestoration(dependencies);
     this.expirations = new SessionExpirations(dependencies);
     this.coordinator = new CommandCoordinator({
       executeCommand: async (command, signal) => {
@@ -105,11 +110,21 @@ export class SessionChannel {
   ): Promise<void> {
     const command = normalizeSessionCommand(connection, rawAction);
     let binding = this.bindings.get(connection.rcsSessionId);
+    if (
+      binding &&
+      (binding.runtimeIdentity !== connection.runtimeIdentity ||
+        binding.continuity !== connection.getSessionContinuity?.())
+    ) {
+      this.disposeRcsSession(connection.rcsSessionId);
+      binding = undefined;
+    }
     if (!binding) {
       binding = {
         sessionId: connection.acpSessionId,
         loaded: connection.sessionLoaded,
         generation: 0,
+        runtimeIdentity: connection.runtimeIdentity,
+        continuity: connection.getSessionContinuity?.(),
         loading: false,
         confirmed: connection.sessionLoaded && connection.acpSessionId !== null,
       };
@@ -131,6 +146,12 @@ export class SessionChannel {
     this.expirations.dispose(rcsSessionId);
     this.bindings.delete(rcsSessionId);
     this.coordinator.disposeRcsSession(rcsSessionId);
+  }
+
+  /** Agent 断开时废弃确认并中止旧代次命令，页面刷新不走此路径。 */
+  invalidateRuntimeSession(rcsSessionId: string): void {
+    this.restoration.forget(rcsSessionId);
+    this.disposeRcsSession(rcsSessionId);
   }
 
   // ── CommandCoordinator 注入 ──
@@ -203,7 +224,7 @@ export class SessionChannel {
     }
 
     if (command.type === "load_session" || command.type === "resume_session") {
-      const shouldForward = await this.prepareLoadSession(
+      const shouldForward = await this.restoration.prepareLoad(
         connection,
         command.payload.sessionId,
         assertCurrent,
@@ -215,6 +236,7 @@ export class SessionChannel {
         binding.confirmed = true;
         context.origin.acpSessionId = connection.acpSessionId;
         context.origin.sessionLoaded = connection.sessionLoaded;
+        if (connection.acpSessionId) this.dependencies.syncSessionId(connection, connection.acpSessionId);
         return {};
       }
       binding.loading = true;
@@ -232,7 +254,10 @@ export class SessionChannel {
     let turnId: string | undefined;
     if (command.type === "send_prompt") {
       // 浏览器所见目标可能在外层队列等待期间过期；它只作前置条件，路由仍以确认绑定为准。
-      if (command.sessionId !== binding.sessionId) throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
+      if (command.sessionId !== binding.sessionId) {
+        this.dependencies.reportLog?.(`[SessionChannel] prompt target conflict: rcsSessionId=${command.rcsSessionId}`);
+        throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
+      }
       turnId = await this.writePromptText(connection, command.payload.content);
       assertCurrent();
       // 同一 relay 可承载多个 ACP 会话，出站目标必须来自本频道已确认绑定。
@@ -344,6 +369,7 @@ export class SessionChannel {
       context.origin.acpSessionId = command.sessionId;
       context.origin.sessionLoaded = true;
       this.dependencies.syncSessionId(connection, command.sessionId);
+      this.restoration.remember(connection, command.sessionId);
       return { sessionId: command.sessionId };
     }
     if (createReceipt) {
@@ -358,34 +384,12 @@ export class SessionChannel {
       context.origin.acpSessionId = createdSessionId;
       context.origin.sessionLoaded = true;
       this.dependencies.syncSessionId(connection, createdSessionId);
+      this.restoration.remember(connection, createdSessionId);
       return { turnId, sessionId: createdSessionId };
     }
     if (command.type === "create_session") binding.loading = false;
 
     return { turnId };
-  }
-
-  /** load_session 守卫：非法 sessionId 拒绝；同会话重复加载静默跳过（不重复 RPC） */
-  private async prepareLoadSession(
-    connection: SessionConnection,
-    sessionId: unknown,
-    assertCurrent: () => void,
-    allowRestore: boolean,
-  ): Promise<boolean> {
-    if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId.length > 256) {
-      throw new CommandExecutionError("ACTION.INVALID_STATE");
-    }
-
-    if (allowRestore && connection.acpSessionId === sessionId && connection.sessionLoaded) {
-      connection.acpSessionId = sessionId;
-      return false;
-    }
-
-    // 持久投影不证明当前 runtime 已加载该会话；只有活跃绑定的确认回执允许跳过 RPC。
-    const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, sessionId);
-    assertCurrent();
-    this.dependencies.replaceProjection(projection);
-    return true;
   }
 
   /** create_session：先同步运行环境，再换代 Chat/Session 投影，确保新会话冻结当前 Skills。 */

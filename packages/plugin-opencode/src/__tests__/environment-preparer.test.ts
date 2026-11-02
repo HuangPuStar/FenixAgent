@@ -72,10 +72,10 @@ describe("environment-preparer", () => {
       const parsed = JSON.parse(raw);
 
       expect(parsed.$schema).toBe("https://opencode.ai/config.json");
-      expect(parsed.default_agent).toBe("general");
+      expect(parsed.default_agent).toBe("fenix");
       expect(parsed.enabled_providers).toEqual(["openai"]);
-      expect(parsed.agent.general.prompt).toBe("You are helpful");
-      expect(parsed.agent.general.model).toBe("openai/gpt-4.1");
+      expect(parsed.agent.fenix.prompt).toBe("You are helpful");
+      expect(parsed.agent.fenix.model).toBe("openai/gpt-4.1");
       expect(parsed.model).toBe("openai/gpt-4.1");
       expect(parsed.provider.openai.npm).toBe("@ai-sdk/openai-compatible");
       expect(parsed.provider.openai.options.baseURL).toBe("https://api.openai.com/v1");
@@ -83,6 +83,16 @@ describe("environment-preparer", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
+  });
+
+  // 平台改名不能更换 OpenCode 内部 Agent 身份或生成第二个配置键。
+  test("keeps the same runtime config after renaming the platform agent", () => {
+    const spec = createLaunchSpec();
+    const before = buildOpencodeRuntimeConfig(spec, []);
+    const after = buildOpencodeRuntimeConfig({ ...spec, agent: { ...spec.agent, name: "renamed-agent" } }, []);
+
+    expect(after).toEqual(before);
+    expect(Object.keys(after.agent)).toEqual(["fenix"]);
   });
 
   // 准备运行目录（不再写 .env 文件）

@@ -44,6 +44,7 @@ import { Route as AgentPanelAlgorithmsRouteImport } from "./routes/agent/_panel/
 import { Route as AgentPanelAgentsRouteImport } from "./routes/agent/_panel/agents"
 import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agentId_.$sessionId"
 import { Route as AgentPanelModelGatewayUsageProviderIdRouteImport } from "./routes/agent/_panel/model-gateway-usage.$providerId"
+import { Route as AgentPanelMachineConnectionGuideRouteImport } from "./routes/agent/_panel/machine.connection-guide"
 import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
 import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
 import { Route as AgentPanelTicketsProjectIdNumberRouteImport } from "./routes/agent/_panel/tickets_.$projectId.$number"
@@ -227,6 +228,12 @@ const AgentPanelModelGatewayUsageProviderIdRoute =
     path: "/model-gateway-usage/$providerId",
     getParentRoute: () => AgentPanelRoute,
   } as any)
+const AgentPanelMachineConnectionGuideRoute =
+  AgentPanelMachineConnectionGuideRouteImport.update({
+    id: "/machine/connection-guide",
+    path: "/machine/connection-guide",
+    getParentRoute: () => AgentPanelRoute,
+  } as any)
 const AgentPanelChatAgentIdRoute = AgentPanelChatAgentIdRouteImport.update({
   id: "/chat/$agentId",
   path: "/chat/$agentId",
@@ -287,6 +294,7 @@ export interface FileRoutesByFullPath {
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent/": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/machine/connection-guide": typeof AgentPanelMachineConnectionGuideRoute
   "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/tickets/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
@@ -326,6 +334,7 @@ export interface FileRoutesByTo {
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/machine/connection-guide": typeof AgentPanelMachineConnectionGuideRoute
   "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/tickets/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
@@ -368,6 +377,7 @@ export interface FileRoutesById {
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
   "/agent/_panel/": typeof AgentPanelIndexRoute
   "/agent/_panel/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/_panel/machine/connection-guide": typeof AgentPanelMachineConnectionGuideRoute
   "/agent/_panel/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/_panel/chat/$agentId_/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/_panel/tickets_/$projectId/$number": typeof AgentPanelTicketsProjectIdNumberRoute
@@ -411,6 +421,7 @@ export interface FileRouteTypes {
     | "/agent/workflow"
     | "/agent/"
     | "/agent/chat/$agentId"
+    | "/agent/machine/connection-guide"
     | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
     | "/agent/tickets/$projectId/$number"
@@ -450,6 +461,7 @@ export interface FileRouteTypes {
     | "/agent/workflow"
     | "/agent"
     | "/agent/chat/$agentId"
+    | "/agent/machine/connection-guide"
     | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
     | "/agent/tickets/$projectId/$number"
@@ -491,6 +503,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/workflow"
     | "/agent/_panel/"
     | "/agent/_panel/chat/$agentId"
+    | "/agent/_panel/machine/connection-guide"
     | "/agent/_panel/model-gateway-usage/$providerId"
     | "/agent/_panel/chat/$agentId_/$sessionId"
     | "/agent/_panel/tickets_/$projectId/$number"
@@ -755,6 +768,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelModelGatewayUsageProviderIdRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/machine/connection-guide": {
+      id: "/agent/_panel/machine/connection-guide"
+      path: "/machine/connection-guide"
+      fullPath: "/agent/machine/connection-guide"
+      preLoaderRoute: typeof AgentPanelMachineConnectionGuideRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/chat/$agentId": {
       id: "/agent/_panel/chat/$agentId"
       path: "/chat/$agentId"
@@ -829,6 +849,7 @@ interface AgentPanelRouteChildren {
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
   AgentPanelIndexRoute: typeof AgentPanelIndexRoute
   AgentPanelChatAgentIdRoute: typeof AgentPanelChatAgentIdRoute
+  AgentPanelMachineConnectionGuideRoute: typeof AgentPanelMachineConnectionGuideRoute
   AgentPanelModelGatewayUsageProviderIdRoute: typeof AgentPanelModelGatewayUsageProviderIdRoute
   AgentPanelChatAgentIdSessionIdRoute: typeof AgentPanelChatAgentIdSessionIdRoute
   AgentPanelTicketsProjectIdNumberRoute: typeof AgentPanelTicketsProjectIdNumberRoute
@@ -856,6 +877,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,
   AgentPanelIndexRoute: AgentPanelIndexRoute,
   AgentPanelChatAgentIdRoute: AgentPanelChatAgentIdRoute,
+  AgentPanelMachineConnectionGuideRoute: AgentPanelMachineConnectionGuideRoute,
   AgentPanelModelGatewayUsageProviderIdRoute:
     AgentPanelModelGatewayUsageProviderIdRoute,
   AgentPanelChatAgentIdSessionIdRoute: AgentPanelChatAgentIdSessionIdRoute,

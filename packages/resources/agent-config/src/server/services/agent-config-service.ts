@@ -4,6 +4,7 @@ import type {
   AgentConfigCreateResult,
   AgentConfigRepository,
   AgentConfigRow,
+  AgentConfigUpdateData,
   AgentConfigWriteData,
   ScopedAgentConfigRow,
 } from "../repositories/agent-config-resource";
@@ -66,7 +67,7 @@ export interface AgentConfigService {
     ownerUserId: string;
     visibility: string;
   }): Promise<AgentConfigCreateResult | undefined>;
-  update(input: { resourceId: string; data: AgentConfigWriteData }): Promise<boolean>;
+  update(input: { resourceId: string; data: AgentConfigUpdateData }): Promise<boolean>;
   /** 删除资源行与其绑定 Environment（同一事务）；实例停止由 Facade 在此之前完成。 */
   remove(input: { resourceId: string; organizationId: string }): Promise<boolean>;
   /** 枚举绑定 Environment；停止实例与定位待重启实例都要用。 */

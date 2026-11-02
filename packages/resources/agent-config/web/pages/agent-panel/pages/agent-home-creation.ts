@@ -26,7 +26,10 @@ export type AgentCreationOutcome =
   | { status: "no-config" };
 
 /** 创建 agent 配置 → 创建或复用 environment → 返回可导航的聊天页目标。 */
-export async function createAgentAndResolveChatTarget(data: GenerationFormData): Promise<AgentCreationOutcome> {
+export async function createAgentAndResolveChatTarget(
+  data: GenerationFormData,
+  organizationId?: string,
+): Promise<AgentCreationOutcome> {
   // 0. 获取第一个可用模型，没有则报错
   const modelData = await unwrap(modelApi.get());
   const available = modelData.available;
@@ -53,7 +56,13 @@ export async function createAgentAndResolveChatTarget(data: GenerationFormData):
 
   // 2. 已存在时 create 不返回 id，需要查一次
   if (!agentConfigId) {
-    const detail = await unwrap(agentApi.get(data.name));
+    if (!organizationId) return { status: "no-config" };
+    const list = await unwrap(agentApi.list());
+    const matches = list.agents.filter(
+      (agent) => agent.name === data.name && agent.scope?.organizationId === organizationId,
+    );
+    if (matches.length !== 1) return { status: "no-config" };
+    const detail = await unwrap(agentApi.get(matches[0].id));
     agentConfigId = detail?.id;
   }
   if (!agentConfigId) {

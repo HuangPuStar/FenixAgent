@@ -123,10 +123,12 @@ async function renderACPMain(props: {
       onLoadSession: (sessionId: string) => {
         loaded.push(sessionId);
         props.onLoadSession?.(sessionId);
+        return true;
       },
       onResumeSession: (sessionId: string) => {
         resumed.push(sessionId);
         props.onResumeSession?.(sessionId);
+        return true;
       },
       onRenameSession: () => {},
       onDeleteSession: () => {},

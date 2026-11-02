@@ -8,10 +8,12 @@ import {
   ResourceAccessDeniedError,
   type ResourceAction,
   type ResourceScope,
+  ValidationError,
 } from "@fenix/platform-sdk";
 import type { AgentConfigWriteData, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
 import { AGENT_CONFIG_LIST_ORDER } from "../repositories/agent-config-resource";
 import type { AgentConfigService } from "../services/agent-config-service";
+import { isBuiltInAgent, isValidAgentName } from "../services/config/agent-config";
 
 /**
  * AgentConfig 的资源应用 Facade：授权编排 + 跨资源（Environment / 运行实例）编排。
@@ -41,6 +43,8 @@ export interface AgentConfigCreateInput {
 /** 更新输入；`publicReadable` 不传表示"只改配置，不动公开受众"。 */
 export interface AgentConfigUpdateOptions {
   readonly publicReadable?: boolean;
+  /** 新名称；省略时保留原名，内置名称不能改入或改出。 */
+  readonly name?: string;
 }
 
 /** 重启结果：绑定该 Agent 的 Environment 与已完成 runtime 重启的持久 Instance。 */
@@ -55,8 +59,7 @@ export interface AgentConfigRestartResult {
  * 路由与其它调用方只依赖本接口，不依赖 `AgentConfigFacade` 的继承结构或私有依赖；测试可以提供实现
  * 而不构造真类（见 `@fenix/agent-config/server/testing`）。
  *
- * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 用名称或资源键定位（用户看到的是名称），
- * 已发布的 `/api/agents/:id` 用资源 ID 定位；两者的授权与可见性判定完全一致。
+ * `/web` 与 `/api` 都以资源 ID 管理配置；名称入口保留给偏好与系统编排，授权与可见性判定一致。
  */
 export interface AgentConfigFacadeApi {
   list(
@@ -91,6 +94,17 @@ export interface AgentConfigFacadeApi {
     data: AgentConfigWriteData,
     options?: AgentConfigUpdateOptions,
   ): Promise<AuthorizedAgentConfig>;
+  /** 按数据库 ID 更新配置，保留与名称入口相同的授权与绑定语义。 */
+  updateById(
+    actor: ActorContext,
+    resourceId: string,
+    data: AgentConfigWriteData,
+    options?: AgentConfigUpdateOptions,
+  ): Promise<AuthorizedAgentConfig>;
+  /** 按数据库 ID 删除资源及其运行实例。 */
+  removeById(actor: ActorContext, resourceId: string): Promise<void>;
+  /** 按数据库 ID 重启运行实例。 */
+  restartInstancesById(actor: ActorContext, resourceId: string): Promise<AgentConfigRestartResult>;
   remove(actor: ActorContext, nameOrKey: string): Promise<void>;
   /** 重启绑定 Environment 下的持久 Instance runtime；需要 `use` 动作（成员默认具备）。 */
   restartInstances(actor: ActorContext, nameOrKey: string): Promise<AgentConfigRestartResult>;
@@ -205,10 +219,38 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     data: AgentConfigWriteData,
     options: AgentConfigUpdateOptions = {},
   ): Promise<AuthorizedAgentConfig> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.updateRow(actor, await this.requireVisible(actor, nameOrKey), data, options);
+  }
+
+  /** 按 ID 定位后复用配置写入编排。 */
+  async updateById(
+    actor: ActorContext,
+    resourceId: string,
+    data: AgentConfigWriteData,
+    options: AgentConfigUpdateOptions = {},
+  ): Promise<AuthorizedAgentConfig> {
+    return this.updateRow(actor, await this.requireVisibleById(actor, resourceId), data, options);
+  }
+
+  private async updateRow(
+    actor: ActorContext,
+    row: ScopedAgentConfigRow,
+    data: AgentConfigWriteData,
+    options: AgentConfigUpdateOptions,
+  ): Promise<AuthorizedAgentConfig> {
+    const nameOrKey = row.id;
     await this.requireAction(actor, "update", row.id);
 
-    const updated = await this.service.update({ resourceId: row.id, data });
+    if (options.name !== undefined) {
+      if (!isValidAgentName(options.name)) throw new ValidationError("Invalid agent name");
+      if (options.name !== row.name && (isBuiltInAgent(row.name) || isBuiltInAgent(options.name))) {
+        throw new ForbiddenError("Cannot rename from or to a built-in agent name");
+      }
+    }
+    const updated = await this.service.update({
+      resourceId: row.id,
+      data: { ...data, ...(options.name === undefined ? {} : { name: options.name }) },
+    });
     if (!updated) throw new NotFoundError(`Agent '${nameOrKey}' not found`);
 
     if (options.publicReadable !== undefined) {
@@ -227,7 +269,18 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
    * spawn 恢复），比"先删后停、stop 失败 → 实例彻底孤儿"更安全。
    */
   async remove(actor: ActorContext, nameOrKey: string): Promise<void> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.removeRow(actor, await this.requireVisible(actor, nameOrKey));
+  }
+
+  /** 按 ID 删除，内置名称保护依据真实资源行。 */
+  async removeById(actor: ActorContext, resourceId: string): Promise<void> {
+    const row = await this.requireVisibleById(actor, resourceId);
+    if (isBuiltInAgent(row.name)) throw new ForbiddenError(`Cannot delete built-in agent '${row.name}'`);
+    return this.removeRow(actor, row);
+  }
+
+  private async removeRow(actor: ActorContext, row: ScopedAgentConfigRow): Promise<void> {
+    const nameOrKey = row.id;
     await this.requireAction(actor, "delete", row.id);
 
     const environmentIds = await this.service.listBoundEnvironmentIds({
@@ -255,12 +308,24 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
    * 被**保持**而不是收紧——收紧的是配置写入（见资源注册的动作收敛说明）。
    */
   async restartInstances(actor: ActorContext, nameOrKey: string): Promise<AgentConfigRestartResult> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.restartRow(actor, await this.requireVisible(actor, nameOrKey));
+  }
+
+  /** 按 ID 重启，复用原有 runtime 生命周期。 */
+  async restartInstancesById(actor: ActorContext, resourceId: string): Promise<AgentConfigRestartResult> {
+    return this.restartRow(actor, await this.requireVisibleById(actor, resourceId));
+  }
+
+  private async restartRow(actor: ActorContext, row: ScopedAgentConfigRow): Promise<AgentConfigRestartResult> {
     await this.requireAction(actor, "use", row.id);
 
+    // `use` 也由公开受众授予：重启只作用于调用方当前组织的绑定环境，否则跨组织用户能停掉资源
+    // 所属组织的实例，而前端对话框展示的是调用方自己的实例。
+    const organizationId = actor.activeOrganizationId;
+    if (organizationId === undefined) return { environmentIds: [], restartedInstanceIds: [] };
     const environmentIds = await this.service.listBoundEnvironmentIds({
       resourceId: row.id,
-      organizationId: row.organizationId,
+      organizationId,
     });
     if (environmentIds.length === 0) return { environmentIds: [], restartedInstanceIds: [] };
 
@@ -284,6 +349,13 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
       if (internal) return internal;
     }
     return this.service.findByName({ access, name: nameOrKey });
+  }
+
+  private async requireVisibleById(actor: ActorContext, resourceId: string): Promise<ScopedAgentConfigRow> {
+    const access = await this.listConstraint(actor, "read");
+    const row = await this.service.findById({ access, resourceId });
+    if (!row) throw new NotFoundError(`Agent '${resourceId}' not found`);
+    return row;
   }
 
   private async requireVisible(actor: ActorContext, nameOrKey: string): Promise<ScopedAgentConfigRow> {

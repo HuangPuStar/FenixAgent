@@ -65,8 +65,7 @@ export interface McpServerUpdateOptions {
  * 路由与其它调用方只依赖本接口，不依赖 `McpServerFacade` 的继承结构或私有依赖；测试因此可以提供
  * 实现而不构造真类（见 `@fenix/resource-mcp/server/testing`）。
  *
- * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 用名称或资源键定位（用户看到的是名称），
- * 已发布的 `/api/mcp/:id` 用资源 ID 定位；两者的授权与可见性判定完全一致。
+ * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 与 `/api/mcp/:id` 用资源 ID 定位，名称入口供内部配置解析；两者的授权与可见性判定完全一致。
  */
 export interface McpServerFacadeApi {
   list(
@@ -92,6 +91,12 @@ export interface McpServerFacadeApi {
   ): Promise<string>;
   remove(actor: ActorContext, nameOrKey: string): Promise<void>;
   removeById(actor: ActorContext, resourceId: string): Promise<void>;
+  /** 按资源 ID 启用或禁用。 */
+  setEnabledById(actor: ActorContext, resourceId: string, enabled: boolean): Promise<string>;
+  /** 按资源 ID 读取缓存工具。 */
+  listToolsById(actor: ActorContext, resourceId: string): Promise<{ name: string; tools: McpToolRow[] }>;
+  /** 按资源 ID 保存检测工具。 */
+  saveInspectedToolsById(actor: ActorContext, resourceId: string, tools: readonly InspectedTool[]): Promise<string>;
   setEnabled(actor: ActorContext, nameOrKey: string, enabled: boolean): Promise<string>;
   listTools(actor: ActorContext, nameOrKey: string): Promise<{ name: string; tools: McpToolRow[] }>;
   saveInspectedTools(actor: ActorContext, nameOrKey: string, tools: readonly InspectedTool[]): Promise<string>;
@@ -211,7 +216,16 @@ export class McpServerFacade extends AuthorizedResourceFacade implements McpServ
 
   /** 启用/禁用资源。 */
   async setEnabled(actor: ActorContext, nameOrKey: string, enabled: boolean): Promise<string> {
-    const row = await this.getWritable(actor, nameOrKey);
+    return this.setEnabledRow(await this.getWritable(actor, nameOrKey), enabled);
+  }
+
+  /** 按 ID 定位后复用 setEnabled 操作。 */
+  async setEnabledById(actor: ActorContext, resourceId: string, enabled: boolean): Promise<string> {
+    return this.setEnabledRow(await this.getWritableById(actor, resourceId), enabled);
+  }
+
+  private async setEnabledRow(row: ScopedMcpServerRow, enabled: boolean): Promise<string> {
+    const nameOrKey = row.id;
     const updated = await this.service.setEnabled({ resourceId: row.id, enabled });
     if (!updated) throw new NotFoundError(`MCP server '${nameOrKey}' not found`);
     return row.name;
@@ -219,14 +233,34 @@ export class McpServerFacade extends AuthorizedResourceFacade implements McpServ
 
   /** 读取缓存的 tools；只读动作即可（其他组织的公开资源也能看工具清单）。 */
   async listTools(actor: ActorContext, nameOrKey: string): Promise<{ name: string; tools: McpToolRow[] }> {
-    const row = await this.requireVisible(actor, nameOrKey);
+    return this.listToolsRow(await this.requireVisible(actor, nameOrKey));
+  }
+
+  /** 按 ID 定位后复用 listTools 操作。 */
+  async listToolsById(actor: ActorContext, resourceId: string): Promise<{ name: string; tools: McpToolRow[] }> {
+    return this.listToolsRow(await this.requireVisibleById(actor, resourceId));
+  }
+
+  private async listToolsRow(row: ScopedMcpServerRow): Promise<{ name: string; tools: McpToolRow[] }> {
     const tools = await this.service.listTools({ organizationId: row.organizationId, serverName: row.name });
     return { name: row.name, tools };
   }
 
   /** 保存检测到的 tools（替换语义）；检测本身（网络/进程探测）留在 route 的编排里。 */
   async saveInspectedTools(actor: ActorContext, nameOrKey: string, tools: readonly InspectedTool[]): Promise<string> {
-    const row = await this.getWritable(actor, nameOrKey);
+    return this.saveInspectedToolsRow(await this.getWritable(actor, nameOrKey), tools);
+  }
+
+  /** 按 ID 定位后复用 saveInspectedTools 操作。 */
+  async saveInspectedToolsById(
+    actor: ActorContext,
+    resourceId: string,
+    tools: readonly InspectedTool[],
+  ): Promise<string> {
+    return this.saveInspectedToolsRow(await this.getWritableById(actor, resourceId), tools);
+  }
+
+  private async saveInspectedToolsRow(row: ScopedMcpServerRow, tools: readonly InspectedTool[]): Promise<string> {
     await this.service.replaceTools({
       organizationId: row.organizationId,
       serverName: row.name,

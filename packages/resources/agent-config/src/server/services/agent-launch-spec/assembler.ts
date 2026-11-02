@@ -54,7 +54,7 @@ export async function buildAgentLaunchSpec(
 
   // Phase 1: 先并行拿到构造 launchSpec 的原始资源，确保错误尽早暴露。
   const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
-    resolveModelConfig(deps, agentConfig, userId),
+    resolveModelConfig(deps, { agentConfig, organizationId, userId }),
     loadAgentSkills(deps, agentConfig),
     loadAgentMcpServers(deps, agentConfig),
     deps.associations.listKnowledgeBindings(agentConfig.id),

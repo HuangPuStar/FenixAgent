@@ -79,6 +79,10 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（knowledge 资源预览传递依赖），纯函数"],
   ["remark-gfm", "GitHub 风格 Markdown 插件（同上）"],
   ["streamdown", "流式 Markdown 渲染（ui-components chat 层传递依赖）"],
+  [
+    "@peri-code/sdk",
+    "OpenUI 围栏切分与画布渲染（ui-components chat 层传递依赖；openui 出口为纯 TS + React，渲染器经动态 import 懒加载），浏览器安全",
+  ],
   ["mammoth", "docx 转 HTML（ui-components 文件预览传递依赖），纯浏览器实现"],
   ["recharts", "图表渲染（ui-components ui/chart 与 model-management 用量页传递依赖），纯浏览器实现"],
   ["xlsx", "表格解析（ui-components 文件预览传递依赖），纯浏览器实现"],

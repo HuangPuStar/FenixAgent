@@ -24,7 +24,7 @@ interface AgentSidebarProps {
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onNavigate: (pageId: string) => void;
   onCreateAgent?: () => void;
-  onEditAgent?: (agentName: string) => void;
+  onEditAgent?: (agentConfigId: string) => void;
   onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
 

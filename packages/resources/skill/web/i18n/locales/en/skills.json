@@ -64,9 +64,14 @@
     "contentHint": "Markdown-formatted skill instructions",
     "contentPlaceholder": "Enter Markdown content...",
     "nameRequired": "Name cannot be empty",
+    "nameInvalid": "Use 1–64 lowercase ASCII letters, digits or '-'; do not start or end with '-', or include '--'",
     "contentRequired": "Content cannot be empty"
   },
   "upload": {
+    "noSkillFolders": "No skill folders found",
+    "missingSkillMdIn": "Missing SKILL.md in: {{names}}",
+    "duplicateSkillNames": "Duplicate skill names in upload: {{names}}",
+    "invalidSkillNames": "Invalid skill folder names: {{names}}. {{format}}",
     "selectFolder": "Click to select a folder containing skills",
     "selectFolderHint": "Each subdirectory will be recognized as a skill, and must contain SKILL.md",
     "selectedDirs": "Selected {{count}} directories",

@@ -45,7 +45,12 @@ export const ApiAgentUpsertBodySchema = z
 
 export const ApiAgentUpdateBodySchema = ApiAgentUpsertBodySchema.omit({ name: true })
   .extend({
-    name: z.string().min(1).max(64).optional().describe("更新后的 Agent 名称。"),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe("新名称；同组织内须唯一，内置名称不能改入或改出。省略时保留原名。"),
   })
   .describe("更新 Agent 请求体。");
 

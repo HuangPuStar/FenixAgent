@@ -17,12 +17,11 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createKnowledgeMcpServer(environment: {
-  agentConfigId: string | null;
-  userId: string | null;
-  organizationId: string | null;
-  secret: string;
-}) {
+/**
+ * 只接 Agent 标识：知识库的授权范围就是 Agent 的绑定，环境所属的调用方身份不参与判定
+ * （跨组织运行共享 Agent 时两者天生不同）。
+ */
+function createKnowledgeMcpServer(environment: { agentConfigId: string | null }) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
@@ -91,8 +90,6 @@ function createKnowledgeMcpServer(environment: {
         agentConfigId: environment.agentConfigId,
         query: params.query,
         topK: params.topK ?? 5,
-        userId: environment.userId ?? undefined,
-        organizationId: environment.organizationId ?? undefined,
         similarityThreshold: params.similarityThreshold,
         vectorSimilarityWeight: params.vectorSimilarityWeight,
         rerankId: params.rerankId,
@@ -126,8 +123,6 @@ function createKnowledgeMcpServer(environment: {
       const result = await readKnowledgeResourceForAgent({
         agentConfigId: environment.agentConfigId,
         resourceId,
-        userId: environment.userId ?? undefined,
-        organizationId: environment.organizationId ?? undefined,
       });
       // 内容为空时给出明确提示，帮助 agent 判断下一步操作
       if (!result.content && result.chunkCount === 0) {

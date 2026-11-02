@@ -308,7 +308,13 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
           adaptWs(ws).close(4008, "rate_limited");
           return;
         }
-        throw err;
+        if (err instanceof AppError && (err.statusCode === 401 || err.statusCode === 403)) {
+          adaptWs(ws).close(4003, "unauthorized");
+          return;
+        }
+        logError("[YJS-WS] Authentication failed", err);
+        adaptWs(ws).close(1011, "authentication unavailable");
+        return;
       }
       if (!authResult?.user) {
         adaptWs(ws).close(4003, "unauthorized");
@@ -426,7 +432,13 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
           adaptWs(ws).close(4008, "rate_limited");
           return;
         }
-        throw err;
+        if (err instanceof AppError && (err.statusCode === 401 || err.statusCode === 403)) {
+          adaptWs(ws).close(4003, "unauthorized");
+          return;
+        }
+        logError("[Relay-WS] Authentication failed", err);
+        adaptWs(ws).close(1011, "authentication unavailable");
+        return;
       }
       if (!authResult?.user || !authResult.authContext) {
         adaptWs(ws).close(4003, "unauthorized");

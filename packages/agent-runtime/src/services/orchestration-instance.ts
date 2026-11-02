@@ -439,6 +439,7 @@ async function buildAgentLaunchSpecForCore(
   });
   // 配置不可读时不在这里报错：组装端口有自己的可见性判定，且错误语义必须与它一致
   // （`NotFoundError` + 同一个 message），否则同一故障会随"哪一步先读"改变形态。
+  // 显式机器是 Agent 的依赖，跨组织共享时照常回填：实例就运行在这台机器上。
   if (projection?.node?.kind === "machine") {
     // 运行时入口的服务聚合会回指本模块；仅在实例已进入启动流程后加载，避免模块初始化环。
     const { setAgentMachineCache } = await import("../server/transport/acp-ws-handler");

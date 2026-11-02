@@ -170,8 +170,8 @@ stateDiagram-v2
 
 1. `instanceUid` 是持久身份；`runtimeGeneration + serverEpoch` 标识一次真实运行实体。`operationId` 只标识当前操作所有权。stop/delete 推进操作身份，不改变尚未停止实体的运行身份，因此停止期间的机器断连仍能关联原实体。
 2. 高优先级 stop/delete 取消旧启动后，等待启动及其按原运行代次执行的补偿结束，再确认当前实体停止。启动桥接在 controller、LaunchSpec、Core 启动与 supplement 注册边界检查取消，本地与远程启动均携带运行身份。补偿失败保留 `unknown` 与原始错误，不返回已停止。
-3. `unknown` 拒绝自动 ensure，允许显式 stop/restart/delete 重新确认。runtime 删除阶段失败释放本次删除门禁；DB 删除失败按 `operationId` 恢复门禁，旧操作不能解除另一轮删除。
-4. 本地死亡经运行身份回收，idle 与 Workflow 自动收尾经公共 `reclaimInstance(id, organizationId, runtimeGeneration)` 进入 `reclaimRuntime`；回收不建立手动停止意图，后续 ensure 可启动新代。手动 stop 建立的禁止自动启动意图只有显式 restart 成功才解除。running 快捷路径同时核对执行投影，投影已确认不存在时重新启动。
+3. `unknown` 拒绝自动 ensure，允许显式 start/stop/restart/delete 重新确认；start 必须先确认旧运行实体已停止。runtime 删除阶段失败释放本次删除门禁；DB 删除失败按 `operationId` 恢复门禁，旧操作不能解除另一轮删除。
+4. 本地死亡经运行身份回收，idle 与 Workflow 自动收尾经公共 `reclaimInstance(id, organizationId, runtimeGeneration)` 进入 `reclaimRuntime`；回收不建立手动停止意图，后续 ensure 可启动新代。手动 stop 建立的禁止自动启动意图在主动进入（start）或显式 restart 成功后解除；后台重连、API 和 Workflow 的 ensure 不解除。running 快捷路径同时核对执行投影，投影已确认不存在时重新启动。start 复用已就绪或正在正常启动的实体，restart 则停止原实体后启动新代。
 5. 机器断连事件按实际运行代次标记 `unknown`，clean-slate 只确认对应机器旧 runtime 已全部终止。在途操作持有槽位时延后复位，操作释放后提交 `stopped`。确认终止同时释放该实例尚未结算的执行配额。
 
 ## 4. 双层启动模型与 LaunchSpec
@@ -218,6 +218,8 @@ sequenceDiagram
 **双份构建过渡态（D5 记录）**：编排域 LaunchSpec 只有上述扁平视图；运行时字段（密钥、skill 下载 token、MCP 详细配置）由宿主 `buildAgentLaunchSpecForCore` 从 DB 重建后经 core 下发。当前存在"双份构建"，收敛计划见 PRD（Phase C）。
 
 LaunchSpec 不包含 `agentNodeId`、Machine 本机绝对路径、`instanceId`、ACP session ID、聊天内容或 YJS 数据。敏感运行凭据仅经认证信道传递，禁止写入日志、前端响应或持久化记录。
+
+OpenCode 的平台主 Agent 键固定为 `fenix`，不随 AgentConfig 展示名称变化；历史失效键的恢复统一由 OpenCode 插件的连接适配入口处理，acp-link 不承载恢复规则。
 
 ### 4.3 Machine 运行面
 
@@ -315,7 +317,7 @@ Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentControl
 | relay 连接或会话握手失败 | 归还本消费者租约；未发 prompt 可释放执行准入，保留持久 runtime | 脱敏错误；握手超时或缺少 ID 明确失败 |
 | turn RPC 错误 / 取消 / 传输失败 / EOF | 统一终态分类；仅明确正常 stopReason 成功。取消发送 session/cancel；未确认终止继续持有执行额度 | 有界失败，不补成功 end_turn |
 | AgentNode 运行中断线 | 节点断连即终态；宿主断连对账清理实例（§6） | 返回当前状态，不伪造运行中 |
-| stop 失败或超时 | Coordinator 保留 unknown；显式 stop/restart/delete 可重新确认 | 抛出停止未确认错误 |
+| stop 失败或超时 | Coordinator 保留 unknown；显式 start/stop/restart/delete 可重新确认 | 抛出停止未确认错误 |
 | HTTP / workflow 静默超时 | 取消等待中的 next、请求取消自身 turn，归还消费资源；未确认停止的执行额度继续保留 | HTTP 504 / SSE error；workflow NODE_TIMEOUT |
 | workflow relay 关闭 | 识别 `relay_closed` → exit_code=1，engine 按 NODE_FAILED 重试自愈 | 有界失败 |
 
@@ -371,7 +373,7 @@ errorPlugin 成为该路由错误出口的单一入口，且同时满足三条�
 
 ### 场景 C：Workflow 复用与清理
 
-workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后仍需显式 restart。超时或断连返回失败，执行终止未确认时保留执行额度。
+workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后须由用户主动进入或显式 restart 成功后才能恢复。超时或断连返回失败，执行终止未确认时保留执行额度。
 
 ### 场景 D：停止与回收
 

@@ -44,6 +44,7 @@ class FakeWebSocket {
   open(): void {
     this.readyState = FakeWebSocket.OPEN;
     this.onopen?.();
+    this.receiveFromServer({ type: "yjs:command-epoch", epoch: "11111111-1111-4111-8111-111111111111" });
   }
 
   closeFromServer(code = 1006, reason = "connection_lost"): void {
@@ -507,6 +508,16 @@ describe("createYjsWsClient", () => {
     client.connect();
     FakeWebSocket.instances[0]?.closeFromServer(4004, "env not found");
 
+    expect(states).toEqual(["connecting", "error"]);
+    expect(timers).toHaveLength(0);
+  });
+
+  // 鉴权拒绝应直接终止，而不是不断重复使用相同凭据重连。
+  test("4003 关闭码不安排重连且进入 error 终态", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4003, "unauthorized");
     expect(states).toEqual(["connecting", "error"]);
     expect(timers).toHaveLength(0);
   });

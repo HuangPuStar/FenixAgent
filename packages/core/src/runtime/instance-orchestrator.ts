@@ -8,6 +8,7 @@ import type {
   RefreshInstanceEnvironmentRequest,
 } from "../types/launch-request";
 import type { RuntimeInstanceSnapshot } from "../types/runtime-instance";
+import { disposeRelayContinuity } from "./relay-continuity";
 import { createRelayLease, RuntimeRelayConnection } from "./relay-lease";
 import type { RuntimeInstanceStore } from "./runtime-instance-store";
 
@@ -391,6 +392,7 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         relayConnections.delete(runtimeEntry.runtime);
         await pendingRelay?.close();
         if (runtimeEntry.relay?.state === "open") {
+          disposeRelayContinuity(runtimeEntry.relay);
           await runtimeEntry.relay.close();
         }
         await runtimeEntry.runtime.stopInstance({

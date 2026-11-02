@@ -38,6 +38,6 @@ describe("AgentFormDialog SSR 初始展示", () => {
 
   // 编辑模式同样通过 Sheet Portal 在客户端挂载，SSR 不应访问浏览器 API 或输出悬浮面板。
   test("编辑模式服务端渲染保持为空", () => {
-    expect(renderDialog({ open: true, mode: "edit", agentName: "agent-a", onOpenChange: () => {} })).toBe("");
+    expect(renderDialog({ open: true, mode: "edit", agentConfigId: "agent-a", onOpenChange: () => {} })).toBe("");
   });
 });

@@ -74,6 +74,9 @@ export function isTerminalWebSocketCloseCode(code: number): boolean {
   return TERMINAL_CLOSE_CODES.has(code);
 }
 
+/** 为单个 server 的 SDK 连接注入适配；不修改共享原型或其他 server 的连接。 */
+export type AcpConnectionAdapter = (connection: acp.ClientSideConnection) => acp.ClientSideConnection;
+
 export interface ServerConfig {
   port: number;
   host: string;
@@ -81,6 +84,8 @@ export interface ServerConfig {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  /** 可选的连接适配入口；未设置时直接使用原始 SDK 连接。 */
+  adaptConnection?: AcpConnectionAdapter;
   rcsUrl?: string;
   rcsSecret?: string;
   tenantId?: string;
@@ -1190,7 +1195,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const output = Readable.toWeb(agentProcess.stdout!) as unknown as ReadableStream<Uint8Array>;
 
       const stream = acp.ndJsonStream(input, output);
-      const connection = new acp.ClientSideConnection((_agent) => createClient(state), stream);
+      const rawConnection = new acp.ClientSideConnection((_agent) => createClient(state), stream);
+      const connection = config.adaptConnection ? config.adaptConnection(rawConnection) : rawConnection;
 
       state.connection = connection;
 
@@ -1419,8 +1425,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     bindSession(ws, sessionId);
     try {
       const sessionCwd = (params.cwd as string) || cwd;
-      // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface but not resolved
-      const result = await state.connection.unstable_resumeSession({
+      const result = await state.connection.resumeSession({
         sessionId,
         cwd: sessionCwd,
       });

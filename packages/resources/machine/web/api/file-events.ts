@@ -48,7 +48,7 @@ export function buildFileEventsUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${protocol}//${window.location.host}/web/file-events`;
   const organizationId = readActiveOrgId();
-  return organizationId ? `${base}?active_org_id=${encodeURIComponent(organizationId)}` : base;
+  return organizationId ? `${base}?activeOrganizationId=${encodeURIComponent(organizationId)}` : base;
 }
 
 /**

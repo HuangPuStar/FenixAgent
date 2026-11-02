@@ -45,6 +45,20 @@ describe("getSkillFormValidationError", () => {
   test("returns null when name and content are both present", () => {
     expect(getSkillFormValidationError("demo-skill", "# Skill")).toBeNull();
   });
+
+  // 前端拒绝非 ASCII kebab-case 和越界名称，避免提交后才得知格式错误。
+  test.each([
+    "中文",
+    "Demo",
+    "demo_skill",
+    "demo--skill",
+    "-demo",
+    "demo-",
+    "demo ",
+    "a".repeat(65),
+  ])("rejects invalid skill name %s", (name) => {
+    expect(getSkillFormValidationError(name, "# Skill")).toBe("form.nameInvalid");
+  });
 });
 
 describe("skill catalog filtering", () => {

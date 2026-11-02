@@ -522,7 +522,13 @@ describe("normalizeAcpSessionUpdate 映射", () => {
         contentType: SEMANTIC_CONTENT_TYPE,
         semantic: {
           kind: "tool",
-          payload: { entityId: "tool_1", toolCallId: "tool_1", metadata: { title: "Bash", status: "running" } },
+          // 工具首帧必须在文本 cursor 处写有序边界，供新投影精确切段。
+          payload: {
+            entityId: "tool_1",
+            toolCallId: "tool_1",
+            metadata: { title: "Bash", status: "running" },
+            boundary: true,
+          },
         },
       },
     ]);

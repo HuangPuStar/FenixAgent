@@ -3,6 +3,7 @@ import { DocManager, getSessionInfo } from "@fenix/chat-channel/server";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import * as Y from "yjs";
 import { createAcpRoutes } from "../routes/acp";
+import type { AcpRouteDependencies } from "../routes/dependencies";
 import type { EnvironmentRecord } from "../runtime";
 import {
   getChatChannelController,
@@ -46,7 +47,11 @@ export async function eventually(check: () => boolean): Promise<void> {
 }
 
 /** 用真实路由 hooks、入站队列和 ChatController 验证接缝；只替换认证、仓储和 Agent 进程。 */
-export async function createYjsRouteFixture(bigHistory = false, syncEnabled = false) {
+export async function createYjsRouteFixture(
+  bigHistory = false,
+  syncEnabled = false,
+  authenticateRequest: AcpRouteDependencies["authenticateRequest"] = createStubAuthenticateRequest(),
+) {
   initializeAgentRuntimeModuleConfig();
   resetChatChannelBootstrap();
   setTestAuth({ organizationId: "org-route", userId: "user-route" });
@@ -100,6 +105,7 @@ export async function createYjsRouteFixture(bigHistory = false, syncEnabled = fa
   setChatChannelBootstrapDeps({
     docManager: manager,
     ensureRunning: async () => "instance-route",
+    getRuntimeIdentity: () => JSON.stringify(["route-test", 1]),
     connectAgentRelay: async () => ({
       state: "open",
       send: (message) => {
@@ -141,7 +147,7 @@ export async function createYjsRouteFixture(bigHistory = false, syncEnabled = fa
   });
   const app = createAcpRoutes({
     authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin(),
-    authenticateRequest: createStubAuthenticateRequest(),
+    authenticateRequest,
   });
   const route = (app.routes as unknown as RouteView[]).find(
     (entry) => entry.method === "WS" && entry.path === "/acp/yjs/:agentId",

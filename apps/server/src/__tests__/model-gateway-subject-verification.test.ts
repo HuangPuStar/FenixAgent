@@ -16,6 +16,9 @@ import { createModelGatewaySubjectVerification } from "../services/model-gateway
  * 覆盖点：五种拒绝原因各自的触发条件与顺序早退、非权限异常原样上抛（不得伪装成"权限已被收回"），
  * 以及放行路径下 actor 是否携带**全量**成员关系（身份投影的形态要求：授权只读其中"当前组织"那一条，
  * 但主体必须整体带上，只带当前组织一项等于丢失投影）。
+ *
+ * 成员关系不是硬门槛：公开共享的 Agent 允许其他组织的用户运行，`use` 由公开受众授予。成员关系只在
+ * 授权拒绝后决定诊断原因（非成员 vs 权限被收回），两者对应不同的吊销处置。
  */
 
 const INPUT = { organizationId: "org-1", userId: "user-1", agentConfigId: "agent-1" } as const;
@@ -45,6 +48,15 @@ function createSubjectVerification(
     },
   });
   return { port, authorizeCalls, ownershipReads };
+}
+
+/** 非成员身份：用户与组织存在，但成员关系里没有当前组织（跨组织公开共享场景）。 */
+function stubNonMemberIdentity() {
+  stubIdentityDirectory({
+    getUser: async () => ({ id: "user-1", name: "u", email: "u@example.test" }),
+    getOrganization: async () => ({ id: "org-1", name: "o" }),
+    listMemberships: async () => [{ organizationId: "org-2", role: "member" }],
+  });
 }
 
 /** 补齐「存在用户 / 存在组织 / 成员关系」三项最小身份数据，供拒绝原因靠后的用例共用。 */
@@ -88,26 +100,37 @@ describe("模型网关主体复验", () => {
     expect(ownershipReads).toHaveLength(0);
   });
 
-  // 非成员是权限问题而非主体消失：原因必须与 USER_NOT_FOUND 区分，否则上游凭据会被误删。
-  test("非组织成员时返回 MEMBERSHIP_NOT_FOUND", async () => {
-    stubIdentityDirectory({
-      getUser: async () => ({ id: "user-1", name: "u", email: "u@example.test" }),
-      getOrganization: async () => ({ id: "org-1", name: "o" }),
-      listMemberships: async () => [{ organizationId: "org-2", role: "member" }],
-    });
+  // 公开共享的 Agent 必须能被其他组织运行：非成员不再早退，放行结论来自公开受众的 use 动作。
+  test("非组织成员但授权放行时返回 valid（公开共享 Agent 可跨组织运行）", async () => {
+    stubNonMemberIdentity();
     const { port, authorizeCalls } = createSubjectVerification();
 
-    expect(await port.verify(INPUT)).toEqual({ valid: false, reason: "MEMBERSHIP_NOT_FOUND" });
-    expect(authorizeCalls).toHaveLength(0);
+    expect(await port.verify(INPUT)).toEqual({ valid: true });
+    expect(authorizeCalls).toHaveLength(1);
+    expect(authorizeCalls[0]).toMatchObject({ action: "use", resourceId: "agent-1" });
   });
 
-  // Agent 归属其它组织时对本次复验等同于不存在——不得把"别人的 Agent"算作可达。
-  test("Agent 归属其它组织时返回 AGENT_NOT_FOUND", async () => {
+  // 非成员且授权拒绝：原因必须与 USER_NOT_FOUND 区分（权限问题而非主体消失），否则上游凭据会被误删。
+  test("非组织成员且授权拒绝时返回 MEMBERSHIP_NOT_FOUND", async () => {
+    stubNonMemberIdentity();
+    const { port, authorizeCalls } = createSubjectVerification({
+      authorize: async () => {
+        throw new ResourceAccessDeniedError();
+      },
+    });
+
+    expect(await port.verify(INPUT)).toEqual({ valid: false, reason: "MEMBERSHIP_NOT_FOUND" });
+    expect(authorizeCalls).toHaveLength(1);
+  });
+
+  // 输入的 organizationId 是运行侧组织（调用方），与 Agent 归属本来就不同：不得据此判成不存在。
+  test("Agent 归属其它组织时照常进入 use 授权并放行", async () => {
     stubMemberIdentity();
     const { port, authorizeCalls } = createSubjectVerification({ ownerOrganizationId: "org-2" });
 
-    expect(await port.verify(INPUT)).toEqual({ valid: false, reason: "AGENT_NOT_FOUND" });
-    expect(authorizeCalls).toHaveLength(0);
+    expect(await port.verify(INPUT)).toEqual({ valid: true });
+    expect(authorizeCalls).toHaveLength(1);
+    expect(authorizeCalls[0]).toMatchObject({ action: "use", resourceId: "agent-1" });
   });
 
   // Agent 行已删除时同样是 AGENT_NOT_FOUND：归属读取返回 undefined 不能被当成"无归属即放行"。

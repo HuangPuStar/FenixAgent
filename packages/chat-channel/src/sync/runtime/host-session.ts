@@ -390,7 +390,8 @@ export async function createSyncHostSession(input: {
           turnId,
         });
       case "tool_call_started":
-        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
+        // 内部 started 与标准 ACP tool_call 同义：ingress 据此在文本 cursor 处写有序边界标记。
+        return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_started", turnId });
       case "tool_call_updated":
         return normalizeAcpSessionUpdate({ ...update, sessionUpdate: "tool_call_update", turnId });
       // 私有结果/错误帧的终态由帧类型表达；不能退化成 tool_call_update，否则无 status 时永远 running。

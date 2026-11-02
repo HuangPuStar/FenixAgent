@@ -2,8 +2,8 @@
  * skills.ts — Skill 配置域 API 模块
  *
  * 封装 Skill 的 CRUD 与批量上传操作。
- * 后端使用 RESTful 风格（GET/POST/PUT/DELETE），域模块内部抽象为具名方法。
- * 上传使用 FormData，PUT 上传文件到 Skill 目录。
+ * 后端使用 RESTful 风格（GET/POST/PATCH/DELETE），域模块内部抽象为具名方法。
+ * 上传使用 POST multipart/FormData。
  */
 
 import { ApiError, request } from "@fenix/web-runtime/api/request";
@@ -30,6 +30,7 @@ interface SkillListResult {
 
 /** 创建/更新响应：与列表项同一套授权视图，另带归属组织展示名。 */
 interface SkillSaveResult extends Partial<ResourceAccessView> {
+  id: string;
   name: string;
   organizationName?: string;
 }
@@ -38,30 +39,30 @@ export const skillConfigApi = {
   /** 获取 Skill 列表（GET /config/skills） */
   list: () => request<SkillListResult>("/web/config/skills", { method: "GET" }),
 
-  /** 获取单个 Skill 详情（GET /config/skills/:name） */
-  get: (name: string) => request<SkillDetail>("/web/config/skills/:name", { method: "GET", params: { name } }),
+  /** 获取单个 Skill 详情（GET /config/skills/:id） */
+  get: (id: string) => request<SkillDetail>("/web/config/skills/:id", { method: "GET", params: { id } }),
 
   /** 创建 Skill（POST /config/skills），body 为 { name, data: SkillData } */
   create: (name: string, data: SkillData) =>
     request<SkillSaveResult>("/web/config/skills", { method: "POST", body: { name, data } }),
 
-  /** 更新 Skill（PUT /config/skills/:name），body 为 { data: SkillData } */
-  update: (name: string, data: SkillData) =>
-    request<SkillSaveResult>("/web/config/skills/:name", { method: "PUT", params: { name }, body: { data } }),
+  /** 更新 Skill（PATCH /config/skills/:id），body 为 { data: SkillData } */
+  update: (id: string, data: Partial<SkillData>) =>
+    request<SkillSaveResult>("/web/config/skills/:id", { method: "PATCH", params: { id }, body: { data } }),
 
   /** 仅更新 Skill 的公开读取权限，不修改 SKILL.md 内容。 */
-  updateAccess: (name: string, publicReadable: boolean) =>
-    request<SkillSaveResult>("/web/config/skills/:name/access", {
-      method: "PUT",
-      params: { name },
+  updateAccess: (id: string, publicReadable: boolean) =>
+    request<SkillSaveResult>("/web/config/skills/:id/access", {
+      method: "PATCH",
+      params: { id },
       body: { publicReadable },
     }),
 
-  /** 删除 Skill（DELETE /config/skills/:name） */
-  del: (name: string) => request<void>("/web/config/skills/:name", { method: "DELETE", params: { name } }),
+  /** 删除 Skill（DELETE /config/skills/:id） */
+  del: (id: string) => request<void>("/web/config/skills/:id", { method: "DELETE", params: { id } }),
 
   /**
-   * 下载 Skill 打包文件（GET /config/skills/:name/download）
+   * 下载 Skill 打包文件（GET /config/skills/:id/download）
    *
    * 返回解包后的 `Blob`，调用方不再接触原始 `Response`，也不必自己做 `ok` 判断。
    *
@@ -73,8 +74,8 @@ export const skillConfigApi = {
    * 抛错即契约：调用方必须接住（`useRequest` 的 onError 或 try/catch）。本函数不吞错、也不自己弹提示
    * ——用户可见文案归页面（`t()`）。
    */
-  download: async (name: string): Promise<Blob> => {
-    const response = await fetch(`/web/config/skills/${encodeURIComponent(name)}/download`, {
+  download: async (id: string): Promise<Blob> => {
+    const response = await fetch(`/web/config/skills/${encodeURIComponent(id)}/download`, {
       method: "GET",
       credentials: "include",
     });

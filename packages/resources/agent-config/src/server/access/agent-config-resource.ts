@@ -12,7 +12,9 @@ import type { PgColumn } from "drizzle-orm/pg-core";
  * 与 admin。`use` 保留给"运行/重启该 Agent 实例"这类操作性动作，与迁移前的"组织内成员可写"相比，
  * 收紧的是配置写入而非运行操作。
  *
- * `publicDefaultActions` 只放大读范围：其他组织拿到的是只读副本，不提升任何写权限。
+ * `publicDefaultActions` 包含 `read` 与 `use`：共享的产品语义是"其他组织可以看到并启动"。`use`
+ * 只授予运行；运行时会用上 Agent 声明的执行节点与依赖资源（详见 `docs/arch/14-user-org.md`
+ * 的跨组织资源分享）。写动作仍只属于归属组织的 owner / admin。
  *
  * 与 Skill / MCP Server 的注册同形是刻意的：受控资源的语义只有一份（归属模式 + 动作上限 + 成员
  * 默认动作 + 公开默认动作），资源包只声明这份语义与列，授权判断与 SQL 由注入的
@@ -28,7 +30,7 @@ export const agentConfigResource = {
     ownershipMode: "organization",
     actions: ["read", "create", "update", "delete", "use"],
     memberDefaultActions: ["read", "use"],
-    publicDefaultActions: ["read"],
+    publicDefaultActions: ["read", "use"],
   },
   storage: {
     resourceType: AGENT_CONFIG_RESOURCE_TYPE,

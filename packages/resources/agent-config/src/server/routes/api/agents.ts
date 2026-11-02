@@ -17,7 +17,7 @@ import {
   type ApiAgentUpsertBody,
   ApiAgentUpsertBodySchema,
 } from "../../schemas/api-agent.schema";
-import { hasAgentBindings, readAgentBindingRequest } from "../../services/agent-bindings";
+import { readAgentBindingRequest } from "../../services/agent-bindings";
 import {
   isBuiltInAgent,
   resolveAgentNode,
@@ -271,15 +271,16 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
           return error(409, { error: { code: "ALREADY_EXISTS", message: `Agent '${payload.name}' already exists` } });
         }
 
-        const agent = await facade.create(actor, {
-          name: payload.name,
-          data: toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
-          ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-        });
-        const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
-        if (hasAgentBindings(bindingRequest)) {
-          await authoring.applyBindings(actor, agent.id, bindingRequest);
-        }
+        const agent = await authoring.save(
+          actor,
+          () =>
+            facade.create(actor, {
+              name: payload.name,
+              data: toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
+              ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+            }),
+          readAgentBindingRequest(payload as unknown as Record<string, unknown>),
+        );
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
         return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
@@ -329,18 +330,20 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
       try {
         const { facade, identity, authoring } = getAgentConfigModule();
         // 资源键限定"归属当前组织"：跨组织可读资源的写请求在这里变成 404，与迁移前一致。
-        const agent = await facade.update(
+        const agent = await authoring.save(
           actor,
-          toAgentResourceKey(organizationId, id),
-          toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
-          {
-            ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-          },
+          () =>
+            facade.update(
+              actor,
+              toAgentResourceKey(organizationId, id),
+              toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
+              {
+                ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+                ...(payload.name === undefined ? {} : { name: payload.name }),
+              },
+            ),
+          readAgentBindingRequest(payload as unknown as Record<string, unknown>),
         );
-        const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
-        if (hasAgentBindings(bindingRequest)) {
-          await authoring.applyBindings(actor, agent.id, bindingRequest);
-        }
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
         return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
@@ -359,6 +362,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
         401: ApiErrorResponseSchema,
         403: ApiErrorResponseSchema,
         404: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
         500: ApiErrorResponseSchema,
       },
       detail: {
