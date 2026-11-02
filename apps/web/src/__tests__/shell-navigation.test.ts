@@ -1,6 +1,6 @@
 // WebShell 导航装配的契约测试（§1.6 T11d）。
 //
-// 装配的输入是构建期产物 `apps/generated/web-contributions.ts`（9 个包、14 项导航）。本文件守三件事：
+// 装配的输入是构建期产物 `apps/generated/web-contributions.ts`（10 个包、15 项导航）。本文件守三件事：
 //
 // 1. **迁移前后逐项一致**：真实产物装配出的分组、组序、项序必须与迁移前的宿主
 //    `SIDEBAR_NAV_GROUPS` 完全相同。这是本次所有权搬迁唯一的用户可见契约，错了就是侧栏乱序或丢项。
@@ -19,9 +19,11 @@ import { ASSEMBLED_NAVIGATION, assembleNavigation, filterNavEntries, filterNavGr
  *
  * 2026-09-23：`plugin-market` 曾作为第 15 项追加在 config 组末尾；npm 市场改为「插件市场」页
  * （`/agent/mcp`）的第二个 tab 之后，本包的导航贡献整体撤除——它不再是侧栏项，因此也不在快照里。
+ * 2026-10-28：`cloud-drive` 作为 core 组第 5 项（order 50）新增，快照同步追加——这份快照的用途是
+ * 「新增导航项必须显式改这里」，而不是把侧栏冻结在迁移前。
  */
 const PRE_MIGRATION_NAV: readonly (readonly [string, readonly string[]])[] = [
-  ["core", ["home", "agents", "workflow", "vertical-models"]],
+  ["core", ["home", "agents", "workflow", "vertical-models", "cloud-drive"]],
   [
     "config",
     [
@@ -168,7 +170,7 @@ describe("WebShell 导航的运行时裁剪", () => {
   test("整组隐藏后移除空组", () => {
     const filtered = filterNavGroups(
       [...ASSEMBLED_NAVIGATION.groups],
-      ["home", "agents", "workflow", "vertical-models"],
+      ["home", "agents", "workflow", "vertical-models", "cloud-drive"],
     );
 
     expect(filtered.map((group) => group.id)).toEqual(["config"]);

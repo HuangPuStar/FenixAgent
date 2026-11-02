@@ -6,6 +6,7 @@
   "resources": [
     "agent-config",
     "channel",
+    "cloud-drive",
     "knowledge",
     "machine",
     "mcp",
@@ -21,5 +22,16 @@
     "workflow",
     "workflow-v2"
   ],
-  "web": ["agent-config", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task", "workflow"]
+  "web": [
+    "agent-config",
+    "cloud-drive",
+    "identity",
+    "knowledge",
+    "mcp",
+    "memory",
+    "model-management",
+    "skill",
+    "task",
+    "workflow"
+  ]
 }

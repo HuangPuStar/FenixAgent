@@ -37,6 +37,7 @@ import { createFileSessionTitleStore } from "../repositories/session-title-store
 import { connectAgentRelay, getAgentRuntimeIdentity } from "../transport/agent-relay";
 import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
 import { agentInstanceService } from "./agent-instance-service";
+import { resolveSessionMcpServers } from "./session-mcp-provider";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 type ChatChannelBootstrapDeps = {
@@ -143,6 +144,18 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     maxClients: deps.maxClients,
     chatSyncProtocol: deps.chatSyncProtocol(),
     snapshotPersist: deps.snapshotPersist,
+    // 通道 B：会话级 MCP。组织上下文来自环境（Chat 的 `agentId` 就是 environment.id）；
+    // 查不到环境时仍交给提供方判断（它会因缺组织而跳过），不在这里抛错。
+    sessionMcpServers: async (connection) => {
+      const environment = await deps.environmentRepo.getById(connection.agentId);
+      return resolveSessionMcpServers({
+        userId: connection.userId,
+        agentId: connection.agentId,
+        instanceId: connection.instanceId,
+        rcsSessionId: connection.rcsSessionId,
+        ...(environment?.organizationId ? { organizationId: environment.organizationId } : {}),
+      });
+    },
     log: deps.log,
     reportError: deps.logError,
   };

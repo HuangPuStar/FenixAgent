@@ -25,6 +25,7 @@ export const NS = {
   APIKEY: "apikey",
   CHANNELS: "channels",
   KNOWLEDGE: "knowledge",
+  CLOUD_DRIVE: "cloudDrive",
   AGENT_PANEL: "agentPanel",
   COMPONENTS: "components",
   HINDSIGHT: "hindsight",

@@ -34,6 +34,8 @@
  * 其余 16 行因含被删名），与 `./server/repositories`、`./server/transport/relay` 的既有口径一致。
  */
 
+// 端口签名里的启动参数类型：宿主需要具名类型来包装 LaunchSpec，而宿主不必为此新增 plugin-sdk 依赖。
+export type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
 export { mapOrchestrationErrorToHttp } from "./errors/orchestration-http"; // 错误映射·编排域错误 → HTTP 的单一真相（宿主 errorPlugin 共用）
 export { createAcpRoutes } from "./routes/acp"; // 路由·ACP（守卫/认证/错误日志由宿主注入）
 export { createApiInstanceRoutes } from "./routes/api/instances"; // 路由·实例管理
@@ -132,6 +134,12 @@ export {
   getSessionEventBusPort,
   resetSessionEventBusPort,
 } from "./server/services/session-event-bus-port"; // 宿主注入·会话事件总线
+export {
+  resolveSessionMcpServers,
+  type SessionMcpContext,
+  type SessionMcpServersProvider,
+  setSessionMcpServersProvider,
+} from "./server/services/session-mcp-provider"; // 宿主注入·会话级 MCP 条目（通道 B）
 export { resolveWorkspacePath } from "./server/services/workspace-resolver"; // 宿主取用·启动参数文件定位，注入资源组装器
 export {
   bindAcpInstanceActivityPort,

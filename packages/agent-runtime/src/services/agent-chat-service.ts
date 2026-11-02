@@ -31,6 +31,7 @@ export function setAgentChatServiceDeps(overrides: Partial<typeof deps> | null):
 export type { AgentSession, PromptTurn, PromptTurnStartOptions } from "./agent-prompt-turn";
 export { createAgentSession, createPromptTurn, startPromptTurn } from "./agent-prompt-turn";
 
+import { resolveSessionMcpServers } from "../server/services/session-mcp-provider";
 import {
   type AgentExecutionLease,
   acquireAgentExecution,
@@ -56,6 +57,11 @@ export interface OpenAgentSessionInput {
    * 定时 / 队列等独立入口传入口自建的值；不传时由本函数兜底解析（见 openAgentSession）。
    */
   requestId?: string;
+  /**
+   * 会话级 MCP 条目（通道 B）。省略时由宿主注册的 provider 解析（云盘 token 等）；
+   * 显式传入 `[]` 表示本次不注入，用于测试或需要关闭云盘工具的入口。
+   */
+  mcpServers?: readonly Record<string, unknown>[];
 }
 
 export interface OpenAgentSessionResult {
@@ -183,11 +189,22 @@ async function openAdmittedAgentSession(
       instanceId: instance.id,
     });
 
+    // 通道 B：会话级 MCP。调用方显式给出时以调用方为准；否则交给宿主注册的 provider。
+    const mcpServers =
+      input.mcpServers ??
+      (await resolveSessionMcpServers({
+        userId: input.userId,
+        organizationId: input.organizationId,
+        agentId: input.agentConfigId,
+        instanceId: instance.id,
+      }));
+
     const { turn } = await startPromptTurn({
       session,
       sessionId: input.sessionId,
       signal: input.signal,
       onExecutionFinished: () => execution.release(),
+      ...(mcpServers === undefined ? {} : { mcpServers }),
     });
     try {
       execution.confirmRuntime();

@@ -21,6 +21,7 @@
     "@fenix/peri": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/resource-channel": "workspace:*",
+    "@fenix/resource-cloud-drive": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-machine": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",

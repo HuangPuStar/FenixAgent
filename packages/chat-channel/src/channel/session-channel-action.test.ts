@@ -121,6 +121,74 @@ describe("SessionChannel action flow", () => {
     expect(relayMessages[0]).toMatchObject({ method: "session/new" });
   });
 
+  // 通道 B：会话级 MCP 条目注入 session/new，且 provider 拿到的是服务端连接上下文。
+  test("injects session-scoped mcp servers into session/new", async () => {
+    const contexts: Array<Record<string, unknown>> = [];
+    const mcpServers = [{ type: "http", name: "cloud-drive", url: "http://fenix.local/mcp/cloud-drive", headers: [] }];
+    const harness = createHarness({
+      sessionMcpServers: async (connection) => {
+        contexts.push({ userId: connection.userId, agentId: connection.agentId });
+        return mcpServers;
+      },
+    });
+    const { connection, relayMessages } = createConnection();
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "create_session", commandId: "cmd-mcp" },
+      createSinks(harness),
+    );
+
+    expect(contexts).toEqual([{ userId: "user-1", agentId: "agent-1" }]);
+    expect(relayMessages[0]).toMatchObject({ method: "session/new", params: { mcpServers } });
+  });
+
+  // provider 失败时降级为不注入：会话照常创建，错误进入宿主日志通道。
+  test("keeps session creation working when session mcp resolution fails", async () => {
+    const harness = createHarness({
+      sessionMcpServers: async () => {
+        throw new Error("token signing failed");
+      },
+    });
+    const { connection, relayMessages } = createConnection();
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "create_session", commandId: "cmd-mcp-error" },
+      createSinks(harness),
+    );
+
+    expect(relayMessages[0]).toMatchObject({ method: "session/new" });
+    expect((relayMessages[0]?.params as Record<string, unknown>).mcpServers).toBeUndefined();
+    expect(harness.errors).toHaveLength(1);
+  });
+
+  // 非握手动作不解析会话级 MCP：避免每个 prompt 都做一次 token 签发与 DB 查询。
+  test("does not resolve session mcp servers for prompt actions", async () => {
+    let calls = 0;
+    const harness = createHarness({
+      sessionMcpServers: async () => {
+        calls += 1;
+        return;
+      },
+    });
+    const { connection } = createConnection();
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "send_prompt", commandId: "cmd-prompt-mcp", content: [{ type: "text", text: "hi" }] },
+      createSinks(harness),
+    );
+
+    expect(calls).toBe(0);
+  });
+
   // 环境刷新失败时不得创建 ACP session，客户端收到可重试的通用错误。
   test("does not forward session/new when the instance environment refresh fails", async () => {
     const harness = createHarness({

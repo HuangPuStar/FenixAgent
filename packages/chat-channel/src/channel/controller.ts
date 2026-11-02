@@ -20,6 +20,7 @@ import type { ChatSyncProtocolConfig, ClientConnection } from "./connection-type
 import { Gateway, type GatewayEnvironment } from "./gateway";
 import { RelayEventHandler } from "./relay-event-handler";
 import { SessionChannel } from "./session-channel";
+import type { SessionConnection } from "./session-connection";
 import type { GatewaySyncHostOverrides } from "./sync-connection";
 
 /** attach 窗口内暂存的用户消息上限：只覆盖首 prompt 竞态，不承接长期离线队列。 */
@@ -59,6 +60,10 @@ export interface ChatChannelDependencies {
   maxClients: () => number;
   /** 新聊天同步协议装配配置；缺省关闭，旧路径行为不变。 */
   chatSyncProtocol?: ChatSyncProtocolConfig;
+  /**
+   * 会话级 MCP 条目提供方（通道 B）。宿主注入云盘 token 签发器；未注入时行为与旧版一致。
+   */
+  sessionMcpServers?: (connection: SessionConnection) => Promise<readonly Record<string, unknown>[] | undefined>;
   /** 同步运行时注入（观测/测试用假时钟）；生产缺省使用系统时钟。 */
   syncHostOverrides?: GatewaySyncHostOverrides;
   /**
@@ -139,6 +144,7 @@ export class ChatChannelController {
       },
       reportError: dependencies.reportError,
       reportLog: dependencies.log,
+      sessionMcpServers: dependencies.sessionMcpServers,
     });
     this.relayEvents = new RelayEventHandler({
       registry: this.registry,
