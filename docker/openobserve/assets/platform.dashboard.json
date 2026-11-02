@@ -30,7 +30,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "HTTP 请求量"
           }
         }
       ],
@@ -65,7 +65,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "HTTP 5xx 比例"
           }
         }
       ],
@@ -100,7 +100,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{http_route}"
           }
         }
       ],
@@ -135,7 +135,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{engine} {state}"
           }
         }
       ],
@@ -170,7 +170,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "PG 客户端 P95"
           }
         }
       ],
@@ -205,7 +205,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "PG 连接等待"
           }
         }
       ],

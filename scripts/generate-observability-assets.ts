@@ -3,6 +3,17 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "../docker/openobserve/assets");
 const selector = 'deployment_environment_name=~"$environment",service_name=~"$service"';
+
+/** 聚合后只剩 by() 标签；无 by() 时回退面板标题，避免图例渲染为空或无法区分分组。 */
+const legendFor = (query: string, title: string): string => {
+  const labels =
+    /by\(([^)]*)\)/
+      .exec(query)?.[1]
+      ?.split(",")
+      .map((label) => label.trim())
+      .filter((label) => label && label !== "le") ?? [];
+  return labels.length ? labels.map((label) => `{${label}}`).join(" ") : title;
+};
 const dashboards: Record<string, { title: string; panels: [string, string, string][] }> = {
   platform: {
     title: "Fenix 平台总览",
@@ -149,7 +160,7 @@ export async function generateObservabilityAssets(): Promise<void> {
           query,
           customQuery: true,
           fields: { stream, stream_type: "metrics", x: [], y: [], z: [], filter: [] },
-          config: { promql_legend: "{service_name}" },
+          config: { promql_legend: legendFor(query, title) },
         },
       ],
       layout: { x: (index % 2) * 6, y: Math.floor(index / 2) * 6, w: 6, h: 6, i: index },

@@ -30,7 +30,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{host_id}"
           }
         }
       ],
@@ -65,7 +65,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{host_id} {state}"
           }
         }
       ],
@@ -100,7 +100,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "磁盘剩余"
           }
         }
       ],
@@ -135,7 +135,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "容器内存"
           }
         }
       ],
@@ -170,7 +170,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "PG 后端"
           }
         }
       ],
@@ -205,7 +205,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "Redis 内存"
           }
         }
       ],

@@ -13,7 +13,7 @@
 2. 只有一个 Resource 与 Trace/Metric/Log Provider。`service.version` 取 build info，`service.instance.id` 每进程唯一；部署只能指定 namespace、环境和可信主机身份。
 3. W3C trace context 与业务 request ID 分离；不传播未经审查的 Baggage，不将 trace ID 用于认证、授权或幂等。
 4. 关闭顺序为停止入口、清理业务、最后日志、SDK shutdown；`app.stop(false)` 只调用一次，5s 超时后不重复 stop，完成宿主清理后显式退出；重复信号共享 Promise，遥测退出总预算 5 秒。
-5. 服务端 batch queue 每信号 1024、批量 128、单次网络超时 3 秒、累计显式桶指标。HTTP 桶复用官方插件 advice，不创建第二套请求计时器。
+5. 服务端 traces/logs 使用 batch queue，队列 1024、批量 128、单次网络超时 3 秒；metrics 使用 periodic export，导出间隔由 `OTEL_METRIC_EXPORT_INTERVAL` 配置。累计显式桶指标。HTTP 桶复用官方插件 advice，不创建第二套请求计时器。
 6. 所有 `OTEL_*` 字符串空白值统一视为未配置并取默认值，不能靠显式空串改变语义。`OTEL_NODE_ENABLED_INSTRUMENTATIONS` 空白即恢复默认 `pg,ioredis,pino`；本项目不采用“空串=禁用全部自动埋点”的隐式语义。需要关闭某类导出时使用标准 `OTEL_*_EXPORTER=none`。
 
 ## 3. 字段与指标

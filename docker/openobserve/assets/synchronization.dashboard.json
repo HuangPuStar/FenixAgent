@@ -30,7 +30,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "连接数"
           }
         }
       ],
@@ -65,7 +65,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "待处理任务"
           }
         }
       ],
@@ -100,7 +100,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "未确认字节"
           }
         }
       ],
@@ -135,7 +135,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "未确认投递"
           }
         }
       ],
@@ -170,7 +170,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "ACK P95 秒"
           }
         }
       ],
@@ -205,7 +205,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{reason}"
           }
         }
       ],
@@ -240,7 +240,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{result}"
           }
         }
       ],
@@ -275,7 +275,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "{result}"
           }
         }
       ],

@@ -15,7 +15,7 @@
 3. Collector 的 `OO_OTLP_ENDPOINT` 为必填且模板默认留空：同机且两栈都接入 `fenix-server` 时可填 `http://openobserve:5080/api/default`，跨机必须使用受控 HTTPS 地址，不带尾斜线；空值会以 `set OO_OTLP_ENDPOINT` 让 `docker compose config` 失败，这是有意的前置检查。`OO_AUTH_HEADER` 由 OO 接入页取得，不在终端/报告中打印。
 4. `docker compose run --rm otel-collector validate` 必须传与运行相同的所有 `--config`。基础只含 `collector.yaml`；按需要加 host/PG/Redis/Docker/filelog。
 5. 启动 Collector 后独立探测 13133；核对 8888 指标的拒绝、发送失败、队列占用。不要以容器 running/HTTP 200 代替数据健康。
-6. 应用设置 `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`，联调采样率 1；生产初始 0.1，指标不随采样下降。首次部署在 `docker/main/.env` 显式写出 `OTEL_RESOURCE_ATTRIBUTES=service.namespace=fenix,deployment.environment.name=production` 并核对生效值（生产编排的缺省注入也是 production）；staging 等环境改成 `deployment.environment.name=staging`，不能沿用 development。应用、Collector 的 `DEPLOYMENT_ENVIRONMENT` 与看板筛选必须使用同一个环境名。
+6. 应用设置 `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`（要求应用与 Collector 同机接入 `fenix-server`；跨机时改为受控 HTTPS 入口，Docker 服务名不能跨主机解析），联调采样率 1；生产初始 0.1，指标不随采样下降。首次部署在 `docker/main/.env` 显式写出 `OTEL_RESOURCE_ATTRIBUTES=service.namespace=fenix,deployment.environment.name=production` 并核对生效值（生产编排的缺省注入也是 production）；staging 等环境改成 `deployment.environment.name=staging`，不能沿用 development。应用、Collector 的 `DEPLOYMENT_ENVIRONMENT` 与看板筛选必须使用同一个环境名。
 7. 部署资产统一位于 `docker/openobserve/`、`docker/otel-collector/`，各自自包含编排与配置；只有 `docker/openobserve/assets/` 存放看板、告警与指标映射，`docker/otel-collector/` 是按需采集配置（`collector.*.yaml`），不含 `assets/`。跨机部署时整目录拷贝，目标机先创建同名外部网络 `docker network create fenix-server`；跨机使用受控 HTTPS，Docker 服务名不能跨主机。
 
 ## 3. 数据语义验收

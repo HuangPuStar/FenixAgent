@@ -1,6 +1,6 @@
 # Collector 独立部署
 
-1. 本目录是 `otel-collector` 唯一生产入口，无跨项目 `depends_on`。同机连接由主服务创建的 `fenix-server`，只让 `otel-collector` 进入共享网络。
+1. 本目录是 `otel-collector` 唯一生产入口，无跨项目 `depends_on`。同机连接由主服务创建的 `fenix-server`，只让 `otel-collector` 进入共享网络；应用必须与 Collector 同机接入该网络，跨机时经受控 HTTPS 入口转发，不能直接用 Docker 服务名。
 2. 复制 `.env.example` 到本目录 `.env`，填写主机真实身份、Collector 实例身份、OO 组织 endpoint 和独立采集凭据。`OO_OTLP_ENDPOINT` 为必填且模板留空：两栈同机并都接入 `fenix-server` 时可填 `http://openobserve:5080/api/default`；跨机必须填受控 HTTPS 地址（不带尾部斜线），Docker 服务名不能跨主机解析。Compose 的 `env_file` 指向该文件，`OO_OTLP_ENDPOINT=` 空值会以 `set OO_OTLP_ENDPOINT` 让 `docker compose config` 失败；执行静态校验前必须先复制并填写。凭据不得打印或写进 Git；应用不持有 OO 凭据。
 3. 创建 `./data/storage`，授予 UID/GID `10001:10001` 写权限。配置缺失不自动创建目录；数据必须有不少于 5 GiB 余量。
 4. 基础入口只加载 `collector.yaml`。4318 供应用，13133 为存活探测，8888 为自身指标；宿主仅发布回环端口。

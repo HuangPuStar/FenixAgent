@@ -45,8 +45,8 @@
 
 - 应用容器自身的启动命令仍会跑一次 `bun migrate.js`，多副本同时启动由 `pg_advisory_lock` 串行化（锁 key 是 `scripts/migrate.ts` 里的常量），因此第 2 步与容器启动重叠也不会互相撞车；把迁移单独跑出来的价值是**让迁移失败早于流量切换暴露**。
 - 核对本机实际版本用 `./deploy.sh ps`（镜像 tag/digest 可见）。
-- 离线交付：`docker/build-image.sh -t sha-<commit>` 构建 runtime 镜像并 `docker save` 成 tar；目标机 `docker load`
-  后把镜像 retag 为 `ghcr.io/huangpustar/fenixagent:sha-<commit>`（编排的仓库名固定），并在 `docker/main/.env`
+- 离线交付：`docker/build-image.sh -t sha-<commit>` 构建 runtime 镜像（产物为 `fenix:sha-<commit>`）并 `docker save` 成 tar；目标机 `docker load`
+  后执行 `docker tag fenix:sha-<commit> ghcr.io/huangpustar/fenixagent:sha-<commit>`（编排的仓库名固定），并在 `docker/main/.env`
   设置同值 `RCS_IMAGE_TAG`。
 - 依赖（litellm / hindsight / ragflow / sandbox 节点等）与主服务是独立升级单元：默认只在 `deploy` 时 `pull` 并收敛主服务，依赖按自己的目录单独 `docker compose up -d`。Hindsight 一类需要经 `fenix-server` 访问主服务的依赖，重建顺序仍要先主后附。
 - **依赖实例口径**：每个依赖栈自带依赖实例，库与桶都不在主服务这边——`docker/litellm/` 自带 `litellm-postgres`（库 `litellm`，`DATABASE_URL` 指向 `litellm-postgres:5432`）、`docker/workflow/` 自带 `mysql` 与 `rustfs`（库 `opencoze`、桶 `opencoze` / `milvus`）、`docker/ragflow/` 自带 `ragflow-mysql` 与 `ragflow-rustfs`（库 `rag_flow`，桶由 RAGFlow 运行期按知识库 / 文件目录自建）；数据各落自己目录的 `./data/` 下。升级依赖时按该目录单独 `up -d` 收敛，栈内的一次性初始化服务随它一起跑（幂等：只建缺失的库 / 桶、只同步口令，不动既有数据；ragflow 侧不预建桶，它的 `ragflow-s3-init` 只对自带实例做能力探测），失败则该栈的主服务不启动；判定看 `docker ps -a` 里的 `Exited (0)` 与日志末行的完成行（[排障](./troubleshooting.md) §15）。**workflow 侧自 2026-10-14 起多两个前置一次性服务**：`assets-init` 先从 server 镜像展开初始化资产（因此 `WORKFLOW_STUDIO_TAG` 不得低于带资产的首个发布），`atlas-init` 再做 schema 收敛——升级时换 tag 后重跑 `up -d` 即可，它的数据目录已随交付面收到 `docker/workflow/data/`（搬迁口径见该目录 README §8、编排体系 §13.21）。

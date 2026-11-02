@@ -30,7 +30,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "队列占用"
           }
         }
       ],
@@ -65,7 +65,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "发送失败 Span"
           }
         }
       ],
@@ -100,7 +100,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "发送失败日志"
           }
         }
       ],
@@ -135,7 +135,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "接收拒绝指标"
           }
         }
       ],
@@ -170,7 +170,7 @@
             "filter": []
           },
           "config": {
-            "promql_legend": "{service_name}"
+            "promql_legend": "指标发送量"
           }
         }
       ],
