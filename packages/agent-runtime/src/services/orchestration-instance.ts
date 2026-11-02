@@ -428,7 +428,7 @@ async function buildAgentLaunchSpecForCore(
     });
   }
 
-  // 缓存 environmentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用；
+  // 缓存 environmentId → machineId 映射，供 sendToAgentWs 使用；
   // 与旧路径 spawnInstanceFromEnvironment 的 setAgentMachineCache 语义对齐。
   // 取一次投影而不是复用组装器读到的行：节点判定只在 agent-config（`resolveAgentNode`），
   // 本包不再持有资源行；代价是启动路径多一次已授权读（每次实例启动一次，非热路径）。

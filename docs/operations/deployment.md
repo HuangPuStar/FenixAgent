@@ -131,7 +131,7 @@ OpenSandbox / 端口等部署注意事项见 `docker/README.md`。
 2. `resolveAssemblyEnv()` 读取装配 profile：路径默认由 `RCS_APPLICATION_ROOT` 决定（镜像 runtime 阶段固定为 `/app`），即 `<root>/deploy/assembly/ce.json`；源码运行时按模块位置反推仓库根。要换别的 profile 就设 `RCS_ASSEMBLY_PROFILE_PATH`（绝对路径，覆盖上面的默认值）。**文件缺失会直接 ENOENT 退出**。profile 只能选择已编译进 `apps/generated/module-registry.ts` 的模块 ID，选择未注册模块会在启动时抛错而不是静默降级。
 3. `applyEnv(env)` 之后进入宿主启动序：
    - 关键序列：`initDb` → 模块装配（`wirePermissions`）→ 模型网关（`initModelGateway`，其中包含系统管理员 `ensureSystemAdmin` 与沙盒 provider 投影）。
-   - 随后依次是：启动前取数端口绑定 → 沙盒默认池初始化与崩溃恢复 → Core runtime → 调度器（`RCS_DISABLE_SCHEDULER=true` 时跳过启动，注意它**不是**全局只读模式）→ builtin 同步 → 自定义节点工具注册 → Hermes → RagFlow 体检 → 巡检定时器 → 空闲监视。
+   - 随后依次是：启动前取数端口绑定 → 沙盒默认池初始化与崩溃恢复 → Core runtime → 调度器（`RCS_DISABLE_SCHEDULER=true` 时跳过启动，注意它**不是**全局只读模式）→ builtin 同步 → 自定义节点工具注册 → RagFlow 体检 → 巡检定时器 → 空闲监视。
    - 业务数据迁移**不在**这条序列里，由发布任务承担（见[升级](./upgrade.md)）。
 4. 构造 Elysia app：注册 CORS、OpenAPI、`/health`、`/`（302 → `/ctrl/`）、`/ctrl/*` 静态资源、`/web/*`、`/api/*` 以及各模块在装配期登记的顶层协议入口（`/acp/*`、`/hooks/*`、`/workflow-ui/*` 等，通配兜底最后注册），最后 `app.listen({ port, hostname })`。
    前置约束：应用请求体上限为 108MiB，为固定 92MiB 上传文件上限预留 multipart 余量（见 `apps/server/src/plugins/body-limit.ts`）；前置反向代理的请求体上限不得低于 108MiB。WebSocket 消息预算统一为 128MiB，`RCS_WS_MAX_PAYLOAD_MB` 与 `RCS_FILE_WS_MAX_PAYLOAD_MB` 默认及最高允许值均为 128；远程单文件和 ZIP 下载实际大小上限也为 92MiB。主服务与远程 acp-link 需同步更新下载限制，原有大于 128 的 WS 配置值须删除或调低。

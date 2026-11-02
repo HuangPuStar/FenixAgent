@@ -1,10 +1,22 @@
 import { MODELS_NS } from "@fenix/model-management/web/i18n";
+import { CHANNELS_NS } from "@fenix/resource-channel/web/i18n";
 import { PLUGIN_MARKET_NS } from "@fenix/resource-plugin-market/web/i18n";
 import { SANDBOX_NS } from "@fenix/resource-sandbox/web/i18n";
 import { TICKETS_NS } from "@fenix/resource-tickets/web/i18n";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { Activity, ArrowLeft, Box, FileText, Gauge, type LucideIcon, Network, Package, Ticket } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Box,
+  FileText,
+  Gauge,
+  type LucideIcon,
+  MessageSquare,
+  Network,
+  Package,
+  Ticket,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAssemblyCapabilities } from "@/src/shell/AssemblyCapabilitiesProvider";
 
@@ -25,6 +37,7 @@ const NAV_ITEMS: {
     | "/admin"
     | "/admin/logs"
     | "/admin/people"
+    | "/admin/channels"
     | "/admin/sandbox"
     | "/admin/model-gateway"
     | "/admin/plugin-market"
@@ -36,6 +49,8 @@ const NAV_ITEMS: {
 }[] = [
   { to: "/admin", labelKey: "title", icon: Activity },
   { to: "/admin/sandbox", labelKey: "nav", ns: SANDBOX_NS, icon: Box },
+  // 消息通道的跨组织面：控制台的 `/agent/channels` 按当前组织过滤，这里给系统 key 面看全部通道与会话实例。
+  { to: "/admin/channels", labelKey: "langbot.admin.nav", ns: CHANNELS_NS, icon: MessageSquare },
   { to: "/admin/people", labelKey: "people.nav", icon: Network },
   { to: "/admin/model-gateway", labelKey: "modelGateway.nav", ns: MODELS_NS, icon: Gauge },
   // 插件市场的管理面（发布 / 下架 / 恢复）：控制台那一份是只读浏览（`/agent/mcp?tab=npm`），

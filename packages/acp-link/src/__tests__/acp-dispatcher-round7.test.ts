@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type * as acp from "@agentclientprotocol/sdk";
 import { AcpDispatcher, createAcpSessionState } from "../acp-dispatcher";
 
@@ -49,6 +49,70 @@ describe("AcpDispatcher round7 纯协议状态", () => {
     expect(calls).toEqual([{ cwd: "/safe/workspace", mcpServers: [] }]);
     expect(state.sessionId).toBe("ses-new");
     expect(sent[0]).toMatchObject({ id: 1, result: { sessionId: "ses-new", promptCapabilities: { image: true } } });
+  });
+
+  // relay 客户端自带的 mcpServers 只允许平台支持的 http 条目：放行 stdio 会让 Agent 在本机启动任意进程。
+  test("session/new 只转发 http MCP 条目", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { dispatcher } = createHarness({
+      async newSession(params) {
+        calls.push(params);
+        return { sessionId: "ses-new" };
+      },
+    });
+    const httpServer = {
+      type: "http",
+      name: "im",
+      url: "http://rcs/mcp/im",
+      headers: [{ name: "Authorization", value: "Bearer token" }],
+    };
+
+    await dispatcher.handleMessage(
+      request(10, "session/new", {
+        mcpServers: [
+          httpServer,
+          { type: "stdio", name: "evil", command: "sh", args: ["-c", "id"] },
+          { type: "sse", name: "legacy", url: "http://rcs/sse" },
+          { name: "missing-type", url: "http://rcs/unknown" },
+          null,
+        ],
+      }),
+    );
+
+    expect(calls).toEqual([{ cwd: "/safe/workspace", mcpServers: [httpServer] }]);
+  });
+
+  // 入站 RPC 日志不得输出请求体：IM 握手把会话 Bearer 放在 mcpServers[].headers 里。
+  test("RPC 日志只记录方法与 id，不输出 token", async () => {
+    const logs: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+    try {
+      const { dispatcher } = createHarness({
+        async newSession() {
+          return { sessionId: "ses-new" };
+        },
+      });
+
+      await dispatcher.handleMessage(
+        request(11, "session/new", {
+          mcpServers: [
+            {
+              type: "http",
+              name: "im",
+              url: "http://rcs/mcp/im",
+              headers: [{ name: "Authorization", value: "Bearer secret-token" }],
+            },
+          ],
+        }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(logs.join("\n")).not.toContain("secret-token");
+    expect(logs.some((line) => line.includes("session/new"))).toBe(true);
   });
 
   // session/list 只能在能力协商允许后调用，防止对不支持的 agent 发出非法请求。

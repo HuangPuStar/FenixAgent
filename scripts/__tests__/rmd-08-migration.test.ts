@@ -187,8 +187,7 @@ import { existsSync } from "node:fs";
  *     `shell/AgentSidebarTree.tsx` 随侧栏智能体树下沉迁走后，本文件全仓零引用（`@/src/types` 0 命中、
  *     `apps/web/src` 内无相对导入，逐导出标识符 grep 只命中自身；文件头第 7-11 行早已写明退役口径）。
  *     `packages/**` 下没有同名文件可挂——领域契约在消费侧各有实现（环境与环境实例在
- *     `@fenix/agent-runtime/web/api/environments`、通道在 `@fenix/resource-channel/web`、文件在
- *     `@fenix/ui-components` 的 chat 面内）——故按豁免表口径收编，并同步删除
+ *     `@fenix/agent-runtime/web/api/environments`、文件在 `@fenix/ui-components` 的 chat 面内）——故按豁免表口径收编，并同步删除
  *     `docs/developer/system/frontend-development.md` §1.3 为它登记的那条偏差。
  *     两侧在册数：MOVES + LATER_DELETED = 26 + 10 = 36，RELOCATED + later-deleted = 108 + 3 = 111。
  * 27. 2026-09-28 宿主壳样式收口第三批（三份伴随表退役 + `agent-panel.css` 退役；MOVES 26 → 24，

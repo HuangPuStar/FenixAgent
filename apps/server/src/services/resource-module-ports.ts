@@ -3,10 +3,9 @@
  *
  * 资源包的路由改为「工厂 + 注入」后，有三类能力只能落在宿主：
  *
- * 1. **跨包的窄查询**（{@link environmentLookup} / {@link verifyEnvironmentOwnership}）——Environment 的
- *    owner 是 `@fenix/agent-runtime`，通道路由只消费 `id` / `name` / `organizationId` 三个字段，因此按用到
- *    的形状适配，而不是把完整仓储记录透出去（记录字段改名不会波及协议边界）；peri 任务详情路由只需要
- *    「归属校验是否通过」，故只透出校验本身，判据留在 owner 侧。
+ * 1. **跨包的窄查询**（{@link verifyEnvironmentOwnership}）——Environment 的 owner 是
+ *    `@fenix/agent-runtime`，peri 任务详情路由只需要「归属校验是否通过」，故只透出校验本身，判据留在
+ *    owner 侧。
  * 2. **身份族的 `user_config` 表**（{@link userAgentPreferences} / {@link userModelPreferences}）——
  *    该表的真相来源是 `packages/platform/identity/db/schema.ts`，资源包不得直读；两个适配器把各包
  *    真正读写的偏好子集映射到 identity 的 `getUserConfig` / `setUserConfig`（1.5c 起该读写随表归位
@@ -20,29 +19,9 @@
 
 import type { UserAgentPreferencesPort } from "@fenix/agent-config/server";
 import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
-import { environmentRepo } from "@fenix/agent-runtime/server";
 import { getUserConfig, setUserConfig } from "@fenix/identity/server";
 import type { EnvironmentOwnershipCheck, UserModelPreferencesPort } from "@fenix/model-management/server";
-import type { ChannelEnvironmentLookup } from "@fenix/resource-channel/server";
 import { resolveApiKey } from "./config-utils";
-
-/**
- * 通道路由的 Environment 归属查询。
- *
- * `getById` 返回 `null` 而不是抛错，表示「环境不存在或已被删除」：通道路由据此按「环境不可读」
- * 处理（列表补空名称、写操作拒绝），而不是把它当成查询失败。
- */
-export const environmentLookup: ChannelEnvironmentLookup = {
-  async getById(id) {
-    const record = await environmentRepo.getById(id);
-    if (!record) return null;
-    return { id: record.id, name: record.name, organizationId: record.organizationId ?? null };
-  },
-  async listByOrganizationId(organizationId) {
-    const records = await environmentRepo.listByOrganizationId(organizationId);
-    return records.map((record) => ({ id: record.id, name: record.name }));
-  },
-};
 
 /**
  * Environment 归属校验（`/web/agents/…/peri-tasks/:taskId/detail` 的注入端口）。

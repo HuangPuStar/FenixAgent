@@ -15,6 +15,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
+import { readPlatformMcpServers } from "./mcp-servers.js";
 import type { ContentBlock, PermissionResponsePayload } from "./types.js";
 
 /**
@@ -69,14 +70,15 @@ export class AcpDispatcher {
 
     const msg = raw as Record<string, unknown>;
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
-      console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
+      // 请求体可能带 `mcpServers[].headers` 里的会话 Bearer，日志只记录方法与 id。
+      console.log("[acp-dispatcher] ← rpc:", msg.method, msg.id);
       await this.handleRequest(msg as unknown as JsonRpcRequest);
       return;
     }
 
     // 处理 JSON-RPC 通知（有 method 但无 id），如 session/update
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id === undefined) {
-      console.log("[acp-dispatcher] ← notification:", JSON.stringify(raw).slice(0, 500));
+      console.log("[acp-dispatcher] ← notification:", msg.method);
       if (msg.method === ACP_METHOD.SESSION_CANCEL) {
         await this.cancellations.cancel(undefined, msg.params as { sessionId?: string } | undefined);
       } else {
@@ -227,7 +229,7 @@ export class AcpDispatcher {
     this.send({ type: "status", payload: { connected: false } });
   }
 
-  private async handleNewSession(id: number | string, _params: Record<string, unknown>): Promise<void> {
+  private async handleNewSession(id: number | string, params: Record<string, unknown>): Promise<void> {
     if (!this.state.connection) {
       this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
@@ -235,7 +237,7 @@ export class AcpDispatcher {
     try {
       const result = await this.state.connection.newSession({
         cwd: this.workspace,
-        mcpServers: [],
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
       this.state.sessionId = result.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
@@ -379,7 +381,10 @@ export class AcpDispatcher {
     }
   }
 
-  private async handleLoadSession(id: number | string, params: { sessionId: string; cwd?: string }): Promise<void> {
+  private async handleLoadSession(
+    id: number | string,
+    params: { sessionId: string; cwd?: string; mcpServers?: unknown },
+  ): Promise<void> {
     if (!this.state.connection) {
       this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
@@ -392,7 +397,7 @@ export class AcpDispatcher {
       const result = await this.state.connection.loadSession({
         sessionId: params.sessionId,
         cwd: this.workspace,
-        mcpServers: [],
+        mcpServers: readPlatformMcpServers(params.mcpServers),
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);

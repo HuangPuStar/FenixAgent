@@ -1,0 +1,436 @@
+import { error as logError, warn as logWarn } from "@fenix/logger";
+import { runInTransaction } from "@fenix/platform-sdk/server";
+import type { ImChatType } from "@fenix/resource-channel/db";
+import type { ImSessionTarget } from "../../ports/im-session";
+import type { ImChannelRepository, ImChannelRow } from "../../repositories/im-channel";
+import type {
+  ImChannelConversationRepository,
+  ImChannelConversationRow,
+} from "../../repositories/im-channel-conversation";
+import type { ImChannelEventRepository } from "../../repositories/im-channel-event";
+import type { ImChannelRouteRepository } from "../../repositories/im-channel-route";
+import type { ChannelService } from "./channel-service";
+import type { ConversationService } from "./conversation-service";
+import type { DeliveryDispatcher } from "./delivery-dispatcher";
+import {
+  type ImSessionBridge,
+  ImSessionBridgeError,
+  type ImSessionFailureCode,
+  type ImSessionOpenOutcome,
+} from "./im-session-bridge";
+import { findActiveRoute } from "./route-service";
+import { readBotUuid } from "./types";
+
+/**
+ * LangBot Webhook 入站（规格 §4.3 / §6.1）。
+ *
+ * 职责只有一条链：校验 → 解析 → 事务内去重落库 + 路由 + conversation → 事务提交后投递通知。
+ * 所有 I/O 之外的行为都在这里，路由层只做协议映射。
+ *
+ * 关键边界：
+ * 1. 去重必须由数据库唯一键原子拦截（`insertIfAbsent`），不能先查后插：多实例与重启后重投都靠它。
+ * 2. 暖态且有订阅流时只发通知；订阅流随 Agent turn 结束关闭，此时通知无人接收，必须改发唤醒 prompt，
+ *    否则事件会一直停在 `received` 等 dispatcher 退避。
+ * 3. 群聊只接受直接 @ 的消息；LangBot Webhook 不提供机器人自身 IM ID，因此「直接 At」是当前能判定的
+ *    最强条件，AtAll 不算直接 @（规格 §6.1.1）。
+ * 4. 非文本事件只落 `skipped` 并回固定提示，不进入 Agent。
+ */
+
+export type ImInboundEventType = "bot.person_message" | "bot.group_message";
+
+export type InboundRejectionReason =
+  | "channel_missing"
+  | "channel_disabled"
+  | "bot_mismatch"
+  | "unsupported_event"
+  | "not_mentioned"
+  | "invalid_payload";
+
+export type InboundOutcome =
+  | {
+      readonly kind: "accepted";
+      readonly eventId: string;
+      readonly conversationId: string;
+      readonly agentChanged: boolean;
+    }
+  | { readonly kind: "duplicate" }
+  | { readonly kind: "skipped"; readonly eventId: string; readonly reason: "no_route" | "non_text" }
+  | { readonly kind: "rejected"; readonly reason: InboundRejectionReason };
+
+export interface InboundService {
+  handle(input: { channelId: string; payload: unknown }): Promise<InboundOutcome>;
+}
+
+export interface InboundServiceDeps {
+  readonly channels: ImChannelRepository;
+  readonly routes: ImChannelRouteRepository;
+  readonly conversations: ImChannelConversationRepository;
+  readonly events: ImChannelEventRepository;
+  readonly conversationService: ConversationService;
+  readonly dispatcher: DeliveryDispatcher;
+  /**
+   * 冷启动桥；未装配时退化为「只入队通知」。
+   *
+   * 生产必须装配：暖会话的通知依赖 Agent 的 MCP 订阅，而订阅只在首个 turn 注册；没有桥就不会有人
+   * 启动实例、发送唤醒，事件会无限退避。
+   */
+  readonly bridge?: ImSessionBridge;
+  /** 测试注入；默认使用平台 REQUIRED 事务。 */
+  readonly transaction?: <T>(callback: () => Promise<T>) => Promise<T>;
+  readonly now?: () => Date;
+  /** 非文本固定提示；生产接 outbound，失败只记日志。 */
+  readonly notifyUnsupported?: (input: {
+    channel: ImChannelRow;
+    chatType: ImChatType;
+    chatId: string;
+    senderId: string | null;
+    text: string;
+  }) => void | Promise<void>;
+  /** 实例启动 / 会话打开失败的固定提示（规格 §6.3）；与通知一样由平台代发。 */
+  readonly notifyFailure?: (input: {
+    channel: ImChannelRow;
+    chatType: ImChatType;
+    chatId: string;
+    senderId: string | null;
+    text: string;
+  }) => void | Promise<void>;
+  /** 响应后的异步执行器；测试注入以便 await，生产保持 fire-and-forget。 */
+  readonly afterResponse?: (task: Promise<void>) => void;
+  /**
+   * 通道健康回写；由 `ChannelService` 实现，入站层不直接改通道行。
+   *
+   * 只写状态与摘要，不停用通道：入站失败多发生在实例与会话侧，停用会让后续消息全部回落到 LangBot 流水线。
+   */
+  readonly channelHealth: Pick<ChannelService, "markInboundSucceeded" | "markInboundFailed">;
+}
+
+interface ParsedInboundEvent {
+  readonly eventUuid: string;
+  readonly eventType: ImInboundEventType;
+  readonly chatType: ImChatType;
+  readonly chatId: string;
+  readonly senderId: string;
+  readonly text: string;
+  readonly mentioned: boolean;
+  readonly nonText: boolean;
+}
+
+type ParseResult =
+  | { readonly ok: true; readonly event: ParsedInboundEvent }
+  | { readonly ok: false; readonly reason: InboundRejectionReason };
+
+const TEXT_ONLY_NOTICE = "当前仅支持文本消息。";
+const BUSY_NOTICE = "系统繁忙，请稍后重试。";
+/** 手动停止由端口负责唤醒；走到这里说明唤醒没有发生，提示仍要指向可执行动作。 */
+const INSTANCE_STOPPED_NOTICE = "助手当前已停止，请在控制台启动实例后重试。";
+/** 端口已尝试唤醒但失败：先让用户核对实例状态，避免反复重试都落在同一次失败上。 */
+const WAKE_FAILED_NOTICE = "主动唤醒助手失败，请检查实例状态后重试。";
+/** 只有可操作的失败码才给针对性文案；其余统一按繁忙处理，不暴露内部失败分类。 */
+const FAILURE_NOTICES: Partial<Record<ImSessionFailureCode, string>> = {
+  INSTANCE_STOPPED: INSTANCE_STOPPED_NOTICE,
+  WAKE_FAILED: WAKE_FAILED_NOTICE,
+};
+/** 冷启动 prompt 已覆盖会话积压；收口上限与 dispatcher 的补发上限保持一致。 */
+const PENDING_DELIVERY_LIMIT = 100;
+/** 这些组件属于消息结构，不是正文；其余未知组件一律按「非文本」处理。 */
+const STRUCTURAL_COMPONENTS = new Set(["At", "AtAll", "Quote", "Source"]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function readString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readMentionTarget(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+/**
+ * 解析 LangBot Webhook 事件体。
+ *
+ * Webhook 文档的消息字段叫 `message`，而消息实体文档叫 `message_chain`；两者都接受，避免上游版本差异
+ * 让整条入站链路静默失效。
+ */
+function parseEvent(payload: unknown, expectedBotUuid: string | null): ParseResult {
+  const outer = asRecord(payload);
+  const data = outer ? asRecord(outer.data) : null;
+  if (!outer || !data) return { ok: false, reason: "invalid_payload" };
+
+  const eventUuid = readString(outer, "uuid");
+  const rawEventType = readString(outer, "event_type");
+  if (!eventUuid || !rawEventType) return { ok: false, reason: "invalid_payload" };
+  if (rawEventType !== "bot.person_message" && rawEventType !== "bot.group_message") {
+    return { ok: false, reason: "unsupported_event" };
+  }
+  const eventType: ImInboundEventType = rawEventType;
+
+  const botUuid = readString(data, "bot_uuid");
+  if (!botUuid || !expectedBotUuid || botUuid !== expectedBotUuid) {
+    return { ok: false, reason: "bot_mismatch" };
+  }
+
+  const sender = asRecord(data.sender);
+  const senderId = sender ? readString(sender, "id") : null;
+  if (!senderId) return { ok: false, reason: "invalid_payload" };
+
+  const chatType: ImChatType = eventType === "bot.group_message" ? "group" : "person";
+  let chatId = senderId;
+  if (chatType === "group") {
+    const group = asRecord(data.group);
+    const groupId = group ? readString(group, "id") : null;
+    if (!groupId) return { ok: false, reason: "invalid_payload" };
+    chatId = groupId;
+  }
+
+  const components = data.message ?? data.message_chain;
+  if (!Array.isArray(components) || components.length === 0) return { ok: false, reason: "invalid_payload" };
+
+  const texts: string[] = [];
+  let mentioned = false;
+  let nonText = false;
+  for (const rawComponent of components) {
+    const component = asRecord(rawComponent);
+    const type = component ? readString(component, "type") : null;
+    if (!component || !type) {
+      nonText = true;
+      continue;
+    }
+    if (type === "Plain") {
+      const text = component.text;
+      if (typeof text === "string") texts.push(text);
+      else nonText = true;
+      continue;
+    }
+    if (type === "At") {
+      if (readMentionTarget(component.target)) mentioned = true;
+      continue;
+    }
+    if (STRUCTURAL_COMPONENTS.has(type)) continue;
+    nonText = true;
+  }
+
+  const text = texts.join("");
+  // 纯 @ 或纯图片都没有可处理正文；统一按非文本处理，走固定提示。
+  if (!nonText && text.length === 0) nonText = true;
+  if (chatType === "group" && !nonText && !mentioned) return { ok: false, reason: "not_mentioned" };
+
+  return {
+    ok: true,
+    event: { eventUuid, eventType, chatType, chatId, senderId, text, mentioned, nonText },
+  };
+}
+
+export function createInboundService(deps: InboundServiceDeps): InboundService {
+  const transaction = deps.transaction ?? runInTransaction;
+  const now = deps.now ?? (() => new Date());
+
+  async function recordAndRoute(channel: ImChannelRow, event: ParsedInboundEvent, at: Date): Promise<InboundOutcome> {
+    // 事务内先做去重与路由，再创建会话：事件行与会话映射要么一起成立，要么一起回滚。
+    const route = event.nonText
+      ? null
+      : await findActiveRoute(deps.routes, {
+          channelId: channel.id,
+          chatType: event.chatType,
+          chatId: event.chatId,
+        });
+
+    const inserted = await deps.events.insertIfAbsent({
+      channelId: channel.id,
+      eventUuid: event.eventUuid,
+      eventType: event.eventType,
+      chatType: event.chatType,
+      chatId: event.chatId,
+      text: event.nonText ? null : event.text,
+      senderId: event.senderId,
+      agentConfigId: route?.agentConfigId ?? null,
+      status: "received",
+    });
+    if (!inserted) return { kind: "duplicate" };
+
+    if (event.nonText || !route) {
+      await deps.events.markSkipped({ eventId: inserted.id, at });
+      return {
+        kind: "skipped",
+        eventId: inserted.id,
+        reason: event.nonText ? "non_text" : "no_route",
+      };
+    }
+
+    const ensured = await deps.conversationService.ensure({
+      channelId: channel.id,
+      ownerUserId: channel.userId,
+      chatType: event.chatType,
+      chatId: event.chatId,
+      agentConfigId: route.agentConfigId,
+    });
+    await deps.conversations.touchLastEventAt({ conversationId: ensured.conversation.id, at });
+
+    return {
+      kind: "accepted",
+      eventId: inserted.id,
+      conversationId: ensured.conversation.id,
+      agentChanged: ensured.agentChanged,
+    };
+  }
+
+  /**
+   * 冷启动 prompt 会读取 inbox 中的全部积压，因此把仍为 `received` 的事件一并标成 `prompt` 投递。
+   *
+   * 只标当前事件会让同一个 inbox 的旧事件继续走退避重试，订阅建立后重复唤醒 Agent。
+   */
+  async function markPromptDelivered(input: {
+    channel: ImChannelRow;
+    conversation: ImChannelConversationRow;
+    acpSessionId: string;
+    at: Date;
+  }): Promise<void> {
+    if (input.conversation.acpSessionId !== input.acpSessionId) {
+      await deps.conversations.updateAcpSession({
+        conversationId: input.conversation.id,
+        acpSessionId: input.acpSessionId,
+      });
+    }
+    const pending = await deps.events.findUndeliveredByChat({
+      channelId: input.channel.id,
+      chatType: input.conversation.chatType,
+      chatId: input.conversation.chatId,
+      limit: PENDING_DELIVERY_LIMIT,
+    });
+    for (const row of pending) {
+      await deps.events.markDelivered({ eventId: row.id, deliveryVia: "prompt", at: input.at });
+    }
+  }
+
+  /**
+   * 响应后的异步投递：冷启动走一次 prompt；暖态有订阅时只发通知，订阅已断开则改发一次唤醒 prompt。
+   * 失败按 §6.3 落 failed 并回固定提示。
+   */
+  async function deliverAccepted(input: {
+    bridge: ImSessionBridge;
+    channel: ImChannelRow;
+    event: ParsedInboundEvent;
+    eventId: string;
+    conversationId: string;
+    at: Date;
+  }): Promise<void> {
+    const conversation = await deps.conversations.findById({ conversationId: input.conversationId });
+    if (!conversation) return;
+
+    const target: ImSessionTarget = {
+      channelId: input.channel.id,
+      conversationId: conversation.id,
+      organizationId: input.channel.organizationId,
+      ownerUserId: input.channel.userId,
+      agentConfigId: conversation.agentConfigId,
+      rcsSessionId: conversation.rcsSessionId,
+      acpSessionId: conversation.acpSessionId,
+    };
+
+    let opened: ImSessionOpenOutcome;
+    try {
+      opened = await input.bridge.open(target);
+      if (opened.kind === "warm" && deps.dispatcher.subscriptionCount(conversation.id) === 0) {
+        // 订阅是 stateless SSE，peri 的 turn 结束即 unsubscribe；暖态记录不能证明通知有人接收。
+        logWarn(`[im-inbound] 订阅流已断开，暖态改用唤醒 prompt：conversationId=${conversation.id}`);
+        opened = await input.bridge.wake(target);
+      }
+    } catch (error) {
+      const lastError = error instanceof ImSessionBridgeError ? error.code : "COLD_START_FAILED";
+      // 只写事件表的话，管理员必须翻事件表才能发现故障；通道行是「消息通道」页唯一的状态来源。
+      await deps.channelHealth.markInboundFailed(input.channel.id, error);
+      try {
+        await deps.events.markFailed({ eventId: input.eventId, lastError, at: input.at });
+      } catch (markError) {
+        logError("IM 事件失败状态写入失败", markError instanceof Error ? markError : undefined);
+      }
+      await deps.notifyFailure?.({
+        channel: input.channel,
+        chatType: input.event.chatType,
+        chatId: input.event.chatId,
+        senderId: input.event.senderId,
+        text: FAILURE_NOTICES[lastError] ?? BUSY_NOTICE,
+      });
+      return;
+    }
+
+    if (opened.kind === "warm") {
+      deps.dispatcher.enqueue({ eventId: input.eventId, conversationId: conversation.id });
+      return;
+    }
+
+    try {
+      await markPromptDelivered({
+        channel: input.channel,
+        conversation,
+        acpSessionId: opened.acpSessionId,
+        at: input.at,
+      });
+    } catch (error) {
+      // prompt 已被接受，状态写入失败不能把一次成功的投递改判为失败。
+      logError("IM 冷启动后状态写入失败", error instanceof Error ? error : undefined);
+    }
+  }
+
+  function runInBackground(task: Promise<void>): void {
+    void task.catch((error) => {
+      logError("IM 入站投递任务失败", error instanceof Error ? error : undefined);
+    });
+  }
+
+  return {
+    async handle(input) {
+      const channel = await deps.channels.findById({ channelId: input.channelId });
+      // 非 langbot 通道按不存在处理：不暴露平台还有哪些通道类型。
+      if (channel?.platform !== "langbot") return { kind: "rejected", reason: "channel_missing" };
+      if (!channel.enabled) return { kind: "rejected", reason: "channel_disabled" };
+
+      const parsed = parseEvent(input.payload, readBotUuid(channel.credentials));
+      if (!parsed.ok) return { kind: "rejected", reason: parsed.reason };
+      const event = parsed.event;
+      const at = now();
+
+      let outcome: InboundOutcome;
+      try {
+        outcome = await transaction(() => recordAndRoute(channel, event, at));
+      } catch (error) {
+        // 落库与建会话失败同样要把原因留在通道上，否则只能从 500 响应里猜。
+        await deps.channelHealth.markInboundFailed(channel.id, error);
+        throw error;
+      }
+      // 能走到这里说明事件已落库：这条 Webhook 本身就是链路可用的证据。
+      await deps.channelHealth.markInboundSucceeded(channel.id);
+
+      if (outcome.kind === "accepted") {
+        // 实例启动与会话打开都在响应后异步执行（规格 §4.3.6）；没有桥时才退化为直接入队。
+        if (!deps.bridge) {
+          deps.dispatcher.enqueue({ eventId: outcome.eventId, conversationId: outcome.conversationId });
+        } else {
+          const task = deliverAccepted({
+            bridge: deps.bridge,
+            channel,
+            event,
+            eventId: outcome.eventId,
+            conversationId: outcome.conversationId,
+            at,
+          });
+          (deps.afterResponse ?? runInBackground)(task);
+        }
+      } else if (outcome.kind === "skipped" && outcome.reason === "non_text") {
+        void deps.notifyUnsupported?.({
+          channel,
+          chatType: event.chatType,
+          chatId: event.chatId,
+          senderId: event.senderId,
+          text: TEXT_ONLY_NOTICE,
+        });
+      }
+
+      return outcome;
+    },
+  };
+}

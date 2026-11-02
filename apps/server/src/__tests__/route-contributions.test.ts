@@ -172,7 +172,18 @@ test("构造函数未返回 Elysia 实例时拒绝装配", async () => {
 // `toContain`——1.5e 每迁入一个包，这里就多一条路径，迁移进度因此有一份可执行的镜像，漏挂不会静默通过。
 // 分组顺序即装配收集顺序（拓扑序 + manifest 内声明序），不是视觉分块。
 test("真实 profile 装配后各包的路由进入对应槽", async () => {
-  initializeTestApplicationInfrastructure();
+  // channel 模块在装配期校验 LangBot 配置完整性；真实宿主总会声明这份配置，测试基础设施缺省是空表，
+  // 这里补上「未启用 LangBot」的形态，否则装配会被误判为配置缺失。
+  initializeTestApplicationInfrastructure({
+    moduleConfigs: {
+      channel: {
+        langbotBaseUrl: undefined,
+        langbotApiKey: undefined,
+        imTokenSecret: undefined,
+        imEventTextTtlHours: 24,
+      },
+    },
+  });
 
   // 宿主与 workflow-v2 的必填键都不预设进程环境里有，按 `assembly-env.test.ts` 的同一口径经 `loadEnv`
   // 注入（fixture 在后，覆盖进程环境里的同名值），其余键仍取真实进程环境。
@@ -293,13 +304,19 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "DELETE /agent-sites/agent-configs/:agentConfigId/sites/:siteAppId",
     "ALL /agent-sites/apps/:id/api/*",
     "POST /agent-generation",
-    // channel
-    "GET /channels/providers",
-    "GET /channels/hermes/status",
-    "GET /channels/bindings",
-    "POST /channels/bindings",
-    "DELETE /channels/bindings/:id",
-    "PATCH /channels/bindings/:id",
+    // channel（LangBot 控制面；数据面入站与 MCP 在 app 槽）
+    "GET /channels/langbot/status",
+    "GET /channels/langbot/bots",
+    "POST /channels/langbot/bots",
+    "GET /channels/langbot/bots/:botUuid",
+    "PATCH /channels/langbot/bots/:botUuid",
+    "DELETE /channels/langbot/bots/:botUuid",
+    "POST /channels/langbot/bots/:botUuid/send",
+    "GET /channels/langbot/routes",
+    "POST /channels/langbot/routes",
+    "PATCH /channels/langbot/routes/:id",
+    "DELETE /channels/langbot/routes/:id",
+    "GET /channels/langbot/conversations",
     // machine（`/file-events` 是 WS 升级，method 记为 WS）
     "GET /environments/:id/fs/tree",
     "GET /environments/:id/fs",
@@ -485,6 +502,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/agents",
     "PUT /api/agents/:id",
     "DELETE /api/agents/:id",
+    // channel（系统管理面：admin 页面用 master key 认证，与控制面的组织过滤面互不相关）
+    "GET /api/system/channels/",
     // machine
     "POST /api/environments/:environmentId/workspace/files",
     // model-management
@@ -570,6 +589,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // agent-config（站点代理；`/app-*` 兜底见末尾）
     "ALL /web/site/deploy/:appId",
     "ALL /web/site/deploy/:appId/*",
+    // channel（入站 Webhook 与 IM 连接 token 认证的 MCP 面：都不走会话守卫，挂在 app 槽）
+    "POST /hooks/langbot/:channelId",
+    "POST /mcp/im",
     // workflow
     "ALL /workflow-ui/",
     "ALL /workflow-ui/:path",

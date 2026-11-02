@@ -137,6 +137,15 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       baseUrl,
       downloadTokenSigningKeys: env.RCS_API_KEYS.split(","),
     },
+    // Channel 模块配置：LangBot Service API 的三项部署值与事件正文保留小时数。三项 LangBot 值都可缺省，
+    // 缺配置只让控制面端点返回 503 而不是阻断启动；`LANGBOT_API_KEY` 与 `IM_TOKEN_SECRET` 是密钥，宿主
+    // 只透传，不做归一也不写日志。`IM_EVENT_TEXT_TTL_HOURS` 的默认值由 manifest 声明（24）。
+    channel: {
+      langbotBaseUrl: readDeclaredEnv<string | undefined>(env, "LANGBOT_BASE_URL"),
+      langbotApiKey: readDeclaredEnv<string | undefined>(env, "LANGBOT_API_KEY"),
+      imTokenSecret: readDeclaredEnv<string | undefined>(env, "IM_TOKEN_SECRET"),
+      imEventTextTtlHours: readDeclaredEnv<number>(env, "IM_EVENT_TEXT_TTL_HOURS"),
+    },
     // AgentConfig 模块配置：侧边栏隐藏项、站点应用代理凭据与 Agent 智能生成用的模型名。
     // 生成模型只在 OpenAI Key 存在时下发，等价于迁移前 `OPENAI_API_KEY && OPENAI_MODEL` 的判定
     // （API Key 由 OpenAI SDK 自行从环境读取，包侧只认模型名是否下发）。`OPENAI_API_KEY` 的声明本身

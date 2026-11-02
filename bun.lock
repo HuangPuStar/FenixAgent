@@ -518,7 +518,7 @@
     "packages/resources/channel": {
       "name": "@fenix/resource-channel",
       "dependencies": {
-        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/agent-config": "workspace:*",
         "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
@@ -527,14 +527,15 @@
         "ahooks": "^3.9.7",
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
+        "lucide-react": "^1.16.0",
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "happy-dom": "^20.9.0",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
+        "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
