@@ -1,5 +1,5 @@
 /**
- * `/api/environments/:environmentId/workspace/files` 的资源应用 Facade。
+ * `/api/v1/environments/:environmentId/workspace/files` 的资源应用 Facade。
  *
  * 迁移前的形态是：路由把宿主认证上下文交给 `services/api-workspace`，由领域服务自己调用
  * `getOwnedEnvironment` 做归属校验。授权止于 Facade（§3.2、§4.1），因此这里把「环境属于谁」的判定
@@ -33,13 +33,21 @@ export interface MachineWorkspaceFacadeApi {
    *
    * 校验顺序与迁移前一致：先归属、后解析表单；环境不可见时不会读取任何文件内容。
    */
-  upload(actor: MachineWorkspaceActor, environmentId: string, formData: FormData): Promise<WorkspaceFileUploadResult>;
+  upload(
+    actor: MachineWorkspaceActor,
+    environmentId: string,
+    formData: FormData | (() => Promise<FormData>),
+  ): Promise<WorkspaceFileUploadResult>;
 }
 
 /** 进程级无状态实现：Facade 不持有连接、缓存或 actor，每次调用只用入参推导范围。 */
 export const machineWorkspaceFacade: MachineWorkspaceFacadeApi = {
   async upload(actor, environmentId, formData) {
     await getOwnedEnvironment(environmentId, actor.organizationId, actor.userId);
-    return uploadWorkspaceFiles(environmentId, formData);
+    return uploadWorkspaceFiles(
+      environmentId,
+      typeof formData === "function" ? await formData() : formData,
+      actor.userId,
+    );
   },
 };

@@ -113,6 +113,7 @@ export interface ModelRepository {
     organizationId: string;
     modelId: string;
     data: ModelWriteData;
+    rejectConflict?: boolean;
   }): Promise<string | undefined>;
   updateById(input: { organizationId: string; providerId: string; id: string; data: ModelWriteData }): Promise<boolean>;
   updateByModelId(input: {
@@ -205,19 +206,13 @@ export function createModelRepository(): ModelRepository {
 
     async upsert(input) {
       const set = writeSet(input.data);
-      const rows = await database()
+      const insert = database()
         .insert(model)
-        .values({
-          organizationId: input.organizationId,
-          providerId: input.providerId,
-          modelId: input.modelId,
-          ...set,
-        })
-        .onConflictDoUpdate({
-          target: [model.providerId, model.modelId],
-          set,
-        })
-        .returning({ id: model.id });
+        .values({ organizationId: input.organizationId, providerId: input.providerId, modelId: input.modelId, ...set });
+      const rows = await (input.rejectConflict
+        ? insert.onConflictDoNothing({ target: [model.providerId, model.modelId] })
+        : insert.onConflictDoUpdate({ target: [model.providerId, model.modelId], set })
+      ).returning({ id: model.id });
       return rows[0]?.id;
     },
 

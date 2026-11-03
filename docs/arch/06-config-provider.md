@@ -1,5 +1,7 @@
 # Provider & Model
 
+外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
+
 > 涉及模块：Provider 配置服务、Model 配置服务、LaunchSpecBuilder
 
 ## 概述

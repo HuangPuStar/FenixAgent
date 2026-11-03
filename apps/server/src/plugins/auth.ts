@@ -21,6 +21,7 @@ import { requestAls } from "@fenix/logger";
 import { type ActorContext, AppError } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import { config } from "../config";
+import { formatApiError } from "../protocol/api-response";
 
 /**
  * 宿主的认证适配层（CE 阶段 2 任务 1.2）。
@@ -395,7 +396,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
         beforeHandle: async ({ store, request, error }: any) => {
           const authResult = await authenticateRequest(request);
           if (!authResult) {
-            return error(401, { error: { type: "unauthorized", message: "Not authenticated" } });
+            return error(401, formatApiError(request.url, "unauthorized", "Not authenticated", 401));
           }
           store.user = authResult.user;
           store.authSession = authResult.authSession;
@@ -413,7 +414,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
         beforeHandle: async ({ store, request, error }: any) => {
           const ok = await tryApiKeyAuth(store, request);
           if (!ok) {
-            return error(401, { error: { type: "unauthorized", message: "Invalid API key" } });
+            return error(401, formatApiError(request.url, "unauthorized", "Invalid API key", 401));
           }
           if (store.user) {
             enrichAlsContext(store.user, store.authContext);

@@ -17,7 +17,8 @@ export const corsPlugin = new Elysia({ name: "cors" }).use(
   cors({
     origin: buildCorsOrigin(),
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Instance-Id", "X-Session-Id"],
+    exposeHeaders: ["X-Instance-Id", "X-Session-Id", "X-Session-Expires-At", "X-Request-Id", "Retry-After"],
     credentials: true,
   }),
 );

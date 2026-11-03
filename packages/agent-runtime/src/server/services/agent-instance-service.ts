@@ -3,6 +3,7 @@ import { SERVER_EPOCH } from "@fenix/remote-runtime";
 import { sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { markAgentExecutionIdleReclaimable, releaseAgentExecutions } from "../../services/agent-execution-admission";
 import { releaseAgentSessionTurns } from "../../services/agent-session-admission";
+import { apiChatSessions } from "../../services/api-chat-session-registry";
 import { globalInstanceRegistry } from "../../services/instance-registry";
 import { createAgentInstanceUid, isAgentInstanceUid } from "../instance/agent-instance-id";
 import type { AgentInstanceRecord, IAgentInstanceRepo, InstanceCreationSource } from "../repositories/agent-instance";
@@ -73,6 +74,7 @@ const runtimeAdapter: RuntimeAdapter = {
   onStopped(instanceUid) {
     releaseAgentExecutions(instanceUid);
     releaseAgentSessionTurns(instanceUid);
+    apiChatSessions.invalidateInstance(instanceUid);
   },
   async start(instance, generation, signal) {
     signal.throwIfAborted();

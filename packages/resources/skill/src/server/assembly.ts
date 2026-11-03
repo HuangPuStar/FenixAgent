@@ -26,7 +26,7 @@ export function createSkillWebConfigRoutes(host: ServerRouteHost) {
   return createWebSkillsConfigRoutes(routeDependencies(host));
 }
 
-/** `/api/skills` 对外稳定技能接口（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/skills` 对外稳定技能接口（挂宿主 `api` 聚合槽）。 */
 export function createSkillApiRoutes(host: ServerRouteHost) {
   return createApiSkillsRoutes(routeDependencies(host));
 }

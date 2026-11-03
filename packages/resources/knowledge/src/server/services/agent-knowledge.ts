@@ -159,3 +159,14 @@ export async function syncAgentKnowledgeBindingsById(
     );
   });
 }
+
+/** Validate the complete local organization scope before any binding replacement. */
+export async function validateAgentKnowledgeBindings(
+  organizationId: string,
+  knowledge: AgentKnowledgeConfig | null | undefined,
+): Promise<void> {
+  for (const id of knowledge?.knowledgeBaseIds ?? []) {
+    if (!(await knowledgeBaseRepo.getByOrgAndId(organizationId, id)))
+      throw new InvalidKnowledgeBindingError("知识库不存在或无权限访问");
+  }
+}

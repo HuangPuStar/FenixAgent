@@ -110,6 +110,7 @@ export interface AgentConfigRepository {
     organizationId: string;
     ownerUserId: string;
     visibility: string;
+    rejectConflict?: boolean;
   }): Promise<AgentConfigCreateResult | undefined>;
   updateById(input: { resourceId: string; data: AgentConfigUpdateData }): Promise<boolean>;
   /**
@@ -246,6 +247,8 @@ export function createAgentConfigRepository(
       const insertedId = inserted[0]?.id;
       if (insertedId !== undefined) return { id: insertedId, created: true };
 
+      if (input.rejectConflict) return;
+
       // 同名冲突只更新可写列：归属列是创建期属性，重复创建不得改主或改公开受众。
       const updated = await database
         .update(agentConfig)
@@ -324,3 +327,12 @@ export function createAgentConfigRepository(
  * "同一批数据的两次查询"有确定结果，不依赖数据库的物理返回顺序。
  */
 export const AGENT_CONFIG_LIST_ORDER: readonly SQL[] = [desc(agentConfig.createdAt), asc(agentConfig.id)];
+
+/** Serialize authorized configuration and binding replacements within the caller transaction. */
+export async function lockAgentConfigForUpdate(resourceId: string): Promise<void> {
+  await getAgentConfigDatabase()
+    .select({ id: agentConfig.id })
+    .from(agentConfig)
+    .where(eq(agentConfig.id, resourceId))
+    .for("update");
+}

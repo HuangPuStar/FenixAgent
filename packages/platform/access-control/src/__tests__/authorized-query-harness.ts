@@ -285,7 +285,10 @@ function createRecordingDatabase(rows: readonly ProbeRow[]): {
 /** 装配被测实现：真实 suite（同一个资源注册喂给查询与范围 Store）+ 记录型 DB 句柄。 */
 export function createHarness() {
   const { database, queries } = createRecordingDatabase(PROBE_ROWS);
-  return { suite: createDrizzleAccessControl<ProbeStorage>({ database, bindings: PROBE_BINDINGS }), queries };
+  return {
+    suite: createDrizzleAccessControl<ProbeStorage>({ database: () => database, bindings: PROBE_BINDINGS }),
+    queries,
+  };
 }
 
 /** 列表入参：表与列固定，用例只给出与本次断言相关的部分。 */

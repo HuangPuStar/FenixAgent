@@ -233,7 +233,10 @@ async function runStartupSteps(
   // 而不是 `host-wiring.ts`，是为了与本文件已有的另两个 agent-config 端口放在一起——host-wiring 刻意不
   // 导入 agent-config 的入口。
   bindMachineLookupPort({ findMachineLabelsByIds });
-  bindModelLookupPort({ findModelLabelsByIds });
+  bindModelLookupPort({
+    findModelLabelsByIds,
+    requireModelForBinding: (actor, id) => getModelManagementModule().facade.requireModelForBinding(actor, id),
+  });
   // machine 的 Agent 配置取数端口（反向）：machine 不再导入 agent-config 的入口（矩阵外反向边，台账
   // `@fenix/resource-machine → @fenix/agent-config` 的移除条件），改由这里绑上 owner 的实现。位置必须
   // 在这里：`wireHostRuntime` 刻意不导入 agent-config，而本文件本来就持有它的入口。

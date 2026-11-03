@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ActorContext, MemberRole } from "@fenix/platform-sdk";
-import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { readJson as readRawJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type {
   AuthorizedProviderDetail,
   AuthorizedProviderListItem,
@@ -18,7 +18,7 @@ import {
 import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
- * `/api/models` 协议层（对外稳定合同）的边界用例。
+ * `/api/v1` 协议层（对外稳定合同）的边界用例。
  *
  * 这层没有授权判断：可见性、`update`/`delete` 动作与系统托管都在 Facade 内完成，route 只负责「守卫
  * 拒绝 → 401」「Facade 抛 NotFound/Forbidden → 404/403」的映射与响应投影。因此本文件的断言分四类：
@@ -42,6 +42,15 @@ import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
  */
 
 /** 当前请求的身份；守卫替身按取值函数读取，用例可中途换人。 */
+async function readJson(response: Response) {
+  const body = await readRawJson(response);
+  if (response.ok) {
+    expect(body.success).toBe(true);
+    return body.data;
+  }
+  return body;
+}
+
 let currentActor: ActorContext | null = null;
 
 const route = createApiModelsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin(() => currentActor) });
@@ -129,21 +138,21 @@ function installFacade(facade: Partial<ReturnType<typeof createStubProviderFacad
   installModelManagementModule(createStubModelManagementServerModule({ facade: createStubProviderFacade(facade) }));
 }
 
-/** 全部端点都挂着 `sessionAuth` 宏；路径统一带 `/api/models` 前缀，和宿主挂载一致。 */
+/** 全部端点都挂着 `sessionAuth` 宏；路径统一带 `/api/v1` 前缀，和宿主挂载一致。 */
 const PROTECTED_ROUTES: ReadonlyArray<{ method: string; path: string; body?: Record<string, unknown> }> = [
   { method: "GET", path: "/providers" },
   { method: "POST", path: "/providers", body: { name: "demo" } },
   { method: "GET", path: "/providers/provider-1" },
-  { method: "PUT", path: "/providers/provider-1", body: { displayName: "Renamed" } },
+  { method: "PATCH", path: "/providers/provider-1", body: { displayName: "Renamed" } },
   { method: "DELETE", path: "/providers/provider-1" },
   { method: "GET", path: "/providers/provider-1/models" },
   { method: "POST", path: "/providers/provider-1/models", body: { modelId: "gpt-4o-mini" } },
   { method: "GET", path: "/providers/provider-1/models/model-row-1" },
-  { method: "PUT", path: "/providers/provider-1/models/model-row-1", body: { displayName: "Renamed" } },
+  { method: "PATCH", path: "/providers/provider-1/models/model-row-1", body: { displayName: "Renamed" } },
   { method: "DELETE", path: "/providers/provider-1/models/model-row-1" },
 ];
 
-describe("/api/models 路由", () => {
+describe("/api/v1 路由", () => {
   beforeEach(() => {
     resetAllStubs();
     resetModelManagementModuleForTesting();
@@ -166,8 +175,8 @@ describe("/api/models 路由", () => {
     for (const entry of PROTECTED_ROUTES) {
       const response =
         entry.body === undefined
-          ? await request(`/api/models${entry.path}`)
-          : await json(`/api/models${entry.path}`, entry.method, entry.body);
+          ? await request(`/api/v1${entry.path}`)
+          : await json(`/api/v1${entry.path}`, entry.method, entry.body);
 
       expect(`${entry.method} ${entry.path} → ${response.status}`).toBe(`${entry.method} ${entry.path} → 401`);
       expect((await readJson(response)).error.code).toBe("UNAUTHORIZED");
@@ -189,7 +198,7 @@ describe("/api/models 路由", () => {
     });
 
     authenticate("org-2", "user-9");
-    const external = await readJson(await request("/api/models/providers"));
+    const external = await readJson(await request("/api/v1/providers"));
     expect(seenActors).toHaveLength(1);
     expect(seenActors[0]?.activeOrganizationId).toBe("org-2");
     expect(seenActors[0]?.userId).toBe("user-9");
@@ -197,7 +206,7 @@ describe("/api/models 路由", () => {
 
     // 换一个身份再发一次：同一实例上每次请求都重新由守卫写入主体，不会沿用上一次的 actor。
     authenticate("org-1", "user-1");
-    const internal = await readJson(await request("/api/models/providers"));
+    const internal = await readJson(await request("/api/v1/providers"));
     expect(seenActors[1]?.activeOrganizationId).toBe("org-1");
     expect(internal.items.map((item: { id: string }) => item.id)).toEqual(["provider-a"]);
   });
@@ -207,34 +216,34 @@ describe("/api/models 路由", () => {
     const received: Array<{ actor: ActorContext; name: string; data: ProviderWriteData }> = [];
     installFacade({
       get: async () => undefined,
-      save: async (actor, name, data) => {
+      create: async (actor, name, data) => {
         received.push({ actor, name, data });
         return providerDetail();
       },
     });
 
-    const response = await json("/api/models/providers", "POST", {
+    const response = await json("/api/v1/providers", "POST", {
       name: "demo",
-      organizationId: "org-2",
-      userId: "user-2",
-      resourceAccess: { scope: { organizationId: "org-2" } },
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(received).toHaveLength(1);
     expect(received[0]?.actor.activeOrganizationId).toBe("org-1");
     expect(received[0]?.actor.userId).toBe("user-1");
     expect(received[0]?.data).not.toHaveProperty("organizationId");
     // `ownership` 由「资源归属组织 vs 当前 active organization」比较得出：body 若能改写身份，这里会变成 external。
     const body = await readJson(response);
-    expect(body.resourceAccess.ownership).toBe("internal");
-    expect(body.resourceAccess.sourceOrganizationId).toBe("org-1");
+    expect(body.scope.organizationId).toBe("org-1");
+    expect(body).not.toHaveProperty("resourceAccess");
   });
 
   // 跨组织不可见的 Provider 对调用方必须表现为「不存在」：404 不确认资源存在，不泄露他人资源清单。
   test("跨组织不可见的 Provider 读、写、删都返回 404", async () => {
     installFacade({
       getById: async () => undefined,
+      createModel: async () => {
+        throw new NotFoundError("Provider not found");
+      },
       remove: async () => {
         throw new NotFoundError("Provider 'shared' not found");
       },
@@ -243,10 +252,10 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const read = await request("/api/models/providers/shared");
-    const createModel = await json("/api/models/providers/shared/models", "POST", { modelId: "gpt-4o" });
-    const updateModel = await json("/api/models/providers/shared/models/model-row-1", "PUT", { displayName: "x" });
-    const remove = await request("/api/models/providers/shared", { method: "DELETE" });
+    const read = await request("/api/v1/providers/shared");
+    const createModel = await json("/api/v1/providers/shared/models", "POST", { modelId: "gpt-4o" });
+    const updateModel = await json("/api/v1/providers/shared/models/model-row-1", "PATCH", { displayName: "x" });
+    const remove = await request("/api/v1/providers/shared", { method: "DELETE" });
 
     for (const response of [read, createModel, updateModel, remove]) {
       expect(response.status).toBe(404);
@@ -262,7 +271,7 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const response = await json("/api/models/providers/shared", "PUT", { displayName: "Renamed" });
+    const response = await json("/api/v1/providers/shared", "PATCH", { displayName: "Renamed" });
 
     expect(response.status).toBe(403);
     expect((await readJson(response)).error.code).toBe("FORBIDDEN");
@@ -275,8 +284,8 @@ describe("/api/models 路由", () => {
       list: async () => ({ items: [providerListItem()], total: 1 }),
     });
 
-    const detail = await request("/api/models/providers/provider-1");
-    const list = await request("/api/models/providers");
+    const detail = await request("/api/v1/providers/provider-1");
+    const list = await request("/api/v1/providers");
 
     expect(detail.status).toBe(200);
     expect(list.status).toBe(200);
@@ -286,7 +295,7 @@ describe("/api/models 路由", () => {
     expect(detailText).not.toContain("sk-live-secret-9f3a");
     expect(listText).not.toContain("sk-live-secret-9f3a");
     expect(JSON.parse(detailText)).not.toHaveProperty("apiKey");
-    expect(JSON.parse(listText).items[0]).not.toHaveProperty("apiKey");
+    expect(JSON.parse(listText).data.items[0]).not.toHaveProperty("apiKey");
   });
 
   // 分页下推到 Facade（SQL 侧 LIMIT/OFFSET）：协议层只做 page/pageSize → limit/offset 的换算，
@@ -300,7 +309,7 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const body = await readJson(await request("/api/models/providers?page=2&pageSize=1"));
+    const body = await readJson(await request("/api/v1/providers?page=2&pageSize=1"));
 
     expect(seen).toEqual([{ limit: 1, offset: 1 }]);
     // `total` 是全集条数而不是本页条数：调用方据此翻页，Facade 给什么就回什么。
@@ -321,8 +330,8 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const first = await readJson(await request("/api/models/providers"));
-    const beyond = await readJson(await request("/api/models/providers?page=99&pageSize=20"));
+    const first = await readJson(await request("/api/v1/providers"));
+    const beyond = await readJson(await request("/api/v1/providers?page=99&pageSize=20"));
 
     expect(seen).toEqual([
       { limit: 20, offset: 0 },
@@ -343,7 +352,7 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const body = await readJson(await request("/api/models/providers/provider-1/models?page=2&pageSize=1"));
+    const body = await readJson(await request("/api/v1/providers/provider-1/models?page=2&pageSize=1"));
 
     expect(seen).toEqual([{ ref: { by: "resourceId", value: "provider-1" }, options: { limit: 1, offset: 1 } }]);
     expect(body.total).toBe(2);
@@ -351,7 +360,7 @@ describe("/api/models 路由", () => {
     expect(body.pageSize).toBe(1);
     expect(body.items.map((item: { modelId: string }) => item.modelId)).toEqual(["gpt-4o-mini"]);
     // 独立 Model 视图带父级名称（内嵌摘要不带），列表项因此可以自解释。
-    expect(body.items[0].providerName).toBe("demo");
+    expect(body.items[0]).not.toHaveProperty("providerName");
   });
 
   // 子 Model 列表的越界页：偏移量照常下推（不因越界改成全量读），空 items 与 total 一起回给调用方。
@@ -364,7 +373,7 @@ describe("/api/models 路由", () => {
       },
     });
 
-    const body = await readJson(await request("/api/models/providers/provider-1/models?page=99&pageSize=20"));
+    const body = await readJson(await request("/api/v1/providers/provider-1/models?page=99&pageSize=20"));
 
     expect(seen).toEqual([{ limit: 20, offset: 1960 }]);
     expect(body.items).toEqual([]);
@@ -377,13 +386,12 @@ describe("/api/models 路由", () => {
       getById: async () => providerDetail({ models: [modelRow({ options: { temperature: 0.2 } })] }),
     });
 
-    const body = await readJson(await request("/api/models/providers/provider-1/models/model-row-1"));
+    const body = await readJson(await request("/api/v1/providers/provider-1/models/model-row-1"));
 
     expect(body).toEqual({
       providerId: "provider-1",
       id: "model-row-1",
       modelId: "gpt-4o",
-      providerName: "demo",
       displayName: "GPT-4o",
       modalities: ["text"],
       limitConfig: { context: 128_000, output: 8_192 },
@@ -396,7 +404,7 @@ describe("/api/models 路由", () => {
   test("子 Model 详情行 ID 不存在时返回 404", async () => {
     installFacade({ getById: async () => providerDetail() });
 
-    const response = await request("/api/models/providers/provider-1/models/model-row-missing");
+    const response = await request("/api/v1/providers/provider-1/models/model-row-missing");
 
     expect(response.status).toBe(404);
     expect((await readJson(response)).error.code).toBe("NOT_FOUND");
@@ -406,8 +414,8 @@ describe("/api/models 路由", () => {
   test("不可见 Provider 的子 Model 列表与详情返回 404", async () => {
     installFacade({ getById: async () => undefined, listModels: async () => undefined });
 
-    const list = await request("/api/models/providers/shared/models");
-    const detail = await request("/api/models/providers/shared/models/model-row-1");
+    const list = await request("/api/v1/providers/shared/models");
+    const detail = await request("/api/v1/providers/shared/models/model-row-1");
 
     for (const response of [list, detail]) {
       expect(response.status).toBe(404);
@@ -418,12 +426,16 @@ describe("/api/models 路由", () => {
   // 创建重名 Provider 是协议层判定（唯一索引冲突在 Facade 侧不表达），必须 409 且不调用写入。
   test("创建重名 Provider 返回 409 且不写入", async () => {
     const save = mock(async () => providerDetail());
-    installFacade({ get: async () => providerDetail(), save });
+    installFacade({
+      create: async () => {
+        throw new ConflictError("Provider already exists");
+      },
+    });
 
-    const response = await json("/api/models/providers", "POST", { name: "demo" });
+    const response = await json("/api/v1/providers", "POST", { name: "demo" });
 
     expect(response.status).toBe(409);
-    expect((await readJson(response)).error.code).toBe("CONFLICT");
+    expect((await readJson(response)).error.code).toBe("ALREADY_EXISTS");
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -436,10 +448,40 @@ describe("/api/models 路由", () => {
       }),
     });
 
-    const body = await readJson(
-      await request("/api/models/providers/provider-1/models/model-row-1", { method: "DELETE" }),
-    );
+    const body = await readJson(await request("/api/v1/providers/provider-1/models/model-row-1", { method: "DELETE" }));
 
-    expect(body).toEqual({ providerId: "provider-1", id: "model-row-1", modelId: "gpt-4o", deleted: true });
+    expect(body).toBeNull();
   });
+});
+
+// 网关投影必须可发现，且响应不能泄漏凭据或旧页面视图。
+test("v1 exposes gateway identity and safe access DTO", async () => {
+  authenticate();
+  installFacade({
+    list: async () => ({ items: [providerListItem({ kind: "gateway", gatewayType: "litellm" })], total: 1 }),
+  });
+  const response = await request("/api/v1/providers");
+  expect(response.status).toBe(200);
+  const body = await readRawJson(response);
+  expect(body.success).toBe(true);
+  expect(body.data.items[0]).toMatchObject({ kind: "gateway", gatewayType: "litellm", hasApiKey: true });
+  expect(body.data.items[0]).not.toHaveProperty("resourceAccess");
+  expect(JSON.stringify(body)).not.toContain("sk-live-secret");
+});
+
+// 增量更新不应用创建默认协议，空更新与重命名被拒绝。
+test("v1 provider PATCH preserves protocol", async () => {
+  authenticate();
+  installFacade({
+    saveById: async (_actor, _id, data) => {
+      expect(data).toEqual({ displayName: "Renamed" });
+      return providerDetail({ protocol: "anthropic", displayName: "Renamed" });
+    },
+  });
+  const response = await json("/api/v1/providers/provider-1", "PATCH", { displayName: "Renamed" });
+  expect(response.status).toBe(200);
+  expect((await readJson(response)).protocol).toBe("anthropic");
+  for (const input of [{}, { name: "rename" }]) {
+    expect((await json("/api/v1/providers/provider-1", "PATCH", input)).status).toBeGreaterThanOrEqual(400);
+  }
 });

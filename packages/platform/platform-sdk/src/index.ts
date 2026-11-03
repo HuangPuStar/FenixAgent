@@ -5,6 +5,7 @@ export * from "./assembly/profile";
 export * from "./env-loader";
 export * from "./identity/identity-directory";
 export * from "./migration/data-migration";
+export * from "./protocol/api-v1-envelope";
 export * from "./protocol/errors";
 export * from "./protocol/resource-access-view";
 export * from "./protocol/system-api";

@@ -619,6 +619,7 @@
         "@fenix/logger": "workspace:*",
         "@fenix/orchestration": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
+        "@fenix/plugin-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
         "ahooks": "^3.9.7",

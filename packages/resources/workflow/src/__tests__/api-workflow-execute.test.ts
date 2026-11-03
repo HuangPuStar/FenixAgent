@@ -4,7 +4,7 @@ import { createApiWorkflowRoutes } from "../server/routes/api/workflows";
 import { createStubSessionAuthGuard } from "./guard-stubs";
 
 // 工作流执行 API 集成测试
-// 测试 POST /api/workflows/:workflowId/execute 端点
+// 测试 POST /api/v1/workflows/:workflowId/execute 端点
 
 const guard = createStubSessionAuthGuard();
 
@@ -12,7 +12,7 @@ const guard = createStubSessionAuthGuard();
 // 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
 const apiWorkflowRoute = createApiWorkflowRoutes({ authGuardPlugin: guard });
 
-describe("POST /api/workflows/:workflowId/execute", () => {
+describe("POST /api/v1/workflows/:workflowId/execute", () => {
   /** 发起 API 请求的辅助函数 */
   async function _apiFetch(path: string, init?: RequestInit) {
     return apiWorkflowRoute.handle(new Request(`http://localhost${path}`, init));

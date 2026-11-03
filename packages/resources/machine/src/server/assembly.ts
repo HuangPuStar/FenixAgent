@@ -41,7 +41,7 @@ export function createMachineWebRegistryRoutes(host: ServerRouteHost) {
   return createWebRegistryRoutes(routeDependencies(host));
 }
 
-/** `/api/environments/:environmentId/workspace/files` 对外工作区文件接口（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/environments/:environmentId/workspace/files` 对外工作区文件接口（挂宿主 `api` 聚合槽）。 */
 export function createMachineApiWorkspaceRoutes(host: ServerRouteHost) {
   return createApiWorkspaceRoutes(routeDependencies(host));
 }

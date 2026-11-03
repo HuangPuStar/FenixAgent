@@ -13,8 +13,8 @@ CE 默认的资源范围与动作授权实现，以及把授权条件下推到 S
 - **物理绑定**：`src/scope/column-resource-scope-store.ts` 由各资源包声明的
   `ResourceRegistration.storage` 建立 `resourceType → (表, 归属列)` 索引；未知 `resourceType` 直接报错，
   不静默返回空集合。
-- **装配**：`src/suite.ts` 的 `createDrizzleAccessControl({ database, bindings, identity })` 产出
-  `{ accessControl, authorizedQuery, scopeStore }`，由宿主 `apps/server` 注入资源包。
+- **装配**：`src/suite.ts` 的 `createDrizzleAccessControl({ database, bindings })` 产出
+  `{ accessControl, authorizedQuery, scopeStore }`，由宿主 `apps/server` 注入资源包。`database` 是请求期句柄提供函数，授权查询与范围更新使用当前事务，不缓存根连接。
 
 ## 不透明条件
 

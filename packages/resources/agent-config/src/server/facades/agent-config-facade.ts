@@ -3,6 +3,7 @@ import {
   type AuthorizedResource,
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   ResourceAccessDeniedError,
@@ -36,6 +37,7 @@ export type AuthorizedAgentConfig = AuthorizedResource<ScopedAgentConfigRow>;
 /** 创建输入；`publicReadable` 在创建期即写入 `visibility`（成员无权创建，因此没有放权风险）。 */
 export interface AgentConfigCreateInput {
   readonly name: string;
+  readonly rejectConflict?: boolean;
   readonly data: AgentConfigWriteData;
   readonly publicReadable?: boolean;
 }
@@ -139,7 +141,7 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     return row ? this.withAccess(actor, row) : undefined;
   }
 
-  /** 详情/读取：按资源 ID（对外 `/api/agents/:id`）。 */
+  /** 详情/读取：按资源 ID（对外 `/api/v1/agents/:id`）。 */
   async getById(actor: ActorContext, resourceId: string): Promise<AuthorizedAgentConfig | undefined> {
     const access = await this.listConstraint(actor, "read");
     const row = await this.service.findById({ access, resourceId });
@@ -198,12 +200,14 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
 
     const result = await this.service.create({
       name: input.name,
+      rejectConflict: input.rejectConflict,
       data: input.data,
       organizationId,
       ownerUserId: scope.ownerUserId ?? actor.userId,
       visibility: scope.visibility,
     });
     if (result === undefined) {
+      if (input.rejectConflict) throw new ConflictError("Agent already exists");
       throw new Error("AgentConfig 创建未返回资源 ID");
     }
     if (result.created) {

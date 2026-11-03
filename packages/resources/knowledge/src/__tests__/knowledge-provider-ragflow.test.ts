@@ -606,7 +606,7 @@ describe("RagFlowKnowledgeProvider", () => {
   });
 
   // 验证数据集详情在不同 RagFlow 字段版本间保持一致的解析语义。
-  test("getDataset 区分内置分块器、pipeline 并在请求失败时返回空值", async () => {
+  test("getDataset 区分内置分块器、pipeline 并传播请求失败", async () => {
     const fetchSpy = mock()
       .mockImplementationOnce(async () => ({
         ok: true,
@@ -640,7 +640,7 @@ describe("RagFlowKnowledgeProvider", () => {
       chunkMethod: "pipeline_1",
       parseMethod: "pipeline",
     });
-    await expect(provider.getDataset({ datasetId: "unavailable" })).resolves.toBeNull();
+    await expect(provider.getDataset({ datasetId: "unavailable" })).rejects.toMatchObject({ status: 503 });
   });
 
   // 验证厂商目录会过滤无效项，并统一对象和字符串形式的官网地址。

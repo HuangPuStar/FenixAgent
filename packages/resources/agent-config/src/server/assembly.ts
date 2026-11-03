@@ -65,7 +65,7 @@ export function createAgentConfigWebAgentGenerationRoutes(host: ServerRouteHost)
   return createWebAgentGenerationRoutes(deps);
 }
 
-/** `/api/agents` 对外稳定 Agent 接口（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/agents` 对外稳定 Agent 接口（挂宿主 `api` 聚合槽）。 */
 export function createAgentConfigApiRoutes(host: ServerRouteHost) {
   const deps: ApiAgentConfigRouteDependencies = { authGuardPlugin: authGuard(host) };
   return createApiAgentsRoutes(deps);

@@ -65,6 +65,7 @@ function createFakeRuntime(): FakeRuntime {
       const record: FakeTurn = { prompts: [], mcpServers: options.mcpServers ?? [], released: false };
       turns.set(rcsSessionId, record);
       const turn: PromptTurn = {
+        sessionId: options.sessionId ?? `ses_fake_${sessionSeq}`,
         prompt(content) {
           for (const item of content) record.prompts.push(item.text);
         },

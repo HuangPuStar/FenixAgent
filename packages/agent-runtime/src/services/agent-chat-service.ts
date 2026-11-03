@@ -1,19 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { environment } from "@fenix/agent-runtime/db";
 import { log, error as logError, requestAls } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
-import { and, eq } from "drizzle-orm";
-import { getAgentRuntimeDatabase } from "../server/db";
 import { agentInstanceService } from "../server/services/agent-instance-service";
-import { createWebEnvironment } from "../server/services/environment-web";
+import { resolveApiAgentInstance } from "../server/services/api-instance-resolution";
 import { connectAgentRelay } from "../server/transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/instance";
+import type { ApiChatSessionOwner } from "./api-chat-session-registry";
 
 // 编排域依赖注入点（对齐 openai-chat.ts 的 setOpenAIChatRouteDeps 模式）：
 // openAgentSession 的「spawn → relay → turn」编排依赖集中在此，测试可注入 fake
 // 覆盖失败回滚路径，避免 mock.module。
 const defaultDeps = {
-  resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
+  resolveApiAgentInstance,
   ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
   connectAgentRelay,
 };
@@ -42,12 +40,16 @@ import { waitWithSignal } from "./agent-turn-events";
 // ── 编排层：一站式从 agentId 启动到 PromptTurn ──
 
 export interface OpenAgentSessionInput {
+  /** Admission after runtime authorization/readiness, before opening any ACP session. */
+  onResolved?: (owner: ApiChatSessionOwner) => AbortSignal | undefined;
   userId: string;
   /** agent_config.id（非 environment.id），函数内部自动解析为对应的 environment */
   agentConfigId: string;
   organizationId: string;
   /** 可选：恢复已有会话时传入 ACP session ID */
   sessionId?: string;
+  /** Explicit existing api/user instance, reauthorized by the shared resolver. */
+  instanceId?: string;
   startSource: InstanceSpawnSource;
   /** Cancellation covers runtime readiness, relay connection and ACP handshake. */
   signal?: AbortSignal;
@@ -104,60 +106,14 @@ async function openAdmittedAgentSession(
     throw new NotFoundError("Agent config not found: invalid agentConfigId format");
   }
 
-  let environmentId: string;
-  const db = getAgentRuntimeDatabase();
-  const existingRows = await waitWithSignal(
-    Promise.resolve(
-      db
-        .select({ id: environment.id })
-        .from(environment)
-        .where(
-          and(
-            eq(environment.organizationId, input.organizationId),
-            eq(environment.agentConfigId, input.agentConfigId),
-            eq(environment.userId, input.userId),
-          ),
-        )
-        .limit(1),
-    ),
-    input.signal,
-  );
-
-  if (existingRows.length > 0) {
-    environmentId = existingRows[0].id;
-    log(`[agent-chat] Reusing existing environment: environmentId=${environmentId} agentId=${input.agentConfigId}`, {
-      requestId,
-    });
-  } else {
-    // 自动创建 environment（名称组合避免与手动创建的环境冲突）
-    // agentId 预期为标准 UUID（a-f0-9 小写），为防止非标准 ID 导致 kebab-case 校验失败，做 sanitize
-    const safeSuffix = input.agentConfigId.replace(/[^a-z0-9-]/g, "").slice(0, 8) || "default";
-    const autoName = `auto-${safeSuffix}`;
-    const env = await waitWithSignal(
-      createWebEnvironment({
-        name: autoName,
-        agentConfigId: input.agentConfigId,
-        userId: input.userId,
-        organizationId: input.organizationId,
-        autoStart: true,
-      }),
-      input.signal,
-    );
-    environmentId = env.id;
-    log(`[agent-chat] Auto-created environment: environmentId=${environmentId} agentId=${input.agentConfigId}`, {
-      requestId,
-    });
-  }
-
-  // 2. 解析并确保持久 api/primary runtime。请求只拥有 turn/relay，不拥有 runtime 生命周期。
-  const instance = await waitWithSignal(
-    deps.resolveInstance({
-      environmentId,
-      ownerUserId: input.userId,
-      automaticSelection: "api",
+  const resolved = await waitWithSignal(
+    deps.resolveApiAgentInstance({ organizationId: input.organizationId, userId: input.userId }, input.agentConfigId, {
+      instanceId: input.instanceId,
+      signal: input.signal,
     }),
     input.signal,
   );
+  const instance = resolved.instance;
   input.signal?.throwIfAborted();
   execution.attach(instance.id);
   await waitWithSignal(deps.ensureInstanceRuntime(instance, input.signal), input.signal);
@@ -165,6 +121,19 @@ async function openAdmittedAgentSession(
   markAgentExecutionIdleReclaimable(instance.id);
   input.signal?.throwIfAborted();
   log(`[agent-chat] Instance ready: instanceId=${instance.id}`, { requestId });
+
+  const lifecycleSignal = input.onResolved?.({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    agentConfigId: resolved.agentConfigId,
+    environmentId: resolved.environmentId,
+    instanceId: instance.id,
+    runtimeGeneration: agentInstanceService.getRuntimeSnapshot(instance.id).runtimeGeneration,
+  });
+
+  if (lifecycleSignal)
+    input = { ...input, signal: input.signal ? AbortSignal.any([input.signal, lifecycleSignal]) : lifecycleSignal };
+  input.signal?.throwIfAborted();
 
   // 3-5. 连接 relay → 创建 AgentSession → startPromptTurn。
   // 失败和正常 dispose 都只关闭本请求的 relay/listener；持久 runtime 由 Coordinator 管理。

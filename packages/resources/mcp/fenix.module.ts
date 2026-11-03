@@ -9,7 +9,7 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * MCP 关联表 `agent_config_mcp` 随 `agent_config` 聚合归 `@fenix/agent-config`（任务 1.7 B7），关联边本身
  * 不在本包，本包只为该 id 集合提供展示标签。装配面上的
  * 服务端交付物是 `@fenix/resource-mcp/server`：资源注册 `mcpServerResource`、唯一应用入口
- * `McpServerFacade`、组合根 `createMcpServerServerModule`，以及 `/web/config/mcp`、`/api/mcp` 与
+ * `McpServerFacade`、组合根 `createMcpServerServerModule`，以及 `/web/config/mcp`、`/api/v1/mcp-servers` 与
  * 内部协议入口 `/mcp/knowledge`。宿主的系统初始化路径经 `./server/runtime` 的
  * `installMcpServerModule` / `getMcpServerModule` 读写同一份装配结果，不另开一条接线。
  *
@@ -38,7 +38,7 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与
  * MCP SDK 拖进模块图；构造仍由 `src/server/module.ts` 唯一实现。
  *
- * 声明 `contributions`（1.5e）：`/web/config/mcp` 与 `/api/mcp` 的路由实例由本模块以惰性构造函数
+ * 声明 `contributions`（1.5e）：`/web/config/mcp` 与 `/api/v1/mcp-servers` 的路由实例由本模块以惰性构造函数
  * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会被
  * 大量位置导入，不能在索引层就把 Elysia 拖进模块图。前两条路由共用同一份会话守卫。

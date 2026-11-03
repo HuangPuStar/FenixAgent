@@ -26,6 +26,7 @@ import {
   validateSkillName,
   writeSkillDocument,
 } from "../services/skill-content";
+import { withSkillMutation } from "../services/skill-mutation";
 import type { SkillService } from "../services/skill-service";
 
 /** Skill 的授权与文件补偿编排；资源行与文档跨介质写入必须保留回滚。 */
@@ -86,7 +87,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     return row ? this.toListItem(await this.withAccess(actor, row)) : undefined;
   }
 
-  /** 详情/读取：按资源 ID（对外 `/api/skills/:id`）。 */
+  /** 详情/读取：按资源 ID（对外 `/api/v1/skills/:id`）。 */
   async getById(actor: ActorContext, resourceId: string): Promise<SkillListItem | undefined> {
     const row = await this.findVisibleById(actor, resourceId);
     return row ? this.toListItem(await this.withAccess(actor, row)) : undefined;
@@ -114,44 +115,44 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     const safeName = validateSkillName(input.name);
     const normalized = normalizeSkillWriteData(input.data);
 
-    const resourceId = await this.service.create({
-      name: safeName,
-      data: { description: normalized.description, metadata: normalized.metadata },
-      organizationId,
-      ownerUserId: scope.ownerUserId ?? actor.userId,
-      visibility: input.publicReadable === true ? "public" : scope.visibility,
-    });
-    if (resourceId === undefined) throw new ConflictError(`Skill '${safeName}' already exists`);
-
-    try {
-      await writeSkillDocument({
-        organizationId,
+    return withSkillMutation(organizationId, [safeName], async () => {
+      const resourceId = await this.service.create({
         name: safeName,
-        description: normalized.description,
-        content: normalized.content,
-        ...(normalized.metadata === undefined ? {} : { metadata: normalized.metadata }),
+        data: { description: normalized.description, metadata: normalized.metadata },
+        organizationId,
+        ownerUserId: scope.ownerUserId ?? actor.userId,
+        visibility: input.publicReadable === true ? "public" : scope.visibility,
       });
-    } catch (error) {
-      await this.rollbackCreate(resourceId, safeName, error);
-      throw error;
-    }
+      if (resourceId === undefined) throw new ConflictError(`Skill '${safeName}' already exists`);
 
-    return this.requireItemById(actor, resourceId, safeName);
+      try {
+        await writeSkillDocument({
+          organizationId,
+          name: safeName,
+          description: normalized.description,
+          content: normalized.content,
+          ...(normalized.metadata === undefined ? {} : { metadata: normalized.metadata }),
+        });
+      } catch (error) {
+        await this.rollbackCreate(resourceId, safeName, error);
+        throw error;
+      }
+
+      return this.requireItemById(actor, resourceId, safeName);
+    });
   }
 
-  /**
-   * 更新：先写文件内容（资源行写入在文件快照的保护范围内），再按需更新公开受众。
-   *
-   * 资源行写入由 `writeSkillDocument` 的 `persist` 回调执行：行写入失败会先恢复文件内容再上抛，
-   * 因此不会留下"行说新描述、文件是旧正文"的错位。
-   */
+  /** 文件快照保护行写入失败时的内容回滚。 */
   async update(
     actor: ActorContext,
     nameOrKey: string,
     data: SkillWriteInput,
     options: SkillUpdateOptions = {},
   ): Promise<SkillListItem> {
-    return this.updateRow(actor, await this.requireVisible(actor, nameOrKey), data, options);
+    const row = await this.requireVisible(actor, nameOrKey);
+    return withSkillMutation(row.organizationId, [row.name], async () =>
+      this.updateRow(actor, await this.requireVisible(actor, nameOrKey), data, options),
+    );
   }
 
   /** ID 定位不经过名称解析，文件路径从授权后的行推导。 */
@@ -161,7 +162,10 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     data: Partial<SkillWriteInput>,
     options: SkillUpdateOptions = {},
   ): Promise<SkillListItem> {
-    return this.updateRow(actor, await this.requireVisibleById(actor, resourceId), data, options);
+    const row = await this.requireVisibleById(actor, resourceId);
+    return withSkillMutation(row.organizationId, [row.name], async () =>
+      this.updateRow(actor, await this.requireVisibleById(actor, resourceId), data, options),
+    );
   }
 
   private async updateRow(
@@ -180,6 +184,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     });
 
     await writeSkillDocument({
+      replaceMetadata: options.replaceMetadata,
       organizationId: row.organizationId,
       name: row.name,
       description: normalized.description,
@@ -201,11 +206,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     return this.requireItemById(actor, row.id, nameOrKey);
   }
 
-  /**
-   * 仅更新公开受众：不触碰 SKILL.md。
-   *
-   * 公开受众是资源授权数据而不是文档内容，走文件写入路径会无谓重写 Skill 文档。
-   */
+  /** 仅改受众，不重写内容。 */
   async setPublicReadable(actor: ActorContext, nameOrKey: string, publicReadable: boolean): Promise<SkillListItem> {
     return this.setPublicReadableRow(actor, await this.requireVisible(actor, nameOrKey), publicReadable);
   }
@@ -229,42 +230,37 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     return this.requireItemById(actor, row.id, nameOrKey);
   }
 
-  /**
-   * 删除：先删资源行、再清理文件内容。
-   *
-   * 行删除失败（并发删除、数据库故障）时文件保持原样；内容清理失败只留下不可达文件，不会出现
-   * "行还在但内容没了"的可见不一致。
-   */
+  /** 先删行再清理文件，同名生命周期共用锁。 */
   async remove(actor: ActorContext, nameOrKey: string): Promise<void> {
     const row = await this.requireVisible(actor, nameOrKey);
-    await this.requireAction(actor, "delete", row.id);
-    await this.deleteRow(row, nameOrKey);
+    return withSkillMutation(row.organizationId, [row.name], async () => {
+      const current = await this.requireVisible(actor, nameOrKey);
+      await this.requireAction(actor, "delete", current.id);
+      await this.deleteRow(current, nameOrKey);
+    });
   }
 
   /** 删除：按资源 ID。 */
   async removeById(actor: ActorContext, resourceId: string): Promise<void> {
     const row = await this.requireVisibleById(actor, resourceId);
-    await this.requireAction(actor, "delete", row.id);
-    await this.deleteRow(row, resourceId);
+    return withSkillMutation(row.organizationId, [row.name], async () => {
+      const current = await this.requireVisibleById(actor, resourceId);
+      await this.requireAction(actor, "delete", current.id);
+      await this.deleteRow(current, resourceId);
+    });
   }
 
-  /**
-   * 批量导入技能目录。
-   *
-   * 冲突检测在写入前完成，且**只把当前组织已有的同名资源算作冲突**：其他组织公开的同名 Skill 与
-   * 当前组织的自建资源可以共存（同组织同名由唯一索引保证不重复）。若按"任意可读的同名资源"判定，
-   * 跨组织同名会被误报为 CONFLICT，用户既无法导入也无法覆盖。
-   *
-   * 回滚由内容模块驱动：文件写入或资源行写入失败时，新建的恢复为"不存在"，被覆盖的恢复为导入前的
-   * 内容与元数据（见 {@link SkillFacade.restoreOverwritten}）。
-   */
   async importDirectories(
     actor: ActorContext,
     files: UploadSkillFile[],
     strategy?: ImportConflictStrategy,
   ): Promise<SkillImportResult> {
     try {
-      return await this.runImport(actor, files, strategy);
+      return await withSkillMutation(
+        actor.activeOrganizationId ?? "",
+        files.map((file) => file.skillName),
+        () => this.runImport(actor, files, strategy),
+      );
     } catch (error) {
       // 内容层用裸 `code` 表达上传校验失败（清单路径穿越、缺少 SKILL.md、未提供文件）：Facade 的契约
       // 是只抛 AppError 子类，在这里归一，协议层不必认识内容层的错误形状。
@@ -291,6 +287,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
       names: [...grouped.keys()],
       organizationId,
     });
+    if (strategy === "overwrite") for (const row of existingRows) await this.requireAction(actor, "update", row.id);
     const conflicts: ImportSkillsConflict[] = existingRows.map((row) => ({
       name: row.name,
       enabled: true,
@@ -332,6 +329,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     });
     const authorized = await this.withAccessMany(actor, importedRows);
     return {
+      createdNames: authorized.filter((row) => !existingByName.has(row.name)).map((row) => row.name),
       imported: authorized.map((row) => this.toListItem(row)),
       skipped: result.skipped,
       conflicts: result.conflicts,
@@ -358,7 +356,7 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
     if (!imported) throw new Error("Skill import returned no created entry");
     const detail = await this.readDetailById(actor, imported.id);
     if (!detail) throw new Error("Skill could not be reloaded");
-    return { status: "imported", detail };
+    return { status: "imported", detail, created: result.createdNames?.includes(detail.name) };
   }
 
   /** 行 → 视图：描述取资源行列，路径由归属组织与名称推导（内容只属于归属组织）。 */

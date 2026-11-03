@@ -129,7 +129,7 @@ export function createMcpServerService(repository: McpServerRepository): McpServ
     },
 
     async create(input) {
-      return repository.insert(input);
+      return repository.insert({ ...input, enabled: input.config.enabled ?? true });
     },
 
     async findRowUnscoped(resourceId) {
@@ -145,7 +145,11 @@ export function createMcpServerService(repository: McpServerRepository): McpServ
       const type = resolveConfigType(input.config);
       return repository.updateById({
         resourceId: input.resourceId,
-        patch: { config: input.config, ...(type === undefined ? {} : { type }) },
+        patch: {
+          config: input.config,
+          ...(type === undefined ? {} : { type }),
+          ...(input.config.enabled === undefined ? {} : { enabled: input.config.enabled }),
+        },
       });
     },
 

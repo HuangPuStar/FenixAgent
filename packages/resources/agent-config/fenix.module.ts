@@ -10,7 +10,7 @@ import { agentSiteAppResource } from "./src/server/access/agent-site-app-resourc
  *
  * Agent 配置（`agent_config`）的资源行、授权入口、关联绑定（Skill / MCP / 知识库 / 记忆）与站点应用
  * （`agent_site_app`）的唯一 owner。装配面上的消费者是宿主 `apps/server`（装配授权与身份目录后挂载
- * `/web/config/agents`、`/web/agent-sites`、`/web/sidebar-config`、`/api/agents` 与站点代理
+ * `/web/config/agents`、`/web/agent-sites`、`/web/sidebar-config`、`/api/v1/agents` 与站点代理
  * `/web/site/deploy`，并注入 `AgentConfigServerModule`）以及其它资源模块（machine 解析 AgentNode、
  * model-management 与 observer 读取 Agent 配置）。
  *
@@ -54,7 +54,7 @@ import { agentSiteAppResource } from "./src/server/access/agent-site-app-resourc
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会
  * 被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 一条挂 `web-config`（`/web/config/agents`），四条挂 `web`，一条挂 `api`（`/api/agents`，1.5f），两条挂
+ * 一条挂 `web-config`（`/web/config/agents`），四条挂 `web`，一条挂 `api`（`/api/v1/agents`，1.5f），两条挂
  * 顶层 `app`（`/web/site/deploy/:appId/*` 与 `/app-*` 兜底，1.5f-1b）。`/web/sidebar-config` 的工厂不消费
  * host：该端点在登录页也要可用，刻意不声明 `sessionAuth`，故不需要宿主注入守卫。站点代理两条都不走
  * `sessionAuth`——它要区分「未登录」与「已登录但无权限」并分别重定向，改用宿主的 `authenticateRequest`

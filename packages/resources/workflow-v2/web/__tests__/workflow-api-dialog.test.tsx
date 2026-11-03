@@ -111,7 +111,7 @@ describe("调用接口弹窗的内容", () => {
     // 字典为空时 i18next 回显键本身且不插值，因此这里断言的是「标题走字典」而不是渲染出的中文标题
     // （与同目录用例同口径；键的完整性由 `workflow-v2-i18n.test.ts` 守护）。
     expect(text).toContain("api.title");
-    expect(text).toContain(`${win.location.origin}/api/workflow-v2/workflows/${WORKFLOW.id}/run`);
+    expect(text).toContain(`${win.location.origin}/api/v1/workflow-v2/workflows/${WORKFLOW.id}/run`);
     expect(text).toContain("POST");
     expect(text).toContain("Authorization: Bearer rcs_");
     // 地址里的 `:id` 是本地主键，上游 ID 不出现在界面上。
@@ -154,7 +154,7 @@ describe("调用接口弹窗的内容", () => {
     const text = textOf(mount.container);
 
     expect(text).toContain("api.title");
-    expect(text).not.toContain("/api/workflow-v2/workflows/");
+    expect(text).not.toContain("/api/v1/workflow-v2/workflows/");
   });
 });
 
@@ -162,7 +162,7 @@ describe("调用接口弹窗的复制反馈", () => {
   // 复制地址：写入剪贴板的必须是界面显示的那一条地址，并给出成功反馈。
   test("复制调用地址写入剪贴板并提示成功", async () => {
     await mount.render(dialog());
-    const url = `${win.location.origin}/api/workflow-v2/workflows/${WORKFLOW.id}/run`;
+    const url = `${win.location.origin}/api/v1/workflow-v2/workflows/${WORKFLOW.id}/run`;
 
     await click(copyButton("api.copy_endpoint"));
 

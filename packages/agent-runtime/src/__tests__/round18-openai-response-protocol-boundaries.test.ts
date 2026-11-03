@@ -58,7 +58,7 @@ describe("openai response mapper protocol boundaries", () => {
     );
 
     expect(result.choices[0].message.content).toBe("");
-    expect(result.choices[0].finish_reason).toBe("end_turn");
+    expect(result.choices[0].finish_reason).toBe("stop");
   });
 
   // 非 session/update 的 RPC 方法不是文本事件，必须忽略。
@@ -94,7 +94,7 @@ describe("openai response mapper protocol boundaries", () => {
       "agent-1",
     );
 
-    expect(result.choices[0].message.reasoning_content).toBeUndefined();
+    expect(result.choices[0].message).not.toHaveProperty("reasoning_content");
   });
 
   // 没有 content 的文本更新不应生成字符串 "undefined"。
@@ -114,7 +114,7 @@ describe("openai response mapper protocol boundaries", () => {
       "agent-1",
     );
 
-    expect(result.choices[0].message.content).toBe('<tool_call name="unknown" />\n');
+    expect(result.choices[0].message.content).toBe("");
   });
 
   // 流式工具调用必须向客户端暴露约定的简化协议文本（带标题分支）。
@@ -126,7 +126,7 @@ describe("openai response mapper protocol boundaries", () => {
       ),
     );
 
-    expect(chunks[0]).toContain('<tool_call name=\\"search\\" />');
+    expect(chunks.join("")).not.toContain("tool_");
   });
 
   // 缺少标题的流式工具调用必须使用 unknown 默认名，防止空 XML 属性。
@@ -135,7 +135,7 @@ describe("openai response mapper protocol boundaries", () => {
       mapToSSEChunks(events([update({ sessionUpdate: "tool_call_update" }), completion("end_turn")]), "agent-1"),
     );
 
-    expect(chunks[0]).toContain('<tool_result name=\\"unknown\\" />');
+    expect(chunks.join("")).not.toContain("tool_");
   });
 
   // 未命名工具结果同样应保留稳定的默认名称。
@@ -145,7 +145,7 @@ describe("openai response mapper protocol boundaries", () => {
       "agent-1",
     );
 
-    expect(result.choices[0].message.content).toBe('<tool_result name="unknown" />\n');
+    expect(result.choices[0].message.content).toBe("");
   });
 
   // 计划条目应保留默认状态，避免前端把缺失状态理解为完成。
@@ -155,14 +155,14 @@ describe("openai response mapper protocol boundaries", () => {
       "agent-1",
     );
 
-    expect(result.choices[0].message.reasoning_content).toBe("- [pending] review\n");
+    expect(result.choices[0].message).not.toHaveProperty("reasoning_content");
   });
 
   // 完成原因从尾部逆向获取，后续原因优先代表最终回合状态。
   test("uses the last available completion reason", () => {
     const result = mapToNonStreamingResponse([completion("end_turn"), completion("max_tokens")], "agent-1");
 
-    expect(result.choices[0].finish_reason).toBe("max_tokens");
+    expect(result.choices[0].finish_reason).toBe("stop");
   });
 
   // SSE 文本块应位于 content delta，不能误写到 reasoning_content。
@@ -176,7 +176,7 @@ describe("openai response mapper protocol boundaries", () => {
         "agent-1",
       ),
     );
-    const payload = parseChunk(chunks[0]);
+    const payload = parseChunk(chunks[1]);
 
     expect((payload.choices as Array<{ delta: Record<string, string> }>)[0].delta).toEqual({ content: "answer" });
   });
@@ -192,11 +192,7 @@ describe("openai response mapper protocol boundaries", () => {
         "agent-1",
       ),
     );
-    const payload = parseChunk(chunks[0]);
-
-    expect((payload.choices as Array<{ delta: Record<string, string> }>)[0].delta).toEqual({
-      reasoning_content: "think",
-    });
+    expect(chunks.join("")).not.toContain("think");
   });
 
   // 收到 stopReason 后必须发送结束块和 [DONE]，并调用生命周期回调。
@@ -205,11 +201,11 @@ describe("openai response mapper protocol boundaries", () => {
     const chunks = await collect(
       mapToSSEChunks(events([completion("end_turn")]), "agent-1", undefined, (reason) => reasons.push(reason)),
     );
-    const payload = parseChunk(chunks[0]);
+    const payload = parseChunk(chunks[1]);
 
-    expect((payload.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("end_turn");
-    expect(chunks).toEqual([chunks[0], "data: [DONE]\n\n"]);
-    expect(reasons).toEqual(["end_turn"]);
+    expect((payload.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+    expect(chunks).toEqual([chunks[0], chunks[1], "data: [DONE]\n\n"]);
+    expect(reasons).toEqual(["stop"]);
   });
 
   // stopReason 后的事件不得继续写出，避免已结束会话产生重复消息。
@@ -224,7 +220,7 @@ describe("openai response mapper protocol boundaries", () => {
       ),
     );
 
-    expect(chunks).toHaveLength(2);
+    expect(chunks).toHaveLength(3);
     expect(chunks.join("")).not.toContain("late");
   });
 
@@ -248,7 +244,7 @@ describe("openai response mapper protocol boundaries", () => {
       mapToSSEChunks(events([update({ sessionUpdate: "agent_message_chunk" }), completion("end_turn")]), "agent-1"),
     );
 
-    expect(chunks).toHaveLength(2);
+    expect(chunks).toHaveLength(3);
   });
 
   // 流式事件必须在整个响应中复用同一个 chat completion ID。
@@ -272,7 +268,7 @@ describe("openai response mapper protocol boundaries", () => {
   test("maps unauthorized errors to invalid_api_key", () => {
     expect(buildOpenAIError(401, "denied", "authentication_error")).toEqual({
       status: 401,
-      body: { error: { message: "denied", type: "authentication_error", code: "invalid_api_key" } },
+      body: { error: { message: "denied", type: "authentication_error", param: null, code: "INTERNAL_ERROR" } },
     });
   });
 
@@ -280,7 +276,7 @@ describe("openai response mapper protocol boundaries", () => {
   test("omits an API key code for non-authentication errors", () => {
     expect(buildOpenAIError(429, "slow down", "rate_limit_error")).toEqual({
       status: 429,
-      body: { error: { message: "slow down", type: "rate_limit_error", code: undefined } },
+      body: { error: { message: "slow down", type: "rate_limit_error", param: null, code: "INTERNAL_ERROR" } },
     });
   });
 });

@@ -146,17 +146,21 @@ describe("openAgentSession 持久实例与请求资源边界", () => {
   // 默认 fake 依赖：解析并确保持久 inst-1，session/new 触发正常 result；用例可局部覆盖
   function defaultDeps() {
     return {
-      resolveInstance: async () =>
+      resolveApiAgentInstance: async () =>
         ({
-          id: "inst-1",
+          agentConfigId: "123e4567-e89b-12d3-a456-426614174000",
           environmentId: "env-1",
-          ownerUserId: "user-1",
-          creationSource: "api",
-          name: "primary",
-          isDefault: false,
-          createdByUserId: "user-1",
-          createdAt: new Date(0),
-          updatedAt: new Date(0),
+          instance: {
+            id: "inst-1",
+            environmentId: "env-1",
+            ownerUserId: "user-1",
+            creationSource: "api",
+            name: "primary",
+            isDefault: false,
+            createdByUserId: "user-1",
+            createdAt: new Date(0),
+            updatedAt: new Date(0),
+          },
         }) as never,
       ensureInstanceRuntime: async () => {},
       connectAgentRelay: async () => {
@@ -269,18 +273,22 @@ describe("openAgentSession 持久实例与请求资源边界", () => {
     let ensureCalls = 0;
     let relayCloseCalls = 0;
     setAgentChatServiceDeps({
-      resolveInstance: async () => {
+      resolveApiAgentInstance: async () => {
         resolveCalls += 1;
         return {
-          id: "inst-shared-api",
+          agentConfigId: "123e4567-e89b-12d3-a456-426614174000",
           environmentId: "env-1",
-          ownerUserId: "user-1",
-          creationSource: "api",
-          name: "primary",
-          isDefault: false,
-          createdByUserId: "user-1",
-          createdAt: new Date(0),
-          updatedAt: new Date(0),
+          instance: {
+            id: "inst-shared-api",
+            environmentId: "env-1",
+            ownerUserId: "user-1",
+            creationSource: "api",
+            name: "primary",
+            isDefault: false,
+            createdByUserId: "user-1",
+            createdAt: new Date(0),
+            updatedAt: new Date(0),
+          },
         } as never;
       },
       ensureInstanceRuntime: async () => {

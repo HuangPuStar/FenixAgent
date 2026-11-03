@@ -73,11 +73,15 @@ export interface McpServerRepository {
     name: string;
     type: string;
     config: unknown;
+    enabled?: boolean;
     organizationId: string;
     ownerUserId: string;
     visibility: string;
   }): Promise<string | undefined>;
-  updateById(input: { resourceId: string; patch: { type?: string; config: unknown } }): Promise<boolean>;
+  updateById(input: {
+    resourceId: string;
+    patch: { type?: string; config: unknown; enabled?: boolean };
+  }): Promise<boolean>;
   setEnabledById(input: { resourceId: string; enabled: boolean }): Promise<boolean>;
   deleteById(input: { resourceId: string }): Promise<boolean>;
   /** 删除服务器与其缓存的 tools（同一事务）：`mcp_tool` 没有独立生命周期，不能留下孤儿行。 */
@@ -181,7 +185,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
           organizationId: input.organizationId,
           userId: input.ownerUserId,
           visibility: input.visibility,
-          enabled: true,
+          enabled: input.enabled ?? true,
           updatedAt: new Date(),
         })
         // 同组织同名唯一（`idx_mcp_server_org_name`）：冲突返回空集，由上层映射为 409，
@@ -211,6 +215,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
         updatedAt: new Date(),
       };
       if (input.patch.type !== undefined) patch.type = input.patch.type;
+      if (input.patch.enabled !== undefined) patch.enabled = input.patch.enabled;
       const rows = await getMcpDatabase()
         .update(mcpServer)
         .set(patch)

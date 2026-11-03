@@ -21,7 +21,7 @@ const CROSS_ORG_ACTOR: ActorContext = {
   memberships: [{ organizationId: "org-b", role: "owner" }],
 };
 
-type AccessControlDatabase = Parameters<typeof createDrizzleAccessControl>[0]["database"];
+type AccessControlDatabase = ReturnType<Parameters<typeof createDrizzleAccessControl>[0]["database"]>;
 
 /**
  * 用真实授权策略 + 真实资源注册构造授权。
@@ -36,7 +36,7 @@ function createAccessControl(scope: { organizationId: string; visibility: "publi
     }),
   } as unknown as AccessControlDatabase;
   return createDrizzleAccessControl({
-    database,
+    database: () => database,
     bindings: [agentConfigResource.storage],
   }).accessControl;
 }

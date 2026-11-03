@@ -14,6 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
+import { uploadWorkspaceFileExclusive } from "@fenix/plugin-sdk/secure-workspace-upload";
 import { buildWorkspaceZipEnv } from "./workspace-zip-env.js";
 
 // 双向Base64消息共用128MiB预算，原文件为协议元信息保留余量。
@@ -405,12 +406,17 @@ async function opUpload(
       throw new Error(`Invalid file path: ${relPath} escapes target directory`);
     }
 
-    await mkdir(resolve(targetPath, ".."), { recursive: true });
-    await uploadBeforeWriteHook?.(targetPath);
-    await assertUploadDestination(workspace, targetPath);
-
     const buffer = Buffer.from(file.content, "base64");
-    await writeFile(targetPath, buffer, { flag: "wx" });
+    try {
+      await uploadWorkspaceFileExclusive(workspace, relative(workspace, targetPath), buffer, async () => {
+        await uploadBeforeWriteHook?.(targetPath);
+        await assertUploadDestination(workspace, targetPath);
+      });
+    } catch (error) {
+      if (isErrnoException(error) && ["ELOOP", "ENOTDIR"].includes(error.code ?? ""))
+        throw new FileOpError("Upload target contains a symbolic link", "unsafe_symlink", 503);
+      throw error;
+    }
 
     const name = basename(targetPath);
     const displayPath = relative(workspace, targetPath);

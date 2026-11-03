@@ -1,5 +1,7 @@
 # 知识库
 
+外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
+
 ## 这个模块干什么
 
 知识库系统让用户可以给 AI Agent 补充专属知识——上传文档、代码、网页等，系统自动建立索引，Agent 在运行时可以通过 MCP 端点查询这些知识。
@@ -53,7 +55,7 @@ Agent 运行时
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
-已发布的 `GET /api/knowledge-bases` 以单一可见集合返回结果：同一知识库在 `items` 中至多一次，`total` 与分页均基于该去重集合。
+已发布的 `GET /api/v1/knowledge-bases` 以单一可见集合返回结果：仅包含当前组织已有知识库，同一知识库在 `items` 中至多一次，`total` 与分页均基于该去重集合。
 
 ### KnowledgeUpload（文件上传）
 

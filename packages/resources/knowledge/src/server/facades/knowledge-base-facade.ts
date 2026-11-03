@@ -1,36 +1,5 @@
-/**
- * 知识库的资源应用 Facade：`route → Facade → Domain Service / Repository` 的应用入口。
- *
- * 立这一层之前的形态是：**可见范围、归属判定与凭据解析都写在协议层或领域服务里**——`/web/knowledgeBases`
- * 调一个只认「本组织」的包装函数，`/api/knowledge-bases` 在路由里手写 `visibility: "organization-and-global"`
- * 再去拼分页参数，其余端点在路由里把 `authCtx.organizationId` / `authCtx.userId` 按位置传给领域服务，而领域
- * 服务又各自比较组织、各自解析 RAGFlow key。同一份「谁能看、谁能动哪些知识库」因此在三处各写一遍，且都没
- * 有可断言的名字：改错一处不会有人发现，加第三个入口时也无从复用。
- *
- * 现在拆成三件各自可测的事：
- *   - **本层与 `./knowledge-access`**：把 actor 换成显式组织范围与**已授权的知识库上下文**（归属判定 +
- *     按调用者身份绑定的凭据），并把两个协议面各自的可见范围定成**命名方法**（{@link KnowledgeBaseFacade.listForConsole}
- *     = 本组织；{@link KnowledgeBaseFacade.listForExternal} = 本组织 ∪ 跨组织共享的全局库）。控制台还要额外
- *     做一次远端状态回填，那也是应用层编排，一并收在这里；其余知识库端点（详情、创建、更新、删除、导入）
- *     的组织范围与拒绝放行同样只由本层决定；
- *   - **领域服务**（`../services/*`）：收显式范围与已解析的行/凭据，处理资源自身规则与数据访问，不认识 actor、
- *     不比较组织；
- *   - **仓储**（`../repositories/knowledge-base`）：只声明列，把 `includeGlobal` 翻译成 WHERE 条件。
- *
- * 授权来源：知识库不在五张受控资源主表之列（表里没有 `visibility` 列），因此本包不接
- * `@fenix/access-control`、也不复制组织/角色规则。它的租户边界是「会话守卫已认证的 active
- * organization」——由宿主 `apps/server` 的认证插件保证；「全局知识库」是知识库自身的领域语义
- * （跨组织共享的那一份），不是授权放宽，因此它是门面上的显式范围而不是被悄悄塞进服务里的默认值。
- *
- * 边界：本包的两条协议面（`/web/knowledgeBases*` 控制台、`/api/knowledge-bases` 对外稳定接口）都只经门面访问
- * 领域服务——控制台端点按 `./knowledge-base-facade`（知识库本体）、`./knowledge-model-facade`（嵌入模型与
- * 表单选项）、`./knowledge-resource-facade`（知识资源与文件预览）、`./knowledge-runtime-facade`（检索测试与
- * 知识图谱）划分，路由只做协议校验与 DTO 映射，不再把 `authCtx.organizationId` / `authCtx.userId` 交给服务。
- *
- * 失败语义：领域服务的抛错在本层收敛为 {@link KnowledgeResult}（既有对外错误码与文案 + 传输分类），由路由
- * 映射状态码；本层不吞错、不改写错误码与文案。
- */
-
+/** Knowledge application authorization and lifecycle; external lists stay organization-scoped. */
+import { checkApiKnowledgeStatus } from "../services/api-v1-knowledge";
 import {
   createKnowledgeBaseRecord,
   deleteKnowledgeBase,
@@ -101,11 +70,11 @@ export interface ImportRemoteKnowledgeBasePayload {
 const CONSOLE_VISIBILITY: KnowledgeBaseVisibility = "organization";
 
 /**
- * 对外已发布列表的可见范围：并入跨组织共享的全局知识库（既有对外语义）。
+ * 对外已发布列表的可见范围：仅当前组织已有知识库。
  *
  * 与控制台分开声明是刻意的：两者由不同协议面消费，改动其中一个不应带动另一个。
  */
-const EXTERNAL_VISIBILITY: KnowledgeBaseVisibility = "organization-and-global";
+const EXTERNAL_VISIBILITY: KnowledgeBaseVisibility = "organization";
 
 /** 错误消息提取：非 Error 上抛时用业务文案兜底（与迁移前的兜底一致）。 */
 function messageOf(err: unknown, fallback: string): string {
@@ -127,11 +96,21 @@ export interface KnowledgeBaseFacade {
    */
   listForConsole(actor: KnowledgeBaseActor): Promise<KnowledgeBaseListItem[]>;
   /**
-   * 对外已发布列表（`/api/knowledge-bases`）：本组织 ∪ 全局库，分页在数据库完成。
+   * 对外已发布列表（`/api/v1/knowledge-bases`）：仅本组织，分页在数据库完成。
    *
    * 页码与页大小由本层夹紧（与协议层给的默认值一致），偏移量与计数由领域服务下推——协议层不做内存切片。
    */
-  listForExternal(actor: KnowledgeBaseActor, page: number, pageSize: number): Promise<KnowledgeBasePage>;
+  listForExternal(
+    actor: KnowledgeBaseActor,
+    page: number,
+    pageSize: number,
+    signal?: AbortSignal,
+  ): Promise<{
+    items: Awaited<ReturnType<typeof checkApiKnowledgeStatus>>;
+    total: number;
+    page: number;
+    pageSize: number;
+  }>;
   /** 详情；跨组织与不存在返回同一个 `not-found`（不给出可探测的差异）。 */
   getDetail(actor: KnowledgeBaseActor, knowledgeBaseId: string): Promise<KnowledgeResult<KnowledgeBaseListItem>>;
   /**
@@ -178,14 +157,14 @@ export function createKnowledgeBaseFacade(access: KnowledgeAccess = knowledgeAcc
       return items;
     },
 
-    listForExternal: async (actor, page, pageSize) => {
+    listForExternal: async (actor, page, pageSize, signal) => {
       const { items, total } = await listVisibleKnowledgeBases({
         organizationId: actor.organizationId,
         visibility: EXTERNAL_VISIBILITY,
         limit: pageSize,
         offset: (page - 1) * pageSize,
       });
-      return { items, total, page, pageSize };
+      return { items: await checkApiKnowledgeStatus(items, signal), total, page, pageSize };
     },
 
     getDetail: async (actor, knowledgeBaseId) => {

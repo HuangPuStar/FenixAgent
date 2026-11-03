@@ -1,7 +1,7 @@
-// 对外触发面（`POST /api/workflow-v2/workflows/:id/run`）的行为契约。
+// 对外触发面（`POST /api/v1/workflow-v2/workflows/:id/run`）的行为契约。
 //
 // 这条端点是「外部系统触发工作流运行」的唯一入口，重点断言六件事：
-// ① 路由挂在 `/api/workflow-v2` 前缀下且带宿主的认证守卫（同一份实例），未认证 401；
+// ① 路由挂在 `/api/v1/workflow-v2` 前缀下且带宿主的认证守卫（同一份实例），未认证 401；
 // ② 归属：跨组织与不存在**同形 404**（不泄漏存在性），且失败发生在触达上游之前；
 // ③ 透传口径：`:id` 是本地主键，服务端把它换成上游 workflow ID 后调 `POST /v1/workflow/run`；
 //    `parameters` 归一化成 JSON 字符串、`isAsync` 映射 `is_async`、`ext` 只透传受控字段；
@@ -54,7 +54,10 @@ interface ApiBody {
   error?: { code: string; message: string };
 }
 
-const readApiBody = async (response: Response): Promise<ApiBody> => (await readJson(response)) as ApiBody;
+const readApiBody = async (response: Response): Promise<ApiBody> => {
+  const body = await readJson(response);
+  return (body.success ? body.data : body) as ApiBody;
+};
 
 /** 装配被测应用：数据库句柄 + 模块配置（限流阈值等经 overrides 覆盖；用例要压到 1 才驱动 429）。 */
 function installApp(overrides: Partial<WorkflowV2ModuleConfigInput> = {}): void {
@@ -85,7 +88,7 @@ function createExternalApiApp(
 }
 
 // 认证与路由存在性：不依赖数据库（守卫在配置读取与查询之前），因此单独成组、不随数据库跳过。
-describe("对外触发面挂在 /api/workflow-v2 前缀下", () => {
+describe("对外触发面挂在 /api/v1/workflow-v2 前缀下", () => {
   // 未认证时守卫不写 `store.authContext`，路由必须回 401 而不是 500/422——顺带证明这条路径确实注册在
   // 该前缀下（宿主装配面的槽位断言在 `apps/server` 侧）。
   test("未认证时返回 401", async () => {
@@ -99,7 +102,11 @@ describe("对外触发面挂在 /api/workflow-v2 前缀下", () => {
       }),
     );
 
-    const response = await request(app, `/api/workflow-v2/workflows/${crypto.randomUUID()}/run`, jsonInit("POST", {}));
+    const response = await request(
+      app,
+      `/api/v1/workflow-v2/workflows/${crypto.randomUUID()}/run`,
+      jsonInit("POST", {}),
+    );
     const body = await readApiBody(response);
 
     expect(response.status).toBe(401);
@@ -140,7 +147,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
         debug_url: "http://127.0.0.1:18080/work_flow?execute_id=6900000000000000001",
       });
 
-    const response = await request(app, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+    const response = await request(app, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
     const body = await readApiBody(response);
 
     expect(response.status).toBe(200);
@@ -169,7 +176,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
 
     const response = await request(
       app,
-      `/api/workflow-v2/workflows/${record.id}/run`,
+      `/api/v1/workflow-v2/workflows/${record.id}/run`,
       jsonInit("POST", { parameters: { input: "hello" }, isAsync: true, ext: { user_id: "runtime-user-1" } }),
     );
     const body = await readApiBody(response);
@@ -196,7 +203,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
     for (const parameters of ["not-json", "[1,2]", '"scalar"']) {
       const response = await request(
         app,
-        `/api/workflow-v2/workflows/${record.id}/run`,
+        `/api/v1/workflow-v2/workflows/${record.id}/run`,
         jsonInit("POST", { parameters }),
       );
       expect(response.status).toBe(422);
@@ -219,7 +226,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
 
     for (const item of cases) {
       responses[RUN_PATH] = () => upstreamFail(item.code, "internal stack trace /Users/agent/pkg/run.go:42");
-      const response = await request(app, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+      const response = await request(app, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
       const body = await readApiBody(response);
 
       expect(response.status).toBe(item.status);
@@ -252,7 +259,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
 
     const response = await request(
       app,
-      `/api/workflow-v2/workflows/${record.id}/run`,
+      `/api/v1/workflow-v2/workflows/${record.id}/run`,
       jsonInit("POST", { isAsync: true, app_id: "client-supplied-app", project_id: "client-supplied-app" }),
     );
 
@@ -273,7 +280,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
       return upstreamFail(777777778, "Service Internal Error");
     };
 
-    const response = await request(app, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+    const response = await request(app, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
 
     expect(response.status).toBe(409);
     expect((await readApiBody(response)).error?.code).toBe("WORKFLOW_NOT_REGISTERED_TO_API_CHANNEL");
@@ -287,7 +294,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
     app = createExternalApiApp(guard, upstream, async () => ({ status: "app_not_publishable" }));
     responses[RUN_PATH] = () => upstreamFail(777777778, "Service Internal Error");
 
-    const response = await request(app, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+    const response = await request(app, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
     const body = await readApiBody(response);
 
     expect(response.status).toBe(409);
@@ -302,7 +309,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
     const missing = crypto.randomUUID();
 
     for (const id of [foreign.id, missing]) {
-      const response = await request(app, `/api/workflow-v2/workflows/${id}/run`, jsonInit("POST", {}));
+      const response = await request(app, `/api/v1/workflow-v2/workflows/${id}/run`, jsonInit("POST", {}));
       expect(response.status).toBe(404);
       expect((await readApiBody(response)).error?.code).toBe("WORKFLOW_NOT_FOUND");
     }
@@ -311,7 +318,7 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
 
   // 非 UUID 的路径参数在边界上就被拒（422），不会带着非法值进数据库（那会变成一条 SQL 错误与 500）。
   test("非 UUID 的工作流 ID 在边界被拒且不触达上游", async () => {
-    const response = await request(app, "/api/workflow-v2/workflows/not-a-uuid/run", jsonInit("POST", {}));
+    const response = await request(app, "/api/v1/workflow-v2/workflows/not-a-uuid/run", jsonInit("POST", {}));
 
     expect(response.status).toBe(422);
     expect(upstream.calls).toHaveLength(0);
@@ -322,7 +329,9 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
     const record = await seedRecord("run-audit");
     responses[RUN_PATH] = () => upstreamOk({ execute_id: "6900000000000000003" });
 
-    expect((await request(app, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}))).status).toBe(200);
+    expect((await request(app, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}))).status).toBe(
+      200,
+    );
 
     expect(await readAuditRows(ORG_A, WORKFLOW_AUDIT_ACTIONS.runExternal)).toContainEqual({
       upstreamWorkflowId: record.upstreamWorkflowId,
@@ -342,8 +351,8 @@ describe.skipIf(!databaseReachable)("对外触发运行（真实 Postgres + 上�
     responses[RUN_PATH] = () => upstreamOk({ execute_id: "6900000000000000004" });
     guard.setActor({ organizationId: ORG_A, userId: `${OWNER_ID}-rl` });
 
-    const first = await request(limited, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
-    const second = await request(limited, `/api/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+    const first = await request(limited, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
+    const second = await request(limited, `/api/v1/workflow-v2/workflows/${record.id}/run`, jsonInit("POST", {}));
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);

@@ -186,7 +186,7 @@ function createKnowledgeMcpServer(environment: { agentConfigId: string | null })
 /**
  * `/mcp/knowledge` 是**整包唯一的模块级单例路由**（非工厂）。
  *
- * 与 `/web/config/mcp`、`/api/mcp` 的取舍不同：本端点自带鉴权（`Authorization: Bearer
+ * 与 `/web/config/mcp`、`/api/v1/mcp-servers` 的取舍不同：本端点自带鉴权（`Authorization: Bearer
  * <environment_secret>` 自解析 environment），既不读 `store`，也不使用 `sessionAuth` 宏，任何宿主
  * 注入都会是形状噪声，因此不引入依赖接口。错误体走平台统一信封（`ApiErrorResponseSchema`）而
  * 非宿主 `@server/plugins/auth` 的 `errorResponse` 装饰器——后者是宿主实现，资源包不得依赖；信封

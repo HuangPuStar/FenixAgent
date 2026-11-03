@@ -54,6 +54,7 @@ export interface AgentConfigLookup {
   /** 按真实用户身份的组织可见性读。 */
   findVisibleAgentConfig(input: {
     agentConfigId: string;
+    action?: "read" | "use";
     organizationId: string;
     userId: string;
   }): Promise<AgentConfigLookupResult | null>;

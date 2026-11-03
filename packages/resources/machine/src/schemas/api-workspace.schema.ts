@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { FileUploadItemSchema } from "./file.schema";
 
 /**
- * `/api/environments/:environmentId/workspace/files` 的协议 DTO。
+ * `/api/v1/environments/:environmentId/workspace/files` 的协议 DTO。
  *
  * 从宿主 `apps/server/src/schemas/api-workspace.schema.ts` 迁入（CE 阶段 2 任务 1.3）：这两个 schema 只被
  * 本包的对外上传端点使用，属本模块的协议适配交付物；留在宿主会让「端点在包内、DTO 在宿主」形成反向依赖。

@@ -52,7 +52,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
 - **路由**（`src/server/routes/**`）：`web/registry.ts`（`/web/registry/machines[/:id][/events]`）、
   `web/fs.ts`（`/web/environments/:id/fs/*`：tree / list / read / write / upload / delete / mkdir / rename /
   batch / download-zip）、`web/file-events.ts`（WS `/web/file-events`）与 `api/workspaces.ts`
-  （`/api/environments/:environmentId/workspace/files`）。依赖类型在 `routes/dependencies.ts`（只放类型，
+  （`/api/v1/environments/:environmentId/workspace/files`）。依赖类型在 `routes/dependencies.ts`（只放类型，
   避免「入口 → 工厂 → 入口」的循环导入）。
 - **注册表领域**（`src/server/services/registry.ts`）：管理面 `listMachines` / `getMachine` / `createMachine` /
   `updateMachine` / `deleteMachine` / `listEvents`；连接侧 `registerMachine` 只激活运行时状态（未预创建的机器

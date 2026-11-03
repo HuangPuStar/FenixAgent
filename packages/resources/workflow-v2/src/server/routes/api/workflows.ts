@@ -1,5 +1,5 @@
 /**
- * 对外触发面：`POST /api/workflow-v2/workflows/:id/run`（`slot: "api"` 的贡献，挂宿主 `/api` 聚合实例）。
+ * 对外触发面：`POST /api/v1/workflow-v2/workflows/:id/run`（`slot: "api"` 的贡献，挂宿主 `/api` 聚合实例）。
  *
  * 「外部系统能触发工作流运行」这一需求的**唯一**入口：调用方用控制台 API Key（`rcs_*`，Bearer）认证，`:id` 是
  * 本地 workflow 主键（客户端不接触上游 ID），服务端按组织谓词解析归属，再以平台账号 PAT 调上游
@@ -14,8 +14,7 @@
  * - 限流按**调用方身份**（API Key 恢复出的 `userId`）计数，超限 429 + `Retry-After`（阈值见模块 env
  *   `WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE`）；
  * - 上游传输/会话失败复用控制面的同一张映射表（超时 504 / 网络 502 / 凭据与熔断 503），不造第二套；
- * - 错误体是 `/api/*` 的统一形状 `{ error: { code, message } }`（`ApiErrorResponseSchema`），不是 `/web/*`
- * 的 `{ success, data }`。
+ * - v1 普通响应使用统一 success/data/error 包装，保留执行引擎自己的业务结果。
  *
  * 审计：真正打到上游的请求才落 `workflow.run.external` 流水（记组织、调用者、上游 workflow ID、结果与错误码；
  * **不记 inputs/outputs 原文**）。前置校验失败（401/404/422）与限流拒绝只留日志——它们没有发生任何动作，
@@ -23,10 +22,15 @@
  */
 
 import { createLogger } from "@fenix/logger";
-import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
+import { ApiV1ErrSchema as ApiErrorResponseSchema, ApiV1OkSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
-import * as z from "zod/v4";
 import { getWorkflowV2Config } from "../../config";
+import {
+  RunWorkflowBodySchema,
+  RunWorkflowHeadersSchema,
+  RunWorkflowParamsSchema,
+  RunWorkflowResponseSchema,
+} from "../../schemas/api-workflow.schema";
 import type { ApiChannelReleaseOutcome } from "../../services/api-channel-release";
 import { ensureApiChannelRelease } from "../../services/api-channel-release";
 import { createWorkflowAuditWriter, WORKFLOW_AUDIT_ACTIONS } from "../../services/audit-trail";
@@ -54,7 +58,7 @@ type ApiChannelReleaseCall = (input: {
 }) => Promise<ApiChannelReleaseOutcome>;
 
 /** `/api/*` 的错误信封；文案一律是我方固定文案，不含上游原文与内部实现。 */
-const apiError = (code: string, message: string) => ({ error: { code, message } });
+const apiError = (code: string, message: string) => ({ success: false as const, error: { code, message } });
 
 /** 未认证（无会话、无 API Key，或已认证但缺 active organization）。 */
 const UNAUTHENTICATED = apiError("UNAUTHENTICATED", "缺少调用方身份或组织上下文");
@@ -69,41 +73,6 @@ const RATE_LIMITED = apiError("RATE_LIMITED", "调用频率超出限制");
  * 不放开成任意字符串：非 UUID 的值会一路进到数据库并触发一条 `invalid input syntax for type uuid` 的查询错误，
  * 对调用方表现为 500。形状校验放在边界上，调用方拿到的是 422「参数不合法」而不是一个内部错误。
  */
-const RunWorkflowParamsSchema = z.object({ id: z.string().uuid().describe("控制台里的工作流主键（UUID）。") });
-
-const RunWorkflowBodySchema = z
-  .object({
-    parameters: z
-      .union([z.string(), z.record(z.string(), z.unknown())])
-      .optional()
-      .describe("工作流入参：可直接给 JSON 对象，或给它的 JSON 字符串（按原样透传给上游）。"),
-    isAsync: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe("true 立即返回 executeId（异步运行，结果从上游调试页查看）；false 等待本次运行结束后返回 data。"),
-    ext: z
-      .object({ user_id: z.string().min(1).optional() })
-      .optional()
-      .describe("受控透传字段：user_id 作为上游的运行时用户标识，缺省时以上游平台账号身份运行。"),
-  })
-  .describe("触发工作流运行请求体。");
-
-const RunWorkflowResponseSchema = z
-  .object({
-    executeId: z.string().nullable().describe("执行 ID（同步与异步都返回）。"),
-    data: z.string().nullable().describe("同步执行的输出（上游原样的 JSON 字符串）；异步或未命中时为 null。"),
-    token: z.number().int().nullable().describe("本次消耗的 token 数。"),
-    cost: z.string().nullable().describe("本次消耗（字符串形态）。"),
-    debugUrl: z.string().nullable().describe("上游调试页地址。"),
-  })
-  .describe("工作流运行结果；字段缺失为 null，不省略键。");
-
-/** 供 OpenAPI 展示认证方式；鉴权本身由注入的宿主守卫完成（声明为可选，未认证仍是 401）。 */
-const RunWorkflowHeadersSchema = z.object({
-  authorization: z.string().optional().describe("Bearer 凭据：控制台 API Key（`rcs_*`），`Bearer <api_key>`。"),
-});
-
 /** 路由工厂的可选注入面；只用于包内测试与联调替身。 */
 export interface WorkflowV2ExternalApiRouteOptions {
   readonly callUpstreamOpenApi?: WorkflowRunCall;
@@ -114,14 +83,14 @@ export interface WorkflowV2ExternalApiRouteOptions {
 /** 进程内令牌桶（多副本下实际阈值 ≈ 配置值 × 副本数，全局阈值归部署层，与画布面同口径）。 */
 const rateLimiter = createTokenBucketLimiter();
 
-/** 创建 `/api/workflow-v2/*` 对外触发路由。 */
+/** 创建 `/api/v1/workflow-v2/*` 对外触发路由。 */
 export function createApiWorkflowV2Routes(
   deps: WorkflowV2RouteDependencies,
   options: WorkflowV2ExternalApiRouteOptions = {},
 ) {
   const upstream: WorkflowRunCall = options.callUpstreamOpenApi ?? callUpstreamOpenApi;
   const release: ApiChannelReleaseCall = options.ensureApiChannelRelease ?? ensureApiChannelRelease;
-  const app = new Elysia({ name: "api-workflow-v2", prefix: "/api/workflow-v2" }).use(deps.authGuardPlugin);
+  const app = new Elysia({ name: "api-workflow-v2", prefix: "/api/v1/workflow-v2" }).use(deps.authGuardPlugin);
 
   /**
    * 运行一次；若上游回执是「当前发布版本未登记到 API 渠道」（`777777778` → 409），
@@ -230,18 +199,19 @@ export function createApiWorkflowV2Routes(
         // 传输/凭据/熔断失败：与控制面同一张映射表，只是换一个信封。
         const failure = upstreamFailure("对外触发运行", { thrown: error }, context);
         await audit(upstreamAuditResult(failure), failure.body.code);
-        return status(failure.httpStatus, { error: failure.body });
+        return status(failure.httpStatus, { success: false as const, error: failure.body });
       }
 
       if (!outcome.ok) {
         await audit(outcome.rejection.auditResult, outcome.rejection.code);
         return status(outcome.rejection.httpStatus, {
+          success: false as const,
           error: { code: outcome.rejection.code, message: outcome.rejection.message },
         });
       }
 
       await audit("ok");
-      return outcome.run;
+      return { success: true as const, data: outcome.run };
     },
     {
       // 与 `/web` 面同一份守卫实例：API Key 的组织上下文由 key metadata 恢复并重新校验成员关系。
@@ -250,7 +220,7 @@ export function createApiWorkflowV2Routes(
       params: RunWorkflowParamsSchema,
       body: RunWorkflowBodySchema,
       response: {
-        200: RunWorkflowResponseSchema,
+        200: ApiV1OkSchema(RunWorkflowResponseSchema),
         401: ApiErrorResponseSchema,
         404: ApiErrorResponseSchema,
         409: ApiErrorResponseSchema,

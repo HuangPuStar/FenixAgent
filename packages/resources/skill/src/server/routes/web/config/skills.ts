@@ -203,7 +203,7 @@ async function handleDownload(actor: ActorContext, resourceId: string): Promise<
   }
 }
 
-/** 控制台上传入口的冲突策略只接受 ignore / overwrite（对外 `/api/skills` 用 `overwrite` 布尔）。 */
+/** 控制台上传入口的冲突策略只接受 ignore / overwrite（对外 `/api/v1/skills` 用 `overwrite` 布尔）。 */
 function resolveConflictStrategy(formData: UploadFormData): ImportConflictStrategy | undefined {
   const value = formData.get("conflictStrategy");
   if (value === null || value === "") return;

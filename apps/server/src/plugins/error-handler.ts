@@ -4,6 +4,7 @@ import { OrchestrationError } from "@fenix/orchestration";
 import { AppError } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia, { ValidationError } from "elysia";
+import { formatApiError } from "../protocol/api-response";
 import { logError } from "./logger";
 
 // 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 plugin 中 scope 为
@@ -17,13 +18,20 @@ import { logError } from "./logger";
 export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
   { as: "global" },
   ({ error, set, code, request }) => {
+    // Elysia wraps failures from streamed JSON parsing; preserve our transport budget error.
+    const transport = error instanceof Error ? error.cause : undefined;
+    if (transport instanceof AppError && transport.statusCode === 413) {
+      set.status = 413;
+      logError({ request, error, set });
+      return formatApiError(request.url, transport.code, transport.message, 413);
+    }
     // 自定义错误类优先 — Service 层抛出的 AppError 子类。
     // 分类法已上移到 `@fenix/platform-sdk`：资源包（跨包服务）与宿主必须共用同一组类，
     // 否则 `instanceof` 判不出资源包抛出的错误，403/404 会静默退化为 500。
     if (error instanceof AppError) {
       set.status = error.statusCode;
       logError({ request, error, set });
-      return { error: { type: error.code, message: error.message } };
+      return formatApiError(request.url, error.code, error.message, error.statusCode);
     }
 
     // 编排域错误：按稳定错误码映射 HTTP 状态（未映射的 code 保守落 500）。
@@ -33,7 +41,7 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
       const { status, message } = mapOrchestrationErrorToHttp(error);
       set.status = status;
       logError({ request, error, set });
-      return { error: { type: error.code, message } };
+      return formatApiError(request.url, error.code, message, status);
     }
 
     // Core 运行时错误：NODE_OFFLINE 出现在 ensureNode 检查通过后、core launch 前断连的
@@ -42,7 +50,7 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
     if (isCoreRuntimeError(error) && error.code === "NODE_OFFLINE") {
       set.status = 503;
       logError({ request, error, set });
-      return { error: { type: "AGENT_NODE_UNAVAILABLE", message: "Agent node is offline" } };
+      return formatApiError(request.url, "AGENT_NODE_UNAVAILABLE", "Agent node is offline", 503);
     }
 
     // Sandbox 服务不可用类错误（Provider 未配置 / Runtime 未就绪）→ 503：
@@ -54,24 +62,24 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
     if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
       set.status = 503;
       logError({ request, error, set });
-      return { error: { type: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" } };
+      return formatApiError(request.url, "SERVICE_UNAVAILABLE", "Sandbox service is unavailable", 503);
     }
 
     // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
     // （含 unionErrors 所有分支的 issues），原样返回会让前端控制台也被垃圾 JSON 刷屏。
     // 这里只回首个错误的 path + 摘要，详细诊断走 server logger。
     if (error instanceof ValidationError) {
-      set.status = 400;
+      set.status = /^\/api\/v1\/(workflows|workflow-v2)\//.test(new URL(request.url).pathname) ? 422 : 400;
       const firstError = error.all[0];
       const path = firstError?.path ?? "";
       const summary = firstError?.summary ?? firstError?.message ?? "validation failed";
       logError({ request, error, set });
-      return {
-        error: {
-          type: "VALIDATION_ERROR",
-          message: path ? `${path}: ${summary}` : summary,
-        },
-      };
+      return formatApiError(
+        request.url,
+        "VALIDATION_ERROR",
+        path ? `${path}: ${summary}` : summary,
+        Number(set.status),
+      );
     }
 
     // DrizzleQueryError（PG 驱动包装错误）：非法 UUID 格式视为资源不存在。
@@ -82,11 +90,25 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
     if (pgMessage.includes("invalid input syntax for type uuid")) {
       set.status = 404;
       logError({ request, error, set });
-      return { error: { type: "NOT_FOUND", message: "Resource not found" } };
+      return formatApiError(request.url, "NOT_FOUND", "Resource not found", 404);
     }
 
-    const status = code === "NOT_FOUND" ? 404 : 500;
-    const type = code === "NOT_FOUND" ? "NOT_FOUND" : "INTERNAL_ERROR";
+    const status =
+      code === "NOT_FOUND"
+        ? 404
+        : code === "PARSE"
+          ? 400
+          : ("status" in error && error.status === 413) || ("statusCode" in error && error.statusCode === 413)
+            ? 413
+            : 500;
+    const type =
+      status === 404
+        ? "NOT_FOUND"
+        : status === 400
+          ? "VALIDATION_ERROR"
+          : status === 413
+            ? "PAYLOAD_TOO_LARGE"
+            : "INTERNAL_ERROR";
     // 500 兜底 message 固定通用文案：未知错误可能携带 nodeId/machineId 等内部标识
     // （如 CoreRuntimeError "Core node is offline: ${nodeId}"），原样回传会泄漏；
     // 完整诊断由 logError 保留在服务端日志。Elysia 404 的 message 是固定
@@ -96,6 +118,6 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
 
     set.status = status;
     logError({ request, error, set });
-    return { error: { type, message } };
+    return formatApiError(request.url, type, message, status);
   },
 );

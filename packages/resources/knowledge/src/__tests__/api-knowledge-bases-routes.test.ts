@@ -73,7 +73,7 @@ interface ListPage {
 }
 
 async function readListPage(response: Response): Promise<ListPage> {
-  return (await readJson(response)) as ListPage;
+  return (await readJson(response)).data as ListPage;
 }
 
 /**
@@ -139,9 +139,11 @@ describe("API Knowledge Base Routes", () => {
   });
 
   // 外部知识库列表接口应返回稳定分页结构，而不是直接返回裸数组。
-  test("GET /api/knowledge-bases returns paginated knowledge base list", async () => {
-    const res = await request("/api/knowledge-bases?page=1&pageSize=10");
-    const json = await res.json();
+  test("GET /api/v1/knowledge-bases returns paginated knowledge base list", async () => {
+    const res = await request("/api/v1/knowledge-bases?page=1&pageSize=10");
+    const envelope = await res.json();
+    expect(envelope.success).toBe(true);
+    const json = envelope.data;
 
     expect(res.status).toBe(200);
     expect(json).toEqual({
@@ -149,25 +151,15 @@ describe("API Knowledge Base Routes", () => {
         {
           id: "kb-1",
           name: "Product Docs",
-          slug: "product-docs",
           description: "knowledge for product docs",
           provider: "ragflow",
-          remoteId: "remote-kb-1",
-          remoteAccountId: "org-1",
-          remoteUserId: "user-1",
           status: "ready",
-          lastError: null,
           bindingsCount: 2,
           resourcesCount: 5,
-          recentResources: [],
-          createdAt: CREATED_AT_SECONDS,
-          updatedAt: UPDATED_AT_SECONDS,
-          userId: "user-1",
-          organizationId: "org-1",
           embeddingModel: null,
           parseMethod: "builtin",
           chunkMethod: "naive",
-          remoteExists: true,
+          remoteExists: null,
         },
       ],
       total: 1,
@@ -177,7 +169,7 @@ describe("API Knowledge Base Routes", () => {
   });
 
   // 分页与计数必须下推到查询层：协议层只把 page/pageSize 换算成 limit/offset，不再合并数组后切片。
-  test("GET /api/knowledge-bases 把分页与可见范围下推给查询层", async () => {
+  test("GET /api/v1/knowledge-bases 把分页与可见范围下推给查询层", async () => {
     const pageQueries: Array<{ organizationId: string; includeGlobal: boolean; limit?: number; offset?: number }> = [];
     const countQueries: Array<{ organizationId: string; includeGlobal: boolean }> = [];
     knowledgeBaseRepo.listVisible = mock(async (input) => {
@@ -189,56 +181,56 @@ describe("API Knowledge Base Routes", () => {
       return 7;
     });
 
-    const body = await readJson(await request("/api/knowledge-bases?page=2&pageSize=3"));
+    const body = await readListPage(await request("/api/v1/knowledge-bases?page=2&pageSize=3"));
 
-    expect(pageQueries).toEqual([{ organizationId: "org-1", includeGlobal: true, limit: 3, offset: 3 }]);
+    expect(pageQueries).toEqual([{ organizationId: "org-1", includeGlobal: false, limit: 3, offset: 3 }]);
     // 计数与列表共用同一份可见条件，否则 total 描述的不是分页所作用的那个集合。
-    expect(countQueries).toEqual([{ organizationId: "org-1", includeGlobal: true }]);
+    expect(countQueries).toEqual([{ organizationId: "org-1", includeGlobal: false }]);
     expect(body).toMatchObject({ total: 7, page: 2, pageSize: 3 });
   });
 
   // 对外接口同样必须挂上会话守卫：缺少认证上下文时不得返回成功 DTO。
-  test("GET /api/knowledge-bases 缺少认证上下文返回 401", async () => {
-    const res = await deniedRequest("/api/knowledge-bases?page=1&pageSize=10");
+  test("GET /api/v1/knowledge-bases 缺少认证上下文返回 401", async () => {
+    const res = await deniedRequest("/api/v1/knowledge-bases?page=1&pageSize=10");
     expect(res.status).toBe(401);
   });
 
   // 对外列表是**一份**可见集合：本组织的知识库不得因为同时落在「本组织」与「全表」里而在 items 中出现两次。
   // 这是迁移前后的合同差异（旧实现把两个来源的数组拼接），也是本文件存在的理由——断言挂在返回的多重集上，
   // 任何重新引入「按来源拼接」的写法都会让 items 变成 5 条并在这里失败。
-  test("GET /api/knowledge-bases 同一知识库在列表里只出现一次", async () => {
+  test("GET /api/v1/knowledge-bases 同一知识库在列表里只出现一次", async () => {
     installVisibleTableStub();
 
-    const { items } = await readListPage(await request("/api/knowledge-bases?page=1&pageSize=10"));
+    const { items } = await readListPage(await request("/api/v1/knowledge-bases?page=1&pageSize=10"));
 
     // 本组织行优先、其余按更新时间倒序；本组织的两行各出现一次，其它组织的行按「全局」语义并入。
-    expect(items.map((item) => item.id)).toEqual(["kb-org-new", "kb-org-old", "kb-other-org"]);
+    expect(items.map((item) => item.id)).toEqual(["kb-org-new", "kb-org-old"]);
     // 与顺序无关的语义断言：多重集里没有重复项（旧口径下这里会是 5 而元素只有 3 种）。
     expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
   });
 
   // total 描述的是分页所作用的那一个集合，不是各来源条数之和：旧口径为 |本组织| + |全表| = 5，去重后为 3。
   // 配合 pageSize=2 使用，让 total（3）与当前页长度（2）不同，避免由「total 恰好等于页长」蒙对。
-  test("GET /api/knowledge-bases 的 total 是去重后可见集合的大小", async () => {
+  test("GET /api/v1/knowledge-bases 的 total 是去重后可见集合的大小", async () => {
     installVisibleTableStub();
 
-    const body = await readListPage(await request("/api/knowledge-bases?page=1&pageSize=2"));
+    const body = await readListPage(await request("/api/v1/knowledge-bases?page=1&pageSize=2"));
 
     expect(body.items).toHaveLength(2);
-    expect(body.total).toBe(3);
+    expect(body.total).toBe(2);
     expect(body.page).toBe(1);
     expect(body.pageSize).toBe(2);
   });
 
   // 去重后页边界随之前移：第 2 页接着第 1 页继续，两页拼起来正好是可见集合，不重不漏。
-  test("GET /api/knowledge-bases 的页边界落在去重后的可见集合上", async () => {
+  test("GET /api/v1/knowledge-bases 的页边界落在去重后的可见集合上", async () => {
     installVisibleTableStub();
 
-    const first = await readListPage(await request("/api/knowledge-bases?page=1&pageSize=2"));
-    const second = await readListPage(await request("/api/knowledge-bases?page=2&pageSize=2"));
+    const first = await readListPage(await request("/api/v1/knowledge-bases?page=1&pageSize=2"));
+    const second = await readListPage(await request("/api/v1/knowledge-bases?page=2&pageSize=2"));
 
     expect(first.items.map((item) => item.id)).toEqual(["kb-org-new", "kb-org-old"]);
-    expect(second.items.map((item) => item.id)).toEqual(["kb-other-org"]);
-    expect(second.total).toBe(3);
+    expect(second.items.map((item) => item.id)).toEqual([]);
+    expect(second.total).toBe(2);
   });
 });

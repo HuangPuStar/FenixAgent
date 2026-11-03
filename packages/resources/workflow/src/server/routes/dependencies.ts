@@ -22,7 +22,7 @@ import type { AnyElysia } from "elysia";
  */
 export type { WorkflowActor as WorkflowActorContext } from "../facades/workflow-def-facade";
 
-/** `/web/*` 控制台路由与 `/api/workflows/*` 的宿主注入依赖（两者都由会话守卫保护）。 */
+/** `/web/*` 控制台路由与 `/api/v1/workflows/*` 的宿主注入依赖（两者都由会话守卫保护）。 */
 export interface WorkflowRouteDependencies {
   /** 会话认证守卫；路由靠它取得 `store.authContext`。 */
   readonly authGuardPlugin: AnyElysia;

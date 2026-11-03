@@ -66,6 +66,7 @@ export interface AgentConfigService {
     organizationId: string;
     ownerUserId: string;
     visibility: string;
+    rejectConflict?: boolean;
   }): Promise<AgentConfigCreateResult | undefined>;
   update(input: { resourceId: string; data: AgentConfigUpdateData }): Promise<boolean>;
   /** 删除资源行与其绑定 Environment（同一事务）；实例停止由 Facade 在此之前完成。 */

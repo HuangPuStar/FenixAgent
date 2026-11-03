@@ -45,7 +45,14 @@ describe("observer connection snapshot", () => {
 
     // external-relay：stub deps 走真实 open → 快照含 agentId/authContext/openTime
     setExternalRelayDeps({
-      getEnvironmentById: async () => ({ id: "env-1", organizationId: "org-1", userId: "user-1" }),
+      canUseAgent: async () => true,
+      resolveWorkspacePath: () => "/workspaces/org-1/user-1/env-1",
+      getEnvironmentById: async () => ({
+        id: "env-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        agentConfigId: "agent-1",
+      }),
       getOwnedInstance: async (id, ownerUserId) => ({
         id,
         ownerUserId,

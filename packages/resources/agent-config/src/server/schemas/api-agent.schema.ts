@@ -1,89 +1,94 @@
 import * as z from "zod/v4";
-import { AgentDetailSchema, AgentInfoSchema, AgentKnowledgeConfigSchema } from "./config.schema";
 
 const AgentNodeSchema = z.union([
-  z.object({}).strict().describe("未显式指定执行节点，运行时按默认策略解析。"),
-  z.object({ kind: z.literal("machine"), machineId: z.string().min(1) }),
-  z.object({ kind: z.literal("sandbox"), sandboxPoolId: z.string().min(1) }),
+  z.object({}).strict(),
+  z.object({ kind: z.literal("machine"), machineId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal("sandbox"), sandboxPoolId: z.string().min(1) }).strict(),
 ]);
-
-/**
- * 对外 Agent 列表查询参数。
- * 保持分页结构稳定，避免未来补筛选时破坏现有调用方。
- */
+const ids = z.array(z.string().min(1)).refine((v) => new Set(v).size === v.length, "Duplicate resource IDs");
+/** Independent knowledge binding DTO; no Web view defaults are imported. */
+export const ApiAgentKnowledgeSchema = z
+  .object({
+    knowledgeBaseIds: ids,
+    policy: z
+      .object({
+        searchFirst: z.boolean().optional(),
+        maxResults: z.number().int().positive().max(100).optional(),
+        defaultNamespaces: z.array(z.string()).optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+  })
+  .strict();
+const fields = {
+  modelId: z.string().min(1).nullable().optional(),
+  prompt: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  extra: z.record(z.string(), z.unknown()).nullable().optional(),
+  knowledge: ApiAgentKnowledgeSchema.nullable().optional(),
+  agentNode: AgentNodeSchema.optional(),
+  skillIds: ids.optional(),
+  mcpIds: ids.optional(),
+  enableMemory: z.boolean().optional(),
+  publicReadable: z.boolean().optional(),
+};
+/** Creation defaults memory only; omitted bindings remain absent. */
+export const ApiAgentUpsertBodySchema = z
+  .object({ name: z.string().min(1).max(64), ...fields, enableMemory: z.boolean().default(false) })
+  .strict();
+/** Immutable name and explicit partial-update semantics. */
+export const ApiAgentUpdateBodySchema = z
+  .object(fields)
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, "Empty update");
+/** Stable Agent database ID. */
+export const ApiAgentIdParamsSchema = z.object({ id: z.string().min(1) });
+/** Bounded collection pagination. */
 export const ApiAgentListQuerySchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1).describe("页码，从 1 开始。"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20).describe("每页条数，最大 100。"),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
   })
-  .describe("Agent 列表查询参数。");
-
-/**
- * 对外 Agent 主键路径参数。
- * 对外统一使用配置 ID，避免把 name 当作可变主键暴露给外部系统。
- */
-export const ApiAgentIdParamsSchema = z
-  .object({
-    id: z.string().min(1).describe("Agent 配置 ID。"),
-  })
-  .describe("Agent 路径参数。");
-
-export const ApiAgentUpsertBodySchema = z
-  .object({
-    name: z.string().min(1).max(64).describe("Agent 名称。"),
-    modelId: z.string().nullable().optional().describe("绑定的模型 ID；传 null 表示清空。"),
-    prompt: z.string().nullable().optional().describe("系统提示词；传 null 表示清空。"),
-    description: z.string().nullable().optional().describe("Agent 描述；传 null 表示清空。"),
-    extra: z.record(z.string(), z.unknown()).nullable().optional().describe("额外扩展配置；传 null 表示清空。"),
-    knowledge: AgentKnowledgeConfigSchema.nullable().optional().describe("知识库绑定配置；传 null 表示清空。"),
-    agentNode: AgentNodeSchema.optional().describe("执行节点；空对象表示运行时按默认策略解析。"),
-    skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 或 Skill 名称列表。"),
-    mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
-    publicReadable: z.boolean().optional().describe("是否允许其他组织只读访问。"),
-  })
-  .describe("创建 Agent 请求体。");
-
-export const ApiAgentUpdateBodySchema = ApiAgentUpsertBodySchema.omit({ name: true })
-  .extend({
-    name: z
-      .string()
-      .min(1)
-      .max(64)
-      .optional()
-      .describe("新名称；同组织内须唯一，内置名称不能改入或改出。省略时保留原名。"),
-  })
-  .describe("更新 Agent 请求体。");
-
-/**
- * 对外 Agent 列表项。
- *
- * `resourceAccess` 沿用 `AgentInfoSchema` 的定义：它是已发布合同的字段形状（`ResourceAccessViewSchema`），
- * 由 `toResourceAccessView` 从 `scope + access.actions` 派生；`/web` 视图的 `scope + access` 不出现在
- * 对外合同里。
- */
-export const ApiAgentListItemSchema = AgentInfoSchema.omit({ skillLabels: true, modelLabel: true }).describe(
-  "对外 Agent 列表项。",
-);
-
-export const ApiAgentListResponseSchema = z
-  .object({
-    items: z.array(ApiAgentListItemSchema).describe("当前页 Agent 列表。"),
-    total: z.number().int().min(0).describe("总条数。"),
-    page: z.number().int().min(1).describe("当前页码。"),
-    pageSize: z.number().int().min(1).describe("当前分页大小。"),
-  })
-  .describe("对外 Agent 列表响应。");
-
-export const ApiAgentDetailSchema = AgentDetailSchema.describe("对外 Agent 详情。");
-
-export const ApiAgentDeleteResponseSchema = z
-  .object({
-    id: z.string().describe("已删除的 Agent 配置 ID。"),
-    deleted: z.literal(true).describe("删除结果。"),
-  })
-  .describe("删除 Agent 响应。");
-
+  .strict();
+const scope = z.object({
+  organizationId: z.string().optional(),
+  ownerUserId: z.string().optional(),
+  visibility: z.enum(["private", "public"]),
+});
+const access = z.object({ actions: z.array(z.string()) });
+/** Published safe Agent summary. */
+export const ApiAgentListItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  modelId: z.string().nullable(),
+  agentNode: AgentNodeSchema,
+  knowledgeBaseCount: z.number().int().nonnegative(),
+  scope,
+  access,
+});
+/** Published details expose configured values and effective permissions. */
+export const ApiAgentDetailSchema = ApiAgentListItemSchema.omit({ knowledgeBaseCount: true }).extend({
+  builtIn: z.boolean(),
+  prompt: z.string().nullable(),
+  extra: z.record(z.string(), z.unknown()).nullable(),
+  knowledge: ApiAgentKnowledgeSchema.nullable(),
+  skillIds: z.array(z.string()),
+  mcpIds: z.array(z.string()),
+  enableMemory: z.boolean(),
+  publicReadable: z.boolean(),
+});
+/** Stable collection response. */
+export const ApiAgentListResponseSchema = z.object({
+  items: z.array(ApiAgentListItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
 export type ApiAgentListQuery = z.infer<typeof ApiAgentListQuerySchema>;
 export type ApiAgentIdParams = z.infer<typeof ApiAgentIdParamsSchema>;
 export type ApiAgentUpsertBody = z.infer<typeof ApiAgentUpsertBodySchema>;
 export type ApiAgentUpdateBody = z.infer<typeof ApiAgentUpdateBodySchema>;
+/** Deletion has no remaining resource data. */
+export const ApiAgentDeleteResponseSchema = z.null();

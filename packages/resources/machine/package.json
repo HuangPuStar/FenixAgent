@@ -13,7 +13,8 @@
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.16.0",
     "react-resizable-panels": "^4.11.1",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "@fenix/plugin-sdk": "workspace:*"
   },
   "peerDependencies": {
     "i18next": "^26.2.0",

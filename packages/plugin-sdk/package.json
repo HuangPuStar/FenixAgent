@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./secure-workspace-upload": {
+      "types": "./src/secure-workspace-upload.ts",
+      "default": "./src/secure-workspace-upload.ts"
     }
   },
   "scripts": {

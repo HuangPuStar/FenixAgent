@@ -9,14 +9,14 @@
  * 测试 seam、active organization 解析）是同一份实例，否则同一进程会出现两套互不可见的认证状态，
  * 且 Elysia 会按 plugin `name` 去重让先构造的一方静默生效。
  *
- * `/web/config/mcp` 与 `/api/mcp` 共用同一份会话守卫（两者的 `sessionAuth` 宏与 `store.actor`
+ * `/web/config/mcp` 与 `/api/v1/mcp-servers` 共用同一份会话守卫（两者的 `sessionAuth` 宏与 `store.actor`
  * 都由它写入），因此这里只有一个依赖接口；`/mcp/knowledge` 用 Bearer environment secret 自鉴权，
  * 不取守卫也不读 `store`，故不在本文件的依赖面内。
  */
 
 import type { AnyElysia } from "elysia";
 
-/** 会话认证守卫；`/web/config/mcp` 与 `/api/mcp` 靠它取得 `store.actor`。 */
+/** 会话认证守卫；`/web/config/mcp` 与 `/api/v1/mcp-servers` 靠它取得 `store.actor`。 */
 export interface McpRouteDependencies {
   readonly authGuardPlugin: AnyElysia;
 }

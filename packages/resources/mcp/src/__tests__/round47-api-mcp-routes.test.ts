@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import { readJson as readRawJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { createApiMcpRoutes } from "../server/routes/api/mcp";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
 import { createStubMcpAuthGuardPlugin } from "./guard-stubs";
 
 /**
- * `/api/mcp` 协议层用例（对外已发布合同）。
+ * `/api/v1/mcp-servers` 协议层用例（对外已发布合同）。
  *
  * 关注两点：一是分页与计数由 Facade/数据库完成（协议层不再内存切片），二是 `resourceAccess` 由
  * `toResourceAccessView` 从 `scope + access.actions` 派生——它是唯一保留旧字段形状的位置。
@@ -15,6 +15,10 @@ import { createStubMcpAuthGuardPlugin } from "./guard-stubs";
  * 会话守卫由宿主注入（工厂参数），主体由包内替身控制；真实守卫的凭据解析不在本文件覆盖范围。
  */
 
+async function readJson(response: Response) {
+  const body = await readRawJson(response);
+  return body.success ? body.data : body;
+}
 const guard = createStubMcpAuthGuardPlugin();
 const route = createApiMcpRoutes({ authGuardPlugin: guard.plugin });
 
@@ -23,14 +27,35 @@ function authenticate() {
 }
 
 function request(path: string, init?: RequestInit) {
-  return route.handle(new Request(`http://localhost/api/mcp${path}`, init));
+  return route.handle(new Request(`http://localhost/api/v1/mcp-servers${path}`, init));
 }
 
 function jsonRequest(path: string, method: string, body: Record<string, unknown> = {}) {
   return request(path, {
     method,
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      method === "POST" && body.name
+        ? {
+            name: body.name,
+            config: {
+              type: "remote",
+              url: "https://mcp.example.test",
+              ...Object.fromEntries(Object.entries(body).filter(([k]) => !["name", "publicReadable"].includes(k))),
+            },
+            ...(body.publicReadable === undefined ? {} : { publicReadable: body.publicReadable }),
+          }
+        : method === "PATCH"
+          ? {
+              config: {
+                type: "local",
+                command: ["npx", "server"],
+                ...Object.fromEntries(Object.entries(body).filter(([k]) => k !== "publicReadable")),
+              },
+              ...(body.publicReadable === undefined ? {} : { publicReadable: body.publicReadable }),
+            }
+          : body,
+    ),
   });
 }
 
@@ -62,7 +87,10 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/");
 
     expect(response.status).toBe(401);
-    expect(await readJson(response)).toEqual({ error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" },
+    });
     expect(called).toBeFalse();
   });
 
@@ -115,16 +143,8 @@ describe("round47 API MCP 路由", () => {
       enabled: true,
       summary: "https://mcp.example.test",
       toolsCount: 2,
-      resourceAccess: {
-        ownership: "external",
-        sourceOrganizationId: "org-source",
-        sourceOrganizationName: "Source Team",
-        resourceUid: "mcp-external",
-        resourceKey: "org-source/mcp-external",
-        manageable: false,
-        writable: false,
-        publicReadable: true,
-      },
+      scope: authorizedServer({ organizationId: "org-source", visibility: "public" }).scope,
+      access: { actions: ["read"] },
     });
   });
 
@@ -138,15 +158,8 @@ describe("round47 API MCP 路由", () => {
 
     const body = await readJson(await request("/"));
 
-    expect(body.items[0].resourceAccess).toEqual({
-      ownership: "internal",
-      sourceOrganizationId: "org-1",
-      resourceUid: "mcp-1",
-      resourceKey: "org-1/mcp-1",
-      manageable: true,
-      writable: true,
-      publicReadable: false,
-    });
+    expect(body.items[0].scope).toEqual(authorizedServer().scope);
+    expect(body.items[0].access.actions).toEqual(["read", "update"]);
   });
 
   // config.type 优先于存储列，streamable-http 必须按配置展示而不是回落成 remote。
@@ -171,7 +184,7 @@ describe("round47 API MCP 路由", () => {
   });
 
   // 非法分页参数必须在资源查询前被请求 schema 拒绝，避免把无界查询交给数据库。
-  test("非法分页参数返回 422 且不调用 Facade", async () => {
+  test("非法分页参数返回 400 且不调用 Facade", async () => {
     let called = false;
     installMcpModuleStub({
       facade: {
@@ -182,13 +195,13 @@ describe("round47 API MCP 路由", () => {
       },
     });
 
-    expect((await request("/?page=0")).status).toBe(422);
-    expect((await request("/?pageSize=101")).status).toBe(422);
+    expect((await request("/?page=0")).status).toBe(400);
+    expect((await request("/?pageSize=101")).status).toBe(400);
     expect(called).toBeFalse();
   });
 
   // 详情按路径 ID 委托 Facade，并同样派生对外资源访问字段。
-  test("详情按 ID 查询并派生 resourceAccess", async () => {
+  test("详情按 ID 查询并投影 scope 与有效动作", async () => {
     let received: string | undefined;
     installMcpModuleStub({
       facade: {
@@ -205,8 +218,9 @@ describe("round47 API MCP 路由", () => {
     expect(body).toMatchObject({
       id: "mcp-1",
       name: "shared",
-      config: { type: "remote", url: "https://mcp.example.test" },
-      resourceAccess: { ownership: "external", writable: false, resourceKey: "org-source/mcp-1" },
+      config: { type: "remote", url: "https://mcp.example.test/" },
+      scope: authorizedServer({ organizationId: "org-source" }).scope,
+      access: { actions: ["read"] },
     });
   });
 
@@ -217,7 +231,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/other-org-resource");
 
     expect(response.status).toBe(404);
-    expect(await readJson(response)).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(await readJson(response)).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });
 
   // 空路径 ID 不匹配详情路由，必须在进入资源查询前被路由匹配拒绝。
@@ -242,18 +256,20 @@ describe("round47 API MCP 路由", () => {
     const response = await jsonRequest("/", "POST", { name: "demo", type: "remote" });
 
     expect(response.status).toBe(400);
-    expect(await readJson(response)).toEqual({ error: { code: "VALIDATION_ERROR", message: "INVALID_URL" } });
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "INVALID_URL" },
+    });
   });
 
   // 同组织同名已存在时返回 409，避免创建请求静默改写既有配置。
   test("创建重复名称返回 409", async () => {
-    let created = false;
+    const created = false;
     installMcpModuleStub({
       facade: {
         get: async () => authorizedServer(),
         create: async () => {
-          created = true;
-          return "mcp-1";
+          throw new AppError("MCP server 'demo' already exists", "CONFLICT", 409);
         },
       },
     });
@@ -262,6 +278,7 @@ describe("round47 API MCP 路由", () => {
 
     expect(response.status).toBe(409);
     expect(await readJson(response)).toEqual({
+      success: false,
       error: { code: "CONFLICT", message: "MCP server 'demo' already exists" },
     });
     expect(created).toBeFalse();
@@ -294,7 +311,7 @@ describe("round47 API MCP 路由", () => {
       publicReadable: true,
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(received).toEqual({
       name: "new",
       type: "remote",
@@ -305,21 +322,22 @@ describe("round47 API MCP 路由", () => {
   });
 
   // 创建后重新读取失败必须报内部错误，不能返回半成品详情。
-  test("创建后无法重载返回 500", async () => {
+  test("创建后无法重载返回 404", async () => {
     installMcpModuleStub({
       facade: { get: async () => undefined, create: async () => "new-id", getById: async () => undefined },
     });
 
     const response = await jsonRequest("/", "POST", { name: "new" });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(404);
     expect(await readJson(response)).toEqual({
-      error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" },
+      success: false,
+      error: { code: "NOT_FOUND", message: "MCP not found" },
     });
   });
 
   // 创建请求缺少名称必须被 schema 拒绝且不产生授权与写入。
-  test("创建缺少名称返回 422", async () => {
+  test("创建缺少名称返回 400", async () => {
     let called = false;
     installMcpModuleStub({
       facade: {
@@ -330,7 +348,7 @@ describe("round47 API MCP 路由", () => {
       },
     });
 
-    expect((await jsonRequest("/", "POST", {})).status).toBe(422);
+    expect((await jsonRequest("/", "POST", {})).status).toBe(400);
     expect(called).toBeFalse();
   });
 
@@ -347,16 +365,15 @@ describe("round47 API MCP 路由", () => {
       },
     });
 
-    const response = await jsonRequest("/mcp-1", "PUT", {
+    const response = await jsonRequest("/mcp-1", "PATCH", {
       command: ["npx", "server"],
-      oauth: null,
       publicReadable: false,
     });
 
     expect(response.status).toBe(200);
     expect(received).toEqual({
       id: "mcp-1",
-      config: { type: "local", command: ["npx", "server"], oauth: false },
+      config: { type: "local", command: ["npx", "server"] },
       options: { publicReadable: false },
     });
   });
@@ -370,7 +387,7 @@ describe("round47 API MCP 路由", () => {
         },
       },
     });
-    expect((await jsonRequest("/missing", "PUT", { timeout: 1000 })).status).toBe(404);
+    expect((await jsonRequest("/missing", "PATCH", { timeout: 1000 })).status).toBe(404);
 
     installMcpModuleStub({
       facade: {
@@ -379,9 +396,9 @@ describe("round47 API MCP 路由", () => {
         },
       },
     });
-    const forbidden = await jsonRequest("/shared", "PUT", { timeout: 1000 });
+    const forbidden = await jsonRequest("/shared", "PATCH", { timeout: 1000 });
     expect(forbidden.status).toBe(403);
-    expect(await readJson(forbidden)).toMatchObject({ error: { code: "FORBIDDEN" } });
+    expect(await readJson(forbidden)).toMatchObject({ success: false, error: { code: "FORBIDDEN" } });
   });
 
   // 更新路径的领域校验同样必须映射为 400：这是 `/api` 与 `/web` 曾分叉的那条校验。
@@ -394,17 +411,20 @@ describe("round47 API MCP 路由", () => {
       },
     });
 
-    const response = await jsonRequest("/mcp-1", "PUT", { type: "local" });
+    const response = await jsonRequest("/mcp-1", "PATCH", { type: "local" });
 
     expect(response.status).toBe(400);
-    expect(await readJson(response)).toEqual({ error: { code: "VALIDATION_ERROR", message: "INVALID_COMMAND" } });
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "INVALID_COMMAND" },
+    });
   });
 
   // 更新超时为零必须在请求 schema 层拒绝，避免写入不可用的连接配置。
-  test("更新的非法超时返回 422", async () => {
+  test("更新的非法超时返回 400", async () => {
     installMcpModuleStub({ facade: { updateById: async () => "mcp-1" } });
 
-    expect((await jsonRequest("/mcp-1", "PUT", { timeout: 0 })).status).toBe(422);
+    expect((await jsonRequest("/mcp-1", "PATCH", { timeout: 0 })).status).toBe(400);
   });
 
   // 删除返回被删除资源的唯一 ID（对外合同用 ID 而非名称定位）。
@@ -421,7 +441,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/mcp-1", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await readJson(response)).toEqual({ id: "mcp-1", deleted: true });
+    expect(await readJson(response)).toBeNull();
     expect(removed).toBe("mcp-1");
   });
 
@@ -459,7 +479,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/");
 
     expect(response.status).toBe(403);
-    expect(await readJson(response)).toEqual({ error: { code: "FORBIDDEN", message: "denied" } });
+    expect(await readJson(response)).toEqual({ success: false, error: { code: "FORBIDDEN", message: "denied" } });
   });
 
   // 未知异常映射为 INTERNAL_ERROR，保持既有对外错误结构。
@@ -475,6 +495,9 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/mcp-1", { method: "DELETE" });
 
     expect(response.status).toBe(500);
-    expect(await readJson(response)).toEqual({ error: { code: "INTERNAL_ERROR", message: "storage failed" } });
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
   });
 });

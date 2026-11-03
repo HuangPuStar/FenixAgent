@@ -67,8 +67,8 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
   });
 
   // 不存在的数据集详情应返回 null 而不是伪造默认配置。
-  test("getDataset 在上游失败时返回 null", async () => {
-    installFetch(mockFetch(async () => jsonResponse({ code: 102, message: "not found" })));
+  test("getDataset 只在 HTTP 404 时返回 null", async () => {
+    installFetch(mockFetch(async () => new Response(JSON.stringify({ message: "not found" }), { status: 404 })));
 
     await expect(new RagFlowKnowledgeProvider().getDataset({ datasetId: "missing" })).resolves.toBeNull();
   });

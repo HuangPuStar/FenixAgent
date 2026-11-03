@@ -25,7 +25,7 @@ export function createKnowledgeWebRoutes(host: ServerRouteHost) {
   return createWebKnowledgeBaseRoutes(routeDependencies(host));
 }
 
-/** `/api/knowledge-bases` 对外稳定知识库接口（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/knowledge-bases` 对外稳定知识库接口（挂宿主 `api` 聚合槽）。 */
 export function createKnowledgeApiRoutes(host: ServerRouteHost) {
   return createApiKnowledgeBaseRoutes(routeDependencies(host));
 }

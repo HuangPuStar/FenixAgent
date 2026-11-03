@@ -1,5 +1,7 @@
 # Agent Config
 
+外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
+
 > 涉及模块：AgentConfig 配置服务、启动规格构建器、Instance 服务
 
 ## 概述

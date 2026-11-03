@@ -1,5 +1,5 @@
-import { agentInstance } from "@fenix/agent-runtime/db";
-import { and, eq } from "drizzle-orm";
+import { agentInstance, environment } from "@fenix/agent-runtime/db";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { getAgentRuntimeDatabase } from "../db";
 
 /** Agent Instance 的不可变创建来源。 */
@@ -141,3 +141,35 @@ class PgAgentInstanceRepo implements IAgentInstanceRepo {
 }
 
 export const agentInstanceRepo: IAgentInstanceRepo = new PgAgentInstanceRepo();
+
+/** Paginate owned api/user instances using the same organization/Agent predicate for count. */
+export async function listApiAgentInstances(input: {
+  organizationId: string;
+  userId: string;
+  agentConfigId: string;
+  limit: number;
+  offset: number;
+}): Promise<{ items: AgentInstanceRecord[]; total: number }> {
+  const db = getAgentRuntimeDatabase();
+  const where = and(
+    eq(environment.organizationId, input.organizationId),
+    eq(environment.userId, input.userId),
+    eq(environment.agentConfigId, input.agentConfigId),
+    eq(agentInstance.ownerUserId, input.userId),
+    inArray(agentInstance.creationSource, ["api", "user"]),
+  );
+  const items = await db
+    .select({ instance: agentInstance })
+    .from(agentInstance)
+    .innerJoin(environment, eq(environment.id, agentInstance.environmentId))
+    .where(where)
+    .orderBy(asc(agentInstance.createdAt), asc(agentInstance.id))
+    .limit(input.limit)
+    .offset(input.offset);
+  const [total] = await db
+    .select({ value: count() })
+    .from(agentInstance)
+    .innerJoin(environment, eq(environment.id, agentInstance.environmentId))
+    .where(where);
+  return { items: items.map((row) => row.instance), total: total?.value ?? 0 };
+}

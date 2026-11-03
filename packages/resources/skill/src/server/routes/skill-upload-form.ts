@@ -3,7 +3,7 @@ import type { UploadSkillFile } from "../services/skill-content";
 
 /**
  * 两个技能上传入口共用的 multipart 表单解析（控制台 `/web/config/skills/upload` 与对外
- * `/api/skills`）。
+ * `/api/v1/skills`）。
  *
  * 它不是路由：只解析上传协议中形状相同的部分（manifest 与文件一一对应），冲突策略等入口特有的语义
  * 留给各自的路由。放在 `routes/` 下与 `agent-route-support.ts` 同类——都是协议层的公共设施，不注册

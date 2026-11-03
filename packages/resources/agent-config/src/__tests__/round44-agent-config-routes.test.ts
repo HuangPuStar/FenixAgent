@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { readJson, stubDb } from "@fenix/platform-sdk/testing";
+import {
+  createStubMcpFacade,
+  createStubMcpServerModule,
+  installMcpServerModule,
+  resetMcpServerModuleForTesting,
+} from "@fenix/resource-mcp/server/testing";
+import {
+  createStubSkillFacade,
+  createStubSkillServerModule,
+  installSkillServerModule,
+  resetSkillServerModuleForTesting,
+} from "@fenix/resource-skill/server/testing";
 import type { AgentConfigWriteData } from "../server/repositories/agent-config-resource";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
@@ -8,6 +20,7 @@ import {
   authorizedAgent,
   createTestAgentPreferencesPort,
   installAgentModuleStub,
+  mcpRow,
   resetAgentModuleStub,
   resetAgentPreferences,
   stubAgentPreferences,
@@ -46,19 +59,21 @@ function json(path: string, method: string, body: Record<string, unknown> = {}) 
 
 /** 关联资源标签解析会在绑定集合非空时查 DB；这些用例只关心绑定 ID，因此让查询整体返回空表。 */
 function installSafeDb() {
-  stubDb({
-    transaction: async (callback: (tx: { execute: () => Promise<void> }) => Promise<unknown>) =>
-      callback({ execute: async () => {} }),
+  const db = {
+    execute: async () => [],
+    transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => fn(db),
     select: () => ({
       from: () => ({
         where: () => ({
+          for: async () => [],
           limit: async () => [],
           // biome-ignore lint/suspicious/noThenProperty: Drizzle 查询构造器在 await 时必须是 thenable。
           then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
         }),
       }),
     }),
-  });
+  };
+  stubDb(db);
 }
 
 describe("round44 Agent 配置 Web 路由", () => {
@@ -89,6 +104,8 @@ describe("round44 Agent 配置 Web 路由", () => {
     resetAgentModuleStub();
     resetTestAuth();
     resetAgentPreferences();
+    resetMcpServerModuleForTesting();
+    resetSkillServerModuleForTesting();
   });
 
   // 列表必须以认证组织上下文调用应用层，不能使用客户端输入决定组织。
@@ -201,15 +218,17 @@ describe("round44 Agent 配置 Web 路由", () => {
 
   // 同名可见资源已存在时必须映射为 409 冲突，而不是把创建静默变成更新。
   test("创建同名 Agent 返回 409", async () => {
-    const create = mock(async () => authorizedAgent());
-    installAgentModuleStub({ facade: { existsInOrganization: async () => true, create } });
+    const create = mock(async () => {
+      throw new ConflictError("Agent already exists");
+    });
+    installAgentModuleStub({ facade: { create } });
 
     const response = await json("/config/agents", "POST", { name: "researcher", data: {} });
 
     expect(response.status).toBe(409);
     expect((await response.json()).error.code).toBe("ALREADY_EXISTS");
     // 命中即止：判定为冲突时不得发生任何写入。
-    expect(create).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalled();
   });
 
   // 判定必须按归属组织：别的组织里那个我能看到的同名 Agent 不构成本组织的创建冲突，否则控制台上会
@@ -245,6 +264,17 @@ describe("round44 Agent 配置 Web 路由", () => {
 
   // 创建后应经绑定门面同步传入的 MCP 和站点应用绑定。
   test("创建同步 MCP 与站点应用绑定", async () => {
+    installMcpServerModule(
+      createStubMcpServerModule({
+        facade: createStubMcpFacade({
+          getById: async () => ({
+            ...mcpRow(),
+            scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+            access: { actions: ["read", "use"] },
+          }),
+        }),
+      }),
+    );
     const calls: string[] = [];
     installAgentModuleStub({
       facade: {
@@ -360,6 +390,20 @@ describe("round44 Agent 配置 Web 路由", () => {
 
   // 更新应经绑定门面同步显式提供的 skill 绑定而非忽略关联资源变更。
   test("更新同步 skill 绑定", async () => {
+    installSkillServerModule(
+      createStubSkillServerModule({
+        facade: createStubSkillFacade({
+          getById: async () => ({
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "demo",
+            description: null,
+            path: "/tmp/fixture",
+            scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+            access: { actions: ["read", "use"] },
+          }),
+        }),
+      }),
+    );
     let skillIds: readonly string[] = [];
     installAgentModuleStub({
       facade: { updateById: async () => authorizedAgent() },

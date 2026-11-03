@@ -26,16 +26,10 @@ export const moduleManifest = {
   capabilities: ["platform.access-control"],
   create: (context) =>
     import("./src/suite").then((suite) => {
-      // 装配时校验基础设施已初始化，但不能缓存根连接，否则授权回读和范围更新会脱离资源保存事务。
-      const database = new Proxy(getDatabase<AccessControlDatabase>(), {
-        get(_target, property) {
-          const current = getDatabase<AccessControlDatabase>();
-          const value = Reflect.get(current, property, current);
-          return typeof value === "function" ? value.bind(current) : value;
-        },
-      });
+      // Keep startup validation eager while resolving the transaction handle per operation.
+      getDatabase<AccessControlDatabase>();
       return suite.createDrizzleAccessControl({
-        database,
+        database: () => getDatabase<AccessControlDatabase>(),
         bindings: context.declarations.flatMap((manifest) => manifest.accessControlBindings ?? []),
       });
     }),

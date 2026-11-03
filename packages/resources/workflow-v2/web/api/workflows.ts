@@ -1,4 +1,4 @@
-// web/api/workflows.ts
+// web/api/v1/workflows.ts
 // 列表页的域模块：本地注册表的工作流增删改查（冻结 §4.3 的 `/web/workflow-v2/workflows` 四条端点）。
 //
 // 信封与错误口径与 `canvas-session.ts` 同源：`request()` 已解掉 `{ success, data }` 一层，失败**返回**

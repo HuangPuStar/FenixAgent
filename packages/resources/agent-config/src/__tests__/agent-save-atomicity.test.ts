@@ -29,8 +29,8 @@ const web = createWebConfigAgentsRoutes({
 const cases = [
   { label: "Web 创建", route: web, path: "/config/agents", method: "POST", create: true, web: true },
   { label: "Web 更新", route: web, path: `/config/agents/${ID}`, method: "PATCH", create: false, web: true },
-  { label: "API 创建", route: api, path: "/api/agents", method: "POST", create: true, web: false },
-  { label: "API 更新", route: api, path: `/api/agents/${ID}`, method: "PUT", create: false, web: false },
+  { label: "API 创建", route: api, path: "/api/v1/agents", method: "POST", create: true, web: false },
+  { label: "API 更新", route: api, path: `/api/v1/agents/${ID}`, method: "PATCH", create: false, web: false },
 ] as const;
 
 let state: SaveState;
@@ -46,12 +46,24 @@ beforeEach(() => {
   setTestAuth({ organizationId: "org-1", userId: "user-1" });
   failure = null;
   state = { agent: null, knowledge: ["kb-old"], skills: ["skill-old"], memory: false };
+  const select = () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => [],
+        // biome-ignore lint/suspicious/noThenProperty: Repository awaits the Drizzle builder directly.
+        then: (resolve: (rows: unknown[]) => unknown) =>
+          Promise.resolve([{ id: "kb-new", organizationId: "org-1" }]).then(resolve),
+        limit: async () => [{ id: "kb-new", organizationId: "org-1" }],
+      }),
+    }),
+  });
   stubDb({
+    select,
     get state() {
       return state;
     },
     transaction: async (callback: (tx: { state: SaveState; execute: () => Promise<void> }) => Promise<unknown>) => {
-      const tx = { state: structuredClone(state), execute: async () => {} };
+      const tx = { state: structuredClone(state), execute: async () => {}, select };
       const result = await callback(tx);
       state = tx.state;
       return result;
@@ -66,6 +78,7 @@ beforeEach(() => {
     });
   installAgentModuleStub({
     facade: {
+      getById: async () => saved(),
       existsInOrganization: async () => false,
       create: async (_actor, input) => {
         current().agent = { description: input.data.description ?? "", publicReadable: input.publicReadable ?? false };
@@ -125,7 +138,9 @@ for (const entry of cases) {
         new Request(`http://localhost${entry.path}`, {
           method: entry.method,
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(entry.web ? { name: "atomic-agent", data } : { name: "atomic-agent", ...data }),
+          body: JSON.stringify(
+            entry.web ? { name: "atomic-agent", data } : { ...(entry.create ? { name: "atomic-agent" } : {}), ...data },
+          ),
         }),
       );
     }
@@ -154,7 +169,7 @@ for (const entry of cases) {
     // 合法保存必须真正提交，不能为避免半写而把所有请求都回滚或跳过绑定。
     test("成功时配置和绑定一起提交", async () => {
       const response = await save();
-      expect(response.status).toBe(200);
+      expect(response.status, await response.clone().text()).toBe(!entry.web && entry.create ? 201 : 200);
       expect(state.agent).toEqual({ description: "after", publicReadable: true });
       expect(state.knowledge).toEqual(["kb-new"]);
       expect(state.skills).toEqual([]);

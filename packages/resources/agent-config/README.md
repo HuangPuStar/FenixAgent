@@ -40,7 +40,7 @@ agent 编辑器 / 站点页面的浏览器实现方。
   - `/web/agent-sites`：`createWebAgentSitesRoutes`（`src/server/routes/web/agent-sites.ts`）
   - `/web/sidebar-config`：`createWebSidebarConfigRoutes`（`src/server/routes/web/sidebar-config.ts`）
   - `/web/agent-generation`：`createWebAgentGenerationRoutes`（`src/server/routes/web/agent-generation.ts`）
-  - `/api/agents`：`createApiAgentsRoutes`（`src/server/routes/api/agents.ts`）
+  - `/api/v1/agents`：`createApiAgentsRoutes`（`src/server/routes/api/agents.ts`）
   - 站点前端代理 `/web/site/deploy/:appId/*`：`createAgentSitesProxyRoutes` 与兼容层
     `createAgentSitesCompatRoutes`（`src/server/routes/agent-sites-proxy.ts`）
   - Agent ↔ Site 绑定子路由：`createAgentSiteAssociationRoutes`

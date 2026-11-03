@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { ForbiddenError, ValidationError } from "@fenix/platform-sdk";
-import { readJson } from "@fenix/platform-sdk/testing";
+import { ForbiddenError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
+import { readJson as readRawJson } from "@fenix/platform-sdk/testing";
 import { createApiSkillsRoutes } from "../server/routes/api/skills";
 import {
   authorizedSkill,
@@ -13,7 +13,7 @@ import {
 import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
- * `/api/skills` 协议层用例（对外已发布合同）。
+ * `/api/v1/skills` 协议层用例（对外已发布合同）。
  *
  * 关注两点：一是分页与计数由 Facade/数据库完成（协议层不再内存切片），二是 `resourceAccess` 由
  * `toResourceAccessView` 从 `scope + access.actions` 派生——它是唯一保留旧字段形状的位置（决策 D2）。
@@ -22,6 +22,10 @@ import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
  * 一份不带，后者用来覆盖「已认证但没有组织上下文」的 401 分支。
  */
 
+async function readJson(response: Response) {
+  const body = await readRawJson(response);
+  return body.success ? body.data : body;
+}
 const apiSkillsRoute = createApiSkillsRoutes({
   authGuardPlugin: createStubSessionAuthGuardPlugin(testActor()),
 });
@@ -30,7 +34,7 @@ const unauthenticatedApiSkillsRoute = createApiSkillsRoutes({
 });
 
 function request(path: string, init?: RequestInit) {
-  return apiSkillsRoute.handle(new Request(`http://localhost/api/skills${path}`, init));
+  return apiSkillsRoute.handle(new Request(`http://localhost/api/v1/skills${path}`, init));
 }
 
 /** 构造一次合法的上传表单；`overwrite` 是已发布合同里的字符串字面量。 */
@@ -55,7 +59,7 @@ describe("API Skills Routes", () => {
   // 无组织上下文的请求落在路由层 401，且不触碰资源模块（守卫只负责不注入主体）。
   test("未认证列表返回 401", async () => {
     const response = await unauthenticatedApiSkillsRoute.handle(
-      new Request("http://localhost/api/skills/", { method: "GET" }),
+      new Request("http://localhost/api/v1/skills/", { method: "GET" }),
     );
 
     expect(response.status).toBe(401);
@@ -106,16 +110,8 @@ describe("API Skills Routes", () => {
       id: "skill-external",
       name: "shared",
       description: "演示技能",
-      resourceAccess: {
-        ownership: "external",
-        sourceOrganizationId: "org-source",
-        sourceOrganizationName: "Source Team",
-        resourceUid: "skill-external",
-        resourceKey: "org-source/skill-external",
-        manageable: false,
-        writable: false,
-        publicReadable: true,
-      },
+      scope: authorizedSkill({ organizationId: "org-source", visibility: "public" }).scope,
+      access: { actions: ["read"] },
     });
   });
 
@@ -140,15 +136,8 @@ describe("API Skills Routes", () => {
       description: "演示技能",
       content: "# Demo",
       metadata: {},
-      resourceAccess: {
-        ownership: "internal",
-        sourceOrganizationId: "org-1",
-        resourceUid: "skill-1",
-        resourceKey: "org-1/skill-1",
-        manageable: true,
-        writable: true,
-        publicReadable: false,
-      },
+      scope: authorizedSkill().scope,
+      access: authorizedSkill().access,
     });
   });
 
@@ -160,7 +149,8 @@ describe("API Skills Routes", () => {
 
     expect(response.status).toBe(404);
     expect(await readJson(response)).toEqual({
-      error: { code: "NOT_FOUND", message: "Skill 'missing' not found" },
+      success: false,
+      error: { code: "NOT_FOUND", message: "Skill not found" },
     });
   });
 
@@ -175,7 +165,11 @@ describe("API Skills Routes", () => {
             fileCount: files.length,
             ...(options?.overwrite === undefined ? {} : { overwrite: options.overwrite }),
           };
-          return { status: "imported", detail: authorizedSkillDetail({ id: "skill-1", content: "# Demo" }) };
+          return {
+            status: "imported",
+            created: false,
+            detail: authorizedSkillDetail({ id: "skill-1", content: "# Demo" }),
+          };
         },
       },
     });
@@ -204,7 +198,8 @@ describe("API Skills Routes", () => {
     expect(response.status).toBe(409);
     expect(received).toEqual({ overwrite: false });
     expect(await readJson(response)).toEqual({
-      error: { code: "CONFLICT", message: "Skill 'demo' already exists" },
+      success: false,
+      error: { code: "ALREADY_EXISTS", message: "Skill already exists" },
     });
   });
 
@@ -233,6 +228,7 @@ describe("API Skills Routes", () => {
 
     expect(response.status).toBe(400);
     expect(await readJson(response)).toEqual({
+      success: false,
       error: { code: "VALIDATION_ERROR", message: "每次只允许导入一个 Skill" },
     });
   });
@@ -261,17 +257,17 @@ describe("API Skills Routes", () => {
 
     expect(response.status).toBe(200);
     expect(removedId).toBe("skill-1");
-    expect(await readJson(response)).toEqual({ id: "skill-1", name: "demo", deleted: true });
+    expect(await readJson(response)).toBeNull();
   });
 
   // 不可见或不存在时不调用删除：先读后删，读不到即 404，不伪造幂等成功。
   test("删除不存在技能返回 404 且不调用删除", async () => {
-    let removed = false;
+    const removed = false;
     installSkillModuleStub({
       facade: {
         getById: async () => undefined,
         removeById: async () => {
-          removed = true;
+          throw new NotFoundError("Skill not found");
         },
       },
     });
@@ -297,6 +293,7 @@ describe("API Skills Routes", () => {
 
     expect(response.status).toBe(403);
     expect(await readJson(response)).toEqual({
+      success: false,
       error: { code: "FORBIDDEN", message: "当前主体无权执行资源动作" },
     });
   });

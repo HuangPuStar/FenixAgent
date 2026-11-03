@@ -201,6 +201,37 @@ function createOpenApiPlugin(version: string, audience: "external" | "web") {
     tags.push(...OPENAPI_TAGS.filter((tag) => includedTags.has(tag.name)));
   });
 
+  // openapi 1.4 replaces explicit response media types when runtime schemas exist.
+  // Restore declared overrides after generation, retaining the generated JSON schema.
+  plugin.onAfterHandle(({ request, response }) => {
+    if (
+      new URL(request.url).pathname.replace(/\/$/, "") !== specPath ||
+      typeof response !== "object" ||
+      response === null ||
+      !("paths" in response)
+    )
+      return;
+    type DocumentResponse = { content?: Record<string, unknown>; [key: string]: unknown };
+    const spec = response as {
+      paths: Record<string, Record<string, { responses?: Record<string, DocumentResponse> }>>;
+    };
+    for (const route of plugin.getDocumentRoutes()) {
+      const overrides = route.hooks?.detail?.responses;
+      const operation = spec.paths[route.path.replace(/:([^/]+)/g, "{$1}")]?.[String(route.method).toLowerCase()];
+      if (!overrides || !operation?.responses) continue;
+      for (const [status, explicit] of Object.entries(overrides)) {
+        const generated = operation.responses[status];
+        if (!generated || typeof explicit !== "object" || explicit === null || !("content" in explicit)) continue;
+        if (typeof explicit.content !== "object" || explicit.content === null) continue;
+        operation.responses[status] = {
+          ...generated,
+          ...explicit,
+          content: { ...generated.content, ...explicit.content },
+        };
+      }
+    }
+  });
+
   return plugin.use(
     openapi({
       documentation: {
@@ -211,6 +242,12 @@ function createOpenApiPlugin(version: string, audience: "external" | "web") {
             audience === "external" ? "面向外部系统的 API 文档，不包含系统管理接口。" : "控制台内部 /web 接口文档。",
         },
         tags,
+        ...(audience === "external"
+          ? {
+              components: { securitySchemes: { BearerAuth: { type: "http" as const, scheme: "bearer" } } },
+              security: [{ BearerAuth: [] }],
+            }
+          : {}),
       },
       provider: "scalar",
       scalar: {

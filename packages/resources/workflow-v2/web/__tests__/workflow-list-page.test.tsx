@@ -639,8 +639,8 @@ describe("卡片上的更多菜单与日志入口", () => {
     await click(buttonByText("api.entry"));
 
     expect(mount.container.textContent).toContain("api.title");
-    expect(mount.container.textContent).toContain("/api/workflow-v2/workflows/wf-local-1/run");
-    expect(router.callsTo("/api/workflow-v2")).toHaveLength(0);
+    expect(mount.container.textContent).toContain("/api/v1/workflow-v2/workflows/wf-local-1/run");
+    expect(router.callsTo("/api/v1/workflow-v2")).toHaveLength(0);
   });
 });
 

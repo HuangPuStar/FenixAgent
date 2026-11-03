@@ -6,7 +6,7 @@ import { z } from "zod/v4";
  * Workflow 资源模块描述符。
  *
  * 工作流定义 / 版本 / 运行 / 触发的唯一 owner。装配面上的服务端交付物是五组 `/web/workflow-*` 路由
- * （defs、runs、engine action、SSE 事件流、custom-tools）、`/api/workflows/:workflowId/execute`、
+ * （defs、runs、engine action、SSE 事件流、custom-tools）、`/api/v1/workflows/:workflowId/execute`、
  * `/workflow-ui` 静态代理与 Webhook 接收路由 `createHookRoutes`（`/hooks/:publicHash`，另见
  * `handleWebhookRequest`）；消费者是宿主 `apps/server`（`main.ts` 与 `routes/web/index.ts`）。
  *
@@ -37,7 +37,7 @@ import { z } from "zod/v4";
  * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。五条贡献的声明
  * 序就是挂载序（与迁移前宿主手写序列一致）。
  *
- * 1.5f 追加一条 `api` 槽贡献：`/api/workflows/:workflowId/execute`。1.5f-1b 再追加两条顶层 `app` 槽贡献：
+ * 1.5f 追加一条 `api` 槽贡献：`/api/v1/workflows/:workflowId/execute`。1.5f-1b 再追加两条顶层 `app` 槽贡献：
  * `/workflow-ui/*` 静态代理（`createWorkflowStaticApp`，会话守卫面但与 `/web` 不同前缀）与
  * `/hooks/:publicHash` Webhook 接收（无认证——`publicHash` 即凭据）。三条 `app` 槽路由各自带独立前缀与
  * 认证口径，因此单列一槽而不是塞进 `/web` 或 `/api`（两条都在本模块声明序末尾）。

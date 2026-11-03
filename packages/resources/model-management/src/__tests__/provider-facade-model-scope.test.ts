@@ -282,3 +282,15 @@ describe("ProviderFacade 的 Model 子表授权边界", () => {
     expect(listModelCalls).toHaveLength(0);
   });
 });
+
+// 并发模型创建的冲突不能更新已经存在的子行。
+test("v1 strict model creation rejects conflict", async () => {
+  const { facade } = buildFacade({
+    findByIdRow: providerRow(),
+    access: { authorize: async () => undefined },
+    modelsRepo: { upsert: async (input) => (input.rejectConflict ? undefined : "overwritten") },
+  });
+  await expect(
+    facade.createModel(actor, { by: "resourceId", value: "provider-1" }, "existing", { displayName: "replacement" }),
+  ).rejects.toBeInstanceOf(ConflictError);
+});

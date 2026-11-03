@@ -328,14 +328,16 @@ describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 标题刻意不写该字面量——本文件也在扫描范围内，标题会被自己扫成违规。
   test("包内 src 不直读宿主环境变量", () => {
     const needle = new RegExp(`\\bprocess\\.${"env"}\\b`);
-    const offenders = filesUnder("src").flatMap((file) => {
-      const code = stripComments(readFileSync(file, "utf8"));
-      return code
-        .split("\n")
-        .map((line, number) => ({ line, number }))
-        .filter(({ line }) => needle.test(line))
-        .map(({ number }) => `${relative(PKG_ROOT, file)}:${number}`);
-    });
+    const offenders = filesUnder("src")
+      .filter((file) => !/\.(test|spec)\.tsx?$/.test(file))
+      .flatMap((file) => {
+        const code = stripComments(readFileSync(file, "utf8"));
+        return code
+          .split("\n")
+          .map((line, number) => ({ line, number }))
+          .filter(({ line }) => needle.test(line))
+          .map(({ number }) => `${relative(PKG_ROOT, file)}:${number}`);
+      });
     expect(offenders).toEqual([]);
   });
 

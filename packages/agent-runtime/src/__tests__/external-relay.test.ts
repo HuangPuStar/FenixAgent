@@ -65,7 +65,7 @@ function createRelayHandle(): MockRelayHandle {
 
 /** 构造 handler 依赖的最小 environment 视图 */
 function makeEnv(overrides: Partial<ExternalRelayEnvironment> = {}): ExternalRelayEnvironment {
-  return { id: "env-1", organizationId: "org-1", userId: "user-1", ...overrides };
+  return { id: "env-1", organizationId: "org-1", userId: "user-1", agentConfigId: "agent-1", ...overrides };
 }
 
 /** 构造完整 SpawnedInstance（handler 只读 .id，其余字段保证类型完整） */
@@ -102,6 +102,8 @@ const calls = {
 function installTestDeps(overrides: Partial<Parameters<typeof setExternalRelayDeps>[0]> = {}): void {
   setExternalRelayDeps({
     getEnvironmentById: async () => undefined,
+    canUseAgent: async () => true,
+    resolveWorkspacePath: () => "/workspaces/org-1/user-1/env-1",
     getRunningInstancesByEnvironment: () => [],
     getOwnedInstance: async (id, ownerUserId) => ({
       id,
@@ -446,4 +448,40 @@ describe("ExternalRelay", () => {
     expect(relay.unsubCalls).toBe(1);
     expect(calls.detached).toEqual(["inst-1"]);
   });
+});
+
+// 外部 ACP 的工作目录来自认证环境，原始与包裹消息都不能越界。
+test.each([
+  "session/new",
+  "session/load",
+  "session/list",
+  "session/resume",
+])("injects authenticated cwd for %s", async (method) => {
+  const relay = createRelayHandle();
+  installTestDeps({
+    getEnvironmentById: async () => makeEnv(),
+    getRunningInstancesByEnvironment: () => [makeInstance("inst-1")],
+    connectAgentRelay: async () => relay.handle,
+  });
+  const ws = createWs();
+  await handleExternalRelayOpen(ws, "ws-cwd", "env-1", authCtx);
+  const rpc = { jsonrpc: "2.0", id: 12, method, params: { cwd: "/etc", sessionId: "ses_test" } };
+  handleExternalRelayMessage(ws, "ws-cwd", rpc);
+  handleExternalRelayMessage(ws, "ws-cwd", { type: "acp", payload: rpc });
+  const expected = { ...rpc, params: { ...rpc.params, cwd: "/workspaces/org-1/user-1/env-1" } };
+  expect(relay.sent.slice(-2)).toEqual([expected, expected]);
+  handleExternalRelayClose(ws, "ws-cwd");
+  setExternalRelayDeps(null);
+});
+// 已撤销 Agent 使用权后，即使用户仍拥有实例也不能重连。
+test("external relay rechecks agent use permission", async () => {
+  installTestDeps({
+    getEnvironmentById: async () => makeEnv(),
+    canUseAgent: async () => false,
+    getRunningInstancesByEnvironment: () => [makeInstance("inst-1")],
+  });
+  const ws = createWs();
+  await handleExternalRelayOpen(ws, "ws-revoked", "env-1", authCtx);
+  expect(ws.closed).toEqual([[4003, "unauthorized"]]);
+  setExternalRelayDeps(null);
 });

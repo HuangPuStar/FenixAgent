@@ -45,7 +45,7 @@ export const WORKFLOW_AUDIT_ACTIONS = {
    */
   publish: "workflow.publish",
   /**
-   * 对外接口触发的运行（`POST /api/workflow-v2/workflows/:id/run`）。
+   * 对外接口触发的运行（`POST /api/v1/workflow-v2/workflows/:id/run`）。
    *
    * 与 `publish` 并列在动作名第三段：`workflow.run.external` 明确区分「谁触发的」——控制台内的调试运行由画布
    * 直达上游、不经平台，因此这条流水只对应外部调用方，按它即可回答「谁在什么时候从外部触发了哪些工作流」。

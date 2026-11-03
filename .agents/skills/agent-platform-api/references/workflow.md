@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Workflow API
 
-管理工作流定义、版本、执行引擎、看板和作业。控制台 `/web/workflow-*` API 使用 `POST` + JSON body `action` 字段；外部执行 API 使用 `/api/workflows/:workflowId/execute` REST 端点。
+管理工作流定义、版本、执行引擎、看板和作业。控制台 `/web/workflow-*` API 使用 `POST` + JSON body `action` 字段；外部执行 API 使用 `/api/v1/workflows/:workflowId/execute` REST 端点。
 
 ---
 
@@ -55,7 +55,7 @@ Agent 操作工作流时，遵循 **拉取 → 编辑本地 → 校验 → 保�
 |---|---|---|
 | 用途 | 开发中的临时内容，反复迭代 | 稳定快照，供触发器和作业引用 |
 | 修改 | 随时 save 覆盖，不产生历史 | 每次 publish 产生新版本号（只增） |
-| 运行 | `/web/workflow-engine` 的 `run` 可直接用草稿运行 | 外部 `/api/workflows/:workflowId/execute` 默认执行 latestVersion，也可指定 `version` |
+| 运行 | `/web/workflow-engine` 的 `run` 可直接用草稿运行 | 外部 `/api/v1/workflows/:workflowId/execute` 默认执行 latestVersion，也可指定 `version` |
 | 回滚 | 可通过 restoreToDraft 从历史版本回退到草稿 | 不可直接修改已发布版本 |
 
 **操作决策指南**：
@@ -64,7 +64,7 @@ Agent 操作工作流时，遵循 **拉取 → 编辑本地 → 校验 → 保�
 用户说"帮我写个工作流" / "修改一下 YAML" / "试试这个效果"
   → save 草稿 → dryRun → run 测试（传 `version: 0` 或直接传 yaml 参数执行草稿）
   → 满意后 → publish 发布版本
-  → 外部系统用 /api/workflows/:workflowId/execute 执行已发布版本
+  → 外部系统用 /api/v1/workflows/:workflowId/execute 执行已发布版本
 
 用户说"把这个工作流挂到触发器上" / "给作业用"
   → 确保草稿已是最新 → publish 发布版本
@@ -263,14 +263,14 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \
 
 ---
 
-## 二、外部执行 API — `/api/workflows/:workflowId/execute`
+## 二、外部执行 API — `/api/v1/workflows/:workflowId/execute`
 
 外部系统调用已发布工作流使用 REST 端点，不使用 `/web/*` 的 `{ success, data }` envelope，也不使用 `action` 字段。
 
 ### 同步执行并获取 end 节点输出
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/api/workflows/<WORKFLOW_ID>/execute" \
+curl -s -X POST "$USER_META_BASE_URL/api/v1/workflows/<WORKFLOW_ID>/execute" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -299,7 +299,7 @@ curl -s -X POST "$USER_META_BASE_URL/api/workflows/<WORKFLOW_ID>/execute" \
 ### 异步执行
 
 ```bash
-curl -s -X POST "$USER_META_BASE_URL/api/workflows/<WORKFLOW_ID>/execute" \
+curl -s -X POST "$USER_META_BASE_URL/api/v1/workflows/<WORKFLOW_ID>/execute" \
   -H "Authorization: Bearer $USER_META_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

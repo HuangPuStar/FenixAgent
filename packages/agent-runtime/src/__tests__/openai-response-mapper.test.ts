@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { buildOpenAIError, mapToNonStreamingResponse } from "../services/openai-response-mapper";
 
 describe("mapToNonStreamingResponse", () => {
-  // agent_thought_chunk → reasoning_content
-  test("将 agent_thought_chunk 映射到 reasoning_content", () => {
+  // 内部推理事件不得暴露到 SDK 响应。
+  test("将 agent_thought_chunk 不暴露到响应", () => {
     const events = [
       {
         type: "session_data",
@@ -16,8 +16,8 @@ describe("mapToNonStreamingResponse", () => {
       { type: "session_data", payload: { jsonrpc: "2.0", result: { stopReason: "end_turn" } } },
     ] as any;
     const res = mapToNonStreamingResponse(events, "agent-123");
-    expect(res.choices[0].message.reasoning_content).toBe("让我想想...");
-    expect(res.choices[0].finish_reason).toBe("end_turn");
+    expect(res.choices[0].message).not.toHaveProperty("reasoning_content");
+    expect(res.choices[0].finish_reason).toBe("stop");
   });
 
   // agent_message_chunk → content
@@ -37,8 +37,8 @@ describe("mapToNonStreamingResponse", () => {
     expect(res.choices[0].message.content).toBe("您好！");
   });
 
-  // tool_call → 简化 XML 在 content 中
-  test("将 tool_call 映射为简化 XML", () => {
+  // 工具执行事件不得伪造为模型正文。
+  test("将 tool_call 不暴露内部工具 XML", () => {
     const events = [
       {
         type: "session_data",
@@ -69,8 +69,8 @@ describe("mapToNonStreamingResponse", () => {
       { type: "session_data", payload: { jsonrpc: "2.0", result: { stopReason: "end_turn" } } },
     ] as any;
     const res = mapToNonStreamingResponse(events, "agent-123");
-    expect(res.choices[0].message.content).toContain('<tool_call name="get_weather" />');
-    expect(res.choices[0].message.content).toContain('<tool_result name="get_weather" />');
+    expect(res.choices[0].message.content).not.toContain("tool_call");
+    expect(res.choices[0].message.content).not.toContain("tool_result");
     expect(res.choices[0].message.content).toContain("今天晴天");
   });
 
@@ -88,11 +88,11 @@ describe("mapToNonStreamingResponse", () => {
       { type: "session_data", payload: { jsonrpc: "2.0", result: { stopReason: "end_turn" } } },
     ] as any;
     const res = mapToNonStreamingResponse(events, "agent-123");
-    expect(res.choices[0].message.reasoning_content).toBeUndefined();
+    expect(res.choices[0].message).not.toHaveProperty("reasoning_content");
   });
 
-  // plan → reasoning_content
-  test("将 plan 事件映射到 reasoning_content", () => {
+  // 内部计划不得暴露到 SDK 响应。
+  test("将 plan 事件不暴露到响应", () => {
     const events = [
       {
         type: "session_data",
@@ -113,7 +113,7 @@ describe("mapToNonStreamingResponse", () => {
       { type: "session_data", payload: { jsonrpc: "2.0", result: { stopReason: "end_turn" } } },
     ] as any;
     const res = mapToNonStreamingResponse(events, "agent-123");
-    expect(res.choices[0].message.reasoning_content).toContain("Step 1");
+    expect(res.choices[0].message).not.toHaveProperty("reasoning_content");
   });
 });
 

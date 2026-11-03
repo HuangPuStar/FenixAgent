@@ -33,8 +33,8 @@ const REGISTRY_SECRET_DEFAULT = "rcs-registry-secret";
  * 同样参与贡献挂载**：装配的 mount 阶段遍历全部解析出的模块（`orderContributions`），不区分类别。惰性
  * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 1.5f 追加两条 `api` 槽贡献：实例接入（`/api/agents/:agentId/instances/connect`）与 OpenAI 兼容对话
- * （`/api/agents/:agentId/v1/chat/completions`）。两者与 `/web` 面共用同一份会话守卫，实例接入另需宿主
+ * 1.5f 追加两条 `api` 槽贡献：实例接入（`/api/v1/agents/:agentId/instances/connect`）与 OpenAI 兼容对话
+ * （`/api/v1/chat/completions`）。两者与 `/web` 面共用同一份会话守卫，实例接入另需宿主
  * 请求错误日志（读 `request` 上的 requestId，包内没有来源）。
  *
  * 1.5f-1b 追加一条顶层 `app` 槽贡献：`/acp/*`。它与 `/web`、`/api` 都不同前缀，且是唯一同时需要会话

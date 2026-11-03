@@ -1,6 +1,7 @@
 import type { ActorContext, IdentityDirectory, WebErrSchema } from "@fenix/platform-sdk";
-import { AppError, ConflictError, ValidationError } from "@fenix/platform-sdk";
+import { AppError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import type * as z from "zod/v4";
+import { authorizeAgentBindings } from "../../../facades/agent-binding-authorization";
 import type { AuthorizedAgentConfig } from "../../../facades/agent-config-facade";
 import type { UserAgentPreferencesPort } from "../../../ports/user-agent-preferences";
 import { getAgentConfigModule } from "../../../runtime";
@@ -15,6 +16,7 @@ import {
   UpdateAgentRequestSchema,
 } from "../../../schemas/config.schema";
 import { readAgentBindingRequest } from "../../../services/agent-bindings";
+import { saveAgentConfig } from "../../../services/agent-config-write";
 import { buildAgentRelatedResourceView } from "../../../services/agent-related-resources";
 import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
@@ -287,17 +289,38 @@ async function handleSet(
   const enableMemory = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  const { facade, authoring } = getAgentConfigModule();
-  const agent = await authoring.save(
+  const { facade, associations, authoring } = getAgentConfigModule();
+  const bindingRequest = readAgentBindingRequest(data);
+  const bindings = {
+    ...bindingRequest,
+    ...(bindingRequest.skillIds === undefined
+      ? {}
+      : { skillIds: await authoring.resolveSkillIds(actor, bindingRequest.skillIds) }),
+  };
+  let organizationId = actor.activeOrganizationId ?? "";
+  if (bindings.knowledge !== undefined) {
+    const current = await facade.getById(actor, nameOrKey);
+    if (!current) throw new NotFoundError("Agent not found");
+    organizationId = current.scope.organizationId ?? organizationId;
+  }
+  await authorizeAgentBindings(
     actor,
-    () =>
+    organizationId,
+    bindings,
+    typeof data.modelId === "string" ? data.modelId : undefined,
+  );
+  const agent = await saveAgentConfig({
+    organizationId,
+    resourceId: nameOrKey,
+    write: () =>
       facade.updateById(actor, nameOrKey, toAgentConfigWriteData(data), {
         publicReadable,
         ...(typeof data.name === "string" ? { name: data.name } : {}),
       }),
-    readAgentBindingRequest(data),
-    { enableMemory },
-  );
+    bindings,
+    enableMemory,
+    associations,
+  });
 
   return {
     success: true,
@@ -320,30 +343,33 @@ async function handleCreate(
   const enableMemory = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  const { facade, authoring } = getAgentConfigModule();
-  // 同名检查必须在创建之前：仓储的写入是同组织同名的幂等 upsert，把重复创建留给它会把"创建已存在
-  // 的 Agent"静默变成一次更新。
-  //
-  // 判定口径是**归属组织内**（`existsInOrganization`），与 `create` 的 upsert 冲突目标
-  // `(organization_id, name)` 一致。这里不能用读取的可见集合（`facade.get`）：可见集合还包含"任何
-  // 组织的 public 资源"和"我是成员的其他组织的资源"，用它预检会把"别的组织有一个我能看到的同名
-  // Agent"误判成本组织冲突，让本组织的合法创建返回 409（迁移前的 `getAgentConfig` 就是这种宽口径，
-  // 控制台上确实表现为"组织里没有这个 Agent 却提示已存在"）。
-  if (await facade.existsInOrganization(actor, name)) {
-    throw new ConflictError(`Agent '${name}' already exists`);
-  }
-
-  const agent = await authoring.save(
+  const { facade, associations, authoring } = getAgentConfigModule();
+  const bindingRequest = readAgentBindingRequest(data);
+  const bindings = {
+    ...bindingRequest,
+    ...(bindingRequest.skillIds === undefined
+      ? {}
+      : { skillIds: await authoring.resolveSkillIds(actor, bindingRequest.skillIds) }),
+  };
+  await authorizeAgentBindings(
     actor,
-    () =>
+    actor.activeOrganizationId ?? "",
+    bindings,
+    typeof data.modelId === "string" ? data.modelId : undefined,
+  );
+  const agent = await saveAgentConfig({
+    organizationId: actor.activeOrganizationId ?? "",
+    write: () =>
       facade.create(actor, {
         name,
         data: toAgentConfigWriteData(data),
+        rejectConflict: true,
         ...(publicReadable === undefined ? {} : { publicReadable }),
       }),
-    readAgentBindingRequest(data),
-    { enableMemory },
-  );
+    bindings,
+    enableMemory,
+    associations,
+  });
 
   return {
     success: true,

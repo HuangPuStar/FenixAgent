@@ -232,6 +232,7 @@ export async function writeSkillDocument(input: {
   description: string;
   content: string;
   metadata?: Record<string, string>;
+  replaceMetadata?: boolean;
   /**
    * 依赖这次文件内容的资源行写入；抛错即回滚文件内容。
    *
@@ -245,7 +246,9 @@ export async function writeSkillDocument(input: {
     skillContentPath(input.organizationId, safeName),
   );
   const preservedMetadata = stripNameAndDescription(existingDocument?.metadata ?? {});
-  const writeMetadata = { ...preservedMetadata, ...(input.metadata ?? {}) };
+  const writeMetadata = input.replaceMetadata
+    ? (input.metadata ?? {})
+    : { ...preservedMetadata, ...(input.metadata ?? {}) };
   const archivePath = skillArchivePath(input.organizationId, safeName);
   const backupRoot = await _deps.skillFs.createBackupDir("rcs-skill-set-");
   const targetDir = skillOrganizationDir(input.organizationId);
@@ -260,7 +263,7 @@ export async function writeSkillDocument(input: {
       Object.keys(writeMetadata).length > 0 ? writeMetadata : undefined,
     );
     await _deps.skillFs.buildSkillArchive(skillDir, archivePath);
-    const rowMetadata = toRowMetadata(writeMetadata);
+    const rowMetadata = toRowMetadata(writeMetadata) ?? (input.replaceMetadata ? {} : undefined);
     const written: WrittenSkillDocument = {
       contentPath,
       description: input.description,

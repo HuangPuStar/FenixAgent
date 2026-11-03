@@ -6,12 +6,12 @@
 
 - **定义与版本**：`src/server/repositories/workflow-def.ts` 维护定义、版本与快照三类记录，`src/server/routes/web/workflow-defs.ts` 是其协议层（列表、草稿保存、发布、版本历史、recover 扫描）。
 - **运行与审批**：`src/server/repositories/workflow-trigger.ts` 之外的 run/event/node output 读写收敛在 `workflow-runs` 路由与 `pg-storage-adapter`；`src/server/routes/web/workflow-runs.ts` 提供列表、dry run、取消、审批、单节点输出、recover 与 rerun。
-- **执行编排**：`src/server/services/workflow/index.ts` 的 `getTeamEngine(organizationId)` 按组织缓存一对 `(engine + transport)`——storage 按 organizationId 隔离、engine 内部持有 activeRuns（取消与审批状态），不能跨组织或跨请求重建；`workflow-execute.ts` 把 `/api/workflows/:workflowId/execute` 的同步成功 / 失败 / 超时收敛为单一结果类型。
+- **执行编排**：`src/server/services/workflow/index.ts` 的 `getTeamEngine(organizationId)` 按组织缓存一对 `(engine + transport)`——storage 按 organizationId 隔离、engine 内部持有 activeRuns（取消与审批状态），不能跨组织或跨请求重建；`workflow-execute.ts` 把 `/api/v1/workflows/:workflowId/execute` 的同步成功 / 失败 / 超时收敛为单一结果类型。
 - **Agent 通信**：`agent-chat-transport.ts` 解析并确保当前用户的持久 `workflow/primary` 实例 runtime，每个节点使用独立 relay/ACP session；`instance-lease.ts` 保护同一实例的并发持有权，run 结束后只停止本 run 创建的实例，被租约保护的实例交给最后使用者释放。
 - **持久化适配**：`pg-storage-adapter.ts` 实现 engine 的 `StorageAdapter`（run / event / node output 落 PG）。
 - **触发与 Webhook**：`services/workflow-trigger.ts` 管理 `workflow_trigger`，对外只暴露 masked hash；`handleWebhookRequest` 供宿主 `POST /hooks/:publicHash` 调用，异步触发后立即 200。
 - **自定义节点**：`custom-tools.ts` 扫描模块配置的 `toolsDir`（缺省 `<cwd>/tools`），实例化 `CustomNode` 子类注册进 registry；目录缺失或加载失败降级为空 registry，不阻塞启动。
-- **HTTP 交付物**：会话守卫保护的 `/web/*` 控制台路由（宿主挂载在 `/web` 前缀下）：`GET|POST|PUT|PATCH|DELETE /workflow-defs*`、`GET|POST /workflow-runs*`、`POST /workflow-engine`、`GET /workflow/:workflowId/events`（SSE）、`GET /workflow-custom-tools`，以及 `/workflow-ui` 静态代理；`POST /api/workflows/:workflowId/execute` 是对外 API。
+- **HTTP 交付物**：会话守卫保护的 `/web/*` 控制台路由（宿主挂载在 `/web` 前缀下）：`GET|POST|PUT|PATCH|DELETE /workflow-defs*`、`GET|POST /workflow-runs*`、`POST /workflow-engine`、`GET /workflow/:workflowId/events`（SSE）、`GET /workflow-custom-tools`，以及 `/workflow-ui` 静态代理；`POST /api/v1/workflows/:workflowId/execute` 是对外 API。
 - **浏览器侧（2026-09-29 删除）**：`web/**` 与 `exports["./web"]` 已整体移除，本包不再发布任何浏览器面。原先的出口导出三个 API client（`workflowDefApi` / `workflowEngineApi` / `customToolsApi`）、SSE 连接函数、`WorkflowList` / `WorkflowRuns` / `WorkflowVersions` / `WorkflowBreadcrumb` 与画布纯逻辑；控制台现由 `@fenix/resource-workflow-v2` 接管（见 `docs/arch/25-workflow-v2.md`）。**不得**以「补齐客户端」为由重建——上面那批 `/web/*` 端点仍可用，但已无我方面向它们的浏览器消费方。
 - **模块组合根**：`src/module.ts` 的 `createWorkflowModule()` 返回进程级单例（`engines` / `customTools`），`fenix.module.ts` 是它的惰性描述符。
 
@@ -20,7 +20,7 @@
 本包属 `resources` 类别。依赖矩阵（`scripts/lib/architecture-boundary-rules.ts`）禁止 `resources → platform-impl`：
 
 - **不得**导入 `@fenix/identity/*` 或 `@fenix/access-control/*`；需要的身份数据只能经 `@fenix/platform-sdk` 的窄契约取得。
-- 其它包只经公开出口引用（`@fenix/*` 或 `@fenix/*/<公开子路径>`），零 `@fenix/*/src/**`。`web/**` 删除后本包不再有浏览器依赖，`@fenix/agent-runtime` 的浏览器边（原经 `web/api/environments` 构建 Agent 节点选项）随之消失，服务端仍直接依赖其 runtime 能力。
+- 其它包只经公开出口引用（`@fenix/*` 或 `@fenix/*/<公开子路径>`），零 `@fenix/*/src/**`。`web/**` 删除后本包不再有浏览器依赖，`@fenix/agent-runtime` 的浏览器边（原经 `web/api/v1/environments` 构建 Agent 节点选项）随之消失，服务端仍直接依赖其 runtime 能力。
 - **（历史）** 浏览器面曾另有 `@fenix/ui-components/*`（UI 基础组件与 `ConfirmDialog`）与 `@fenix/web-runtime/*`（`api/request`、chat 上下文队列）；`web/**` 删除时这两个依赖与 `@xyflow/react` / `ahooks` / `dagre` / `js-yaml` / `lucide-react` / `sonner` / `@fenix/agent-config` 一并从 `package.json` 移除，`peerDependencies` 块随之清空删除。
 - `apps/server` 是唯一合法装配者（挂载路由、注入守卫、初始化模块配置与 DB）。宿主对 workflow 的反向装配边登记在架构台账，owner 1.5。
 

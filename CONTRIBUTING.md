@@ -177,7 +177,7 @@ bun test apps/web/src/__tests__/config-mcp-page.test.ts
 - `/mcp/knowledge`：MCP 知识库协议入口
 - `/hooks/*`：Webhook 触发入口
 
-MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api/mcp`；它们与内部协议入口不是同一类接口。
+MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api/v1/mcp-servers`；它们与内部协议入口不是同一类接口。
 
 ## 开发约定
 

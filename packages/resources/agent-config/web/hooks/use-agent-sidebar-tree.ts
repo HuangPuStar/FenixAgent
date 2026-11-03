@@ -11,7 +11,7 @@
  * - 四组 mutation（进入 / 重启 / 停止 / 删除智能体），失败语义与 toast 文案不变；
  * - 多实例重启所需的会话状态与编排（是否弹窗、选中集合、逐个重启）。
  *
- * 环境与实例经 `@fenix/agent-runtime` 的两条窄口取用：`web/api/environments`（既有例外）与
+ * 环境与实例经 `@fenix/agent-runtime` 的两条窄口取用：`web/api/v1/environments`（既有例外）与
  * `web/api/instances`（本次随树迁入新增，见包 `web/__tests__/agent-config-browser-surface.test.ts`）。
  */
 import {
