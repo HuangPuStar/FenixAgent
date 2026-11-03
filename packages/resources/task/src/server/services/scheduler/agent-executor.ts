@@ -86,7 +86,9 @@ export const agentExecutor: TaskExecutor = {
       turn = result.turn;
 
       // peri 的 MCP 池在 session/new 后异步初始化；首轮概览错过就再也不会补发。
-      if (deps.mcpInitGraceMs > 0) {
+      // 剩余预算不足以覆盖等待时直接发 prompt：等待本身会把任务拖到超时，更糟。
+      const remainingMs = timeoutMs - (Date.now() - startTime);
+      if (deps.mcpInitGraceMs > 0 && remainingMs > deps.mcpInitGraceMs) {
         log(`[agent-executor] waiting ${deps.mcpInitGraceMs}ms for MCP initialization before first prompt`, {
           requestId: requestId ?? null,
         });

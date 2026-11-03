@@ -75,6 +75,63 @@ describe("agent executor", () => {
 
     expect(calls[0]).toMatchObject({ startSource: "scheduled" });
   });
+
+  // 预算充足时必须在首轮 prompt 前等待 MCP 初始化窗口，否则首轮概览会丢失。
+  test("waits for MCP initialization before the first prompt", async () => {
+    let openedAt = 0;
+    let promptedAt = 0;
+    setAgentExecutorDeps({
+      mcpInitGraceMs: 300,
+      openAgentSession: async () => {
+        openedAt = Date.now();
+        return {
+          instanceId: "grace-wait",
+          turn: {
+            prompt() {
+              promptedAt = Date.now();
+            },
+            events: async function* () {
+              yield { jsonrpc: "2.0", result: { stopReason: "end_turn" } };
+            },
+            dispose: async () => {},
+          } as never,
+        };
+      },
+    });
+
+    const result = await agentExecutor.execute(terminalInput(5));
+
+    expect(result.status).toBe("success");
+    expect(promptedAt - openedAt).toBeGreaterThanOrEqual(250);
+  });
+
+  // 剩余预算小于等待时长时必须跳过等待，否则等待本身就会把任务拖到超时。
+  test("skips MCP grace when the remaining budget is shorter", async () => {
+    let openedAt = 0;
+    let promptedAt = 0;
+    setAgentExecutorDeps({
+      mcpInitGraceMs: 1000,
+      openAgentSession: async () => {
+        openedAt = Date.now();
+        return {
+          instanceId: "grace-skip",
+          turn: {
+            prompt() {
+              promptedAt = Date.now();
+            },
+            events: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }),
+            dispose: async () => {},
+          } as never,
+        };
+      },
+    });
+
+    const result = await agentExecutor.execute(terminalInput(0.2));
+
+    expect(result.status).toBe("timeout");
+    expect(promptedAt).toBeGreaterThan(0);
+    expect(promptedAt - openedAt).toBeLessThan(500);
+  });
 });
 
 function terminalInput(timeoutSeconds = 1): TaskExecInput {
