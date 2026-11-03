@@ -102,7 +102,7 @@ test("未配置 LANGBOT_BASE_URL 时 channel 从 web 收窄但保留在 modules"
     const response = await app.handle(new Request("http://localhost/web/system/modules"));
     const payload = (await response.json()) as { success: boolean; data: { web: string[] } };
     expect(payload.success).toBe(true);
-    expect(payload.data.web).toEqual(missing.web);
+    expect(payload.data.web).toEqual([...missing.web]);
 
     // compose 的 `${VAR:-}` 会透传空串与纯空白，二者同样按未配置处理。
     expect(projectAssemblyModules(assembly, { LANGBOT_BASE_URL: "   " }).web).not.toContain("channel");
