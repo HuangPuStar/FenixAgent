@@ -13,9 +13,17 @@ import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 const defaultOpenAgentSession: AgentRuntimePort["openAgentSession"] = (input) =>
   getBoundAgentRuntime().openAgentSession(input);
 
-const deps = {
+/**
+ * peri 在 `session/new` 返回后才异步初始化 MCP 池；首轮 MCP 概览一旦早于清单发布
+ * 就会被丢弃，模型因此始终不知道有 MCP。发首轮 prompt 前等待该窗口。
+ */
+const MCP_INIT_GRACE_MS = 1000;
+
+const defaultDeps = {
   openAgentSession: defaultOpenAgentSession,
+  mcpInitGraceMs: MCP_INIT_GRACE_MS,
 };
+const deps = { ...defaultDeps };
 
 /** 测试用：覆盖 executor 依赖。 */
 export function setAgentExecutorDeps(overrides: Partial<typeof deps> | null): void {
@@ -23,7 +31,7 @@ export function setAgentExecutorDeps(overrides: Partial<typeof deps> | null): vo
     Object.assign(deps, overrides);
     return;
   }
-  deps.openAgentSession = defaultOpenAgentSession;
+  Object.assign(deps, defaultDeps);
 }
 
 interface AgentDefinition {
@@ -76,6 +84,14 @@ export const agentExecutor: TaskExecutor = {
         (late) => late.turn.dispose(),
       );
       turn = result.turn;
+
+      // peri 的 MCP 池在 session/new 后异步初始化；首轮概览错过就再也不会补发。
+      if (deps.mcpInitGraceMs > 0) {
+        log(`[agent-executor] waiting ${deps.mcpInitGraceMs}ms for MCP initialization before first prompt`, {
+          requestId: requestId ?? null,
+        });
+        await waitWithSignal(new Promise<void>((resolve) => setTimeout(resolve, deps.mcpInitGraceMs)), deadline.signal);
+      }
 
       deadline.signal.throwIfAborted();
       turn.prompt([{ type: "text", text: def.prompt }]);

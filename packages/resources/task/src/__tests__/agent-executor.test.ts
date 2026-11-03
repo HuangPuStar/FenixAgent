@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { OpenAgentSessionResult } from "@fenix/agent-runtime/runtime";
 import { agentExecutor, setAgentExecutorDeps } from "../server/services/scheduler/agent-executor";
 import type { TaskExecInput } from "../server/services/scheduler/types";
+
+beforeEach(() => {
+  // 等待只为真实定时任务保留；单测关闭它，避免每个用例凭空多等 1 秒。
+  setAgentExecutorDeps({ mcpInitGraceMs: 0 });
+});
 
 function makeOpenSessionResult(): OpenAgentSessionResult {
   return {
