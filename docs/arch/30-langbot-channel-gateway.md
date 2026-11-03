@@ -495,6 +495,7 @@ prompt 不含消息正文、发送者与聊天标识，一次唤醒处理全部�
 3. 只有一个视图 **通道**：通道与路由合并为一棵单列可展开树，默认全部展开。父行是 LangBot Bot（名称、适配器、通道状态、路由数、创建时间），操作含创建路由 / 测试发送 / 编辑 / 删除；展开后以缩进加左侧竖线渲染该通道的路由子行（聊天类型、`chatId`（留空 = 通配）、绑定的 **Agent 配置**、启用状态），子行支持编辑 / 停用 / 删除，无路由时就地提示并可直接添加。
 4. 诊断能力在 admin 管理台 `/admin/channels`（侧栏「通道管理」，`apps/web/src/routes/admin/channels.tsx`）：LangBot 连通性、通道与会话实例表、跨组织的「组织 → 用户 → 通道 → 实例」拓扑。实例列出该通道下全部会话实例（`im-<conversationId>`）及最近事件 / 回复时间，**不查询运行状态**——实例是否存活属 agent-runtime，通道侧只有映射。数据只来自 `GET /api/system/channels`。
 5. 页面必须展示「执行身份 = 通道所有者」，避免管理员误以为群成员以本人身份运行。
+6. **入口可见性与服务端可用性对齐**：`channel` 的 web 贡献声明 `requiresEnv: ["LANGBOT_BASE_URL"]`，未配置（含空串 / 纯空白）时 `GET /web/system/modules` 的 `data.web` 不含 `channel`，控制台侧栏不显示「消息通道」，直达 `/agent/channels` 由统一路由边界拦下。`data.modules` 仍含 `channel`（模块已装配），不要据此判定部署 profile 有问题。管理台 `/admin/channels` 不依赖 LangBot 可达，保持可见。
 
 ### 7.2 前端数据与状态
 

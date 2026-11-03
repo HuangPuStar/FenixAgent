@@ -12,6 +12,8 @@ const manifests: readonly ModuleManifest[] = generatedModuleManifests.map((manif
   create: () => ({}),
 }));
 const fixturePath = new URL("./fixtures/assembly-without-workflow.json", import.meta.url).pathname;
+/** 浏览器面必需配置齐备时的环境；只影响 web 收窄，与模块工厂拿到的 `loadEnv` 互不替代。 */
+const configuredEnv = { LANGBOT_BASE_URL: "http://langbot.test/api/v1" };
 
 // 禁用 workflow-v2 时清单和路由贡献必须一起收窄，宿主端点不能跟着可选模块消失。
 test("profile fixture 装载后清单与真实装配一致，workflow-v2 无路由挂载", async () => {
@@ -26,7 +28,7 @@ test("profile fixture 装载后清单与真实装配一致，workflow-v2 无路�
     },
   });
   try {
-    const data = projectAssemblyModules(assembly);
+    const data = projectAssemblyModules(assembly, configuredEnv);
     const app = createWebApp({ web: [], webConfig: [] }, data);
     const response = await app.handle(new Request("http://localhost/web/system/modules"));
     expect(response.status).toBe(200);
@@ -62,7 +64,7 @@ test("启用 workflow-v2 恢复 workflow web ID 与路由贡献", async () => {
     },
   });
   try {
-    const data = projectAssemblyModules(assembly);
+    const data = projectAssemblyModules(assembly, configuredEnv);
     const app = createWebApp({ web: [], webConfig: [] }, data);
     const response = await app.handle(new Request("http://localhost/web/system/modules"));
     expect((await response.json()) as unknown).toEqual({ success: true, data });
@@ -75,6 +77,29 @@ test("启用 workflow-v2 恢复 workflow web ID 与路由贡献", async () => {
       "workflow-v2.canvas-bff",
       "workflow-v2.canvas-static",
     ]);
+  } finally {
+    await assembly.dispose();
+  }
+});
+
+// 缺少 LangBot 基址时 channel 仍装配，但浏览器面必须收窄：侧栏入口与路由拦截共用这一份清单。
+test("未配置 LANGBOT_BASE_URL 时 channel 从 web 收窄但保留在 modules", async () => {
+  const profile = await loadAssemblyProfile(fixturePath);
+  const assembly = await bootstrapModules({
+    profile,
+    manifests,
+    loadEnv: () => ({}),
+    mountContribution: () => undefined,
+  });
+  try {
+    const missing = projectAssemblyModules(assembly, {});
+    expect(missing.modules).toContain("channel");
+    expect(missing.web).not.toContain("channel");
+    expect(missing.web).toEqual(profile.web.filter((id) => id !== "channel"));
+
+    // compose 的 `${VAR:-}` 会透传空串与纯空白，二者同样按未配置处理。
+    expect(projectAssemblyModules(assembly, { LANGBOT_BASE_URL: "   " }).web).not.toContain("channel");
+    expect(projectAssemblyModules(assembly, configuredEnv).web).toContain("channel");
   } finally {
     await assembly.dispose();
   }

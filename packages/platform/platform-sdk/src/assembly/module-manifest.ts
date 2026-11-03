@@ -47,6 +47,13 @@ export interface ModuleContribution<TValue = unknown> {
 /** 浏览器侧只能消费构建期静态导入的贡献。 */
 export interface WebContribution<TValue = unknown> {
   readonly id: string;
+  /**
+   * 浏览器面可用所必需的部署配置键；任一键未配置（缺失、空串或纯空白）时，宿主运行期把本 web ID
+   * 从浏览器清单中剔除，Shell 据此隐藏入口并拦截对应路由。
+   *
+   * 只写键名，不写取值：清单会进入浏览器可见的 `/web/system/modules`，声明面也不应携带配置值。
+   */
+  readonly requiresEnv?: readonly string[];
   readonly contribution: TValue;
 }
 
