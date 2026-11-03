@@ -130,7 +130,7 @@ describe("agent executor", () => {
 
     expect(result.status).toBe("timeout");
     expect(promptedAt).toBeGreaterThan(0);
-    expect(promptedAt - openedAt).toBeLessThan(500);
+    expect(promptedAt - openedAt).toBeLessThan(100);
   });
 });
 
