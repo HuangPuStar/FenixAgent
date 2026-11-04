@@ -12,7 +12,7 @@ export const ApiInstanceConnectBodySchema = z
       .string()
       .startsWith("inst_")
       .optional()
-      .describe("可选的持久 Agent Instance ID；省略时使用 api/primary。"),
+      .describe("可选的持久 Agent Instance ID；省略时使用 api/api。"),
   })
   .strict()
   .describe("连接 Agent Instance 请求体。");

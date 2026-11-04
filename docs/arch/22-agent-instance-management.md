@@ -127,8 +127,10 @@ isDefault = true
 | 线路 | 自动选择键 | 请求/run/连接结束 |
 |---|---|---|
 | Interactive Chat | `(environmentId, ownerUserId, user, default)` | 释放连接和 relay 引用，不停止 runtime |
-| HTTP 单轮 | `(environmentId, ownerUserId, api, primary)` | 释放 PromptTurn 和请求资源，不停止 runtime |
-| Workflow | `(environmentId, ownerUserId, workflow, primary)` | 释放节点执行资源和 use lease，不停止 runtime |
+| HTTP 单轮 | `(environmentId, ownerUserId, api, api)` | 释放 PromptTurn 和请求资源，不停止 runtime |
+| Workflow | `(environmentId, ownerUserId, workflow, workflow)` | 释放节点执行资源和 use lease，不停止 runtime |
+
+自动实例的名称与来源同名，用于界面区分和稳定的创建键。
 
 显式传入 `instanceUid` 时：
 

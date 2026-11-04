@@ -61,7 +61,8 @@ export function createApiWorkspaceRoutes(deps: WebMachineRouteDependencies) {
         detail: {
           tags: ["External Workspace"],
           summary: "上传 Environment 工作区文件",
-          description: "只写 user/ 子树；同名冲突不覆盖。单文件 92 MiB，远程批次合计 92 MiB。",
+          description:
+            "默认写入 user/；path 可指定工作区内相对目录，空字符串或 . 表示根目录。不允许绝对路径、.. 段或软链接逃逸；同名冲突不覆盖。单文件 92 MiB，远程批次合计 92 MiB。",
           requestBody: {
             required: true,
             content: {
@@ -71,7 +72,11 @@ export function createApiWorkspaceRoutes(deps: WebMachineRouteDependencies) {
                   required: ["files"],
                   properties: {
                     files: { type: "array" as const, items: { type: "string" as const, format: "binary" } },
-                    path: { type: "string" as const, default: "user" },
+                    path: {
+                      type: "string" as const,
+                      default: "user",
+                      description: "工作区内相对目录；省略为 user，空字符串或 . 表示工作区根目录。",
+                    },
                     relativePaths: { type: "string" as const },
                   },
                 },

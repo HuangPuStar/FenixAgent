@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdir, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
 import { createApiWorkspaceRoutes } from "../routes/api/workspaces";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
+import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import {
   initializeMachineModuleConfig,
   lockMachineWorkspaceRoot,
@@ -41,6 +42,7 @@ describe("API Workspace Routes", () => {
 
   afterEach(async () => {
     setApiWorkspaceDeps(null);
+    setLocalUploadBeforeWriteHookForTest();
     resetTestAuth();
     unlockMachineWorkspaceRoot();
     await rm(workspaceRoot, { recursive: true, force: true });
@@ -77,6 +79,61 @@ describe("API Workspace Routes", () => {
     await rm(workspaceDir, { recursive: true, force: true });
   });
 
+  // 省略目录保留 user 默认值，显式根目录和普通相对目录均写入当前认证环境。
+  test.each([
+    { path: undefined, expected: "user/demo.txt" },
+    { path: "", expected: "demo.txt" },
+    { path: ".", expected: "demo.txt" },
+    { path: "./", expected: "demo.txt" },
+    { path: "docs/nested", expected: "docs/nested/demo.txt" },
+  ])("上传目录 $path 返回并写入 $expected", async ({ path, expected }) => {
+    const form = new FormData();
+    if (path !== undefined) form.set("path", path);
+    form.append("files", new File(["hello"], "demo.txt"));
+    const res = await request("/api/v1/environments/env-1/workspace/files", { method: "POST", body: form });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.files).toEqual([{ name: "demo.txt", path: expected, size: 5 }]);
+    const duplicate = new FormData();
+    if (path !== undefined) duplicate.set("path", path);
+    duplicate.append("files", new File(["replacement"], "demo.txt"));
+    const conflict = await request("/api/v1/environments/env-1/workspace/files", { method: "POST", body: duplicate });
+    expect(conflict.status).toBe(409);
+    expect(readFileSync(join(workspaceRoot, "org-1", "user-1", "env-1", expected), "utf8")).toBe("hello");
+  });
+
+  // 扩大可选目录不应放行软链接逃逸，外部目录中的文件必须保持未写入。
+  test("拒绝从非 user 目录经软链接上传到工作区外", async () => {
+    const workspace = join(workspaceRoot, "org-1", "user-1", "env-1");
+    const outside = join(workspaceRoot, "outside");
+    await mkdir(workspace, { recursive: true });
+    await mkdir(outside);
+    await symlink(outside, join(workspace, "linked"));
+    const form = new FormData();
+    form.set("path", "linked/nested");
+    form.append("files", new File(["escape"], "demo.txt"));
+    const res = await request("/api/v1/environments/env-1/workspace/files", { method: "POST", body: form });
+    expect([400, 404]).toContain(res.status);
+    expect(existsSync(join(outside, "nested", "demo.txt"))).toBe(false);
+  });
+
+  // 根目录上传同样经过安全写入，校验后替换中间目录不能把文件写出工作区。
+  test("根目录上传拒绝写入前的软链接目录替换", async () => {
+    const workspace = join(workspaceRoot, "org-1", "user-1", "env-1");
+    const outside = join(workspaceRoot, "outside");
+    await mkdir(outside);
+    setLocalUploadBeforeWriteHookForTest(async () => {
+      await rename(join(workspace, "nested"), join(workspace, "validated-nested"));
+      await symlink(outside, join(workspace, "nested"));
+    });
+    const form = new FormData();
+    form.set("path", ".");
+    form.set("relativePaths", JSON.stringify(["nested/demo.txt"]));
+    form.append("files", new File(["escape"], "demo.txt"));
+    const res = await request("/api/v1/environments/env-1/workspace/files", { method: "POST", body: form });
+    expect([400, 404]).toContain(res.status);
+    expect(existsSync(join(outside, "demo.txt"))).toBe(false);
+  });
+
   // 远程分支必须把 user/ 前缀原样下发给机器端，否则文件落在 workspace 根而响应仍声称在 user/。
   test("POST /api/v1/environments/:environmentId/workspace/files keeps user/ prefix for remote uploads", async () => {
     const dirs: string[] = [];
@@ -88,7 +145,10 @@ describe("API Workspace Routes", () => {
         expect(operation).toBe("upload");
         const dir = String(params.dir);
         dirs.push(dir);
-        return { status: "ok", data: { files: [{ name: "demo.txt", path: `${dir}/demo.txt`, size: 5 }] } };
+        return {
+          status: "ok",
+          data: { files: [{ name: "demo.txt", path: dir ? `${dir}/demo.txt` : "demo.txt", size: 5 }] },
+        };
       },
     });
 
@@ -114,7 +174,15 @@ describe("API Workspace Routes", () => {
 
     expect(defaultRes.status).toBe(200);
     expect(defaultJson.data.files[0]?.path).toBe("user/demo.txt");
-    expect(dirs).toEqual(["user/docs", "user"]);
+    for (const path of ["", ".", "docs/nested"]) {
+      const form = new FormData();
+      form.set("path", path);
+      form.append("files", new File(["hello"], "demo.txt"));
+      const res = await request("/api/v1/environments/env-1/workspace/files", { method: "POST", body: form });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.files[0].path).toBe(path === "docs/nested" ? "docs/nested/demo.txt" : "demo.txt");
+    }
+    expect(dirs).toEqual(["user/docs", "user", "", "", "docs/nested"]);
   });
 
   // 上传目录中的 .. 段必须在派发机器前拒绝，否则会被解析到 user/ 之外并先写盘后报错。
@@ -127,7 +195,19 @@ describe("API Workspace Routes", () => {
       },
     });
 
-    for (const path of ["user/..", "user/../secret"]) {
+    for (const path of [
+      "user/..",
+      "user/../secret",
+      "../escape",
+      "docs/../secret",
+      "docs\\..\\secret",
+      "/tmp",
+      "C:\\temp",
+      "\\\\server\\share",
+      "docs\u0000nested",
+      "docs\n",
+      "\t",
+    ]) {
       const formData = new FormData();
       formData.append("path", path);
       formData.append("files", new File(["secret"], "demo.txt", { type: "text/plain" }));

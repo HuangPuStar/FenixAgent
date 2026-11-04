@@ -39,7 +39,7 @@ curl -s -X POST "$BASE_URL/api/v1/agents/$AGENT_ID/instances/connect" \
   -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' -d '{}' | jq '.data'
 ```
 
-省略 instanceId 会准备 api/primary；传 `{ "instanceId": "inst_..." }` 可选择本人已有的 api / user 实例。结果含 environmentId、instanceId、status、runtimeGeneration、relay.wsUrl。列表和详情不会自动启动实例：
+省略 instanceId 会准备 api/api；传 `{ "instanceId": "inst_..." }` 可选择本人已有的 api / user 实例。结果含 environmentId、instanceId、status、runtimeGeneration、relay.wsUrl。列表和详情不会自动启动实例：
 
 ```bash
 curl -s "$BASE_URL/api/v1/agents/$AGENT_ID/instances" -H "Authorization: Bearer $API_KEY" | jq '.data'
@@ -54,7 +54,7 @@ curl -s -X POST "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files" 
   -H "Authorization: Bearer $API_KEY" -F 'path=user/docs' -F 'files=@./example.txt' | jq '.data'
 ```
 
-文件将位于 user/docs/example.txt。path 仅允许 user 子树；relativePaths 如需传递，使用与 files 顺序、数量一致的 JSON 数组。同名文件返回 409，不覆盖。远程文件服务未连接会明确失败。
+文件将位于 user/docs/example.txt。省略 path 默认写入 user/；传 `-F 'path='` 或 `-F 'path=.'` 写入工作区根目录，传 `-F 'path=docs'` 写入 docs/。所有路径必须位于当前 Environment 工作区内，绝对路径、.. 段、控制字符和软链接逃逸均被拒绝。relativePaths 如需传递，使用与 files 顺序、数量一致的 JSON 数组。同名文件返回 409，不覆盖。远程文件服务未连接会明确失败。
 
 ## OpenAI SDK
 

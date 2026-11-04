@@ -156,8 +156,8 @@ Environment 或 owner 删除必须先经过 Instance Service，对关联 Instanc
 - `default` 为保留名；
 - 大小写语义必须与 PostgreSQL 唯一索引一致；
 - 本期不支持 rename；
-- 自动 API Instance 固定为 `primary`；
-- 自动 Workflow Instance 固定为 `primary`。
+- 自动 API Instance 固定为 `api`；
+- 自动 Workflow Instance 固定为 `workflow`。
 
 ### 3.4 原子 find-or-create
 
@@ -275,7 +275,7 @@ X-Instance-Uid: inst_*
 响应返回实际使用的同名 header。无 uid 自动选择：
 
 ```text
-(environmentId, ownerUserId, api, primary, isDefault=false)
+(environmentId, ownerUserId, api, api, isDefault=false)
 ```
 
 行为：
@@ -298,7 +298,7 @@ instance_uid: inst_...
 无 uid 自动选择：
 
 ```text
-(environmentId, workflowRun.ownerUserId, workflow, primary, isDefault=false)
+(environmentId, workflowRun.ownerUserId, workflow, workflow, isDefault=false)
 ```
 
 行为：
@@ -724,8 +724,8 @@ staleCompletion
 
 - 不存在无 DB row runtime；
 - Chat 无 uid 复用 owner 的 `user/default`；
-- HTTP 连续请求复用 owner 的 `api/primary`；
-- Workflow 连续 run 复用 owner 的 `workflow/primary`；
+- HTTP 连续请求复用 owner 的 `api/api`；
+- Workflow 连续 run 复用 owner 的 `workflow/workflow`；
 - 显式 uid 可跨线路复用且 owner 必须一致；
 - 请求/run/连接结束不停止 runtime；
 - 非法或旧 route key 不回退默认 Instance；
@@ -772,8 +772,8 @@ staleCompletion
 ### 切片 4：三条路径统一接入
 
 - Chat 接入 `user/default`；
-- HTTP 接入 `api/primary` 并删除请求级 spawn/stop；
-- Workflow run 持久 owner，Agent node 接入 `workflow/primary`；
+- HTTP 接入 `api/api` 并删除请求级 spawn/stop；
+- Workflow run 持久 owner，Agent node 接入 `workflow/workflow`；
 - 三条路径统一使用 Instance Service 和 Coordinator。
 
 验证：自动选择、跨线路显式复用、owner 隔离、资源释放测试通过。

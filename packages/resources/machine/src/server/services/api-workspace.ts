@@ -28,8 +28,8 @@ export async function uploadWorkspaceFiles(
   const rawDir = formData.get("path") ?? "user";
   if (typeof rawDir !== "string") throw new ValidationError("Invalid path");
   assertSafePath(rawDir);
-  const dir = posix.normalize(rawDir).replace(/\/$/, "");
-  if (dir !== "user" && !dir.startsWith("user/")) throw new ValidationError("Only user/ paths are writable");
+  const normalizedDir = posix.normalize(rawDir).replace(/\/$/, "");
+  const dir = normalizedDir === "." ? "" : normalizedDir;
   let paths: string[] | undefined;
   const rawPaths = formData.get("relativePaths");
   if (rawPaths !== null) {

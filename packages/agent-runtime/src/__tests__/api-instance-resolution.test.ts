@@ -49,7 +49,7 @@ describe("API instance selection", () => {
       });
     }
   });
-  // 多个已有环境按稳定键选择，自动选择只能使用 api/primary。
+  // 多个已有环境按稳定键选择，自动选择只能使用 api/api。
   test("automatic selection is stable by creation time and ID", async () => {
     setApiInstanceResolutionDeps({
       findVisibleAgentConfig: async () => ({ id: "a", name: "agent", description: null, node: null }),

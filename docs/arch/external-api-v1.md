@@ -40,7 +40,7 @@
 
 ## 实例与 ACP
 
-自动调用仅选择当前组织、当前用户、当前 Agent 的 `api/primary` 持久实例；默认环境按 createdAt、id 稳定选取，首次准备通过数据库事务锁防重。显式 instanceId 必须是当前用户在当前组织拥有且绑定该 Agent 的 api / user 实例，不能使用 workflow 实例。
+自动调用仅选择当前组织、当前用户、当前 Agent 的 `api/api` 持久实例；默认环境按 createdAt、id 稳定选取，首次准备通过数据库事务锁防重。显式 instanceId 必须是当前用户在当前组织拥有且绑定该 Agent 的 api / user 实例，不能使用 workflow 实例。
 
 Relay 在异步认证前建立有界入站队列，认证与归属校验完成后才转发；原始与包裹 JSON-RPC 在边界处归一化为 ACP 请求。
 
@@ -60,7 +60,7 @@ stop / restart 只影响指定实例，失效其对话句柄；请求结束或�
 
 | Header | 用途 |
 | --- | --- |
-| 请求 `X-Instance-Id` | 选择已授权已有实例；省略时使用默认 api/primary |
+| 请求 `X-Instance-Id` | 选择已授权已有实例；省略时使用默认 api/api |
 | 请求 `X-Session-Id` | 服务端签发的续聊句柄；此时 messages 必须恰好一条 user |
 | 响应 `X-Instance-Id` | 实际运行实例 |
 | 响应 `X-Session-Id` | 随机不透明句柄，不含原始 ACP ID |
@@ -73,6 +73,6 @@ stop / restart 只影响指定实例，失效其对话句柄；请求结束或�
 
 ## 文件与 Workflow
 
-工作区上传只允许 user/ 子树，默认 path=user。整批先校验文件名、relativePaths 数量、路径和重复目标，再读取并调用统一文件服务；本地与远程均拒绝覆盖已有文件。单文件 92 MiB，远程批次总量 92 MiB；整请求预算 108 MiB，包括无 Content-Length 的流式上传。除词法与 realpath 检查外，本地与远程写入逐级使用不跟随 symlink 的目录描述符并排他创建最终文件，防止父目录在校验后被替换。远程断开不回退本地。审计使用当前用户和 api 来源。
+工作区上传省略 path 时默认 user；显式空字符串或 . 表示工作区根目录，其他相对目录也可写入。所有上传路径均相对服务端解析的当前 Environment 工作区；拒绝绝对路径（含 Windows / UNC 格式）、.. 段和控制字符。整批先校验文件名、relativePaths 数量、路径和重复目标，再读取并调用统一文件服务；本地与远程均拒绝覆盖已有文件。单文件 92 MiB，远程批次总量 92 MiB；整请求预算 108 MiB，包括无 Content-Length 的流式上传。除词法与 realpath 检查外，本地与远程写入逐级使用不跟随 symlink 的目录描述符并排他创建最终文件，防止父目录在校验后被替换。远程断开不回退本地。审计使用当前用户和 api 来源。
 
 两个 External Workflow 执行端点保留各自业务参数、领域状态码、异步和限流行为，统一 v1 路径与包装。同步结果或异步执行信息在外层 data 内；框架参数错误仍为 422。上游业务 data 字段仍属于嵌套结果，不与平台包装混淆。执行重试可能产生新运行，调用方按业务自行去重。

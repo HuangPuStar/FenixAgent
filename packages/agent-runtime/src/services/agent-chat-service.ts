@@ -66,7 +66,7 @@ export interface OpenAgentSessionResult {
 }
 
 /**
- * 一站式打开 Agent 会话：解析持久 api/primary Instance → 确保 runtime → 连接 relay →
+ * 一站式打开 Agent 会话：解析持久 api/api Instance → 确保 runtime → 连接 relay →
  * 创建 AgentSession → startPromptTurn。
  *
  * 每次调用创建独立 relay 消费租约、ACP session 与 turn，但复用当前环境与用户的持久 Instance；

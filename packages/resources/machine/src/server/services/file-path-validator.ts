@@ -32,10 +32,10 @@ export function hasPathControlCharacter(value: string): boolean {
  * 注：全局 user/ 作用域强制已删除（F1），workspace 根内全部路径均合法；
  * 越界防护由真实路径检查（realpath，workspace-fs）承担，词法检查仅作防御兜底。 */
 export function assertSafePath(path: string): void {
+  if (hasPathControlCharacter(path)) throw new ValidationError("路径不合法：不允许控制字符");
   const trimmed = path.trim();
   if (!trimmed) return;
   if (isAbsolute(trimmed) || win32.isAbsolute(trimmed)) throw new ValidationError("路径不合法：不允许绝对路径");
-  if (hasPathControlCharacter(trimmed)) throw new ValidationError("路径不合法：不允许控制字符");
   for (const segment of trimmed.split(/[\\/]+/)) {
     if (segment === "..") throw new ValidationError("路径不合法：不允许 `..` 段");
     if (getFileNameByteLength(segment) > MAX_FILE_NAME_BYTES) {

@@ -63,8 +63,8 @@ const SELECTION: Record<
   { source: InstanceCreationSource; name: string; isDefault: boolean }
 > = {
   chat: { source: "user", name: "default", isDefault: true },
-  api: { source: "api", name: "primary", isDefault: false },
-  workflow: { source: "workflow", name: "primary", isDefault: false },
+  api: { source: "api", name: "api", isDefault: false },
+  workflow: { source: "workflow", name: "workflow", isDefault: false },
 };
 
 const runtimeAdapter: RuntimeAdapter = {

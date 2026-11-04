@@ -266,7 +266,7 @@ describe("openAgentSession 持久实例与请求资源边界", () => {
     expect(result.turn).toBeDefined();
   });
 
-  // 连续 HTTP 调用复用同一个 api/primary 持久实例；每次调用只拥有自己的 relay，
+  // 连续 HTTP 调用复用同一个 api/api 持久实例；每次调用只拥有自己的 relay，
   // turn.dispose 不得停止共享 runtime，否则会中断同实例上的其他请求。
   test("连续 HTTP 调用复用持久实例且分别释放请求 relay", async () => {
     let resolveCalls = 0;

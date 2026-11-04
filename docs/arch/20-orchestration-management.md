@@ -275,10 +275,10 @@ stateDiagram-v2
 
 | 场景 | 入口 | 实例与退出语义 |
 |---|---|---|
-| HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` | 复用用户的 `api/primary`；dispose 仅取消自身 turn、归还消费租约 |
+| HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` | 复用用户的 `api/api`；dispose 仅取消自身 turn、归还消费租约 |
 | 前端交互式 Chat | `/acp/yjs/:agentId` → gateway → `ensureInstance` | 显式实例重新校验归属；缺省选择 `chat/default`，多标签页共享连接租约 |
-| Workflow | `workflow/agent-chat-transport.ts` → `ensureInstanceRuntime` → `connectAgentRelay` | 复用 `workflow/primary`；各节点独立会话与 turn，取消信号覆盖 connect 和 execute |
-| 外部实例连接 API | `api-instance.ts` → `resolveInstanceForOperation` → `ensureInstanceRuntime` | 复用当前用户的 `api/primary`，或校验显式实例归属；返回 relay 定位信息 |
+| Workflow | `workflow/agent-chat-transport.ts` → `ensureInstanceRuntime` → `connectAgentRelay` | 复用 `workflow/workflow`；各节点独立会话与 turn，取消信号覆盖 connect 和 execute |
+| 外部实例连接 API | `api-instance.ts` → `resolveInstanceForOperation` → `ensureInstanceRuntime` | 复用当前用户的 `api/api`，或校验显式实例归属；返回 relay 定位信息 |
 | 停止 / 回收 / 断连 | Instance Service / idle monitor / 机器对账 | Coordinator 按 operation 与 runtime 身份确认状态，消费者不得按 UID 停止共享 runtime |
 
 1. Core 首次建连共享在途操作，并为每次调用发放独立消费租约；租约 close 只移除该消费者监听器。runtime stop 统一关闭物理连接，包括仍在握手和迟到的连接。
@@ -373,7 +373,7 @@ errorPlugin 成为该路由错误出口的单一入口，且同时满足三条�
 
 ### 场景 C：Workflow 复用与清理
 
-workflow run 解析用户的 `workflow/primary`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后须由用户主动进入或显式 restart 成功后才能恢复。超时或断连返回失败，执行终止未确认时保留执行额度。
+workflow run 解析用户的 `workflow/workflow`，在 ensure 前绑定执行准入并取得实例使用租约，ensure 后确认 runtime，再取得 relay 消费租约与独立 ACP session。节点退出只处理自身 turn；run cleanup 携带首次创建时确认的运行代次，经公共自动回收入口释放执行资源；有其他使用者或运行换代则跳过。自动收尾不写用户停止意图，下一次仍可 ensure 同一个持久 ID；真正手动停止后须由用户主动进入或显式 restart 成功后才能恢复。超时或断连返回失败，执行终止未确认时保留执行额度。
 
 ### 场景 D：停止与回收
 
