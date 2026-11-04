@@ -411,6 +411,25 @@ describe("IM 会话端口旧会话恢复", () => {
     // 迟到 relay 由 waitWithSignal 的 onLateValue 关闭；留一轮宏任务给清理，未处理异常会让用例失败。
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+
+  // 握手超时状态未确认，不能据此覆盖仍可能有效的旧会话；错误必须原样上抛而不是回退新建。
+  test("恢复旧会话时握手超时不触发新建回退", async () => {
+    const handshakeError = Object.assign(new Error("handshake timed out"), { code: "ACP_HANDSHAKE_TIMEOUT" });
+    const runtime = createFakeRuntime({ startError: handshakeError });
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const error = await capturePortError(
+      port.openSession({
+        target: { ...target("rcs_restore_handshake_timeout"), acpSessionId: "ses_existing" },
+        instance: INSTANCE,
+      }),
+    );
+
+    expect(error).toBe(handshakeError);
+    expect(runtime.turns.size).toBe(0);
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+  });
 });
 
 describe("IM 会话端口自动唤醒", () => {

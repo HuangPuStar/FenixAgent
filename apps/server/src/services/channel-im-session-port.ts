@@ -1,4 +1,5 @@
 import {
+  ACP_HANDSHAKE_TIMEOUT,
   type AgentSession,
   acquireAgentExecution,
   getBoundAgentRuntime,
@@ -63,6 +64,15 @@ function isRelayConnectTimeout(error: unknown): boolean {
     error !== null &&
     "code" in error &&
     (error as { code?: unknown }).code === IM_RELAY_CONNECT_TIMEOUT
+  );
+}
+
+function isAcpHandshakeTimeout(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === ACP_HANDSHAKE_TIMEOUT
   );
 }
 
@@ -243,8 +253,9 @@ export function createChannelImSessionPort(options: { relayConnectTimeoutMs?: nu
               acpSessionId: restored.sessionId,
             };
           } catch (error) {
-            // 建连超时属传输层失败，无法证明旧会话已删除；回退新建会覆盖仍有效的 acp_session_id。
-            if (isRelayConnectTimeout(error)) throw error;
+            // 建连/握手超时都是状态未确认的传输失败，不能证明旧会话已删除；回退新建会覆盖仍有效的
+            // acp_session_id。
+            if (isRelayConnectTimeout(error) || isAcpHandshakeTimeout(error)) throw error;
             // 会话可能已在 Agent 侧删除：按规格 §6.3 新建会话，由调用方回写 `acp_session_id`。
             logWarn(
               `[im-session] ACP 会话恢复失败，改为新建：conversationId=${input.target.conversationId}`,

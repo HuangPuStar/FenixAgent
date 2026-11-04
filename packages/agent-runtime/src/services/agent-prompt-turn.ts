@@ -4,6 +4,9 @@ import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { type AgentSessionTurnLease, acquireAgentSessionTurn } from "./agent-session-admission";
 import { classifyAgentTurnEvent, waitWithSignal } from "./agent-turn-events";
 
+/** 握手超时状态未确认，不能证明会话已删除；调用方据此避免回退覆盖旧会话。 */
+export const ACP_HANDSHAKE_TIMEOUT = "ACP_HANDSHAKE_TIMEOUT";
+
 let rpcIdSeq = Math.floor(Math.random() * 1_000_000) * 1_000;
 function nextRpcId(): number {
   return ++rpcIdSeq;
@@ -261,7 +264,12 @@ export async function startPromptTurn(
       };
       const onAbort = (): void => settle(signal?.reason ?? new DOMException("Request aborted", "AbortError"));
       timer = setTimeout(
-        () => settle(new Error("ACP session handshake timed out; session state is unconfirmed")),
+        () =>
+          settle(
+            Object.assign(new Error("ACP session handshake timed out; session state is unconfirmed"), {
+              code: ACP_HANDSHAKE_TIMEOUT,
+            }),
+          ),
         options.handshakeTimeoutMs ?? 30_000,
       );
       signal?.addEventListener("abort", onAbort, { once: true });

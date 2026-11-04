@@ -228,5 +228,6 @@ export function resetAgentRuntimeForTest(): void {
 }
 
 export { acquireAgentExecution, markAgentExecutionIdleReclaimable } from "./services/agent-execution-admission";
+export { ACP_HANDSHAKE_TIMEOUT } from "./services/agent-prompt-turn";
 export type { AgentTurnOutcome, AgentTurnTerminal } from "./services/agent-turn-events";
 export { classifyAgentTurnEvent, iterateWithSignal, waitWithSignal } from "./services/agent-turn-events";

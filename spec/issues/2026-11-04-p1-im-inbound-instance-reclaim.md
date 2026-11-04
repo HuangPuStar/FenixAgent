@@ -39,7 +39,7 @@
   1. `channel-im-session-port.ts` 在 `openSession` 取得 `acquireAgentExecution({ userId: target.ownerUserId, source: "interactive" })`，`attach` 到实例并 `confirmRuntime`；把 `onExecutionFinished: () => execution.release()` 传入 `startPromptTurn`。
   2. 释放路径必须闭合：`openSession` 任意失败立即释放；`sendWakePrompt` 同步抛错释放；`close` 在未发 prompt 时释放；turn terminal 经 `onExecutionFinished` 释放。
   3. 在 `@fenix/agent-runtime/server/testing` 暴露 `hasActiveAgentExecutions`（测试观测用），补端口回归测试。
-  4. relay 建连加 30s 上限：超时关闭迟到 resolve 的 relay，并由 `openSession` 失败路径释放租约，避免建连悬挂时租约无限期阻止回收；超时按失败路径上抛，不触发 `session/new` 回退、不覆盖旧 `acp_session_id`。
+  4. relay 建连加 30s 上限：超时关闭迟到 resolve 的 relay，并由 `openSession` 失败路径释放租约，避免建连悬挂时租约无限期阻止回收；超时按失败路径上抛，不触发 `session/new` 回退、不覆盖旧 `acp_session_id`。握手超时同样按失败路径上抛，不回退覆盖旧会话。
 - 明确不做：不改实例回收算法、不新增 IM 专属 TTL、不把 IM relay 计入 `relayCount`、不消费 Agent 输出流。
 - 回归测试：`apps/server/src/__tests__/channel-im-session-port.test.ts` 新增「冷启动持有租约」「terminal 释放」「未发 prompt 关闭释放」「openSession 失败释放」。
 
@@ -51,6 +51,6 @@
 
 ## 验证记录
 
-- `bun test apps/server/src/__tests__/channel-im-session-port.test.ts` → 12 pass / 0 fail（34 expect），含 6 个新增用例。
-- `bun run precheck` → 全绿（241s）：web-app 432 pass / 0 fail，server 1083 pass / 2 skip / 0 fail，package 11606 pass / 108 skip / 0 fail。
+- `bun test apps/server/src/__tests__/channel-im-session-port.test.ts packages/agent-runtime/src/__tests__/agent-turn-cancellation.test.ts` → 24 pass / 0 fail（90 expect）。
+- `bun run precheck` → 全绿（248s）：web-app 432 pass / 0 fail，server 1084 pass / 2 skip / 0 fail，package 11606 pass / 108 skip / 0 fail。
 - `git diff --check` → 无输出。
