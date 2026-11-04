@@ -195,28 +195,36 @@ test("Webhook 协议入口不出现在任何一份文档中", async () => {
 });
 
 // 从真实贡献冻结完整操作、包装、SDK 例外、上传和已移除 handler，避免只测手写路由替身。
-test("External v1 freezes 35 operations and retires old handlers", async () => {
+test("External v1 freezes 37 operations and retires old handlers", async () => {
   const { instances, declared } = await collectContributedRoutes();
-  expect(EXTERNAL_V1_OPERATIONS).toHaveLength(35);
-  expect(declared.filter((route) => route.includes(" /api/v1/")).sort()).toEqual(EXTERNAL_V1_OPERATIONS);
+  expect(EXTERNAL_V1_OPERATIONS).toHaveLength(37);
+  const hiddenWorkflowPath = "/api/v1/workflows/{workflowId}/execute";
+  const visibleOperations = EXTERNAL_V1_OPERATIONS.filter((operation) => operation !== `POST ${hiddenWorkflowPath}`);
+  expect(declared.filter((route) => route.includes(" /api/v1/")).sort()).toEqual(visibleOperations);
   const app = new Elysia().use(createExternalOpenApiPlugin("test")).use(instances);
   const spec = await (await app.handle(new Request("http://localhost/docs/openapi/external/json"))).json();
+  expect(spec.paths[hiddenWorkflowPath]).toBeUndefined();
   expect(spec.components.securitySchemes.BearerAuth).toMatchObject({ type: "http", scheme: "bearer" });
   expect(spec.security).toEqual([{ BearerAuth: [] }]);
-  for (const operation of EXTERNAL_V1_OPERATIONS) {
+  for (const operation of visibleOperations) {
     const [method, path] = operation.split(" ");
     const endpoint = spec.paths[path][method.toLowerCase()];
     expect(endpoint, operation).toBeDefined();
     for (const [status, response] of Object.entries(endpoint.responses) as Array<
       [string, { content?: Record<string, { schema: unknown }> }]
     >) {
-      if (!status.startsWith("2") || path.endsWith("/chat/completions")) continue;
+      if (!status.startsWith("2") || path.endsWith("/chat/completions") || path.endsWith("/files/download")) continue;
       const schema = response.content?.["application/json"]?.schema as { $ref?: string } | undefined;
       const resolved = schema?.$ref ? spec.components.schemas[schema.$ref.split("/").at(-1)!] : schema;
       expect(JSON.stringify(resolved), operation).toContain("success");
     }
   }
   const chat = spec.paths["/api/v1/chat/completions"].post.responses["200"].content;
+  expect(
+    spec.paths["/api/v1/environments/{environmentId}/workspace/files/download"].get.responses["200"].content[
+      "application/octet-stream"
+    ].schema,
+  ).toMatchObject({ type: "string", format: "binary" });
   expect(chat["application/json"]).toBeDefined();
   expect(chat["text/event-stream"]).toBeDefined();
   for (const path of ["/api/v1/skills", "/api/v1/environments/{environmentId}/workspace/files"]) {

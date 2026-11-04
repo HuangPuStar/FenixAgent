@@ -510,6 +510,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // channel 系统管理入口沿用独立认证。
     "GET /api/system/channels/",
     // machine
+    "GET /api/v1/environments/:environmentId/workspace/files",
+    "GET /api/v1/environments/:environmentId/workspace/files/download",
     "POST /api/v1/environments/:environmentId/workspace/files",
     // model-management
     "GET /api/v1/providers",

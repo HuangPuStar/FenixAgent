@@ -9,6 +9,7 @@ test("Agent 全流程独立运行", async () => {
   const saved = new Map<string, Record<string, unknown>>();
   const requests: { method: string; path: string; body: unknown }[] = [];
   const events: string[] = [];
+  const uploaded = new Map<string, Uint8Array>();
   let openAiRound = 0;
   let openAiMarker = "";
   let acpRound = 0;
@@ -100,11 +101,26 @@ test("Agent 全流程独立运行", async () => {
           return ok(null);
         }
         if (path === "/api/v1/instances/inst_test") return ok(snapshot());
+        if (path.endsWith("/workspace/files/download")) {
+          const filePath = url.searchParams.get("path")!;
+          const content = uploaded.get(filePath);
+          expect(content).toBeDefined();
+          return new Response(content, {
+            headers: {
+              "content-type": "application/octet-stream",
+              "content-disposition": `attachment; filename="${filePath.split("/").at(-1)}"`,
+            },
+          });
+        }
+        if (path.endsWith("/workspace/files") && method === "GET")
+          return ok({ environmentId: "env-test", paths: [...uploaded.keys()] });
         if (path.endsWith("/workspace/files")) {
           const form = body as FormData;
           const names = JSON.parse(String(form.get("relativePaths"))) as string[];
           const files = form.getAll("files") as File[];
           expect(new Uint8Array(await files[1].arrayBuffer())).toEqual(new Uint8Array([0, 128, 255]));
+          for (let i = 0; i < files.length; i++)
+            uploaded.set(`${form.get("path")}/${names[i]}`, new Uint8Array(await files[i].arrayBuffer()));
           return ok({
             environmentId: "env-test",
             files: files.map((file, i) => ({

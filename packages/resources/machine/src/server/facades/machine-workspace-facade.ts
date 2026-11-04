@@ -13,8 +13,16 @@
  * 状态码与错误信封；本层不吞错、不改写。
  */
 
+import { NotFoundError } from "@fenix/platform-sdk";
 import { getOwnedEnvironment } from "../environment-port";
-import { uploadWorkspaceFiles, type WorkspaceFileUploadResult } from "../services/api-workspace";
+import {
+  downloadWorkspaceFile,
+  getWorkspaceFileTree,
+  uploadWorkspaceFiles,
+  type WorkspaceFileDownloadResult,
+  type WorkspaceFileTreeResult,
+  type WorkspaceFileUploadResult,
+} from "../services/api-workspace";
 
 /**
  * 本 Facade 接受的最小主体投影。
@@ -26,8 +34,12 @@ export interface MachineWorkspaceActor {
   readonly userId: string;
 }
 
-/** 工作区上传的应用接口（Facade 的契约面）。 */
+/** 外部工作区文件操作的应用接口。 */
 export interface MachineWorkspaceFacadeApi {
+  /** 校验组织与属主后查询完整文件树。 */
+  tree(actor: MachineWorkspaceActor, environmentId: string): Promise<WorkspaceFileTreeResult>;
+  /** 校验组织与属主后读取单个文件。 */
+  download(actor: MachineWorkspaceActor, environmentId: string, path: string): Promise<WorkspaceFileDownloadResult>;
   /**
    * 把 multipart 文件写入 actor 可见的 environment workspace。
    *
@@ -40,8 +52,23 @@ export interface MachineWorkspaceFacadeApi {
   ): Promise<WorkspaceFileUploadResult>;
 }
 
+/** 外部读取仅面向本人工作区，不继承历史 ACP / Bridge 环境的组织内共享访问。 */
+async function requireWorkspaceOwner(actor: MachineWorkspaceActor, environmentId: string): Promise<void> {
+  const environment = await getOwnedEnvironment(environmentId, actor.organizationId, actor.userId);
+  if (environment.organizationId !== actor.organizationId || environment.userId !== actor.userId)
+    throw new NotFoundError("Environment not found");
+}
+
 /** 进程级无状态实现：Facade 不持有连接、缓存或 actor，每次调用只用入参推导范围。 */
 export const machineWorkspaceFacade: MachineWorkspaceFacadeApi = {
+  async tree(actor, environmentId) {
+    await requireWorkspaceOwner(actor, environmentId);
+    return getWorkspaceFileTree(environmentId, actor.userId);
+  },
+  async download(actor, environmentId, path) {
+    await requireWorkspaceOwner(actor, environmentId);
+    return downloadWorkspaceFile(environmentId, path, actor.userId);
+  },
   async upload(actor, environmentId, formData) {
     await getOwnedEnvironment(environmentId, actor.organizationId, actor.userId);
     return uploadWorkspaceFiles(

@@ -21,6 +21,7 @@ interface RequestOptions {
   headers?: Record<string, string>;
   native?: boolean;
   stream?: boolean;
+  binary?: boolean;
   check?: (data: unknown, headers: Headers) => void;
 }
 
@@ -229,7 +230,12 @@ export class ManualRunner {
       if (responseHeaders["set-cookie"]) responseHeaders["set-cookie"] = "<redacted>";
       this.print("输出", { status: response.status, headers: responseHeaders });
       let parsed: unknown;
-      if (options.stream && response.ok) {
+      if (options.binary && response.ok) {
+        assert.match(response.headers.get("content-type") ?? "", /application\/octet-stream/i);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        parsed = bytes;
+        this.print("响应体", { size: bytes.byteLength, base64: Buffer.from(bytes).toString("base64") });
+      } else if (options.stream && response.ok) {
         assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/i);
         parsed = await readChatStream(response, (frame) => this.print("SSE", frame));
         this.print("聚合回答", parsed);
@@ -244,7 +250,7 @@ export class ManualRunner {
         this.print("响应体", parsed);
       }
       assert.equal(response.status, options.status ?? 200, "HTTP 状态不符");
-      if (!options.native) {
+      if (!options.native && !options.binary) {
         const wrapped = object(parsed);
         assert.equal(wrapped.success, true, `业务失败: ${JSON.stringify(wrapped.error)}`);
         assert.ok(Object.hasOwn(wrapped, "data"), "缺少 data 包装");

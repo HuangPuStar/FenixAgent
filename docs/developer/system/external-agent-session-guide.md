@@ -26,7 +26,7 @@
    bun scripts/test-agent-api-v1.ts --list
    ```
 
-脚本覆盖 Agent、Provider / Model、Skill、MCP、知识库查询、实例和文件上传，以及 OpenAI / ACP 各三轮对话。成功结束时清理本轮创建的配置资源，上传文件保留；失败或中断时停止执行并打印资源线索，便于排查及手动清理。测试会真实调用模型。
+脚本覆盖 Agent、Provider / Model、Skill、MCP、知识库查询、实例、文件上传、文件树查询和下载，以及 OpenAI / ACP 各三轮对话。成功结束时清理本轮创建的配置资源，上传文件保留；失败或中断时停止执行并打印资源线索，便于排查及手动清理。测试会真实调用模型。
 
 Workflow v2 使用独立脚本，读取同一个本地配置文件中的 `WORKFLOW_V2_CONFIG`，也支持 `-t` 和 `--list`：
 
@@ -89,6 +89,21 @@ curl -s -X POST "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files" 
 ```
 
 文件将位于 user/docs/example.txt。省略 path 默认写入 user/；传 `-F 'path='` 或 `-F 'path=.'` 写入工作区根目录，传 `-F 'path=docs'` 写入 docs/。所有路径必须位于当前 Environment 工作区内，绝对路径、.. 段、控制字符和软链接逃逸均被拒绝。relativePaths 如需传递，使用与 files 顺序、数量一致的 JSON 数组。同名文件返回 409，不覆盖。远程文件服务未连接会明确失败。
+
+查询整个工作区文件树，返回 `data.paths`、可选的 `data.mtimes` 与 `data.errors`；目录路径以 `/` 结尾，`errors` 非空表示部分目录未能遍历：
+
+```bash
+curl -s "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files" \
+  -H "Authorization: Bearer $API_KEY" | jq '.data'
+```
+
+按工作区相对路径下载单个文件，文本和二进制均返回原始文件流；错误仍返回 JSON 包装：
+
+```bash
+curl --fail-with-body -G "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files/download" \
+  -H "Authorization: Bearer $API_KEY" \
+  --data-urlencode 'path=user/docs/example.txt' -o ./downloaded-example.txt
+```
 
 ## OpenAI SDK
 

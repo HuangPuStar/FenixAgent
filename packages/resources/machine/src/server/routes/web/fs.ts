@@ -23,25 +23,14 @@ import {
   WriteFileRequestSchema,
 } from "../../../schemas/file.schema";
 import { machineFileFacade } from "../../facades/machine-file-facade";
+import { contentDispositionAttachment } from "../../http/file-download";
 import { normalizeUploadRelativePath } from "../../services/agent-file-service";
 import type { FileWriteOptions, ReadMode } from "../../services/file-types";
 import { FileServiceError } from "../../services/file-types";
 import { computeListFingerprint, computeReadFingerprint, computeTreeFingerprint } from "../../services/workspace-fs";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
-/** 构造兼容旧客户端的 ASCII fallback 与 RFC 5987 UTF-8 下载文件名。 */
-export function contentDispositionAttachment(fileName: string): string {
-  const fallback = fileName
-    .normalize("NFKD")
-    .replace(/[^\x20-\x7e]/g, "_")
-    .replace(/["\\;]/g, "_")
-    .replace(/[\r\n]/g, "_");
-  const encoded = encodeURIComponent(fileName).replace(
-    /[!'()*]/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-  return `attachment; filename="${fallback || "download.zip"}"; filename*=UTF-8''${encoded}`;
-}
+export { contentDispositionAttachment } from "../../http/file-download";
 
 /**
  * `/web/environments/:id/fs/*` — workspace 文件系统控制台 API。

@@ -17,6 +17,8 @@ export const EXTERNAL_V1_OPERATIONS = [
   "POST /api/v1/instances/{id}/stop",
   "POST /api/v1/instances/{id}/restart",
   "POST /api/v1/environments/{environmentId}/workspace/files",
+  "GET /api/v1/environments/{environmentId}/workspace/files",
+  "GET /api/v1/environments/{environmentId}/workspace/files/download",
   "POST /api/v1/chat/completions",
   "POST /api/v1/workflows/{workflowId}/execute",
   "POST /api/v1/workflow-v2/workflows/{id}/run",

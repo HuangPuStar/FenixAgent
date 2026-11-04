@@ -23,11 +23,11 @@
 | MCP | `GET/POST /mcp-servers`；`GET/PATCH/DELETE /mcp-servers/:id` |
 | KB | `GET /knowledge-bases` |
 | Instance | `GET /agents/:id/instances`；`POST /agents/:id/instances/connect`；`GET /instances/:id`；`POST /instances/:id/stop`、`/restart` |
-| 上传 | `POST /environments/:environmentId/workspace/files` |
+| 文件 | `GET/POST /environments/:environmentId/workspace/files`；`GET /environments/:environmentId/workspace/files/download?path=...` |
 | 对话 | `POST /chat/completions` |
-| External Workflow | `POST /workflows/:workflowId/execute`；`POST /workflow-v2/workflows/:id/run` |
+| Workflow v2 | `POST /workflow-v2/workflows/:id/run` |
 
-合计 35 项。请求与响应字段以 `/docs/openapi/external/json` 为准。
+公开文档合计 36 项。请求与响应字段以 `/docs/openapi/external/json` 为准。
 
 ## 配置规则
 
@@ -75,4 +75,4 @@ stop / restart 只影响指定实例，失效其对话句柄；请求结束或�
 
 工作区上传省略 path 时默认 user；显式空字符串或 . 表示工作区根目录，其他相对目录也可写入。所有上传路径均相对服务端解析的当前 Environment 工作区；拒绝绝对路径（含 Windows / UNC 格式）、.. 段和控制字符。整批先校验文件名、relativePaths 数量、路径和重复目标，再读取并调用统一文件服务；本地与远程均拒绝覆盖已有文件。单文件 92 MiB，远程批次总量 92 MiB；整请求预算 108 MiB，包括无 Content-Length 的流式上传。除词法与 realpath 检查外，本地与远程写入逐级使用不跟随 symlink 的目录描述符并排他创建最终文件，防止父目录在校验后被替换。远程断开不回退本地。审计使用当前用户和 api 来源。
 
-两个 External Workflow 执行端点保留各自业务参数、领域状态码、异步和限流行为，统一 v1 路径与包装。同步结果或异步执行信息在外层 data 内；框架参数错误仍为 422。上游业务 data 字段仍属于嵌套结果，不与平台包装混淆。执行重试可能产生新运行，调用方按业务自行去重。
+Workflow v2 执行端点保留业务参数、领域状态码、异步和限流行为，使用 v1 路径与包装。同步结果或异步执行信息在外层 data 内；框架参数错误仍为 422。上游业务 data 字段仍属于嵌套结果，不与平台包装混淆。执行重试可能产生新运行，调用方按业务自行去重。

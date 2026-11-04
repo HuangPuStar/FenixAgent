@@ -22,6 +22,8 @@ export const AGENT_OPERATIONS = [
   "POST /api/v1/instances/{id}/stop",
   "POST /api/v1/instances/{id}/restart",
   "POST /api/v1/environments/{environmentId}/workspace/files",
+  "GET /api/v1/environments/{environmentId}/workspace/files",
+  "GET /api/v1/environments/{environmentId}/workspace/files/download",
   "POST /api/v1/chat/completions",
 ].sort();
 
@@ -215,6 +217,30 @@ export async function runAgentScenario(
       resources.uploadPath = `user/${name}`;
     },
   });
+  const workspaceFiles = `${collection("environments")}/${idPath(resources.environmentId)}/workspace/files`;
+  await get(workspaceFiles, (data) => {
+    assert.equal(data.environmentId, resources.environmentId);
+    assert.ok(Array.isArray(data.paths), "缺少文件树 paths");
+    assert.ok(!Array.isArray(data.errors) || data.errors.length === 0, "文件树遍历不完整");
+    for (const relativePath of ["probe.txt", "nested/binary.bin"])
+      assert.ok(data.paths.includes(`${resources.uploadPath}/${relativePath}`), "文件树未包含上传文件");
+  });
+  for (const [relativePath, expected] of [
+    ["probe.txt", new TextEncoder().encode(`UPLOAD_${suffix}\n`)],
+    ["nested/binary.bin", new Uint8Array([0, 128, 255])],
+  ] as const) {
+    await runner.request(
+      "GET",
+      `${workspaceFiles}/download?path=${idPath(`${resources.uploadPath}/${relativePath}`)}`,
+      {
+        binary: true,
+        check: (data, headers) => {
+          assert.ok(headers.get("content-disposition")?.startsWith("attachment;"), "下载缺少附件响应头");
+          assert.deepEqual(data, expected, "下载内容与上传字节不一致");
+        },
+      },
+    );
+  }
   await testOpenAiConversation(runner, agentId, resources.instanceId);
   await testAcpConversation(runner, wsUrl, config.acpPermission);
 
