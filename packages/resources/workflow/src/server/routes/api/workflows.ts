@@ -87,6 +87,7 @@ export function createApiWorkflowRoutes(deps: WorkflowRouteDependencies) {
         500: ApiErrorResponseSchema,
       },
       detail: {
+        hide: true,
         tags: ["External Workflow"],
         summary: "执行工作流",
         description:
