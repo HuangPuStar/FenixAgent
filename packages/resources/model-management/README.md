@@ -19,7 +19,7 @@ Provider / Model 资源聚合根与模型网关（凭据隔离、预算、用量
 
 ## 服务端交付物
 
-- **HTTP 交付物**：`/api/models/providers/**`、`/api/system/model-gateway/*`、`/web/config/providers/**`、`/web/config/models/**`、`/web/model-gateway/:providerId/usage`。
+- **HTTP 交付物**：`/api/v1/providers/**`、`/api/system/model-gateway/*`、`/web/config/providers/**`、`/web/config/models/**`、`/web/model-gateway/:providerId/usage`。
 - **路由目录按计划 §2.3 收敛为 `src/server/routes/**`**（10 个文件：5 个路由 + `dependencies.ts` + `provider-handlers.ts` / `provider-probe.ts` / `provider-views.ts` / `web-envelope.ts`），**全部是工厂，零 default export**（实测 `command grep -rn "export default" src/server.ts src/server/routes` → **0 行**）：
 
 ```ts

@@ -3,6 +3,8 @@ node_modules
 dist
 coverage
 .env
+# 外部 API 手工联调的本地配置（模板可提交）
+/scripts/test-external-api-v1.config.local.ts
 # 部署配置（每台机器一份，模板见 docker/deploy.env.example）
 deploy.env
 # agent-sites 运行期产物（data 目录已由通用规则忽略）

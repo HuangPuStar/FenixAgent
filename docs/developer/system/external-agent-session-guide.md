@@ -1,266 +1,157 @@
-# External API Agent 管理与会话说明
+# 外部系统配置与运行 Agent
 
-这篇文档面向 External API 的调用方，重点说明 Agent 运行链路中的核心概念、对象关系，以及推荐调用顺序。
+稳定协议见 [External Agent API v1](../../arch/external-api-v1.md)，字段见 `/docs/openapi/external`。下面的 API_KEY、各资源 ID 和执行节点需使用当前环境实际值。
 
-如果你只想先看接口定义，请直接查看：
+## 脚本联调
 
-- 交互式文档：`http://server/docs/openapi/external`
-- OpenAPI JSON：`http://server/docs/openapi/external/json`
+在仓库根目录执行，需已安装 Bun，并启动平台服务及可用的 Agent 执行节点。
 
-如果你想直接跑示例，请参考：
+1. 首次使用时复制配置模板；已有本地配置则直接编辑，避免覆盖：
 
-- `/docs/developer/api-demo/agent`
+   ```bash
+   cp scripts/test-external-api-v1.config.example.ts scripts/test-external-api-v1.config.local.ts
+   ```
 
-如果你想对接 API，也建议参考示例的代码逻辑。
+2. 编辑本地配置中的 `AGENT_CONFIG`：填写 `baseUrl`、平台 `apiKey`、上游 Provider / Model、已有知识库 ID、可访问的 MCP 服务及执行节点。地址改为实际服务地址，例如 `http://127.0.0.1:3000`。本地配置已被 Git 忽略，不提交密钥。
+3. 运行 Agent 全流程测试，控制台会打印每个接口的输入、输出和检查结果：
 
-## 核心对象
+   ```bash
+   # 默认连续执行，不等待输入
+   bun scripts/test-agent-api-v1.ts
 
-### AgentConfig
+   # 逐接口、逐轮对话等待回车，便于观察页面数据
+   bun scripts/test-agent-api-v1.ts -t
 
-`AgentConfig` 是一个 Agent 的配置定义，描述这个 Agent 应该如何工作，例如：
+   # 只列出覆盖的接口，不读取配置、不发请求
+   bun scripts/test-agent-api-v1.ts --list
+   ```
 
-- 使用哪个模型
-- 使用什么 prompt
-- 是否挂载 skill、MCP 等能力
+脚本覆盖 Agent、Provider / Model、Skill、MCP、知识库查询、实例、文件上传、文件树查询和下载，以及 OpenAI / ACP 各三轮对话。成功结束时清理本轮创建的配置资源，上传文件保留；失败或中断时停止执行并打印资源线索，便于排查及手动清理。测试会真实调用模型。
 
-External API 的 `GET /api/agents`、`POST /api/agents` 这一组接口，操作的就是 `AgentConfig`。
+Workflow v2 使用独立脚本，读取同一个本地配置文件中的 `WORKFLOW_V2_CONFIG`，也支持 `-t` 和 `--list`：
 
-### Environment
-
-`Environment` 表示这个 Agent 的运行环境。它通常对应一个工作区上下文，用来承载：
-
-- 工作目录
-- 用户上传的文件
-- Agent 运行时依赖的环境上下文
-
-对外调用方通常不需要先单独创建 environment，而是通过 connect 接口由后端自动准备。
-
-### Instance
-
-`Instance` 表示一个可连接的 Agent 运行实例。
-
-调用方真正要连接的是 instance 对应的 relay WebSocket，但通常也不需要自己管理 instance 的完整生命周期，而是通过：
-
-```text
-POST /api/agents/:agentId/instances/connect
+```bash
+bun scripts/test-workflow-v2-api-v1.ts
 ```
 
-让后端自动完成：
+工作流需事先发布，在配置中填写 `workflowId` 和输入参数；脚本只执行已有工作流并保留运行记录。
 
-- 准备 environment
-- 启动或复用可用 instance
-- 返回可连接的 `relay.wsUrl`（相对路径，可能带 `instanceId` query，用于多实例环境精确指定实例；原样拼接使用即可）
+## 最小流程
 
-### Workspace
+1. 查询或创建 Provider、Model；网关配置和模型只读。
+2. 按需查询 Skill、MCP 和当前组织已有 KB。
+3. 创建 Agent，绑定 modelId、skillIds、mcpIds、knowledge.knowledgeBaseIds 及可用执行节点。
+4. connect 取得 Environment 与 Instance，按需上传文件。
+5. 选择 OpenAI SDK 对话或 ACP relay。需要应用配置变化时显式 restart，不再使用时 stop。
 
-`Workspace` 是 environment 对应的工作目录视角。
+AgentConfig 是配置；Environment 是用户工作区；Instance 是持久运行身份；Chat 会话是该实例上的独立 ACP session。并发多个不同会话不需要启动多个实例。
 
-上传文件、准备输入资料这类操作，属于 workspace 维度，而不是某个 session 维度。
+## 查询与配置
 
-所以文件接口放在：
-
-```text
-/api/environments/:environmentId/workspace/*
+```bash
+export BASE_URL='http://localhost:3000'
+# API_KEY 通过当前终端的安全方式注入，不写入源码。
+curl -s "$BASE_URL/api/v1/providers" -H "Authorization: Bearer $API_KEY" | jq '.data.items'
+curl -s "$BASE_URL/api/v1/providers/$PROVIDER_ID/models" -H "Authorization: Bearer $API_KEY" | jq '.data.items'
+curl -s "$BASE_URL/api/v1/knowledge-bases" -H "Authorization: Bearer $API_KEY" | jq '.data.items'
 ```
 
-而不是放在 session 下面。
+创建 Agent 示例；modelId 为模型数据库 ID，执行节点须可用，也可使用平台已配置的默认节点：
 
-### ACP Session
-
-真正的聊天会话能力，是在连上 relay WebSocket 之后，通过 ACP 协议完成的。
-
-例如这些能力：
-
-- `session/new`
-- `session/list`
-- `session/load`
-- `session/resume`
-- `session/prompt`
-
-它们不是 REST API，而是 ACP 协议能力。
-
-## 对象关系
-
-从调用方视角，可以把关系理解成：
-
-```text
-AgentConfig -> Environment -> Instance -> ACP Session
+```bash
+curl -s -X POST "$BASE_URL/api/v1/agents" \
+  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -d '{"name":"external-demo","modelId":"MODEL_DATABASE_ID","prompt":"回答用户问题","skillIds":[],"mcpIds":[],"enableMemory":false}' | jq '.data'
 ```
 
-含义分别是：
+PATCH 只提交需要改的字段；省略保留原值，数组整体替换。使用已有 KB 时提交 `knowledge: { knowledgeBaseIds: ["KB_ID"] }`；清空用 null。配置错误或不可绑定资源会在写入前被拒，指定配置与关联一起提交。
 
-- 先选择一个 `AgentConfig`
-- 再通过 connect 获得对应运行环境和可用实例
-- 然后连接返回的 relay WebSocket
-- 最后通过 ACP 在这个连接上创建或恢复 session
+## connect、上传与生命周期
 
-如果只看使用顺序，这套链路可以简化成：
-
-```text
-先选 Agent -> connect -> 连 WebSocket -> 用 ACP 会话
+```bash
+curl -s -X POST "$BASE_URL/api/v1/agents/$AGENT_ID/instances/connect" \
+  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' -d '{}' | jq '.data'
 ```
 
-## 推荐调用顺序
+省略 instanceId 会准备 api/api；传 `{ "instanceId": "inst_..." }` 可选择本人已有的 api / user 实例。结果含 environmentId、instanceId、status、runtimeGeneration、relay.wsUrl。列表和详情不会自动启动实例：
 
-### 场景一：第一次进入聊天
-
-推荐顺序：
-
-1. `GET /api/agents`
-2. `POST /api/agents/:agentConfigId/instances/connect`
-3. 连接返回的 `relay.wsUrl`
-4. 调用 ACP `new-session`
-5. 调用 ACP `prompt`
-
-这适合“打开某个 Agent，开始一轮新对话”的场景。
-
-### 场景二：继续历史会话
-
-推荐顺序：
-
-1. `GET /api/agents`
-2. `POST /api/agents/:agentConfigId/instances/connect`
-3. 连接返回的 `relay.wsUrl`
-4. 调用 ACP `list-sessions`
-5. 根据需要调用 ACP `load-session` 或 `resume-session`
-6. 再调用 ACP `prompt`
-
-这适合“接着上次的会话继续聊”的场景。
-
-### 场景三：先上传文件，再让 Agent 使用
-
-推荐顺序：
-
-1. `POST /api/agents/:agentConfigId/instances/connect`
-2. 拿到 `environmentId`
-3. 调用 `POST /api/environments/:environmentId/workspace/files`
-4. 连接 relay WebSocket
-5. 在 ACP 会话里告诉 Agent 去读取对应路径，例如 `user/demo/demo-upload.txt`
-
-这适合“先准备输入文件，再发起对话”的场景。
-
-## connect 接口怎么理解
-
-对调用方来说，下面这个接口是 Agent 运行时入口：
-
-```text
-POST /api/agents/:agentId/instances/connect
+```bash
+curl -s "$BASE_URL/api/v1/agents/$AGENT_ID/instances" -H "Authorization: Bearer $API_KEY" | jq '.data'
+curl -s "$BASE_URL/api/v1/instances/$INSTANCE_ID" -H "Authorization: Bearer $API_KEY" | jq '.data'
+curl -s -X POST "$BASE_URL/api/v1/instances/$INSTANCE_ID/restart" -H "Authorization: Bearer $API_KEY" | jq '.data'
 ```
 
-建议把它理解成：
+上传到刚取得的 Environment：
 
-- “为这个 Agent 准备一个可连接的运行实例”
+```bash
+curl -s -X POST "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files" \
+  -H "Authorization: Bearer $API_KEY" -F 'path=user/docs' -F 'files=@./example.txt' | jq '.data'
+```
 
-而不是：
+文件将位于 user/docs/example.txt。省略 path 默认写入 user/；传 `-F 'path='` 或 `-F 'path=.'` 写入工作区根目录，传 `-F 'path=docs'` 写入 docs/。所有路径必须位于当前 Environment 工作区内，绝对路径、.. 段、控制字符和软链接逃逸均被拒绝。relativePaths 如需传递，使用与 files 顺序、数量一致的 JSON 数组。同名文件返回 409，不覆盖。远程文件服务未连接会明确失败。
 
-- “单纯查一个实例列表”
+查询整个工作区文件树，返回 `data.paths`、可选的 `data.mtimes` 与 `data.errors`；目录路径以 `/` 结尾，`errors` 非空表示部分目录未能遍历：
 
-它的主要作用是把运行时前置步骤压缩掉，避免调用方自己处理 environment、instance 的创建和复用细节。
+```bash
+curl -s "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files" \
+  -H "Authorization: Bearer $API_KEY" | jq '.data'
+```
 
-典型响应里会包含：
+按工作区相对路径下载单个文件，文本和二进制均返回原始文件流；错误仍返回 JSON 包装：
 
-- `agentConfigId`
-- `environmentId`
-- `instanceId`
-- `relay.wsUrl`
+```bash
+curl --fail-with-body -G "$BASE_URL/api/v1/environments/$ENVIRONMENT_ID/workspace/files/download" \
+  -H "Authorization: Bearer $API_KEY" \
+  --data-urlencode 'path=user/docs/example.txt' -o ./downloaded-example.txt
+```
 
-其中最重要的是：
+## OpenAI SDK
 
-- `environmentId`
-  后续上传文件时要用
-- `relay.wsUrl`
-  后续建立 ACP 连接时要用
+```ts
+import OpenAI from "openai";
 
-## 会话相关能力怎么选
+const client = new OpenAI({
+  apiKey: process.env.API_KEY,
+  baseURL: `${process.env.BASE_URL}/api/v1`,
+  maxRetries: 0,
+});
+const { data, response } = await client.chat.completions.create({
+  model: process.env.AGENT_ID!,
+  messages: [{ role: "user", content: "阅读 user/docs/example.txt 并总结" }],
+}).withResponse();
+console.log(data.choices[0].message.content);
+const handle = response.headers.get("x-session-id");
+const instanceId = response.headers.get("x-instance-id");
 
-### new-session
+const next = await client.chat.completions.create({
+  model: process.env.AGENT_ID!,
+  messages: [{ role: "user", content: "再用一句话概括" }],
+  stream: true,
+}, { headers: { "X-Session-Id": handle!, "X-Instance-Id": instanceId! } });
+for await (const chunk of next) process.stdout.write(chunk.choices[0]?.delta.content ?? "");
+```
 
-用于创建一轮全新的会话。
+每次不带 X-Session-Id 的请求创建独立会话，可以提交完整有序文本历史；续聊只传一条新 user。不要同时向同一续聊句柄发送两个请求；不同句柄可并发。同一实例共享 Environment 文件。SDK 默认自动重试可能重复运行，示例将其关闭。
 
-适合：
+句柄在当前进程维护，失败、取消、stop / restart 后失效。409 SESSION_UNAVAILABLE 时，客户端明确决定是否以完整历史开启新会话，不能把失败请求自动当成已成功运行。
 
-- 第一次进入聊天
-- 明确要开始新话题，不复用历史上下文
+## ACP relay
 
-### list-sessions
+将 connect 返回的 relay.wsUrl 拼到当前服务 WebSocket 地址，并用同一凭据认证。通过既有 ACP JSON-RPC 执行 session/new、session/prompt、session/load 等动作；服务端强制注入认证 Environment 的 cwd，客户端不指定本地或任意绝对目录。
 
-用于查询当前 Agent 在当前运行上下文下可见的会话列表。
+relay 支持原始 JSON-RPC 和现有 acp-link 包裹格式，保留 Agent status / capabilities；不使用 Yjs。客户端管理各 ACP session ID 并按消息关联分发，不把它们当作 Environment 或 Instance 标识。断开 relay 只关闭连接，不停止共享 runtime。
 
-适合：
+先发送 `session/new`，收到成功响应的 sessionId 后再发送 prompt；现有 ACP relay 使用 `content` 字段：
 
-- 展示历史会话列表
-- 让用户选择继续哪一轮对话
+```json
+{"jsonrpc":"2.0","id":1,"method":"session/new","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"session/prompt","params":{"sessionId":"SESSION_ID_FROM_REPLY","content":[{"type":"text","text":"你好"}]}}
+```
 
-### load-session
+## 停止与诊断
 
-用于加载一个已有会话，并把它设为当前活跃会话。
+```bash
+curl -s -X POST "$BASE_URL/api/v1/instances/$INSTANCE_ID/stop" -H "Authorization: Bearer $API_KEY"
+```
 
-通常这是继续历史对话时优先使用的能力。
-
-### resume-session
-
-用于恢复一个已有会话。
-
-某些 Agent 只提供 `resume` 能力，不提供 `load` 能力，这时需要走 `resume-session`。
-
-调用方如果使用 `acp-link` 的 demo 逻辑，可以采用：
-
-- 优先尝试 `load-session`
-- 如果 Agent 不支持，再回退到 `resume-session`
-
-## Workspace 文件为什么不属于 Session
-
-因为当前设计下，文件是放在 environment 对应的工作区里，而不是挂在某条 session 上。
-
-这意味着：
-
-- 同一个 environment 下的不同会话，可以看到同一个工作区里的文件
-- 上传文件是“准备运行上下文”，不是“给某条消息挂附件”
-
-所以对调用方来说，应该把文件理解成：
-
-- Agent 工作区里的资源
-
-而不是：
-
-- 某条会话私有的附件
-
-## 常见注意事项
-
-### 1. OpenAPI 只覆盖 REST 部分
-
-`http://server/docs/openapi/external` 主要用于查看 REST API，例如：
-
-- `/api/agents`
-- `/api/agents/:id/instances/connect`
-- `/api/environments/:environmentId/workspace/files`
-
-会话相关的 ACP 协议能力，不会完整体现在 OpenAPI 里。
-
-### 2. 连接 WebSocket 后，能力可能不会立刻齐全
-
-某些 session 能力需要在 ACP 连接建立后，等待 agent capability 同步完成。
-
-所以调用方不要假设一连上 WebSocket 就能立刻调用：
-
-- `list-sessions`
-- `load-session`
-- `resume-session`
-
-更稳妥的方式是：
-
-- 等待 capability 到位
-- 或直接参考 `/docs/developer/api-demo/agent/acp-events-demo.js` 的处理逻辑
-
-### 3. 不要把 workspace 文件和会话强绑定
-
-如果你上传了一个文件到 workspace，后续应该通过文件路径让 Agent 去读取它，而不是期待这个文件自动挂到某个 session 上。
-
-### 4. 不要直接依赖 `/web/*`
-
-External API 调用方应统一使用：
-
-- `/api/*` 这一组 REST API
-- `relay.wsUrl` 对应的 ACP WebSocket
-
-不要直接调用控制台内部使用的 `/web/*` 接口。
+普通错误读取 error.code / error.message；SDK 错误读取原生 OpenAI error。排查时记录 X-Request-Id 与 Instance，避免记录密钥、原始 ACP ID 和完整对话。实例 A 停止不会停止实例 B；当前请求结束不会停止同实例其他会话。

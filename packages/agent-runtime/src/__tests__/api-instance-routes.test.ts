@@ -30,6 +30,7 @@ describe("API Instance Routes", () => {
     loggedErrors.length = 0;
     setTestAuth({ organizationId: "org-1", userId: "user-1" });
     setApiInstanceDeps({
+      withEnvironmentLock: async (_owner, _id, fn) => fn(),
       listEnvironmentsByOrganizationId: async () => [],
       findVisibleAgentConfig: async () => null,
       createWebEnvironment: async () => {
@@ -56,7 +57,7 @@ describe("API Instance Routes", () => {
   });
 
   // connect 接口应支持外部共享 Agent，并为当前用户创建独立 runtime environment。
-  test("POST /api/agents/:agentId/instances/connect creates user runtime for shared agent", async () => {
+  test("POST /api/v1/agents/:agentId/instances/connect creates user runtime for shared agent", async () => {
     setApiInstanceDeps({
       findVisibleAgentConfig: async () =>
         ({
@@ -91,7 +92,7 @@ describe("API Instance Routes", () => {
         }) as never,
     });
 
-    const res = await request("/api/agents/agc-demo/instances/connect", {
+    const res = await request("/api/v1/agents/agc-demo/instances/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -99,7 +100,10 @@ describe("API Instance Routes", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json).toEqual({
+    expect(json.success).toBe(true);
+    expect(json.data).toEqual({
+      status: "running",
+      runtimeGeneration: 0,
       agentConfigId: "agc-demo",
       environmentId: "env-created",
       instanceId: "inst-created",
@@ -130,7 +134,7 @@ describe("API Instance Routes", () => {
       },
     });
 
-    const res = await request("/api/agents/agc-sandbox/instances/connect", {
+    const res = await request("/api/v1/agents/agc-sandbox/instances/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -159,7 +163,7 @@ describe("API Instance Routes", () => {
       },
     });
 
-    const res = await request("/api/agents/agc-sandbox/instances/connect", {
+    const res = await request("/api/v1/agents/agc-sandbox/instances/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -193,7 +197,7 @@ describe("API Instance Routes", () => {
       },
     });
 
-    const res = await request("/api/agents/agc-demo/instances/connect", {
+    const res = await request("/api/v1/agents/agc-demo/instances/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),

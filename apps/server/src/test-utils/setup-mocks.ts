@@ -435,7 +435,7 @@ const { bindAgentRuntime, createAgentRuntime, getBoundAgentRuntime } = await imp
 const { bindMachineEnvironmentPort, bindMachineHostPort, findMachineAgentNamesByIds, findMachineLabelsByIds } =
   await import("@fenix/resource-machine/server");
 const { bindMachineLookupPort, bindModelLookupPort } = await import("@fenix/agent-config/server");
-const { findModelLabelsByIds } = await import("@fenix/model-management/server");
+const { findModelLabelsByIds, getModelManagementModule } = await import("@fenix/model-management/server");
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
 // Machine host port 的 workspace 根解析（1.7 C1）：宿主自有实现，与生产装配 `host-wiring.ts` 同一份。
 // 不复用 agent-runtime 的 `resolveWorkspacePath`——它读模块配置快照，而 machine 的 fs 用例按用例把根切到
@@ -467,7 +467,10 @@ bindMachineLookupPort({ findMachineLabelsByIds });
 // 模型标签端口同样绑真实实现（理由同上：`getModelManagementDatabase()` 同源于 platform-sdk 的
 // `getDatabase()`，读的是本文件换过的替身）。漏绑不会 fail-fast 到「端口未绑定」，只会让模型标签静默
 // 退化成 id，因此这里与 machine 的绑定放在一起，避免后续批次漏掉。
-bindModelLookupPort({ findModelLabelsByIds });
+bindModelLookupPort({
+  findModelLabelsByIds,
+  requireModelForBinding: (actor, id) => getModelManagementModule().facade.requireModelForBinding(actor, id),
+});
 // 运行 port（1.4 W3b）：生产消费方一律经 `getBoundAgentRuntime()` 取实例/环境生命周期与会话数据面，
 // 装配未走到这里时调用即失败（不隐式回退）。测试进程绑定**真实**入口：它的内部实现读的仍是本文件
 // 换过的那些替身（环境仓储 Proxy、DB mock、各 port 转发），所以行为与「路由直接调用包内函数」一致。

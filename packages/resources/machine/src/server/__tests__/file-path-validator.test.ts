@@ -32,6 +32,11 @@ describe("assertSafePath 基础安全校验（D5）", () => {
     expect(() => assertSafePath("a\u009fb")).toThrowError();
   });
 
+  // trim 不得把首尾控制字符抹掉，否则不同入口会接受不可见的目录名称。
+  test.each(["docs\n", "\tdocs", "\r", "docs\t"])("拒绝首尾控制字符 %j", (path) => {
+    expect(() => assertSafePath(path)).toThrowError(expect.objectContaining({ statusCode: 400 }));
+  });
+
   test("空路径放行（trim 后为空）", () => {
     // 空路径由调用方决定语义（如 tree 根目录），校验层不拦截
     expect(() => assertSafePath("")).not.toThrow();

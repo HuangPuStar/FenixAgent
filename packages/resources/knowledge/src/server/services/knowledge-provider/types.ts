@@ -299,7 +299,7 @@ export interface KnowledgeProvider {
   /** 列出上游可用的数据集列表（用于未关联 KB 导入） */
   listDatasets(input: { apiKey?: string }): Promise<Array<{ id: string; name: string }>>;
   /** 获取单个数据集详情（用于导入时同步嵌入模型、分块方法等配置） */
-  getDataset?(input: { datasetId: string; apiKey?: string }): Promise<{
+  getDataset?(input: { datasetId: string; apiKey?: string; signal?: AbortSignal }): Promise<{
     embeddingModel?: string | null;
     chunkMethod?: string | null;
     parseMethod?: string | null;

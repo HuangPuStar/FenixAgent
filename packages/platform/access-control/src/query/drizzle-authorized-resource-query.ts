@@ -29,7 +29,7 @@ export class DrizzleAuthorizedResourceQuery<TStorage extends QueryStorageTypes =
   implements AuthorizedResourceQuery<TStorage>
 {
   constructor(
-    private readonly database: AccessControlDatabase,
+    private readonly database: () => AccessControlDatabase,
     private readonly provider: string,
     private readonly resourceTypes: ReadonlySet<string>,
   ) {}
@@ -39,7 +39,7 @@ export class DrizzleAuthorizedResourceQuery<TStorage extends QueryStorageTypes =
     const where = this.buildWhere(input);
     // `$dynamic()` 允许按需追加 ORDER BY / LIMIT / OFFSET：业务条件与授权谓词已经在 WHERE 里，
     // 排序与分页因此作用在已授权集合上。
-    let query = this.database.select().from(resolved.table).where(where).$dynamic();
+    let query = this.database().select().from(resolved.table).where(where).$dynamic();
     const order = (input.businessOrder ?? []) as SQL[];
     if (order.length > 0) query = query.orderBy(...order);
     if (input.limit !== undefined) query = query.limit(input.limit);
@@ -51,14 +51,17 @@ export class DrizzleAuthorizedResourceQuery<TStorage extends QueryStorageTypes =
   async count(input: AuthorizedResourceCountInput<TStorage>): Promise<number> {
     const resolved = this.resolveTarget(input);
     const where = this.buildWhere(input);
-    const rows = await this.database.select({ value: count() }).from(resolved.table).where(where);
+    const rows = await this.database().select({ value: count() }).from(resolved.table).where(where);
     return Number(rows[0]?.value ?? 0);
   }
 
   async findById(input: AuthorizedResourceFindInput<TStorage>): Promise<ScopedRow<TStorage["row"]> | undefined> {
     const resolved = this.resolveTarget(input);
     const where = this.buildWhere(input, eq(resolved.id, input.resourceId));
-    const rows = (await this.database.select().from(resolved.table).where(where).limit(1)) as Record<string, unknown>[];
+    const rows = (await this.database().select().from(resolved.table).where(where).limit(1)) as Record<
+      string,
+      unknown
+    >[];
     const row = rows[0];
     return row === undefined ? undefined : (this.attachScope(resolved, row) as ScopedRow<TStorage["row"]>);
   }

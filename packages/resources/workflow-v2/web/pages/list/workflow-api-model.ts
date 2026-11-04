@@ -4,7 +4,7 @@
 // 抽成无 UI 依赖的纯函数是为了可断言（示例文本的每一段都是用户直接复制去用的，拼错一个字就会让对方调试半天），
 // 组件只负责渲染与复制反馈。
 //
-// 口径（与后端 `POST /api/workflow-v2/workflows/:id/run` 逐条对应）：
+// 口径（与后端 `POST /api/v1/workflow-v2/workflows/:id/run` 逐条对应）：
 // - 地址里的 `:id` 是**控制台本地主键**（卡片 id），不是上游 workflow ID——调用方只需要看得懂控制台的标识；
 // - 凭据是控制台 API Key（`rcs_*`），放 `Authorization: Bearer`；示例里只出现占位符，绝不出现真实密钥；
 // - 请求体字段是 `parameters`（JSON 对象或它的 JSON 字符串）、`isAsync`（默认 false）、`ext.user_id`（可选）。
@@ -14,7 +14,7 @@ export const API_KEY_PLACEHOLDER = "rcs_xxxxxxxx";
 
 /** 对外触发端点的路径（`:id` 为本地主键）；方法固定 POST。 */
 export function buildRunEndpoint(workflowId: string): { readonly method: "POST"; readonly path: string } {
-  return { method: "POST", path: `/api/workflow-v2/workflows/${workflowId}/run` };
+  return { method: "POST", path: `/api/v1/workflow-v2/workflows/${workflowId}/run` };
 }
 
 /**

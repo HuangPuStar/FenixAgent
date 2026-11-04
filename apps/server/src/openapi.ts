@@ -1,4 +1,5 @@
 import openapi from "@elysiajs/openapi";
+import Elysia from "elysia";
 import * as z from "zod/v4";
 
 const API_OPENAPI_PATH = "/docs/openapi/external";
@@ -6,7 +7,21 @@ const API_OPENAPI_SPEC_PATH = `${API_OPENAPI_PATH}/json`;
 const WEB_OPENAPI_PATH = "/docs/openapi/web";
 const WEB_OPENAPI_SPEC_PATH = `${WEB_OPENAPI_PATH}/json`;
 
-const EXTERNAL_OPENAPI_TAGS = [
+/** 对外文档排除的路径及原因，同时匹配路径本身与子路径。 */
+const EXTERNAL_API_EXCLUDED_PATHS: ReadonlyMap<string, string> = new Map([
+  ["/api/system", "平台系统管理接口"],
+  ["/api/auth", "控制台认证接口"],
+]);
+
+/** 通过 Elysia 的受保护扩展点读取宿主路由，避免使用子插件的局部路径。 */
+class OpenApiRouteHost extends Elysia {
+  /** 获取完成宿主前缀装配后的路由。 */
+  getDocumentRoutes() {
+    return this.getGlobalRoutes();
+  }
+}
+
+const OPENAPI_TAGS = [
   {
     name: "External Model",
     description: "面向外部系统的 Provider 与 Model 配置管理接口。",
@@ -59,9 +74,6 @@ const EXTERNAL_OPENAPI_TAGS = [
     name: "OpenAI Compatible",
     description: "兼容 OpenAI Chat Completions 协议的 Agent 对话接口。",
   },
-];
-
-const WEB_OPENAPI_TAGS = [
   {
     name: "AgentConfig",
     description: "Agent 配置管理，包括列表查询、详情读取、创建、更新、删除和默认 Agent 设置。",
@@ -156,71 +168,109 @@ const WEB_OPENAPI_TAGS = [
   },
 ];
 
-const EXTERNAL_DOC_TAG_NAMES = EXTERNAL_OPENAPI_TAGS.map((tag) => tag.name);
-const WEB_DOC_TAG_NAMES = WEB_OPENAPI_TAGS.map((tag) => tag.name);
-
-const DOC_EXCLUDED_PATHS: Array<string | RegExp> = [
-  "/health",
-  API_OPENAPI_PATH,
-  API_OPENAPI_SPEC_PATH,
-  WEB_OPENAPI_PATH,
-  WEB_OPENAPI_SPEC_PATH,
-];
-
-/**
- * 创建对外 API 文档插件，避免在入口文件堆积 OpenAPI 细节。
- */
-export function createExternalOpenApiPlugin(version: string) {
-  return openapi({
-    documentation: {
-      info: {
-        title: "Fenix External API",
-        version,
-        description: "面向外部系统的 API 文档。",
-      },
-      tags: EXTERNAL_OPENAPI_TAGS,
-    },
-    provider: "scalar",
-    scalar: {
-      url: API_OPENAPI_SPEC_PATH,
-    },
-    mapJsonSchema: {
-      zod: z.toJSONSchema,
-    },
-    exclude: {
-      paths: DOC_EXCLUDED_PATHS,
-      tags: WEB_DOC_TAG_NAMES,
-    },
-    path: API_OPENAPI_PATH,
-    specPath: API_OPENAPI_SPEC_PATH,
-  });
+/** 文档归属只依赖最终挂载路径，对外文档统一应用排除规则。 */
+function belongsToDocument(path: string, audience: "external" | "web"): boolean {
+  if (audience === "web") return path.startsWith("/web/");
+  if (!path.startsWith("/api/")) return false;
+  for (const excludedPath of EXTERNAL_API_EXCLUDED_PATHS.keys()) {
+    if (path === excludedPath || path.startsWith(`${excludedPath}/`)) return false;
+  }
+  return true;
 }
 
-/**
- * 创建控制台 Web API 文档插件，保持入口只负责组装应用。
- */
-export function createWebOpenApiPlugin(version: string) {
-  return openapi({
-    documentation: {
-      info: {
-        title: "Fenix Web API",
-        version,
-        description: "控制台内部 /web 及平台接口文档。",
-      },
-      tags: WEB_OPENAPI_TAGS,
-    },
-    provider: "scalar",
-    scalar: {
-      url: WEB_OPENAPI_SPEC_PATH,
-    },
-    mapJsonSchema: {
-      zod: z.toJSONSchema,
-    },
-    exclude: {
-      paths: DOC_EXCLUDED_PATHS,
-      tags: EXTERNAL_DOC_TAG_NAMES,
-    },
-    path: WEB_OPENAPI_PATH,
-    specPath: WEB_OPENAPI_SPEC_PATH,
+/** 在文档生成前统一按完整路径筛选，标签元数据仅描述已收录接口的分组。 */
+function createOpenApiPlugin(version: string, audience: "external" | "web") {
+  const path = audience === "external" ? API_OPENAPI_PATH : WEB_OPENAPI_PATH;
+  const specPath = audience === "external" ? API_OPENAPI_SPEC_PATH : WEB_OPENAPI_SPEC_PATH;
+  const excludedPaths: string[] = [];
+  const tags: typeof OPENAPI_TAGS = [];
+  const plugin = new OpenApiRouteHost({ name: `fenix-openapi-${audience}` });
+
+  plugin.onBeforeHandle(() => {
+    const includedTags = new Set<string>();
+    excludedPaths.length = 0;
+    // openapi 1.4.15 的 exclude.paths 仅精确匹配字符串；请求时才能取得包含宿主前缀的完整路由。
+    for (const route of plugin.getDocumentRoutes()) {
+      if (!belongsToDocument(route.path, audience)) {
+        excludedPaths.push(route.path);
+      } else if (!route.hooks?.detail?.hide) {
+        for (const tag of route.hooks?.detail?.tags ?? []) includedTags.add(tag);
+      }
+    }
+    tags.length = 0;
+    tags.push(...OPENAPI_TAGS.filter((tag) => includedTags.has(tag.name)));
   });
+
+  // openapi 1.4 replaces explicit response media types when runtime schemas exist.
+  // Restore declared overrides after generation, retaining the generated JSON schema.
+  plugin.onAfterHandle(({ request, response }) => {
+    if (
+      new URL(request.url).pathname.replace(/\/$/, "") !== specPath ||
+      typeof response !== "object" ||
+      response === null ||
+      !("paths" in response)
+    )
+      return;
+    type DocumentResponse = { content?: Record<string, unknown>; [key: string]: unknown };
+    const spec = response as {
+      paths: Record<string, Record<string, { responses?: Record<string, DocumentResponse> }>>;
+    };
+    for (const route of plugin.getDocumentRoutes()) {
+      const overrides = route.hooks?.detail?.responses;
+      const operation = spec.paths[route.path.replace(/:([^/]+)/g, "{$1}")]?.[String(route.method).toLowerCase()];
+      if (!overrides || !operation?.responses) continue;
+      for (const [status, explicit] of Object.entries(overrides)) {
+        const generated = operation.responses[status];
+        if (!generated || typeof explicit !== "object" || explicit === null || !("content" in explicit)) continue;
+        if (typeof explicit.content !== "object" || explicit.content === null) continue;
+        operation.responses[status] = {
+          ...generated,
+          ...explicit,
+          content: { ...generated.content, ...explicit.content },
+        };
+      }
+    }
+  });
+
+  return plugin.use(
+    openapi({
+      documentation: {
+        info: {
+          title: audience === "external" ? "Fenix External API" : "Fenix Web API",
+          version,
+          description:
+            audience === "external" ? "面向外部系统的 API 文档，不包含系统管理接口。" : "控制台内部 /web 接口文档。",
+        },
+        tags,
+        ...(audience === "external"
+          ? {
+              components: { securitySchemes: { BearerAuth: { type: "http" as const, scheme: "bearer" } } },
+              security: [{ BearerAuth: [] }],
+            }
+          : {}),
+      },
+      provider: "scalar",
+      scalar: {
+        url: specPath,
+      },
+      mapJsonSchema: {
+        zod: z.toJSONSchema,
+      },
+      exclude: {
+        paths: excludedPaths,
+      },
+      path,
+      specPath,
+    }),
+  );
+}
+
+/** 创建仅收录普通 /api 接口的对外文档。 */
+export function createExternalOpenApiPlugin(version: string) {
+  return createOpenApiPlugin(version, "external");
+}
+
+/** 创建仅收录 /web 接口的控制台文档。 */
+export function createWebOpenApiPlugin(version: string) {
+  return createOpenApiPlugin(version, "web");
 }

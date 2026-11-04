@@ -25,17 +25,40 @@ import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
  */
 export const errorPluginStub = new Elysia({ name: "test-error-handler" }).onError(
   { as: "global" },
-  ({ error, set }) => {
+  ({ error, code, request, set }) => {
+    const native = new URL(request.url).pathname === "/api/v1/chat/completions";
+    const format = (status: number, code: string, message: string) =>
+      native
+        ? {
+            error: {
+              type:
+                status === 401
+                  ? "authentication_error"
+                  : status === 429
+                    ? "rate_limit_error"
+                    : status >= 500
+                      ? "server_error"
+                      : "invalid_request_error",
+              code,
+              message,
+              param: null,
+            },
+          }
+        : { error: { type: code, message } };
+    if (code === "VALIDATION" && native) {
+      set.status = 400;
+      return format(400, "VALIDATION_ERROR", "Invalid request");
+    }
     if (error instanceof AppError) {
       set.status = error.statusCode;
-      return { error: { type: error.code, message: error.message } };
+      return format(error.statusCode, error.code, error.message);
     }
     if (error instanceof OrchestrationError) {
       const { status, message } = mapOrchestrationErrorToHttp(error);
       set.status = status;
-      return { error: { type: error.code, message } };
+      return format(status, error.code, message);
     }
     set.status = 500;
-    return { error: { type: "INTERNAL_ERROR", message: "Internal server error" } };
+    return format(500, "INTERNAL_ERROR", "Internal server error");
   },
 );

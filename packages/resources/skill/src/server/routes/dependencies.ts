@@ -12,7 +12,7 @@
 import type { AnyElysia } from "elysia";
 
 /**
- * `/api/skills`（对外已发布合同）与 `/web/config/skills`（控制台）共用的注入依赖。
+ * `/api/v1/skills`（对外已发布合同）与 `/web/config/skills`（控制台）共用的注入依赖。
  *
  * 两处都用宿主的同一个 `authGuardPlugin` 的 `sessionAuth` 宏：cookie → Environment Secret →
  * API Key 的解析顺序、以及「已认证但缺组织上下文」这类边界都在宿主实现里，资源包再声明一个形状

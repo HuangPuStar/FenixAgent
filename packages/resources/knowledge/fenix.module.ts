@@ -9,7 +9,7 @@ import { z } from "zod/v4";
  * （`src/server/services/knowledge-base.ts`、`src/server/services/knowledge-upload.ts`、
  * `src/server/repositories/knowledge-base.ts`）与 RAGFlow provider 适配
  * （`src/server/services/knowledge-provider/`），HTTP 面是 `/web/knowledgeBases*` 与
- * `/api/knowledge-bases`。装配面上的消费者是宿主 `apps/server`（挂载两条路由、启动期调用
+ * `/api/v1/knowledge-bases`。装配面上的消费者是宿主 `apps/server`（挂载两条路由、启动期调用
  * `checkRagFlowHealth()`、从 env 构造 RAGFlow 配置）与 `@fenix/agent-runtime`（Agent 运行时按绑定检索
  * 与读取资源）。
  *
@@ -30,7 +30,7 @@ import { z } from "zod/v4";
  * workspace 依赖指向上游，方向必须由它们在各自 manifest 里写 `dependsOn: ["knowledge"]`。本包是资源装配
  * 图里的叶子，反向声明会与依赖矩阵和装配拓扑序冲突。
  *
- * 声明 `contributions`（1.5e）：`/web/knowledge-bases` 与 `/api/knowledge-bases` 的路由实例由本模块以惰性
+ * 声明 `contributions`（1.5e）：`/web/knowledge-bases` 与 `/api/v1/knowledge-bases` 的路由实例由本模块以惰性
  * 构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径
  * 是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry
  * 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。两条路由共用同一份会话守卫（`/api` 面同样接受

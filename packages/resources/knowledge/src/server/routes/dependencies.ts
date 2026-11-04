@@ -9,7 +9,7 @@
  * active organization 解析）是同一份实例，否则同一进程会出现两套互不可见的认证状态，且 Elysia 会按
  * plugin `name` 去重让先构造的一方静默生效。
  *
- * `/web/knowledgeBases*`（20 条控制台端点）与 `/api/knowledge-bases`（对外稳定接口）共用同一份会话
+ * `/web/knowledgeBases*`（20 条控制台端点）与 `/api/v1/knowledge-bases`（对外稳定接口）共用同一份会话
  * 守卫：两者的 `sessionAuth` 宏与 `store.authContext` 都由它写入，因此只有一个依赖接口。本包没有系统
  * API key 面，不声明 `systemApiGuardPlugin`。
  */

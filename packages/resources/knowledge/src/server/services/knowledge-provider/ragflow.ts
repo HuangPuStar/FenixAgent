@@ -1,4 +1,5 @@
 import { getKnowledgeConfig } from "../../config";
+import { KnowledgeProviderHttpError } from "./http-error";
 import type {
   ConfiguredModelInfo,
   EmbeddingModelOption,
@@ -104,7 +105,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       const response = await fetch(url, {
         ...init,
         headers,
-        signal: controller.signal,
+        signal: init?.signal ? AbortSignal.any([controller.signal, init.signal]) : controller.signal,
       });
 
       let payload: unknown = null;
@@ -128,7 +129,10 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       if (!response.ok) {
         const responseMessage = isRagFlowResponse(payload) ? payload.message?.trim() : "";
         const message = responseMessage || `HTTP ${response.status}`;
-        throw new Error(`RagFlow request failed (status=${response.status}): ${message}`);
+        throw new KnowledgeProviderHttpError(
+          response.status,
+          `RagFlow request failed (status=${response.status}): ${message}`,
+        );
       }
 
       // DELETE 类接口有些 RagFlow 部署返回 204/空响应，视作 HTTP 层成功。
@@ -264,7 +268,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
   }
 
   /** 获取单个数据集详情（用于导入时同步嵌入模型、分块方法等配置） */
-  async getDataset(input: { datasetId: string; apiKey?: string }): Promise<{
+  async getDataset(input: { datasetId: string; apiKey?: string; signal?: AbortSignal }): Promise<{
     embeddingModel?: string | null;
     chunkMethod?: string | null;
     parseMethod?: string | null;
@@ -278,7 +282,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           parser_id?: string;
           parser_config?: { name?: string; pipeline_id?: string };
         }>
-      >(`/api/v1/datasets/${input.datasetId}`, { method: "GET" }, input.apiKey);
+      >(`/api/v1/datasets/${input.datasetId}`, { method: "GET", signal: input.signal }, input.apiKey);
       const ds = payload.data;
       if (!ds) return null;
 
@@ -306,8 +310,8 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         parseMethod,
       };
     } catch (err) {
-      console.error("[ragflow] getDataset failed:", err);
-      return null;
+      if (err instanceof KnowledgeProviderHttpError && err.status === 404) return null;
+      throw err;
     }
   }
 

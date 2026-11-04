@@ -18,7 +18,7 @@ export interface WebAgentConfigRouteDependencies {
   readonly authGuardPlugin: AnyElysia;
 }
 
-/** `/api/agents` 对外稳定接口的宿主注入依赖（与 `/web` 共用会话守卫）。 */
+/** `/api/v1/agents` 对外稳定接口的宿主注入依赖（与 `/web` 共用会话守卫）。 */
 export type ApiAgentConfigRouteDependencies = WebAgentConfigRouteDependencies;
 
 /** `/web/config/agents` 的附加依赖：默认 Agent 偏好落在身份族的 `user_config` 表，由宿主适配。 */

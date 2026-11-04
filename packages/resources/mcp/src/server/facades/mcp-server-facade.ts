@@ -24,7 +24,7 @@ import type { McpServerService } from "../services/mcp-server-service";
  * 组织、角色或 `visibility` 规则。
  *
  * 名称与配置结构的领域校验也收口在这里（`assertCreatable` / `assertValidConfig`）而不是各协议 route：
- * `/web` 与 `/api` 是同一资源的两个入口，校验写在 route 层时新增入口必然漏检——`/api/mcp` 历史上就
+ * `/web` 与 `/api` 是同一资源的两个入口，校验写在 route 层时新增入口必然漏检——`/api/v1/mcp-servers` 历史上就
  * 因此绕过了 `validateMcpConfig`，写入过 `/web` 拒收的配置。
  *
  * 平台抛出的 {@link ResourceAccessDeniedError} 在这里映射为对外 403，其余错误原样上抛：存储或装配
@@ -65,7 +65,7 @@ export interface McpServerUpdateOptions {
  * 路由与其它调用方只依赖本接口，不依赖 `McpServerFacade` 的继承结构或私有依赖；测试因此可以提供
  * 实现而不构造真类（见 `@fenix/resource-mcp/server/testing`）。
  *
- * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 与 `/api/mcp/:id` 用资源 ID 定位，名称入口供内部配置解析；两者的授权与可见性判定完全一致。
+ * 名称 / 资源键与资源 ID 两组入口并存是协议需要：`/web` 与 `/api/v1/mcp-servers/:id` 用资源 ID 定位，名称入口供内部配置解析；两者的授权与可见性判定完全一致。
  */
 export interface McpServerFacadeApi {
   list(
@@ -135,7 +135,7 @@ export class McpServerFacade extends AuthorizedResourceFacade implements McpServ
     return row ? this.withAccess(actor, row) : undefined;
   }
 
-  /** 详情/读取：按资源 ID（对外 `/api/mcp/:id`）。 */
+  /** 详情/读取：按资源 ID（对外 `/api/v1/mcp-servers/:id`）。 */
   async getById(actor: ActorContext, resourceId: string): Promise<AuthorizedMcpServer | undefined> {
     const access = await this.listConstraint(actor, "read");
     const row = await this.service.findById({ access, resourceId });

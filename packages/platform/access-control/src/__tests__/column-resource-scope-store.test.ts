@@ -20,17 +20,20 @@ const database = new Proxy(
 ) as unknown as AccessControlDatabase;
 
 function createStore(): ColumnResourceScopeStore {
-  return new ColumnResourceScopeStore(database, [
-    {
-      resourceType: "scope-store-probe",
-      table: probeTable,
-      columns: {
-        id: probeTable.id,
-        organizationId: probeTable.organizationId,
-        visibility: probeTable.visibility,
+  return new ColumnResourceScopeStore(
+    () => database,
+    [
+      {
+        resourceType: "scope-store-probe",
+        table: probeTable,
+        columns: {
+          id: probeTable.id,
+          organizationId: probeTable.organizationId,
+          visibility: probeTable.visibility,
+        },
       },
-    },
-  ]);
+    ],
+  );
 }
 
 // 已注册资源随 INSERT 写入范围，初始化仅校验绑定且不访问数据库。

@@ -1,22 +1,7 @@
-/**
- * 外部 ACP 客户端 Relay 薄转发端点（/acp/relay/:agentId）实现。
- *
- * 背景（D-P1.1）：编排域重构删除旧 /acp/relay 端点时只审计了前端消费者，
- * 未检查对外 connect API 契约——`POST /api/agents/:id/instances/connect` 返回的
- * `relay.wsUrl` 仍指向该端点，外部客户端 WS 升级直接 404。
- *
- * 本模块恢复该端点，但严格保持「薄转发」边界：
- * - 客户端消息（ACP JSON-RPC 或 acp-link 事件）原样透传到 core relay handle，
- *   不实现/复制任何 session/new、session/load、session/prompt 协议流程；
- * - 不 spawn 实例——实例启动语义由 connect API（spawnInstanceViaController）负责，
- *   端点只连接「已 running」的实例，避免与编排域启动路径产生第二套入口；
- * - 不做 YJS 聚合与 cwd 注入（外部客户端自行管理 cwd，demo 的 SESSION_CWD 即此用途）。
- *
- * 依赖注入模式仿 setApiInstanceDeps / WsLifecycleDependencies：路由层只做认证，
- * 业务逻辑全部可单测。
- */
+/** Authenticated external ACP forwarding; workspace and Agent use remain server controlled. */
 
 import { randomUUID } from "node:crypto";
+import { extractJsonRpc } from "@fenix/chat-channel";
 import { log, error as logError, requestAls } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import { isOwnedEnvironment } from "../../../facades/environment-access-facade";
@@ -29,17 +14,21 @@ import type { AuthContext } from "../../../types/auth";
 import type { WsConnection } from "../../../types/ws-types";
 import { type EnvironmentRecord, environmentRepo } from "../../repositories";
 import { type AgentInstanceRecord, agentInstanceRepo } from "../../repositories/agent-instance";
+import { getAgentConfigLookupPort } from "../../services/agent-config-lookup-port";
 import {
   getRunningInstancesByEnvironment,
   type SpawnedInstance,
 } from "../../services/agent-instance-runtime-projection";
+import { resolveWorkspacePath } from "../../services/workspace-resolver";
 import { connectAgentRelay, type FullRelayHandle } from "../agent-relay";
 import { InboundMessageQueue } from "../inbound-message-queue";
 
 /** handler 实际依赖的 environment 字段；收窄后测试只需构造最小对象 */
-export type ExternalRelayEnvironment = Pick<EnvironmentRecord, "id" | "organizationId" | "userId">;
+export type ExternalRelayEnvironment = Pick<EnvironmentRecord, "id" | "organizationId" | "userId" | "agentConfigId">;
 
 export interface ExternalRelayDeps {
+  canUseAgent: (agentConfigId: string, owner: Pick<AuthContext, "organizationId" | "userId">) => Promise<boolean>;
+  resolveWorkspacePath: typeof resolveWorkspacePath;
   getEnvironmentById: (id: string) => Promise<ExternalRelayEnvironment | null | undefined>;
   getRunningInstancesByEnvironment: (envId: string) => SpawnedInstance[];
   getOwnedInstance: (instanceId: string, userId: string) => Promise<AgentInstanceRecord | undefined>;
@@ -50,6 +39,9 @@ export interface ExternalRelayDeps {
 }
 
 const defaultDeps: ExternalRelayDeps = {
+  canUseAgent: async (agentConfigId, owner) =>
+    Boolean(await getAgentConfigLookupPort().findVisibleAgentConfig({ ...owner, agentConfigId, action: "use" })),
+  resolveWorkspacePath,
   getEnvironmentById: (id) => environmentRepo.getById(id),
   getRunningInstancesByEnvironment,
   getOwnedInstance: (id, userId) => agentInstanceRepo.findOwnedById(id, userId),
@@ -80,6 +72,7 @@ interface ExternalRelayEntry {
   /** onMessage 注销函数；close 时调用，防止 listener 泄漏 */
   unsub: (() => void) | null;
   instanceId: string;
+  cwd: string;
   /** 连接建立时的环境 id（权威归属回查键） */
   agentId: string;
   /** 连接时的认证上下文（open 时路由层认证结果，用于归属校验快照） */
@@ -126,6 +119,20 @@ function sendToRelayWs(ws: WsConnection, message: Record<string, unknown>): void
   }
 }
 
+/** Reserve bounded input before asynchronous authentication starts. */
+export function prepareExternalRelayOpen(ws: WsConnection, relayWsId: string): void {
+  if (pendingRelayMessages.has(relayWsId)) return;
+  const pending = new InboundMessageQueue(
+    "unauthenticated",
+    () => {
+      log("[External-Relay] inbound message budget exceeded", { relayWsId });
+      ws.close(1008, "inbound queue limit");
+    },
+    (error) => logError("[External-Relay] pending message failed", error, { relayWsId }),
+  );
+  pendingRelayMessages.set(relayWsId, pending);
+}
+
 /**
  * 处理外部客户端 relay 连接建立。路由层已完成认证（authCtx 非 null 才调用），
  * 此处完成归属校验、实例解析与 relay 连接。
@@ -145,16 +152,8 @@ export async function handleExternalRelayOpen(
   // 本连接的后续诊断日志全部携带它，与 relayWsId 一同构成「谁在什么时候连了哪个实例」的追踪链。
   const requestId = requestAls.getStore()?.requestId ?? randomUUID();
 
-  // 在任何 await 之前注册 pending buffer，避免握手竞态丢消息
-  const pending = new InboundMessageQueue(
-    `${authCtx.organizationId}:${authCtx.userId}`,
-    () => {
-      log("[External-Relay] inbound message budget exceeded", { relayWsId, requestId });
-      ws.close(1008, "inbound queue limit");
-    },
-    (error) => logError("[External-Relay] pending message failed", error, { requestId }),
-  );
-  pendingRelayMessages.set(relayWsId, pending);
+  prepareExternalRelayOpen(ws, relayWsId);
+  const pending = pendingRelayMessages.get(relayWsId)!;
 
   try {
     const env = await deps.getEnvironmentById(agentId);
@@ -164,6 +163,11 @@ export async function handleExternalRelayOpen(
       return;
     }
     if (!isOwnedEnvironment(env, authCtx.organizationId, authCtx.userId)) {
+      ws.close(4003, "unauthorized");
+      return;
+    }
+
+    if (!env.agentConfigId || !(await deps.canUseAgent(env.agentConfigId, authCtx))) {
       ws.close(4003, "unauthorized");
       return;
     }
@@ -189,7 +193,12 @@ export async function handleExternalRelayOpen(
     }
 
     const instance = await deps.getOwnedInstance(instanceId, authCtx.userId);
-    if (!instance || instance.ownerUserId !== authCtx.userId || instance.environmentId !== env.id) {
+    if (
+      !instance ||
+      instance.ownerUserId !== authCtx.userId ||
+      instance.environmentId !== env.id ||
+      instance.creationSource === "workflow"
+    ) {
       ws.close(4003, "unauthorized");
       return;
     }
@@ -237,6 +246,7 @@ export async function handleExternalRelayOpen(
       relayHandle: full,
       unsub: null,
       instanceId,
+      cwd: deps.resolveWorkspacePath(authCtx.organizationId, authCtx.userId, env.id),
       agentId,
       authContext: { organizationId: authCtx.organizationId, userId: authCtx.userId },
       requestId,
@@ -314,7 +324,7 @@ export async function handleExternalRelayOpen(
 
 /**
  * 转发客户端消息到 agent relay；open 异步未完成时缓存等待 flush。
- * ACP JSON-RPC 消息（无 type 字段）与 acp-link 事件原样透传，不做任何协议加工。
+ * ACP 仍使用既有协议，仅覆盖会话动作的 cwd，禁止客户端改变认证工作区。
  */
 export function handleExternalRelayMessage(
   ws: WsConnection,
@@ -354,7 +364,8 @@ export function handleExternalRelayMessage(
   const entry = entries.get(relayWsId);
   if (!entry) return;
   try {
-    entry.relayHandle.send(parsed as { type: string; payload?: unknown });
+    const message = injectAuthenticatedCwd(parsed, entry.cwd);
+    entry.relayHandle.send(message as { type: string; payload?: unknown });
     deps.touchActivity(entry.instanceId, parsed);
   } catch (err) {
     logError("[External-Relay] relay send failed", err, { requestId: entry.requestId });
@@ -382,4 +393,17 @@ export function handleExternalRelayClose(_ws: WsConnection, relayWsId: string): 
   log(`[External-Relay] closed: relayWsId=${relayWsId} instanceId=${entry.instanceId}`, {
     requestId: entry.requestId,
   });
+}
+
+/** Normalize ACP envelopes for the peer and override cwd on workspace-bearing actions. */
+function injectAuthenticatedCwd(message: Record<string, unknown>, cwd: string): Record<string, unknown> {
+  const rpc = extractJsonRpc(message);
+  if (!rpc) return message;
+  if (
+    rpc.jsonrpc !== "2.0" ||
+    !["session/new", "session/load", "session/list", "session/resume"].includes(String(rpc.method))
+  )
+    return rpc;
+  const params = typeof rpc.params === "object" && rpc.params !== null ? rpc.params : {};
+  return { ...rpc, params: { ...params, cwd } };
 }

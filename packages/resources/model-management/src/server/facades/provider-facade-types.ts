@@ -61,6 +61,8 @@ export interface ProviderModelWriteResult {
  * 路由与其它调用方只依赖本接口，不依赖 `ProviderFacade` 的继承结构或私有依赖。
  */
 export interface ProviderFacadeApi {
+  /** Authorize a model row through its Provider before binding it. */
+  requireModelForBinding(actor: ActorContext, id: string): Promise<void>;
   list(
     actor: ActorContext,
     options?: { limit?: number; offset?: number },
@@ -124,6 +126,12 @@ export interface ProviderFacadeApi {
     options?: { limit?: number; offset?: number },
   ): Promise<AuthorizedProviderModelsPage | undefined>;
   /** 新增 Model 子行；需要 Provider 的 `update` 动作。 */
+  createModel(
+    actor: ActorContext,
+    ref: ProviderRef,
+    modelId: string,
+    data: ModelWriteData,
+  ): Promise<ProviderModelWriteResult>;
   addModel(
     actor: ActorContext,
     ref: ProviderRef,

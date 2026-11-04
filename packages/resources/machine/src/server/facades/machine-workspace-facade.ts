@@ -1,5 +1,5 @@
 /**
- * `/api/environments/:environmentId/workspace/files` 的资源应用 Facade。
+ * `/api/v1/environments/:environmentId/workspace/files` 的资源应用 Facade。
  *
  * 迁移前的形态是：路由把宿主认证上下文交给 `services/api-workspace`，由领域服务自己调用
  * `getOwnedEnvironment` 做归属校验。授权止于 Facade（§3.2、§4.1），因此这里把「环境属于谁」的判定
@@ -13,8 +13,16 @@
  * 状态码与错误信封；本层不吞错、不改写。
  */
 
+import { NotFoundError } from "@fenix/platform-sdk";
 import { getOwnedEnvironment } from "../environment-port";
-import { uploadWorkspaceFiles, type WorkspaceFileUploadResult } from "../services/api-workspace";
+import {
+  downloadWorkspaceFile,
+  getWorkspaceFileTree,
+  uploadWorkspaceFiles,
+  type WorkspaceFileDownloadResult,
+  type WorkspaceFileTreeResult,
+  type WorkspaceFileUploadResult,
+} from "../services/api-workspace";
 
 /**
  * 本 Facade 接受的最小主体投影。
@@ -26,20 +34,47 @@ export interface MachineWorkspaceActor {
   readonly userId: string;
 }
 
-/** 工作区上传的应用接口（Facade 的契约面）。 */
+/** 外部工作区文件操作的应用接口。 */
 export interface MachineWorkspaceFacadeApi {
+  /** 校验组织与属主后查询完整文件树。 */
+  tree(actor: MachineWorkspaceActor, environmentId: string): Promise<WorkspaceFileTreeResult>;
+  /** 校验组织与属主后读取单个文件。 */
+  download(actor: MachineWorkspaceActor, environmentId: string, path: string): Promise<WorkspaceFileDownloadResult>;
   /**
    * 把 multipart 文件写入 actor 可见的 environment workspace。
    *
    * 校验顺序与迁移前一致：先归属、后解析表单；环境不可见时不会读取任何文件内容。
    */
-  upload(actor: MachineWorkspaceActor, environmentId: string, formData: FormData): Promise<WorkspaceFileUploadResult>;
+  upload(
+    actor: MachineWorkspaceActor,
+    environmentId: string,
+    formData: FormData | (() => Promise<FormData>),
+  ): Promise<WorkspaceFileUploadResult>;
+}
+
+/** 外部读取仅面向本人工作区，不继承历史 ACP / Bridge 环境的组织内共享访问。 */
+async function requireWorkspaceOwner(actor: MachineWorkspaceActor, environmentId: string): Promise<void> {
+  const environment = await getOwnedEnvironment(environmentId, actor.organizationId, actor.userId);
+  if (environment.organizationId !== actor.organizationId || environment.userId !== actor.userId)
+    throw new NotFoundError("Environment not found");
 }
 
 /** 进程级无状态实现：Facade 不持有连接、缓存或 actor，每次调用只用入参推导范围。 */
 export const machineWorkspaceFacade: MachineWorkspaceFacadeApi = {
+  async tree(actor, environmentId) {
+    await requireWorkspaceOwner(actor, environmentId);
+    return getWorkspaceFileTree(environmentId, actor.userId);
+  },
+  async download(actor, environmentId, path) {
+    await requireWorkspaceOwner(actor, environmentId);
+    return downloadWorkspaceFile(environmentId, path, actor.userId);
+  },
   async upload(actor, environmentId, formData) {
     await getOwnedEnvironment(environmentId, actor.organizationId, actor.userId);
-    return uploadWorkspaceFiles(environmentId, formData);
+    return uploadWorkspaceFiles(
+      environmentId,
+      typeof formData === "function" ? await formData() : formData,
+      actor.userId,
+    );
   },
 };

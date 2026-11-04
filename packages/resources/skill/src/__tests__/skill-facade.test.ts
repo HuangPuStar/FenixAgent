@@ -536,3 +536,44 @@ describe("SkillFacade 授权映射", () => {
     expect(item).toEqual(authorizedSkill({ visibility: "public", path: skillContentPath("org-1", "demo") }));
   });
 });
+
+// DELETE 行已删但目录尚未清理时，同名创建必须等待，避免新文件被旧删除清理掉。
+test("delete and same-name create share the complete content mutation lock", async () => {
+  mkdirSync(join(skillRoot, "org-1", "demo"), { recursive: true });
+  writeFileSync(skillContentPath("org-1", "demo"), "# Old");
+  let deleted!: () => void;
+  const removed = new Promise<void>((resolve) => {
+    deleted = resolve;
+  });
+  let resume!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  let created = false;
+  const { facade } = buildFacade({
+    service: {
+      findByName: async () => scopedSkill(),
+      findById: async ({ resourceId }) => scopedSkill({ id: resourceId }),
+      remove: async () => {
+        deleted();
+        await gate;
+        return true;
+      },
+      create: async () => {
+        created = true;
+        return "new-skill";
+      },
+    },
+  });
+  const deletion = facade.remove(actor, "demo");
+  await removed;
+  const creation = facade.create(actor, { name: "demo", data: { description: "new", content: "# New" } });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(created).toBe(false);
+  } finally {
+    resume();
+    await Promise.allSettled([deletion, creation]);
+  }
+  expect(readContent("org-1", "demo")).toContain("# New");
+});

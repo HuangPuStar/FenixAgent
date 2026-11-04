@@ -7,7 +7,7 @@ import { z } from "zod/v4";
  *
  * 与自研 workflow 引擎并存的第二个工作流模块：控制台经 iframe 嵌入上游工作流引擎 画布，画布请求经
  * `/workflow-canvas/bff/*` 透传给 workflow-v2，由本模块以**平台身份**转接上游后端。领域规则、持久化与
- * HTTP 交付物都在本包服务端：控制台面 `/web/workflow-v2/*`、对外触发面 `/api/workflow-v2/*`、画布透传面
+ * HTTP 交付物都在本包服务端：控制台面 `/web/workflow-v2/*`、对外触发面 `/api/v1/workflow-v2/*`、画布透传面
  * `/workflow-canvas/bff/*`、画布静态反代 `/workflow-canvas/*`。契约见
  * `docs/design/2026-09-29-workflow-v2-interface-freeze.md`（下称冻结）。
  *
@@ -230,7 +230,7 @@ export const moduleManifest = {
       secret: false,
       restartRequired: true,
       description:
-        "对外触发面（`POST /api/workflow-v2/workflows/:id/run`）的令牌桶容量与每分钟补充量，按**调用方身份**" +
+        "对外触发面（`POST /api/v1/workflow-v2/workflows/:id/run`）的令牌桶容量与每分钟补充量，按**调用方身份**" +
         "（API Key 恢复出的用户）计数；默认 60。外部系统重试会产生多次真实运行（上游没有幂等键），因此这里的" +
         "阈值是成本闸门而不只是保护阈值——调高前先确认上游配额与自身成本承受度。",
     },

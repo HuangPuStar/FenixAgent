@@ -10,6 +10,7 @@ import {
 } from "@fenix/platform-sdk";
 import type { ModelRepository, ModelRow, ModelWriteData } from "../repositories/model-resource";
 import { PROVIDER_LIST_ORDER, type ProviderWriteData, type ScopedProviderRow } from "../repositories/provider-resource";
+import { invalidateAvailableModelsCache } from "../services/available-models-cache";
 
 /**
  * Provider 的资源应用 Facade：授权编排 + 「Model 跟随 Provider」的跨资源编排。
@@ -63,6 +64,13 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     options: AuthorizedResourceFacadeOptions,
   ) {
     super(options);
+  }
+
+  /** Model binding inherits Provider read authorization and never exposes credentials. */
+  async requireModelForBinding(actor: ActorContext, id: string): Promise<void> {
+    const row = await this.deps.models.findRowUnscoped({ id });
+    if (!row) throw new NotFoundError("Model not found");
+    await this.requireVisible(actor, { by: "resourceId", value: row.providerId });
   }
 
   /** 列表：授权谓词、业务排序与分页都下推到 SQL；`total` 与 `items` 共用同一可见集合。 */
@@ -126,6 +134,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
       await this.requireUserManaged(existing, GATEWAY_PROVIDER_MESSAGE);
       await this.requireAction(actor, "update", existing.id);
       await this.write(actor, existing.id, data, options, name);
+      invalidateAvailableModelsCache();
       return this.reload(actor, existing.id, name);
     }
 
@@ -143,6 +152,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     if (resourceId === undefined) {
       throw new Error("Provider 创建未返回资源 ID");
     }
+    invalidateAvailableModelsCache();
     return this.reload(actor, resourceId, name);
   }
 
@@ -168,6 +178,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     if (resourceId === undefined) {
       throw new ConflictError(`Provider '${name}' already exists`);
     }
+    invalidateAvailableModelsCache();
     return this.reload(actor, resourceId, name);
   }
 
@@ -182,6 +193,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     await this.requireUserManaged(row, GATEWAY_PROVIDER_MESSAGE);
     await this.requireAction(actor, "update", row.id);
     await this.write(actor, row.id, data, options, resourceId);
+    invalidateAvailableModelsCache();
     return this.reload(actor, row.id, resourceId);
   }
 
@@ -192,6 +204,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     await this.requireAction(actor, "delete", row.id);
 
     const deleted = await this.deps.service.remove({ resourceId: row.id });
+    invalidateAvailableModelsCache();
     if (!deleted) throw new NotFoundError(`Provider '${ref.value}' not found`);
   }
 
@@ -236,6 +249,29 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     if (created === undefined) {
       throw new Error("Model 创建未返回资源 ID");
     }
+    invalidateAvailableModelsCache();
+    return { id: created, provider: await this.reload(actor, provider.id, ref.value), modelId };
+  }
+
+  /** Strict model creation never overwrites a concurrently created row. */
+  async createModel(
+    actor: ActorContext,
+    ref: ProviderRef,
+    modelId: string,
+    data: ModelWriteData,
+  ): Promise<ProviderModelWriteResult> {
+    const provider = await this.requireWritableProvider(actor, ref);
+    const created = await this.deps.models.upsert({
+      providerId: provider.id,
+      organizationId: provider.organizationId,
+      modelId,
+      data,
+      rejectConflict: true,
+    });
+    if (created === undefined) {
+      throw new ConflictError("Model already exists");
+    }
+    invalidateAvailableModelsCache();
     return { id: created, provider: await this.reload(actor, provider.id, ref.value), modelId };
   }
 
@@ -264,6 +300,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
           });
     if (!updated) throw new NotFoundError(`Model '${modelRef.value}' not found`);
 
+    invalidateAvailableModelsCache();
     return { id: model.id, provider: await this.reload(actor, provider.id, ref.value), modelId: model.modelId };
   }
 
@@ -285,6 +322,7 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
           });
     if (!deleted) throw new NotFoundError(`Model '${modelRef.value}' not found`);
 
+    invalidateAvailableModelsCache();
     return { id: model.id, provider: await this.reload(actor, provider.id, ref.value), modelId: model.modelId };
   }
 

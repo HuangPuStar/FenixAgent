@@ -53,6 +53,7 @@ export interface AgentConfigLookupPort {
   /** 按真实用户身份的组织可见性读（环境绑定校验、实例自动创建）。 */
   findVisibleAgentConfig(input: {
     agentConfigId: string;
+    action?: "read" | "use";
     organizationId: string;
     userId: string;
   }): Promise<AgentConfigLookupResult | null>;

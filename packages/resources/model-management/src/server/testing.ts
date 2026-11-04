@@ -68,6 +68,7 @@ function unstubbed(name: string): () => never {
 
 export function createStubProviderFacade(overrides: Partial<ProviderFacadeApi> = {}): ProviderFacadeApi {
   return {
+    requireModelForBinding: unstubbed("facade.requireModelForBinding"),
     list: unstubbed("facade.list"),
     get: unstubbed("facade.get"),
     getById: unstubbed("facade.getById"),
@@ -78,6 +79,7 @@ export function createStubProviderFacade(overrides: Partial<ProviderFacadeApi> =
     saveById: unstubbed("facade.saveById"),
     remove: unstubbed("facade.remove"),
     listModels: unstubbed("facade.listModels"),
+    createModel: unstubbed("facade.createModel"),
     addModel: unstubbed("facade.addModel"),
     updateModel: unstubbed("facade.updateModel"),
     removeModel: unstubbed("facade.removeModel"),

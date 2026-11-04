@@ -5,7 +5,7 @@ import { type AgentInstanceRecord, agentInstanceRepo } from "../repositories/age
 /**
  * 查找或创建具名 `api` 持久实例。
  *
- * IM 每聊天一个专属实例（`im-<conversationId>`，规格 §11.20 / §11.23），与 HTTP 的 `api/primary` 分开。
+ * IM 每聊天一个专属实例（`im-<conversationId>`，规格 §11.20 / §11.23），与 HTTP 的 `api/api` 分开。
  * `creation_source` 固定 `api`，生命周期沿用既有空闲回收，不引入 IM 专属 TTL。
  */
 export function findOrCreateNamedApiInstance(input: {

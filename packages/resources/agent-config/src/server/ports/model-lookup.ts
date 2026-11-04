@@ -1,3 +1,5 @@
+import type { ActorContext } from "@fenix/platform-sdk";
+
 /**
  * 模型展示标签的窄端口。
  *
@@ -16,6 +18,8 @@
 
 /** 模型展示标签的只读端口；由宿主装配注入，包内不提供默认实现。 */
 export interface ModelLookupPort {
+  /** 模型绑定经 owner 的授权入口校验，避免反向依赖形成装配环。 */
+  requireModelForBinding(actor: ActorContext, modelId: string): Promise<unknown>;
   /** 按 model id 批量取展示标签；空入参返回空 Map，缺失的 id 不出现在结果里。 */
   findModelLabelsByIds(ids: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }

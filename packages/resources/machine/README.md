@@ -52,7 +52,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
 - **路由**（`src/server/routes/**`）：`web/registry.ts`（`/web/registry/machines[/:id][/events]`）、
   `web/fs.ts`（`/web/environments/:id/fs/*`：tree / list / read / write / upload / delete / mkdir / rename /
   batch / download-zip）、`web/file-events.ts`（WS `/web/file-events`）与 `api/workspaces.ts`
-  （`/api/environments/:environmentId/workspace/files`）。依赖类型在 `routes/dependencies.ts`（只放类型，
+  （`/api/v1/environments/:environmentId/workspace/files`）。依赖类型在 `routes/dependencies.ts`（只放类型，
   避免「入口 → 工厂 → 入口」的循环导入）。
 - **注册表领域**（`src/server/services/registry.ts`）：管理面 `listMachines` / `getMachine` / `createMachine` /
   `updateMachine` / `deleteMachine` / `listEvents`；连接侧 `registerMachine` 只激活运行时状态（未预创建的机器
@@ -304,7 +304,7 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
   （逐个文件跑 `grep -c "getMachineDatabase("` → 26 + 1 + 1），其中 `registry.ts` 一个文件 26 处——B7 前为
   30 处与 28 处，差额是 `registry.ts` 里直读 / 直写 `agent_config.machineId` 的两处改为调用 owner 入口。
   收敛到 repository 属 §1.4 的边界收敛范围；新增数据库操作一律进 repository，不要沿这条路径继续扩散。
-- **`/api` 工作区上传与 `/web` 文件上传仍是同一个动作的两套实现（§3.1 的薄 adapter 未收敛）**：两条链路的
+- **`/api` 工作区上传与 `/web` 文件上传仍有重复的领域执行逻辑**：两条链路的
   业务动作相同（把 multipart 文件写进某个 environment 的 workspace），等价部分为「经 `resolveWorkspacePath`
   解析同一个 workspace 根 + 拒绝 `..` 越界 + 落盘前 symlink 防护」，但**对外契约与语义有实质差异**，在拿到
   裁定前不得强行合并（合并任一侧都会改变已发布 `/api` 合同的可见行为）：
@@ -328,13 +328,11 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
      `FileServiceError.type` 映射）。
   - **owner**：两面都在本包（`src/server/services/api-workspace.ts` 与
     `agent-file-service.ts` + `file-backends.ts`）；其中 `/api` 一面是已发布的外部合同。
-  - **现状依据**：`docs/arch/12-files.md` §2.4 表注明「`/api/*` 文件面（`api-workspace.ts`）收敛到本契约时
-    另行评估」、§10 二期清单列「`/api/*` 第三套实现的收敛评估」；按 §3.1，已发布 `/api` 合同的变更或退役必须
-    经独立评审、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
-  - **移除条件**：主控给出「并入文件域 Facade」的裁定与迁移窗口后，`routes/api/workspaces.ts` 改为调用
-    `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入、
-    校验与上限逻辑整体删除；届时本条与 `workspace-fs.ts` 里 `isUserPath` / `normalizeUserRoutePath` 的
-    「对外契约」保留注记一并评估。
+  - **现状依据**：`docs/arch/12-files.md` §2.4 与 §10 要求另行评估 `/api` 文件面的领域能力复用。
+    工程规范 §3.1 允许两面分别维护应用入口与契约；Web 的变化不得隐式改变已发布 API，具体迁移由设计确定。
+  - **移除条件**：提取并复用公共文件执行与校验能力，删除重复实现；路径范围、容量、授权及错误差异由各自
+    应用入口维护，完成契约回归与已确认的迁移。不要求两面调用同一个 Facade；届时一并评估本条与
+    `workspace-fs.ts` 里 `isUserPath` / `normalizeUserRoutePath` 的「对外契约」保留注记。
 - **`src/server/routes/web/fs.ts` 627 行**：超出单文件 500 行约束；§三 裁决文件域留在 machine，拆分落点与时机未定。
   web 侧客户端已随 D2（2026-09-24）归位本包 `web/api/fs.ts`；同批（D2 第二批）文件树容器、tab 栏、文件工作区
   与事件通道客户端也迁入 `web/**`，宿主侧只剩跨包装配（`apps/web/src/pages/agent-panel/artifacts/` 的 `ArtifactsPanel` /

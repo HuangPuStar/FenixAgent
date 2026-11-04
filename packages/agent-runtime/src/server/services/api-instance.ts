@@ -1,131 +1,103 @@
 import { AppError } from "@fenix/platform-sdk";
-import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
-import {
-  type AgentConfigLookupPort,
-  type AgentConfigLookupResult,
-  getAgentConfigLookupPort,
-} from "./agent-config-lookup-port";
+import { listApiAgentInstances } from "../repositories/agent-instance";
+import { getAgentConfigLookupPort } from "./agent-config-lookup-port";
 import { agentInstanceService } from "./agent-instance-service";
-import { createWebEnvironment } from "./environment-web";
+import {
+  ensureApiInstanceRuntime,
+  getApiOwnedInstance,
+  type InstanceOwner,
+  type ResolvedApiAgentInstance,
+  resolveApiAgentInstance,
+} from "./api-instance-resolution";
 
-type InstanceDeps = {
-  createWebEnvironment: typeof createWebEnvironment;
-  /** 按真实用户身份的组织可见性读 Agent 配置投影（端口动词，替代旧的 `getReadableAgentConfigById`）。 */
-  findVisibleAgentConfig: AgentConfigLookupPort["findVisibleAgentConfig"];
-  resolveInstance: typeof agentInstanceService.resolveInstanceForOperation;
-  ensureInstanceRuntime: typeof agentInstanceService.ensureInstanceRuntime;
-  listEnvironmentsByOrganizationId: typeof environmentRepo.listByOrganizationId;
-};
+export type { InstanceOwner } from "./api-instance-resolution";
+export { setApiInstanceResolutionDeps as setApiInstanceDeps } from "./api-instance-resolution";
 
-const defaultDeps: InstanceDeps = {
-  createWebEnvironment,
-  findVisibleAgentConfig: (input) => getAgentConfigLookupPort().findVisibleAgentConfig(input),
-  resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
-  ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
-  listEnvironmentsByOrganizationId: async (organizationId: string) =>
-    environmentRepo.listByOrganizationId(organizationId),
-};
-
-let deps: InstanceDeps = defaultDeps;
-
-/**
- * 测试覆盖 instance service 依赖，避免路由测试触达真实 DB 和 runtime。
- */
-export function setApiInstanceDeps(overrides: Partial<InstanceDeps> | null): void {
-  if (!overrides) {
-    deps = defaultDeps;
-    return;
-  }
-  deps = { ...deps, ...overrides };
-}
-
+/** Published v1 connect options use the persistent instance ID. */
 export interface AgentInstanceConnectOptions {
-  instanceUid?: string;
+  instanceId?: string;
+  signal?: AbortSignal;
 }
-
+/** ACP stays an independent protocol with its existing authenticated relay URL. */
 export interface AgentInstanceConnectResult {
   agentConfigId: string;
   environmentId: string;
   instanceId: string;
-  relay: {
-    wsUrl: string;
-  };
+  status: "running";
+  runtimeGeneration: number;
+  relay: { wsUrl: string };
 }
 
-/** 连接入口只认「谁、在哪个组织」，不再接受角色——可见性判定由端口按真实成员关系完成（§9.1）。 */
-export interface InstanceOwner {
-  readonly organizationId: string;
-  readonly userId: string;
-}
-
-function toKebabSegment(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 32);
-}
-
-function ensureReadableAgent(agent: AgentConfigLookupResult | null | undefined): AgentConfigLookupResult {
-  if (!agent) {
-    throw new AppError("Agent not found", "NOT_FOUND", 404);
-  }
-  return agent;
-}
-
-function pickEnvironment(environments: EnvironmentRecord[]): EnvironmentRecord | null {
-  return environments[0] ?? null;
-}
-
-/**
- * 将 AgentConfig 解析为一个可连接的 instance 入口，必要时自动创建 environment / 启动 instance。
- */
+/** Resolve and prepare an owned api/user instance; request completion does not stop it. */
 export async function connectAgentInstance(
-  ctx: InstanceOwner,
+  owner: InstanceOwner,
   agentConfigId: string,
   options: AgentInstanceConnectOptions = {},
 ): Promise<AgentInstanceConnectResult> {
-  const agent = ensureReadableAgent(
-    await deps.findVisibleAgentConfig({
-      agentConfigId,
-      organizationId: ctx.organizationId,
-      userId: ctx.userId,
-    }),
-  );
-
-  const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(
-    (env) => env.agentConfigId === agent.id && env.userId === ctx.userId,
-  );
-  let environment = pickEnvironment(existingEnvironments);
-
-  if (!environment) {
-    const base = toKebabSegment(agent.name) || "agent";
-    environment = await deps.createWebEnvironment({
-      name: `runtime-${base}-${agent.id.slice(0, 8)}`,
-      description: agent.description ?? undefined,
-      agentConfigId: agent.id,
-      autoStart: true,
-      userId: ctx.userId,
-      organizationId: ctx.organizationId,
-    });
-  }
-
-  const instance = await deps.resolveInstance({
-    environmentId: environment.id,
-    ownerUserId: ctx.userId,
-    requestedInstanceUid: options.instanceUid,
-    automaticSelection: "api",
-  });
-  await deps.ensureInstanceRuntime(instance);
-  const instanceId = instance.id;
-
+  const resolved = await resolveApiAgentInstance(owner, agentConfigId, options);
+  await ensureApiInstanceRuntime(resolved.instance, options.signal);
+  const instanceId = resolved.instance.id;
   return {
-    agentConfigId: agent.id,
-    environmentId: environment.id,
+    agentConfigId: resolved.agentConfigId,
+    environmentId: resolved.environmentId,
     instanceId,
-    // instanceId 附带为 query：/acp/relay 端点多实例环境下据此精确连接，
-    // 避免「第一个 running 实例」歧义；不带 query 的旧式直连仍有 fallback。
-    relay: { wsUrl: `/acp/relay/${environment.id}?instanceId=${instanceId}` },
+    status: "running",
+    runtimeGeneration: agentInstanceService.getRuntimeSnapshot(instanceId).runtimeGeneration,
+    relay: { wsUrl: `/acp/relay/${resolved.environmentId}?instanceId=${instanceId}` },
   };
+}
+
+/** Credential-safe instance details; internal failure text never crosses this boundary. */
+export function toApiInstanceDetail(resolved: ResolvedApiAgentInstance) {
+  const row = resolved.instance;
+  const runtime = agentInstanceService.getRuntimeSnapshot(row.id);
+  return {
+    instanceId: row.id,
+    agentConfigId: resolved.agentConfigId,
+    environmentId: resolved.environmentId,
+    name: row.name,
+    creationSource: row.creationSource,
+    isDefault: row.isDefault,
+    status: runtime.state,
+    runtimeGeneration: runtime.runtimeGeneration,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/** Read-only listing does not prepare environments or start runtimes. */
+export async function listApiInstances(
+  owner: InstanceOwner,
+  agentConfigId: string,
+  query: { page: number; pageSize: number },
+) {
+  const agent = await getAgentConfigLookupPort().findVisibleAgentConfig({ ...owner, agentConfigId });
+  if (!agent) throw new AppError("Agent not found", "NOT_FOUND", 404);
+  const result = await listApiAgentInstances({
+    ...owner,
+    agentConfigId,
+    limit: query.pageSize,
+    offset: (query.page - 1) * query.pageSize,
+  });
+  return {
+    items: result.items.map((instance) =>
+      toApiInstanceDetail({ agentConfigId, environmentId: instance.environmentId, instance }),
+    ),
+    total: result.total,
+    ...query,
+  };
+}
+
+/** Strict stop affects the selected instance only. */
+export async function stopApiInstance(owner: InstanceOwner, id: string) {
+  const resolved = await getApiOwnedInstance(owner, id);
+  await agentInstanceService.stopInstanceRuntime(resolved.instance, "strict");
+  return null;
+}
+
+/** Explicit restart preserves identity and returns the new generation. */
+export async function restartApiInstance(owner: InstanceOwner, id: string) {
+  const resolved = await getApiOwnedInstance(owner, id);
+  await agentInstanceService.restartInstanceRuntime(resolved.instance);
+  return toApiInstanceDetail(resolved);
 }

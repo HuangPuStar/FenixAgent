@@ -172,7 +172,7 @@ export interface AgentRuntimePort {
   /** 查找或创建环境的下属主默认实例（`chat` 类，名 `default`），不启动 runtime。 */
   findOrCreateDefaultInstance(environmentId: string, ownerUserId: string): Promise<AgentInstanceRecord>;
   /**
-   * 查找或创建环境的下属主 workflow 持久实例（名 `primary`），并回报本次是否新建。
+   * 查找或创建环境的下属主 workflow 持久实例（名 `workflow`），并回报本次是否新建。
    *
    * `created` 是编排层的所有权判据：只有自己创建的实例才由自己负责停止，复用别人已启动的实例
    * 不能顺手停掉（见 workflow 的实例清理路径）。
@@ -193,7 +193,7 @@ export interface AgentRuntimePort {
   ): Promise<EnvironmentRecord>;
   /** 重启指定环境下处于运行/启动中的实例，返回被重启的实例 ID。 */
   restartActiveInstancesForEnvironments(environmentIds: string[]): Promise<string[]>;
-  /** 打开一次程序化 Agent 会话（`api/primary` 类持久实例 + 独立 relay/ACP session）。 */
+  /** 打开一次程序化 Agent 会话（`api/api` 类持久实例 + 独立 relay/ACP session）。 */
   openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult>;
 
   // ── 停止 ──

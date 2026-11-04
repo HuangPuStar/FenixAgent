@@ -13,10 +13,11 @@
 
 import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
-import { lstat, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
+import { uploadWorkspaceFileExclusive } from "@fenix/plugin-sdk/secure-workspace-upload";
 import type { FileOpOptions } from "../transport/file-ws-requests";
 import { buildDownloadZipEnv } from "./download-zip-env";
 import { type FileChangeKind, publishFileChanged } from "./file-event-limiter";
@@ -288,16 +289,20 @@ class LocalBackend implements BackEnd {
     const { resolved, workspaceDir } = await this.resolve(envId, dir);
     // 目标目录条件写比对：目录被删/被改（mtime 变）→ 409；新建目录不应带 If-Match
     await this.assertLocalIfMatch(resolved, dir, options?.ifMatch);
-    await mkdirp(resolved);
     const uploaded: UploadResult["files"] = [];
     for (const file of files) {
-      // relativePath 已在门面统一校验；此处只取「已规范化」或「回退 file.name」
       const relPath = normalizeUploadRelativePath(file.relativePath) || file.name;
       const destPath = join(resolved, relPath);
-      await mkdirp(dirname(destPath));
-      await uploadBeforeWriteHook?.(destPath);
-      await assertUploadDestination(workspaceDir, destPath);
-      await writeFile(destPath, file.content, { flag: "wx" });
+      try {
+        await uploadWorkspaceFileExclusive(workspaceDir, relative(workspaceDir, destPath), file.content, async () => {
+          await uploadBeforeWriteHook?.(destPath);
+          await assertUploadDestination(workspaceDir, destPath);
+        });
+      } catch (error) {
+        if (isErrnoException(error) && ["ELOOP", "ENOTDIR"].includes(error.code ?? ""))
+          throw new ValidationError("上传目标路径包含 symbolic link");
+        throw error;
+      }
       const displayPath = dir ? `${dir}/${relPath}` : relPath;
       uploaded.push({ name: file.name, path: displayPath, size: file.content.byteLength });
       this.publishLocal(envId, "upload", displayPath, options);

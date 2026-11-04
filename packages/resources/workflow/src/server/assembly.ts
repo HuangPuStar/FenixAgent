@@ -53,7 +53,7 @@ export function createWorkflowWebRunsRoutes(host: ServerRouteHost) {
   return createWebWorkflowRunsRoutes(routeDependencies(host));
 }
 
-/** `/api/workflows/:workflowId/execute` 对外工作流执行（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/workflows/:workflowId/execute` 对外工作流执行（挂宿主 `api` 聚合槽）。 */
 export function createWorkflowApiRoutes(host: ServerRouteHost) {
   return createApiWorkflowRoutes(routeDependencies(host));
 }

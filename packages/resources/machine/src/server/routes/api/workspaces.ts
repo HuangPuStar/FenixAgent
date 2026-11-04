@@ -1,79 +1,175 @@
-import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
+import { error as logError } from "@fenix/logger";
+import { ApiV1ErrSchema, ApiV1OkSchema, AppError } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import {
   ApiWorkspaceEnvironmentParamsSchema,
+  ApiWorkspaceFileDownloadQuerySchema,
+  ApiWorkspaceFileDownloadResponseSchema,
+  ApiWorkspaceFileTreeResponseSchema,
   ApiWorkspaceFileUploadResponseSchema,
+  ApiWorkspaceHeadersSchema,
 } from "../../../schemas/api-workspace.schema";
-import { machineWorkspaceFacade } from "../../facades/machine-workspace-facade";
+import { type MachineWorkspaceActor, machineWorkspaceFacade } from "../../facades/machine-workspace-facade";
+import { contentDispositionAttachment, fileDownloadStream } from "../../http/file-download";
+import { FileServiceError } from "../../services/file-types";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
-/**
- * 把服务层错误映射成 `/api` 错误信封。
- *
- * 信封形状（`error.code` / `error.message`）是 platform-sdk 的稳定合同，响应 schema 直接从
- * `@fenix/platform-sdk` 取用——包内复制一份 `z.object({ error: ... })` 会在平台契约演进时静默漂移，
- * 也让 OpenAPI 多出一份「看起来一样」的本地定义。
- *
- * 已知分歧（不在本包修）：宿主 `apps/server/src/plugins/error-handler.ts` 的兜底响应目前用 `type`
- * 字段，与平台契约的 `code` 不一致；本包按平台契约取值，收敛归宿主错误处理（§1.7）。
- */
-function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
-  if (error instanceof Error && "statusCode" in error && "code" in error) {
-    const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;
-    const code = typeof error.code === "string" ? error.code : "INTERNAL_ERROR";
-    if (statusCode < 500) return { status: statusCode, body: { error: { code, message: error.message } } };
-  }
-  console.error("[api-workspaces] upload error:", error);
-  return {
-    status: 500,
-    body: { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
-  };
-}
-
-/**
- * `/api/environments/:environmentId/workspace/files` — 对外稳定 API 的 workspace 上传端点。
- *
- * 改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state` 是实例作用域的，父实例无法
- * 向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`。
- */
+/** v1 文件协议适配，共用已授权的本地与远程文件执行面。 */
 export function createApiWorkspaceRoutes(deps: WebMachineRouteDependencies) {
-  const app = new Elysia({ name: "api-workspaces", prefix: "/api" }).use(deps.authGuardPlugin).model({
-    "api-workspace-environment-params": ApiWorkspaceEnvironmentParamsSchema,
-    "api-workspace-upload-response": ApiWorkspaceFileUploadResponseSchema,
-  });
-
-  app.post(
-    "/environments/:environmentId/workspace/files",
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia multipart 解析与 response schema 组合时类型推断不稳定
-    async ({ store, params, request, error }: any): Promise<any> => {
-      const actor = store.authContext!;
-      try {
-        const formData = await request.formData();
-        return await machineWorkspaceFacade.upload(actor, params.environmentId, formData);
-      } catch (err) {
-        const mapped = mapApiError(err);
-        return error(mapped.status, mapped.body);
-      }
-    },
-    {
-      sessionAuth: true,
-      params: "api-workspace-environment-params",
-      response: {
-        200: "api-workspace-upload-response",
-        400: ApiErrorResponseSchema,
-        401: ApiErrorResponseSchema,
-        404: ApiErrorResponseSchema,
-        413: ApiErrorResponseSchema,
-        500: ApiErrorResponseSchema,
+  return new Elysia({ name: "api-workspaces", prefix: "/api/v1" })
+    .use(deps.authGuardPlugin)
+    .onError(({ error, code, set }) => {
+      logError("[api-workspaces] File operation failed", error);
+      const known = error instanceof AppError || error instanceof FileServiceError;
+      set.status = known ? error.statusCode : code === "VALIDATION" ? 400 : 500;
+      if (set.status === 429) set.headers["Retry-After"] = "1";
+      return {
+        success: false as const,
+        error: {
+          code:
+            error instanceof FileServiceError
+              ? error.type.toUpperCase()
+              : error instanceof AppError
+                ? error.code
+                : code === "VALIDATION"
+                  ? "VALIDATION_ERROR"
+                  : "INTERNAL_ERROR",
+          message: known && error.statusCode < 500 ? error.message : "File service unavailable",
+        },
+      };
+    })
+    .get(
+      "/environments/:environmentId/workspace/files",
+      async ({ store, params }) => ({
+        success: true as const,
+        data: await machineWorkspaceFacade.tree(store.authContext as MachineWorkspaceActor, params.environmentId),
+      }),
+      {
+        sessionAuth: true,
+        params: ApiWorkspaceEnvironmentParamsSchema,
+        headers: ApiWorkspaceHeadersSchema,
+        response: {
+          200: ApiV1OkSchema(ApiWorkspaceFileTreeResponseSchema),
+          400: ApiV1ErrSchema,
+          401: ApiV1ErrSchema,
+          403: ApiV1ErrSchema,
+          404: ApiV1ErrSchema,
+          429: ApiV1ErrSchema,
+          500: ApiV1ErrSchema,
+          503: ApiV1ErrSchema,
+        },
+        detail: {
+          tags: ["External Workspace"],
+          summary: "查询 Environment 工作区文件树",
+          description:
+            "递归返回整个工作区的文件与目录相对路径，目录以 / 结尾，沿用文件服务黑名单过滤；errors 非空时树不完整。",
+        },
       },
-      detail: {
-        tags: ["External Workspace"],
-        summary: "上传 Workspace 文件",
-        description:
-          "使用 multipart/form-data 上传文件到指定 environment 的 workspace/user 目录。表单字段：files（必填），path（可选，默认 user），relativePaths（可选 JSON 数组）。",
+    )
+    .get(
+      "/environments/:environmentId/workspace/files/download",
+      async ({ store, params, query }) => {
+        const result = await machineWorkspaceFacade.download(
+          store.authContext as MachineWorkspaceActor,
+          params.environmentId,
+          query.path,
+        );
+        try {
+          return new Response(fileDownloadStream(result.stream), {
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition": contentDispositionAttachment(result.name),
+              "Cache-Control": "no-store",
+              "X-Content-Type-Options": "nosniff",
+            },
+          });
+        } catch (error) {
+          result.stream.destroy();
+          throw error;
+        }
       },
-    },
-  );
-
-  return app;
+      {
+        sessionAuth: true,
+        params: ApiWorkspaceEnvironmentParamsSchema,
+        query: ApiWorkspaceFileDownloadQuerySchema,
+        headers: ApiWorkspaceHeadersSchema,
+        response: {
+          200: ApiWorkspaceFileDownloadResponseSchema,
+          400: ApiV1ErrSchema,
+          401: ApiV1ErrSchema,
+          403: ApiV1ErrSchema,
+          404: ApiV1ErrSchema,
+          413: ApiV1ErrSchema,
+          429: ApiV1ErrSchema,
+          500: ApiV1ErrSchema,
+          503: ApiV1ErrSchema,
+        },
+        detail: {
+          tags: ["External Workspace"],
+          summary: "下载 Environment 工作区文件",
+          description:
+            "下载工作区内单个文件，成功直接返回原始文件流，错误使用统一 JSON 包装；不支持目录或越界路径。远程单文件上限 92 MiB。",
+          responses: {
+            200: {
+              description: "文件附件流",
+              content: { "application/octet-stream": { schema: { type: "string" as const, format: "binary" } } },
+            },
+          },
+        },
+      },
+    )
+    .post(
+      "/environments/:environmentId/workspace/files",
+      async ({ store, params, request }) => ({
+        success: true as const,
+        data: await machineWorkspaceFacade.upload(
+          store.authContext as MachineWorkspaceActor,
+          params.environmentId,
+          () => request.formData(),
+        ),
+      }),
+      {
+        sessionAuth: true,
+        parse: "none",
+        params: ApiWorkspaceEnvironmentParamsSchema,
+        response: {
+          200: ApiV1OkSchema(ApiWorkspaceFileUploadResponseSchema),
+          400: ApiV1ErrSchema,
+          401: ApiV1ErrSchema,
+          403: ApiV1ErrSchema,
+          404: ApiV1ErrSchema,
+          409: ApiV1ErrSchema,
+          413: ApiV1ErrSchema,
+          429: ApiV1ErrSchema,
+          500: ApiV1ErrSchema,
+          503: ApiV1ErrSchema,
+        },
+        detail: {
+          tags: ["External Workspace"],
+          summary: "上传 Environment 工作区文件",
+          description:
+            "默认写入 user/；path 可指定工作区内相对目录，空字符串或 . 表示根目录。不允许绝对路径、.. 段或软链接逃逸；同名冲突不覆盖。单文件 92 MiB，远程批次合计 92 MiB。",
+          requestBody: {
+            required: true,
+            content: {
+              "multipart/form-data": {
+                schema: {
+                  type: "object" as const,
+                  required: ["files"],
+                  properties: {
+                    files: { type: "array" as const, items: { type: "string" as const, format: "binary" } },
+                    path: {
+                      type: "string" as const,
+                      default: "user",
+                      description: "工作区内相对目录；省略为 user，空字符串或 . 表示工作区根目录。",
+                    },
+                    relativePaths: { type: "string" as const },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    );
 }

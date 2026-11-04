@@ -106,19 +106,19 @@ describe("Knowledge 门面的可见范围", () => {
     expect(items.map((item) => item.id)).toEqual(["kb-global"]);
   });
 
-  // 对外列表：范围是「本组织 ∪ 跨组织共享的全局库」，分页与计数共用同一可见条件。
-  test("listForExternal 并入全局库并下推分页", async () => {
+  // 对外列表：范围是「本组织」，分页与计数共用同一可见条件。
+  test("listForExternal 只返回本组织并下推分页", async () => {
     const { pageQueries, countQueries } = installVisibleRepoStub();
 
     const page = await knowledgeBaseFacade.listForExternal(ACTOR, 2, 3);
 
-    expect(pageQueries).toEqual([{ organizationId: "org-1", includeGlobal: true, limit: 3, offset: 3 }]);
-    expect(countQueries).toEqual([{ organizationId: "org-1", includeGlobal: true }]);
-    expect(page).toMatchObject({ total: 2, page: 2, pageSize: 3 });
-    expect(page.items.map((item) => item.id)).toEqual(["kb-1", "kb-global"]);
+    expect(pageQueries).toEqual([{ organizationId: "org-1", includeGlobal: false, limit: 3, offset: 3 }]);
+    expect(countQueries).toEqual([{ organizationId: "org-1", includeGlobal: false }]);
+    expect(page).toMatchObject({ total: 1, page: 2, pageSize: 3 });
+    expect(page.items.map((item) => item.id)).toEqual(["kb-1"]);
   });
 
-  // 两条协议面的范围必须不同：控制台不得看到全局库，对外列表必须看到——把任一侧写反都会在这里失败。
+  // 两个协议面都必须仅查询当前组织。
   test("两条协议面的可见范围互不串用", async () => {
     const { pageQueries } = installVisibleRepoStub();
 
@@ -127,7 +127,7 @@ describe("Knowledge 门面的可见范围", () => {
 
     expect(pageQueries).toEqual([
       { organizationId: "org-1", includeGlobal: false },
-      { organizationId: "org-1", includeGlobal: true, limit: 20, offset: 0 },
+      { organizationId: "org-1", includeGlobal: false, limit: 20, offset: 0 },
     ]);
   });
 });

@@ -19,8 +19,8 @@
  *
  * ## 为什么不信任上游（不采用"信任调用方"的方案）
  *
- * 换 Key 的编排域在 `agent-runtime`，入口分散在多个包（`/api/agents/:id/instances/connect`、
- * Facade 的 restart、Environment 自动启动、`/api/agents/:id/v1/chat/completions`、workflow 节点、
+ * 换 Key 的编排域在 `agent-runtime`，入口分散在多个包（`/api/v1/agents/:id/instances/connect`、
+ * Facade 的 restart、Environment 自动启动、`/api/v1/chat/completions`、workflow 节点、
  * 交互式 Chat 的 WS 连接、系统 Key 管理）。把"签发前必须复验"这条不变量复制到每个入口
  * 会增加新增入口时的遗漏风险；收敛到一个端口则漏不掉。
  *

@@ -11,10 +11,28 @@ const openaiChatModule = await import("../routes/api/openai-chat");
 const openaiChatRoute = openaiChatModule.createOpenaiChatRoutes({
   authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin(),
 });
-const { setOpenAIChatRouteDeps } = openaiChatModule;
+const { setOpenAIChatRouteDeps: setRawDeps } = openaiChatModule;
+function setOpenAIChatRouteDeps(overrides: Parameters<typeof setRawDeps>[0]) {
+  if (!overrides?.openAgentSession) return setRawDeps(overrides);
+  const open = overrides.openAgentSession;
+  setRawDeps({
+    openAgentSession: async (input) => {
+      const result = await open(input);
+      input.onResolved?.({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        agentConfigId: input.agentConfigId,
+        environmentId: "env-1",
+        instanceId: result.instanceId,
+        runtimeGeneration: 0,
+      });
+      return { ...result, turn: { ...result.turn, sessionId: "ses_test" } };
+    },
+  });
+}
 
 function request(path: string, init?: RequestInit) {
-  return openaiChatRoute.handle(new Request(`http://localhost${path}`, init));
+  return appWithErrorPlugin.handle(new Request(`http://localhost${path}`, init));
 }
 
 // 挂载错误插件的完整 app：模拟生产装配（apps/server/src/main.ts 中宿主 `errorPlugin` 先于
@@ -39,10 +57,11 @@ describe("OpenAI Chat Routes", () => {
 
   // 缺少 user 消息时返回 400
   test("缺少 user 消息时返回 400 错误", async () => {
-    const res = await request("/api/agents/agc-test/v1/chat/completions", {
+    const res = await request("/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        model: "123e4567-e89b-12d3-a456-426614174000",
         messages: [{ role: "system", content: "You are a helpful assistant." }],
       }),
     });
@@ -65,10 +84,11 @@ describe("OpenAI Chat Routes", () => {
       }),
     });
 
-    const res = await request("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+    const res = await request("/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        model: "123e4567-e89b-12d3-a456-426614174000",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -99,10 +119,11 @@ describe("OpenAI Chat Routes", () => {
       },
     });
 
-    const res = await request("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+    const res = await request("/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        model: "123e4567-e89b-12d3-a456-426614174000",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
@@ -123,10 +144,10 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
   });
 
   function post(body: unknown) {
-    return requestWithErrorPlugin("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+    return requestWithErrorPlugin("/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ model: "123e4567-e89b-12d3-a456-426614174000", ...(body as object) }),
     });
   }
 
@@ -142,7 +163,7 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
     const res = await post({ messages: [{ role: "user", content: "hello" }] });
     expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.error.type).toBe("AGENT_NODE_UNAVAILABLE");
+    expect(body.error.code).toBe("AGENT_NODE_UNAVAILABLE");
     expect(JSON.stringify(body)).not.toContain("machineId");
   });
 
@@ -162,7 +183,7 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
     const res = await post({ messages: [{ role: "user", content: "hello" }] });
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body.error.type).toBe("NOT_FOUND");
+    expect(body.error.code).toBe("NOT_FOUND");
   });
 
   // A-P1.1：移除本地嗅探后，普通 Error（非 AppError/OrchestrationError）不再
@@ -178,7 +199,7 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
     const res = await post({ messages: [{ role: "user", content: "hello" }] });
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error.type).toBe("INTERNAL_ERROR");
+    expect(body.error.code).toBe("INTERNAL_ERROR");
     expect(body.error.message).toBe("Internal server error");
     expect(JSON.stringify(body)).not.toContain("machine-42");
   });
@@ -194,7 +215,7 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
     const res = await post({ messages: [{ role: "user", content: "hello" }] });
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error.type).toBe("USER_CONCURRENCY_EXCEEDED");
+    expect(body.error.code).toBe("USER_CONCURRENCY_EXCEEDED");
   });
 
   // A-P1.1：SSE 流已开始后无法走 errorPlugin，迭代中途抛错时错误 chunk 只输出
@@ -222,10 +243,14 @@ describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
       }),
     });
 
-    const res = await requestWithErrorPlugin("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+    const res = await requestWithErrorPlugin("/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stream: true, messages: [{ role: "user", content: "hello" }] }),
+      body: JSON.stringify({
+        model: "123e4567-e89b-12d3-a456-426614174000",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
     });
 
     expect(res.status).toBe(200);

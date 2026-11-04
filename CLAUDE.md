@@ -118,7 +118,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 ### API 与数据模型边界
 
 - `/web/*` 服务控制台前端，默认响应 `{ success, data }` 或 `{ success: false, error }`。
-- `/api/*` 服务外部系统和 API Key 调用方，优先保证向后兼容。
+- 外部资源 API 使用 `/api/v{version}/*` 版本化路径，响应统一为 `{ success: true, data }` 或 `{ success: false, error: { code, message } }`，保证向后兼容；特殊接口遵循各自协议。
 - ACP、MCP、hooks、skills 等内部协议能力使用独立前缀，不得混入 `/web` 或 `/api`。
 - 新接口默认补齐 OpenAPI 的 `detail`、`params`、`query`、`headers`、`body` 和 `response`。
 - 协议 DTO、领域对象、数据库记录和前端 ViewModel 在边界处独立转换；前端类型必须对应后端真实返回，禁止增加“幻影字段”。
@@ -131,7 +131,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 3. 路径参数只放稳定资源标识与层级，不用名称或展示名定位已有资源；筛选、分页、排序与开关放 query。分页统一 `page` / `pageSize`，排序统一 `sortBy` / `sortOrder`。
 4. 非 CRUD 动作使用资源子路径 `POST /资源/:id/动作`，如 `POST /web/agent-configs/:id/publish`；不通过请求体 `action` 字段把多种业务行为塞进一个接口。天然多消息类型的 WebSocket、事件流按各自协议处理。
 5. AgentConfig、Skill、MCP、Provider/Model 的 `/web/config` 管理接口：集合 GET/POST，单资源 `/:id` GET/PATCH/DELETE；重启、探测等操作使用资源子路径 POST。ID 为数据库资源 ID；默认 Agent/模型偏好接口保留原契约。
-6. `/web` 与 `/api` 必须复用同一个 Resource Facade，不能分别实现业务规则；接口变更同步请求与响应 schema、调用方、测试和 OpenAPI。更完整的响应、错误与兼容性要求见后端开发规范 §7。
+6. `/web` 与外部 API 复用领域能力，分别维护接口契约；Web 的变更不得破坏已发布 API 的兼容性。接口变更同步请求与响应 schema、调用方、测试和 OpenAPI。更完整的响应、错误与兼容性要求见后端开发规范 §7。
 
 ### 前端边界与体验
 
@@ -150,13 +150,13 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 | 场景 | 权威实现 | 生命周期 |
 | ------ | ---------- | ---------- |
-| HTTP / 程序化单轮调用 | `packages/agent-runtime/src/routes/api/openai-chat.ts` → `packages/agent-runtime/src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
-| Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
+| HTTP / 程序化单轮调用 | `packages/agent-runtime/src/routes/api/openai-chat.ts` → `packages/agent-runtime/src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/api` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
+| Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/workflow` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
 | 前端交互式 Chat | `packages/chat-channel/src/channel/`（`@fenix/agent-runtime` 装配 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
 - `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
-- 实例策略不可混用：HTTP 自动选择 `api/primary`，Workflow 自动选择 `workflow/primary`；交互式 Chat 通常连接前端显式携带且重新校验归属的持久 Instance，未指定时才自动选择 `chat/default`。三者均通过 `AgentInstanceRuntimeCoordinator` 确保 runtime，但请求/session 不拥有共享 runtime 生命周期。
+- 实例策略不可混用：HTTP 自动选择 `api/api`，Workflow 自动选择 `workflow/workflow`；交互式 Chat 通常连接前端显式携带且重新校验归属的持久 Instance，未指定时才自动选择 `chat/default`。三者均通过 `AgentInstanceRuntimeCoordinator` 确保 runtime，但请求/session 不拥有共享 runtime 生命周期。
 - 新入口不得新建独立 `acp-transport.ts`，也不得复制 session/new、session/load、session/prompt 的完整协议流程。
 
 ## 领域不变量与高风险约束

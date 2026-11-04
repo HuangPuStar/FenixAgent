@@ -8,7 +8,7 @@ import { skillResource } from "./src/server/access/skill-resource";
  *
  * Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）的资源归属语义、授权编排与「内容 + 资源行」
  * 补偿写入的唯一 owner。装配面上的消费者是宿主 `apps/server`（组合根装配后挂载 `/web/config/skills`、
- * `/api/skills` 与 `/skills/:name/download`，并经 `installSkillServerModule` 注入装配结果）、
+ * `/api/v1/skills` 与 `/skills/:name/download`，并经 `installSkillServerModule` 注入装配结果）、
  * `@fenix/resource-agent-config`（元 Agent 的 Skill 装载、可见 Skill 投影与关联 id 的标签投影，以及启动
  * 参数取 Skill 归档路径——该组装自任务 1.4 W4b 起也在 agent-config；Agent ↔ Skill 关联表
  * `agent_config_skill` 自任务 1.7 B7 起也在 agent-config，其读写不再经过本包）。
@@ -45,7 +45,7 @@ import { skillResource } from "./src/server/access/skill-resource";
  * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 拖进
  * 模块图。
  *
- * 声明 `contributions`（1.5e）：`/web/config/skills` 与 `/api/skills` 的路由实例由本模块以惰性构造函数
+ * 声明 `contributions`（1.5e）：`/web/config/skills` 与 `/api/v1/skills` 的路由实例由本模块以惰性构造函数
  * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会被
  * 大量位置导入，不能在索引层就把 Elysia 拖进模块图。两条路由共用同一份会话守卫。

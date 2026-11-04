@@ -1,5 +1,7 @@
 # Agent Instance 持久化与生命周期架构（目标设计权威）
 
+外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
+
 > 状态：目标设计，待实施（2026-08-31 评审确认）。
 > 范围：Agent Instance 的持久身份、用户归属、来源、默认实例、统一运行时、生命周期、状态权威，以及 HTTP、Workflow、Interactive Chat 三条调用路径的共同契约。
 > 权威性：本文是 Agent Instance **业务身份与生命周期语义**的唯一架构权威。详细数据结构、状态转移、并发矩阵、接口与实施切片见 [`../design/agent-instance.md`](../design/agent-instance.md)。现有实现与本文冲突时，实施阶段直接替换旧逻辑，不建立兼容层。
@@ -125,8 +127,10 @@ isDefault = true
 | 线路 | 自动选择键 | 请求/run/连接结束 |
 |---|---|---|
 | Interactive Chat | `(environmentId, ownerUserId, user, default)` | 释放连接和 relay 引用，不停止 runtime |
-| HTTP 单轮 | `(environmentId, ownerUserId, api, primary)` | 释放 PromptTurn 和请求资源，不停止 runtime |
-| Workflow | `(environmentId, ownerUserId, workflow, primary)` | 释放节点执行资源和 use lease，不停止 runtime |
+| HTTP 单轮 | `(environmentId, ownerUserId, api, api)` | 释放 PromptTurn 和请求资源，不停止 runtime |
+| Workflow | `(environmentId, ownerUserId, workflow, workflow)` | 释放节点执行资源和 use lease，不停止 runtime |
+
+自动实例的名称与来源同名，用于界面区分和稳定的创建键。
 
 显式传入 `instanceUid` 时：
 

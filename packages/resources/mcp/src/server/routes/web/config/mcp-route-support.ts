@@ -19,7 +19,7 @@ import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
  * 只做协议接入：定位符等协议参数校验、把请求映射为应用调用、把结果映射为 `/web` 视图、把宿主错误类
  * 映射为稳定错误体。授权、可见性与资源解析全部在应用 Facade 内完成，本文件不判断组织、角色或
  * `visibility`；MCP 名称格式与配置结构的领域校验同样归 Facade（`assertCreatable` / `assertValidConfig`），
- * 本文件不重复，避免与 `/api/mcp` 这类并列入口再次分叉。
+ * 本文件不重复，避免与 `/api/v1/mcp-servers` 这类并列入口再次分叉。
  *
  * 视图变化（决策 D2）：列表与详情不再返回旧栈的 `resourceAccess`，改为返回资源归属 `scope` 与
  * 当前主体有效动作 `access.actions`；`organizationName` 是展示字段，由身份目录批量解析。

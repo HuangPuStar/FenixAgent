@@ -35,7 +35,7 @@ export function createWorkflowV2WebRoutes(host: ServerRouteHost) {
 }
 
 /**
- * `/api/workflow-v2/*` 对外触发面（挂宿主 `api` 聚合槽，带会话守卫——API Key 与面板会话走同一份守卫）。
+ * `/api/v1/workflow-v2/*` 对外触发面（挂宿主 `api` 聚合槽，带会话守卫——API Key 与面板会话走同一份守卫）。
  *
  * 前缀由路由实例自带（`/api/*` 是对外合同的一部分，宿主不拼前缀），守卫仍需注入：认证解析必须是同一份实例。
  */

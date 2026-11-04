@@ -46,7 +46,7 @@ function createReplyingRelay(options: { failSessionNew?: boolean } = {}): Engine
   };
 }
 
-describe("agent-chat-service 输入边界与实例回滚", () => {
+describe("agent-chat-service 输入边界与请求资源释放", () => {
   beforeEach(() => {
     resetAllStubs();
   });
@@ -67,7 +67,7 @@ describe("agent-chat-service 输入边界与实例回滚", () => {
       },
     });
     setAgentChatServiceDeps({
-      resolveInstance: async () => {
+      resolveApiAgentInstance: async () => {
         spawnCalls += 1;
         return { id: "inst-unreachable" } as never;
       },
@@ -91,13 +91,13 @@ describe("agent-chat-service 输入边界与实例回滚", () => {
       }),
     });
     setAgentChatServiceDeps({
-      resolveInstance: async (input) => {
+      resolveApiAgentInstance: async (owner, agentConfigId, options) => {
         resolved = {
-          environmentId: input.environmentId,
-          userId: input.ownerUserId,
-          selection: input.automaticSelection,
+          environmentId: "env-org-a-user-a",
+          userId: owner.userId,
+          selection: options?.instanceId ?? "api",
         };
-        return { id: "inst-org-a-user-a" } as never;
+        return { agentConfigId, environmentId: "env-org-a-user-a", instance: { id: "inst-org-a-user-a" } } as never;
       },
       ensureInstanceRuntime: async () => {},
       connectAgentRelay: async () => createReplyingRelay(),
@@ -114,8 +114,8 @@ describe("agent-chat-service 输入边界与实例回滚", () => {
     await result.turn.dispose();
   });
 
-  // relay 建立后 session/new 发送失败时，必须关闭 relay 并停止刚创建的实例，不能遗留并发额度。
-  test("session/new 发送失败时关闭 relay 并回滚实例", async () => {
+  // relay 建立后 session/new 发送失败时，必须关闭请求 relay 并释放额度，持久 runtime 由实例管理器负责。
+  test("session/new 发送失败时关闭请求 relay", async () => {
     let relayClosed = false;
     let runtimeEnsured = false;
     stubDb({
@@ -128,7 +128,12 @@ describe("agent-chat-service 输入边界与实例回滚", () => {
       }),
     });
     setAgentChatServiceDeps({
-      resolveInstance: async () => ({ id: "inst-rollback" }) as never,
+      resolveApiAgentInstance: async () =>
+        ({
+          agentConfigId: VALID_AGENT_CONFIG_ID,
+          environmentId: "env-org-a-user-a",
+          instance: { id: "inst-rollback" },
+        }) as never,
       ensureInstanceRuntime: async () => {
         runtimeEnsured = true;
       },

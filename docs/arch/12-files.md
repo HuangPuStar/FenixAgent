@@ -1,5 +1,7 @@
 # 文件系统操作传递（权威实现基线）
 
+外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
+
 > 状态：实现基线（2026-08-05 重写，对抗审查 + 三视角用户挑战修订）。§1–§3、§5–§6 为现状契约；§2/§4 与 §7 为**理想态设计**（统一执行面 + 防缓存机制 + v2 协议），评审待办，暂未实施。
 > 旧版文档（`/user`、`/user-file` 路由体系）**文档层面已废弃但代码仍挂载**（双面并存，见附录 A），保留于附录 A 供历史追溯与迁移指引。
 > 定位：Agent 编排域（acp-ws / AgentNode）见 `docs/arch/20-orchestration-management.md`；Chat 流式（YJS）见 `docs/arch/19-yjs-chat-streaming.md`。文件信道与 acp-ws 是**两条平行的机器级信道**，本文档只描述文件信道。
@@ -166,7 +168,8 @@ interface AgentFileService {
 | 路径校验 | AgentFileService 统一前置：拒绝绝对路径、`..` 段、NUL/控制字符；resolve 后对真实路径做越界检查（realpath，防 symlink 逃逸）；**upload 的 relativePath 先规范化再 join（修复本地 `../` 逃逸，D16）**；校验失败 → `400 validation_error` |
 | 错误码 | `400 validation_error` / `403 forbidden` / `404 not_found` / `413 payload_too_large` / `422 config_error` / `429 busy`（+ `Retry-After`）/ `503 file_service_unavailable`。**现状无 403 角色概念**（`getOwnedEnvironment` 只查归属，成员对共享环境读写自由，权限失败伪装 404）——v2 引入角色化授权，403 与 404 分离（403=有环境但无操作权限，404=环境不存在或不可见） |
 | message 语义 | **message 是面向用户的模板化文案（i18n）**，机器端错误细节只进服务端日志；machineId 为组织可见资源标识可保留（供诊断），机器内部路径/错误栈必须脱敏 |
-| 响应结构 | 全部 `{ success, data }`，backend 差异不外泄（不出现 `remote_error` 之类的 backend 专属类型）；`/api/*` 文件面（第三套实现 `api-workspace.ts`）收敛到本契约时另行评估（§10） |
+| 响应结构 | 全部 `{ success, data }`，backend 差异不外泄（不出现 `remote_error` 之类的 backend 专属类型）；`/api/v1` 上传复用同一文件执行面，保留版本化 DTO；path 默认 user，空字符串或 . 表示根目录，允许工作区内其他相对目录，禁止越界 |
+| 外部读取 | `GET /api/v1/environments/:environmentId/workspace/files` 返回版本化文件树；`GET /api/v1/environments/:environmentId/workspace/files/download?path=...` 下载单个文件，成功返回附件流，失败返回 v1 JSON 错误。两者均先校验组织与属主，复用 AgentFileService，远程断连不回退本地。 |
 | 变更事件 | 任何 backend 的写操作成功都由 AgentFileService 统一发布 `file_changed`（含 `source`/`actorId`，§4.3） |
 | 条件请求 | 所有读操作由 AgentFileService 统一派生 ETag（§4.2） |
 | **文件容量约束** | `/web` 本地与远程上传单文件的后端硬上限固定为 92MiB；前端产品上限独立设置，当前为 92MiB，后续在硬上限内调整仅修改前端。远程 ZIP 下载单包 ≤92MiB，超限返回 413。远程仍为 base64 整包，运行时的 WS 客户端限制见 §7.6。 |
@@ -544,7 +547,7 @@ sequenceDiagram
 17. **并发写 If-Match（§4.4）**：编辑器路径必选（409 + 当前版本回显）。验证：读-改-写窗口被外部写入时收到 409。
 18. **审计契约字段（§2.2/§4.3）**：事件帧与 file_op 携带 `source`/`actorId` 落地。验证：事件/日志可区分 user/agent/api 来源。（落库待合规需求明确后另行设计。）
 
-**二期**：远程 zip 分块回传（§7.9）、服务端有界指纹缓存（§4.2）、keep_alive 服务端主动 ping（§7.4 备选）、tree 分页/深度逃生舱（§4.2）、`/api/*` 文件面（`api-workspace.ts` 第三套实现）收敛评估（§2.4）、审计落库（file_op_audit 表 + 保留策略）。
+**二期**：远程 zip 分块回传（§7.9）、服务端有界指纹缓存（§4.2）、keep_alive 服务端主动 ping（§7.4 备选）、tree 分页/深度逃生舱（§4.2）、审计落库（file_op_audit 表 + 保留策略）。
 
 ## 附录 A：废弃路由（deprecation 策略）
 

@@ -19,6 +19,7 @@ import {
   handleExternalRelayClose,
   handleExternalRelayMessage,
   handleExternalRelayOpen,
+  prepareExternalRelayOpen,
 } from "../../server/transport/relay/external-relay";
 import type { RequestAuthResult } from "../../types/auth";
 import type { WsConnection } from "../../types/ws-types";
@@ -423,11 +424,13 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
       const relayWsId = `ext_relay_${uuid().replace(/-/g, "")}`;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       (ws.data as any).__relayWsId = relayWsId;
+      prepareExternalRelayOpen(adaptWs(ws), relayWsId);
 
       let authResult: RequestAuthResult | null = null;
       try {
         authResult = await deps.authenticateRequest(ws.data.request);
       } catch (err) {
+        handleExternalRelayClose(adaptWs(ws), relayWsId);
         if (err instanceof AppError && err.code === "RATE_LIMITED") {
           adaptWs(ws).close(4008, "rate_limited");
           return;
@@ -441,9 +444,12 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
         return;
       }
       if (!authResult?.user || !authResult.authContext) {
+        handleExternalRelayClose(adaptWs(ws), relayWsId);
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
+
+      if (ws.readyState !== 1) return;
 
       // query 携带的 instanceId 用于多实例环境精确连接（connect API 返回的 wsUrl 已附带）；
       // 解析放在路由层，handler 只接收解析结果，便于脱离 Elysia 单测。

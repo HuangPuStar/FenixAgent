@@ -14,6 +14,7 @@ Access Control 是资源管理面的唯一授权边界。它基于认证层提�
 - `organizationId` 与 `ownerUserId` 是资源主表的归属事实；受控资源的 `visibility` 由 Access Control 解释为平台受众。
 - 管理面调用路径是 `route → Resource Facade → Domain Service / Repository`。Facade 在调用领域服务前完成授权和资源状态校验；Access Control 提供单资源动作判定与列表查询约束。
 - 列表、计数和详情的授权条件必须下推数据库，禁止先读取全量数据再在内存过滤。
+- 授权查询与资源范围更新使用调用方当前事务，不能缓存根数据库连接；创建后的授权回读必须能看到同一事务内的资源。
 - Runtime 不读取 actor、成员角色、资源归属或 `visibility`；资源层完成授权与状态校验后才传入已解析的运行参数。
 
 ## 特例

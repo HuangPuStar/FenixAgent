@@ -26,7 +26,7 @@ export function createMcpWebConfigRoutes(host: ServerRouteHost) {
   return createWebMcpConfigRoutes(routeDependencies(host));
 }
 
-/** `/api/mcp` 对外稳定 MCP 服务器接口（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/mcp-servers` 对外稳定 MCP 服务器接口（挂宿主 `api` 聚合槽）。 */
 export function createMcpApiRoutes(host: ServerRouteHost) {
   return createApiMcpRoutes(routeDependencies(host));
 }

@@ -55,6 +55,7 @@ export async function getReadableAgentConfigById(
 
 /** 组织范围读的输入：真实用户 + 该用户此刻所处的组织，没有 actor 槽位（见下）。 */
 export interface AgentConfigVisibleToUserInput {
+  readonly action?: "read" | "use";
   readonly agentConfigId: string;
   readonly organizationId: string;
   readonly userId: string;
@@ -88,5 +89,9 @@ export async function getAgentConfigVisibleToUser(
     activeOrganizationId: input.organizationId,
     memberships,
   };
+  if (input.action === "use") {
+    const row = await module.facade.getById(actor, input.agentConfigId);
+    return row?.access.actions.includes("use") ? row : null;
+  }
   return (await module.facade.findReadableRowById(actor, input.agentConfigId)) ?? null;
 }

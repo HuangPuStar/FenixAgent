@@ -18,7 +18,8 @@ export interface DrizzleAccessControlSuite<TStorage extends QueryStorageTypes = 
 }
 
 export interface CreateDrizzleAccessControlOptions {
-  readonly database: AccessControlDatabase;
+  /** Resolve on each operation so authorization participates in the caller transaction. */
+  readonly database: () => AccessControlDatabase;
   /** 全部受控资源的存储绑定；`apps/server` 从各资源包汇总后注入。 */
   readonly bindings: readonly ResourceStorageBinding[];
 }

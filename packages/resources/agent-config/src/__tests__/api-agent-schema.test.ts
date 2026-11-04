@@ -20,12 +20,17 @@ describe("api agent schema", () => {
       id: "agc-1",
       name: "demo",
       builtIn: false,
-      model: null,
       modelId: null,
       prompt: null,
       description: null,
       extra: null,
       agentNode: {},
+      skillIds: [],
+      mcpIds: [],
+      enableMemory: false,
+      publicReadable: false,
+      scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+      access: { actions: ["read"] },
       knowledge: {
         knowledgeBaseIds: ["kb-1"],
         policy: {

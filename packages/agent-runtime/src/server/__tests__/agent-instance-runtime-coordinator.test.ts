@@ -82,9 +82,9 @@ describe("AgentInstanceService 自动实例选择", () => {
     });
 
     expect(secondApi.id).toBe(firstApi.id);
-    expect(firstApi).toMatchObject({ creationSource: "api", name: "primary", isDefault: false });
+    expect(firstApi).toMatchObject({ creationSource: "api", name: "api", isDefault: false });
     expect(secondWorkflow.instance.id).toBe(firstWorkflow.instance.id);
-    expect(firstWorkflow.instance).toMatchObject({ creationSource: "workflow", name: "primary", isDefault: false });
+    expect(firstWorkflow.instance).toMatchObject({ creationSource: "workflow", name: "workflow", isDefault: false });
     expect(firstWorkflow.created).toBe(true);
     expect(secondWorkflow.created).toBe(false);
     expect(firstWorkflow.instance.id).not.toBe(firstApi.id);

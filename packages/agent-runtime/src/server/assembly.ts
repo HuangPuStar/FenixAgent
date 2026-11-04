@@ -18,7 +18,7 @@ import { createWebInstancesRoutes } from "../routes/web/instances";
  * agent-runtime 的路由贡献装配面：把宿主协议面收窄为本包路由的注入依赖。
  *
  * `ServerRouteHost` 的字段全是 `unknown`（platform-sdk 不依赖 elysia，见 review §3.3），收窄只能在包内做
- * 一次——本包的路由工厂需要的是 `AgentRuntimeAuthDependencies` 里的会话守卫，`/api/agents/:agentId/instances/connect`
+ * 一次——本包的路由工厂需要的是 `AgentRuntimeAuthDependencies` 里的会话守卫，`/api/v1/agents/:agentId/instances/connect`
  * 另需宿主请求错误日志。这里不做校验：端口是否可用由宿主在装配处保证
  * （`apps/server/src/bootstrap/route-host.ts` 是唯一实现）。
  *
@@ -51,7 +51,7 @@ export function createAgentRuntimeWebInstancesRoutes(host: ServerRouteHost) {
   return createWebInstancesRoutes(routeDependencies(host));
 }
 
-/** `/api/agents/:agentId/instances/connect` 实例接入（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/agents/:agentId/instances/connect` 实例接入（挂宿主 `api` 聚合槽）。 */
 export function createAgentRuntimeApiInstanceRoutes(host: ServerRouteHost) {
   const deps: ApiInstanceRouteDependencies = {
     authGuardPlugin: host.authGuardPlugin as AnyElysia,
@@ -60,7 +60,7 @@ export function createAgentRuntimeApiInstanceRoutes(host: ServerRouteHost) {
   return createApiInstanceRoutes(deps);
 }
 
-/** `/api/agents/:agentId/v1/chat/completions` OpenAI 兼容对话（挂宿主 `api` 聚合槽）。 */
+/** `/api/v1/chat/completions` OpenAI 兼容对话（挂宿主 `api` 聚合槽）。 */
 export function createAgentRuntimeOpenaiChatRoutes(host: ServerRouteHost) {
   return createOpenaiChatRoutes(routeDependencies(host));
 }

@@ -34,11 +34,14 @@ export interface SkillCreateInput {
 
 /** 更新输入；`publicReadable` 不传表示"只改内容，不动公开受众"。 */
 export interface SkillUpdateOptions {
+  /** Explicit version-owned metadata replacement instead of merge. */
+  readonly replaceMetadata?: boolean;
   readonly publicReadable?: boolean;
 }
 
 /** 导入结果；`imported` 是回读后的资源视图，与列表/详情的形状一致。 */
 export interface SkillImportResult {
+  readonly createdNames?: readonly string[];
   readonly imported: readonly SkillListItem[];
   readonly skipped: readonly string[];
   readonly conflicts: readonly ImportSkillsConflict[];
@@ -51,7 +54,7 @@ export interface SkillImportResult {
  * 两者共用同一次导入与同一份冲突判定，差别只在协议表达。
  */
 export type SkillSingleImportResult =
-  | { readonly status: "imported"; readonly detail: SkillDetailView }
+  | { readonly status: "imported"; readonly created?: boolean; readonly detail: SkillDetailView }
   | { readonly status: "conflict"; readonly name: string };
 
 /** 单资源导入选项；`overwrite` 为真时覆盖本组织同名资源，否则冲突原样上报。 */
@@ -102,7 +105,7 @@ export interface SkillFacadeApi {
     strategy?: ImportConflictStrategy,
   ): Promise<SkillImportResult>;
   /**
-   * 上传导入**单个** Skill 目录，并回读导入后的详情（对外 `/api/skills` 已发布合同的上传语义）。
+   * 上传导入**单个** Skill 目录，并回读导入后的详情（对外 `/api/v1/skills` 已发布合同的上传语义）。
    *
    * 与 {@link SkillFacadeApi.importDirectories} 同为一次上传的两个产品口径，共用同一套写入、冲突判定、
    * 回滚与授权：控制台允许多目录上传并由用户选择冲突策略，对外接口一次只接受一个目录、冲突直接上报。

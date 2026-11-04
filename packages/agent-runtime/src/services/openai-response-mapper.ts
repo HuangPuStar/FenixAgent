@@ -1,227 +1,81 @@
-// 1.4 W3：改为相对导入。此前经本包公开面自引用，会让 `./server` barrel 成为包内实现的一部分，
-// 收窄公开面时容易在「谁依赖谁」上产生误判。
-// 1.4 W6a：本文件原有的 `extractJsonRpc` 私有副本删除，改指 chat-channel 协议层的唯一实现
-//（形参已放宽为 `unknown`，`RelayEvent` 可直接传入，无需在调用点补 cast）。
 import { extractJsonRpc } from "@fenix/chat-channel";
 import type { OpenAIChatCompletionResponse } from "../schemas/openai-chat.schema";
 import { classifyAgentTurnEvent, iterateWithSignal } from "./agent-turn-events";
 
-// ── ACP 事件类型 ──
-
-/** 从 relay handle 接收的原始消息 */
+/** Raw or wrapped relay event accepted at the protocol boundary. */
 export interface RelayEvent {
   type: string;
   payload?: unknown;
 }
 
-/** session/update 的内部结构 */
-export interface SessionUpdateEvent {
-  sessionUpdate: string;
-  messageId?: string;
-  content?: { type: string; text: string };
-  toolCallId?: string;
-  title?: string;
-  kind?: string;
-  status?: string;
-  entries?: Array<{ content: string; priority?: string; status?: string }>;
-  used?: number;
-  size?: number;
+function publicText(event: RelayEvent): string {
+  const rpc = extractJsonRpc(event);
+  if (rpc?.method !== "session/update") return "";
+  const update = (rpc.params as { update?: { sessionUpdate?: string; content?: { type?: string; text?: unknown } } })
+    ?.update;
+  return update?.sessionUpdate === "agent_message_chunk" && typeof update.content?.text === "string"
+    ? update.content.text
+    : "";
 }
-
-// ── 消息分类 ──
-
-type ChunkKind = "reasoning" | "content";
-
-function classifyUpdate(update: SessionUpdateEvent): ChunkKind {
-  switch (update.sessionUpdate) {
-    case "agent_thought_chunk":
-    case "plan":
-      return "reasoning";
-    case "agent_message_chunk":
-    case "tool_call":
-    case "tool_call_update":
-      return "content";
-    default:
-      return "reasoning"; // 未知类型默认归入 reasoning
-  }
-}
-
-function formatUpdateText(update: SessionUpdateEvent): string {
-  switch (update.sessionUpdate) {
-    case "agent_thought_chunk":
-    case "agent_message_chunk":
-      return update.content?.text ?? "";
-    case "tool_call":
-      return `<tool_call name="${update.title ?? "unknown"}" />\n`;
-    case "tool_call_update":
-      return `<tool_result name="${update.title ?? "unknown"}" />\n`;
-    case "plan":
-      return `${(update.entries ?? []).map((e) => `- [${e.status ?? "pending"}] ${e.content}`).join("\n")}\n`;
-    default:
-      return "";
-  }
-}
-
-// ── 从 relay 事件流中提取 SessionUpdateEvent ──
-
-function extractUpdateFromRelayEvent(ev: RelayEvent): SessionUpdateEvent | null {
-  const rpc = extractJsonRpc(ev);
-  if (!rpc) return null;
-  if (rpc.method !== "session/update" || !(rpc.params as Record<string, unknown>)?.update) return null;
-  return (rpc.params as Record<string, unknown>).update as SessionUpdateEvent;
-}
-
-function extractCompletionFromRelayEvent(ev: RelayEvent): string | null {
-  const terminal = classifyAgentTurnEvent(ev);
+function finishReason(event: RelayEvent): "stop" | "length" | null {
+  const terminal = classifyAgentTurnEvent(event);
   if (!terminal) return null;
-  if (terminal.outcome !== "succeeded") throw new Error(`Agent turn ${terminal.outcome}`);
-  return terminal.stopReason ?? null;
+  if (terminal.outcome !== "succeeded") throw new Error("Agent turn did not complete successfully");
+  if (terminal.stopReason === "end_turn" || terminal.stopReason === "refusal") return "stop";
+  if (terminal.stopReason === "max_tokens" || terminal.stopReason === "max_turn_requests") return "length";
+  throw new Error("Unrecognized Agent completion");
 }
-
-// ── 消息收集器 ──
-
-interface CollectedMessages {
-  reasoningParts: string[];
-  contentParts: string[];
-}
-
-/** 遍历 relay 事件，按分类收集文本 */
-function collectMessages(events: RelayEvent[]): CollectedMessages {
-  const result: CollectedMessages = { reasoningParts: [], contentParts: [] };
-
-  for (const ev of events) {
-    const update = extractUpdateFromRelayEvent(ev);
-    if (!update) continue;
-
-    const kind = classifyUpdate(update);
-    const text = formatUpdateText(update);
-    if (!text) continue;
-
-    if (kind === "reasoning") {
-      result.reasoningParts.push(text);
-    } else {
-      result.contentParts.push(text);
+/** Map a confirmed completed turn to native OpenAI JSON. */
+export function mapToNonStreamingResponse(events: RelayEvent[], agentId: string): OpenAIChatCompletionResponse {
+  let reason: "stop" | "length" | null = null;
+  const content: string[] = [];
+  for (const event of events) {
+    content.push(publicText(event));
+    const next = finishReason(event);
+    if (next) {
+      reason = next;
+      break;
     }
   }
-
-  return result;
-}
-
-/** 从事件流末尾找到 stopReason */
-function findStopReason(events: RelayEvent[]): string {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const reason = extractCompletionFromRelayEvent(events[i]);
-    if (reason) return reason;
-  }
-  throw new Error("Agent stream ended without confirmed completion");
-}
-
-// ── 公开 API ──
-
-/** 生成唯一响应 ID */
-function generateChatId(): string {
-  return `chatcmpl-${crypto.randomUUID()}`;
-}
-
-/**
- * 将 relay 事件流映射为非流式 OpenAI Chat Completion 响应。
- */
-export function mapToNonStreamingResponse(events: RelayEvent[], agentId: string): OpenAIChatCompletionResponse {
-  for (const event of events) extractCompletionFromRelayEvent(event);
-  const collected = collectMessages(events);
-  const stopReason = findStopReason(events);
-  const reasoningContent = collected.reasoningParts.join("");
-  const content = collected.contentParts.join("");
-
+  if (!reason) throw new Error("Agent stream ended without confirmed completion");
   return {
-    id: generateChatId(),
+    id: `chatcmpl-${crypto.randomUUID()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model: agentId,
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: "assistant",
-          content,
-          ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
-        },
-        finish_reason: stopReason,
-      },
-    ],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    choices: [{ index: 0, message: { role: "assistant", content: content.join("") }, finish_reason: reason }],
   };
 }
-
-/**
- * 将 relay 事件流映射为 SSE chunk 的异步生成器。
- * @param eventsIterable 异步 relay 事件流
- * @param agentId Agent ID
- * @param signal 用于检测客户端断开
- * @param onStopReason 当收到 stopReason 时的回调（用于设置 finish_reason）
- */
+/** Emit native SSE deltas with one identity, assistant role, and confirmed terminal. */
 export async function* mapToSSEChunks(
-  eventsIterable: AsyncIterable<RelayEvent>,
+  events: AsyncIterable<RelayEvent>,
   agentId: string,
   signal?: AbortSignal,
   onStopReason?: (reason: string) => void,
 ): AsyncGenerator<string, void, undefined> {
-  const chatId = generateChatId();
-  const created = Math.floor(Date.now() / 1000);
-  let finished = false;
-
-  for await (const ev of iterateWithSignal(eventsIterable, signal)) {
-    signal?.throwIfAborted();
-    if (finished) break;
-
-    // 检测会话结束
-    const stopReason = extractCompletionFromRelayEvent(ev);
-    if (stopReason) {
-      onStopReason?.(stopReason);
-      yield `data: ${JSON.stringify({
-        id: chatId,
-        object: "chat.completion.chunk",
-        created,
-        model: agentId,
-        choices: [{ index: 0, delta: {}, finish_reason: stopReason }],
-      })}\n\n`;
-      yield "data: [DONE]\n\n";
-      finished = true;
-      break;
-    }
-
-    const update = extractUpdateFromRelayEvent(ev);
-    if (!update) continue;
-
-    const kind = classifyUpdate(update);
-    const text = formatUpdateText(update);
-    if (!text) continue;
-
-    const delta: Record<string, string> = {};
-    if (kind === "reasoning") {
-      delta.reasoning_content = text;
-    } else {
-      delta.content = text;
-    }
-
-    yield `data: ${JSON.stringify({
-      id: chatId,
-      object: "chat.completion.chunk",
-      created,
-      model: agentId,
-      choices: [{ index: 0, delta }],
-    })}\n\n`;
-  }
-
-  if (!finished) throw new Error("Agent stream ended without confirmed completion");
-}
-
-/** 构建 OpenAI 兼容错误数据 */
-export function buildOpenAIError(status: number, message: string, type: string) {
-  return {
-    status,
-    body: {
-      error: { message, type, code: status === 401 ? "invalid_api_key" : undefined },
-    },
+  const identity = {
+    id: `chatcmpl-${crypto.randomUUID()}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: agentId,
   };
+  const chunk = (delta: Record<string, string>, reason: "stop" | "length" | null = null) =>
+    `data: ${JSON.stringify({ ...identity, choices: [{ index: 0, delta, finish_reason: reason }] })}\n\n`;
+  yield chunk({ role: "assistant" });
+  for await (const event of iterateWithSignal(events, signal)) {
+    const reason = finishReason(event);
+    if (reason) {
+      onStopReason?.(reason);
+      yield chunk({}, reason);
+      yield "data: [DONE]\n\n";
+      return;
+    }
+    const text = publicText(event);
+    if (text) yield chunk({ content: text });
+  }
+  throw new Error("Agent stream ended without confirmed completion");
+}
+/** Safe native error builder for errors after streaming begins. */
+export function buildOpenAIError(status: number, message: string, type: string, code = "INTERNAL_ERROR") {
+  return { status, body: { error: { message, type, param: null, code } } };
 }

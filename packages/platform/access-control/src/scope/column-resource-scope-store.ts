@@ -17,7 +17,7 @@ export class ColumnResourceScopeStore implements ResourceScopeStore {
   private readonly bindings = new Map<string, ResolvedScopeColumns>();
 
   constructor(
-    private readonly database: AccessControlDatabase,
+    private readonly database: () => AccessControlDatabase,
     bindings: readonly ResourceStorageBinding[],
   ) {
     for (const binding of bindings) {
@@ -35,7 +35,7 @@ export class ColumnResourceScopeStore implements ResourceScopeStore {
   async getMany(input: { resourceType: string; resourceIds: readonly string[] }): Promise<Map<string, ResourceScope>> {
     const resolved = this.requireBinding(input.resourceType);
     if (input.resourceIds.length === 0) return new Map();
-    const rows: Record<string, unknown>[] = await this.database
+    const rows: Record<string, unknown>[] = await this.database()
       .select()
       .from(resolved.table)
       .where(inArray(resolved.id, [...input.resourceIds]));
@@ -53,7 +53,7 @@ export class ColumnResourceScopeStore implements ResourceScopeStore {
     if (resolved.visibility === undefined || resolved.rowKeys.visibility === undefined) {
       throw new Error(`资源 ${input.resourceType} 未声明 visibility 列，无法更新公开受众`);
     }
-    await this.database
+    await this.database()
       .update(resolved.table)
       .set({ [resolved.rowKeys.visibility]: input.scope.visibility })
       .where(eq(resolved.id, input.resourceId));

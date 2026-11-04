@@ -1,3 +1,4 @@
+import { NotFoundError } from "@fenix/platform-sdk";
 import type { AnyElysia } from "elysia";
 import Elysia from "elysia";
 
@@ -20,5 +21,19 @@ export function createApiApp(slots: { readonly api: readonly AnyElysia[] }): Any
     new Elysia({ name: "api" })
       // Elysia 的 `.use()` 接数组参数（不是展开），见 `node_modules/elysia/dist/index.d.ts` 的重载。
       .use([...slots.api])
+      .all(
+        "/api/v1",
+        () => {
+          throw new NotFoundError("Resource not found");
+        },
+        { detail: { hide: true } },
+      )
+      .all(
+        "/api/v1/*",
+        () => {
+          throw new NotFoundError("Resource not found");
+        },
+        { detail: { hide: true } },
+      )
   );
 }

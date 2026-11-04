@@ -1,4 +1,5 @@
 import { OrchestrationError } from "@fenix/orchestration";
+import { ApiV1ErrSchema, ApiV1OkSchema, AppError } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
@@ -8,16 +9,23 @@ import {
   type ApiInstanceConnectBody,
   ApiInstanceConnectBodySchema,
   ApiInstanceConnectResponseSchema,
+  ApiInstanceDetailSchema,
+  ApiInstanceIdParamsSchema,
+  ApiInstanceListQuerySchema,
+  ApiInstanceListResponseSchema,
 } from "../../schemas/api-instance.schema";
-import { connectAgentInstance, type InstanceOwner } from "../../server/services/api-instance";
+import {
+  connectAgentInstance,
+  type InstanceOwner,
+  listApiInstances,
+  restartApiInstance,
+  stopApiInstance,
+  toApiInstanceDetail,
+} from "../../server/services/api-instance";
+import { getApiOwnedInstance } from "../../server/services/api-instance-resolution";
 import type { ApiInstanceRouteDependencies } from "../dependencies";
 
-const ApiErrorResponseSchema = z.object({
-  error: z.object({
-    code: z.string().describe("错误码。"),
-    message: z.string().describe("错误描述。"),
-  }),
-});
+const ApiErrorResponseSchema = ApiV1ErrSchema;
 
 function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
   // Sandbox 服务不可用类错误：Provider 未配置 / Runtime 未就绪 → 503，保持对外
@@ -61,21 +69,21 @@ function mapApiError(error: unknown): { status: number; body: { error: { code: s
 }
 
 /**
- * `/api/agents/:agentId/instances/connect` 路由工厂。
+ * `/api/v1/agents/:id/instances/connect` 路由工厂。
  *
  * 两个宿主依赖（CE 阶段 2 任务 1.4 W2）：会话守卫必须与宿主 `/web/*` 路由是同一份实例（Elysia 的
  * macro / state 是实例作用域的，包内自建一份会让同一进程出现两套互不可见的认证状态）；`logError` 是
  * 宿主请求日志管道的 onError 钩子，要读宿主中间件写入的 requestId 与耗时，包内没有它们的来源。
  */
 export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
-  const app = new Elysia({ name: "api-instances", prefix: "/api" }).use(deps.authGuardPlugin).model({
+  const app = new Elysia({ name: "api-instances", prefix: "/api/v1" }).use(deps.authGuardPlugin).model({
     "api-instance-agent-params": ApiInstanceAgentConfigParamsSchema,
     "api-instance-connect-body": ApiInstanceConnectBodySchema,
-    "api-instance-connect-response": ApiInstanceConnectResponseSchema,
+    "api-instance-connect-response": ApiV1OkSchema(ApiInstanceConnectResponseSchema),
   });
 
   app.post(
-    "/agents/:agentId/instances/connect",
+    "/agents/:id/instances/connect",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
     async ({ store, params, body, error, set, request }: any) => {
       // store.authContext 由注入的守卫写入（宿主 `AuthContext`）；这里按连接入口真正消费的两个字段
@@ -83,14 +91,20 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
       // 转发 `role`——曾经转发的伪造角色会让读出来的 `access.actions` 虚高。
       const authCtx = store.authContext as InstanceOwner;
       try {
-        return await connectAgentInstance(authCtx, params.agentId, body as ApiInstanceConnectBody);
+        return {
+          success: true,
+          data: await connectAgentInstance(authCtx, params.id, {
+            ...(body as ApiInstanceConnectBody),
+            signal: request.signal,
+          }),
+        };
       } catch (err) {
         const mapped = mapApiError(err);
         // 先记录最终状态再返回映射响应：诊断信息（如 sandboxId/providerKey）只进
         // 服务端日志，不出现在对外响应体（与 errorPlugin 的映射+日志顺序约定一致）
         set.status = mapped.status;
         deps.logError({ request, error: err, set });
-        return error(mapped.status, mapped.body);
+        return error(mapped.status, { success: false, ...mapped.body });
       }
     },
     {
@@ -114,5 +128,72 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
     },
   );
 
+  app.onError(({ error, set }) => {
+    if (error instanceof AppError) {
+      set.status = error.statusCode;
+      return {
+        success: false as const,
+        error: { code: error.code, message: error.statusCode >= 500 ? "Internal server error" : error.message },
+      };
+    }
+  });
+  app.get(
+    "/agents/:id/instances",
+    async ({ store, params, query }) => ({
+      success: true as const,
+      data: await listApiInstances(store.authContext as InstanceOwner, params.id, query),
+    }),
+    {
+      sessionAuth: true,
+      params: ApiInstanceAgentConfigParamsSchema,
+      query: ApiInstanceListQuerySchema,
+      response: { 200: ApiV1OkSchema(ApiInstanceListResponseSchema), 401: ApiV1ErrSchema, 404: ApiV1ErrSchema },
+      detail: { tags: ["External Instance"], summary: "查询 Agent 的现有实例" },
+    },
+  );
+  app.get(
+    "/instances/:id",
+    async ({ store, params }) => ({
+      success: true as const,
+      data: toApiInstanceDetail(await getApiOwnedInstance(store.authContext as InstanceOwner, params.id)),
+    }),
+    {
+      sessionAuth: true,
+      params: ApiInstanceIdParamsSchema,
+      response: { 200: ApiV1OkSchema(ApiInstanceDetailSchema), 401: ApiV1ErrSchema, 404: ApiV1ErrSchema },
+      detail: { tags: ["External Instance"], summary: "查询现有实例" },
+    },
+  );
+  app.post(
+    "/instances/:id/stop",
+    async ({ store, params }) => ({
+      success: true as const,
+      data: await stopApiInstance(store.authContext as InstanceOwner, params.id),
+    }),
+    {
+      sessionAuth: true,
+      params: ApiInstanceIdParamsSchema,
+      response: { 200: ApiV1OkSchema(z.null()), 401: ApiV1ErrSchema, 404: ApiV1ErrSchema, 409: ApiV1ErrSchema },
+      detail: { tags: ["External Instance"], summary: "严格停止实例" },
+    },
+  );
+  app.post(
+    "/instances/:id/restart",
+    async ({ store, params }) => ({
+      success: true as const,
+      data: await restartApiInstance(store.authContext as InstanceOwner, params.id),
+    }),
+    {
+      sessionAuth: true,
+      params: ApiInstanceIdParamsSchema,
+      response: {
+        200: ApiV1OkSchema(ApiInstanceDetailSchema),
+        401: ApiV1ErrSchema,
+        404: ApiV1ErrSchema,
+        409: ApiV1ErrSchema,
+      },
+      detail: { tags: ["External Instance"], summary: "重启实例" },
+    },
+  );
   return app;
 }

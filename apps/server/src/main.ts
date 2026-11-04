@@ -134,6 +134,8 @@ export type App = typeof app;
 app.listen({
   port,
   hostname: host,
+  // bodyLimitPlugin counts the streamed 108 MiB budget; Bun's early rejection has no protocol-aware body.
+  maxRequestBodySize: Number.MAX_SAFE_INTEGER,
   // 92MiB文件经Base64后约122.67MiB；128MiB消息预算为协议封装留出余量。
   // 其他 WS 入口继续保留各自的消息大小校验。
   websocket: {

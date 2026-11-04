@@ -4,6 +4,7 @@ import { connectAgentInstance, setApiInstanceDeps } from "../server/services/api
 describe("api instance service", () => {
   beforeEach(() => {
     setApiInstanceDeps({
+      withEnvironmentLock: async (_owner, _id, fn) => fn(),
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },

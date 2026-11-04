@@ -57,7 +57,7 @@ export interface WorkflowV2Config {
   bffRateLimitPerMinute: number;
   /** 票据端点（`session/*`）的每用户 / 每来源每分钟令牌数；默认 60。 */
   sessionRateLimitPerMinute: number;
-  /** 对外触发面（`/api/workflow-v2/*`）的每调用方每分钟令牌数；默认 60（外部重试会产生真实运行，故收紧）。 */
+  /** 对外触发面（`/api/v1/workflow-v2/*`）的每调用方每分钟令牌数；默认 60（外部重试会产生真实运行，故收紧）。 */
   apiRateLimitPerMinute: number;
 }
 

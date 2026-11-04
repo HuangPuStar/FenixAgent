@@ -43,11 +43,11 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 豁免内容 | 「把 multipart 文件写进某个 environment 的 workspace」这一个业务动作存在两条独立实现：`/api` 面经 `machine-workspace-facade → services/api-workspace`，`/web` 面经 `machine-file-facade → services/agent-file-service`，与 §3.1「已发布的 `/api` 保留为调用同一 Facade 的薄协议 adapter」不符 |
+| 豁免内容 | 「把 multipart 文件写进某个 environment 的 workspace」的路径校验与文件写入等领域能力存在重复实现：`/api` 面经 `machine-workspace-facade → services/api-workspace`，`/web` 面经 `machine-file-facade → services/agent-file-service`。登记针对领域能力重复，不针对两面拥有不同 Facade |
 | 位置 | `packages/resources/machine/src/server/routes/api/workspaces.ts`、`src/server/services/api-workspace.ts`（`/api` 面）与 `src/server/routes/web/fs.ts`、`src/server/services/agent-file-service.ts`（`/web` 面） |
-| 依据 | 两面**不是同一份语义**：路径作用域（`user/` 子树 vs workspace 根）、远程落点（剥 / 不剥 `user/` 前缀）、单文件上限（50MB vs 100MB / 远程 20MB）、授权口径（组织 + 属主 vs 另加 `member` 403）、幂等与副作用（`opId` / `If-Match` / `file_changed` 事件）、相对路径校验集合、错误信封（`{error:{code,message}}` vs `{error:{type,message}}`）共 7 处实质差异。其中 `/api` 一面是**已发布的外部合同**，按 §3.1 其变更或退役须经独立评审、消费者盘点与迁移窗口，因此不与 `/web` 面强行合并 |
+| 依据 | 两面在路径作用域、远程落点、容量、授权、幂等与副作用、路径校验和错误信封上存在差异，详见本包 README。按 §3.1，两面分别维护契约；提取公共领域能力不能隐式改变已发布 API 的行为，具体变更与迁移方式由设计明确 |
 | owner | 两面都在 `@fenix/resource-machine`（`services/api-workspace.ts` 与 `agent-file-service.ts` + `file-backends.ts`） |
-| 移除条件 | 给出「并入文件域 Facade」的裁定与迁移窗口后：`routes/api/workspaces.ts` 改调 `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入 / 校验 / 上限逻辑整体删除 |
+| 移除条件 | 路径校验与文件写入复用文件领域能力，删除重复执行逻辑，协议及版本差异由各自应用入口维护，并完成契约回归和已确认的迁移；不要求合并 Facade |
 | 详述 | `packages/resources/machine/README.md` 的「已知项」节（7 条差异逐条列证据与现状依据） |
 
 ## 4. Machine 的 service 直连 DB 未收敛到 repository（§1.4 残留）
@@ -71,5 +71,5 @@
   前端规范 §2.5 允许页面取数，禁止的是**壳**取数；页面属「页面或域模块内」，不是豁免。
 - **非受控资源的租户边界用「已认证 active organization」表达**（如知识库、沙盒资源池不接 `@fenix/access-control`）：
   这些资源不在五张受控资源主表之列、没有 `visibility` 列，其边界由会话守卫保证，属正常形态而非绕行。
-- **`/api` 与 `/web` 共用同一 Facade 的薄 adapter 差异**（错误信封、分页夹紧等）：协议层差异属于 adapter 职责，
-  只有**第二套业务实现**才需要登记（见上方第 3 行）。
+- **`/api` 与 `/web` 分别维护契约的入口差异**（DTO、错误映射、版本行为等）：允许各自拥有应用入口或 Facade，
+  不因此登记豁免；重复实现公共领域能力才需要登记（见上方第 3 行）。

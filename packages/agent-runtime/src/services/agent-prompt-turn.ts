@@ -35,6 +35,8 @@ export interface PromptTurnStartOptions {
 }
 /** One confirmed ACP session prompt, with its own cancellation and consumption lifetime. */
 export interface PromptTurn {
+  /** Internal ACP identity, confirmed by session/new or session/load. */
+  readonly sessionId: string;
   prompt(content: Array<{ type: string; text: string; resource?: unknown }>): void;
   events(): AsyncIterable<EngineRelayMessage>;
   /** Send session/cancel for this turn and wake its pending event consumer. */
@@ -185,6 +187,7 @@ function createPromptTurnWithLease(
   signal?.addEventListener("abort", onAbort, { once: true });
   if (signal?.aborted) onAbort();
   return {
+    sessionId,
     prompt(content) {
       signal?.throwIfAborted();
       if (done || released) throw new Error("Prompt turn is closed");

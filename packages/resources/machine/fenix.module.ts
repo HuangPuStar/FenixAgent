@@ -38,7 +38,7 @@ import { z } from "zod/v4";
  * 入口（`authenticateRequest`）。惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就
  * 把 Elysia 拖进模块图。
  *
- * 1.5f 追加一条 `api` 槽贡献：`/api/environments/:environmentId/workspace/files`（对外工作区文件接口，
+ * 1.5f 追加一条 `api` 槽贡献：`/api/v1/environments/:environmentId/workspace/files`（对外工作区文件接口，
  * 与 `/web` 面共用同一份会话守卫）。
  *
  * 声明 `envDefinitions`（1.7 C 块，路线 A）：本包实测只有两个部署级变量，且都只被本模块消费——

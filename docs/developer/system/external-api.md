@@ -1,13 +1,19 @@
 # External API 使用指南
 
-Fenix 对外提供了一套独立的 External API，供其他系统通过 API Key 调用。外部系统应使用 `/api/*` 路径，不要直接依赖控制台内部使用的 `/web/*` 接口。
+Fenix 对外提供了一套独立的 External API，供其他系统通过 API Key 调用。外部系统应使用 `/api/v1/*` 路径，不要直接依赖控制台内部使用的 `/web/*` 接口。
 
 ## 文档入口
 
 - 交互式文档：`http://server/docs/openapi/external`
 - OpenAPI JSON：`http://server/docs/openapi/external/json`
 
+文档由宿主统一按路径收录：`external` 包含 `/api/*`，排除 `apps/server/src/openapi.ts` 中 `EXTERNAL_API_EXCLUDED_PATHS` 声明的路径及其子路径；控制台 `/web/*` 接口位于 `/docs/openapi/web`。路由标签仅用于分组，不决定文档归属。
+
 具体字段、请求体和响应体定义，请直接以交互式文档为准，不要以本文档中的示例推断全部接口形态。
+
+## 接口联调
+
+仓库提供 `bun scripts/test-agent-api-v1.ts` 全流程测试脚本，默认连续执行，传 `-t` 可逐步等待回车。配置准备、覆盖范围和工作流脚本见 [脚本联调](./external-agent-session-guide.md#脚本联调)。
 
 ## API Key
 
@@ -34,6 +40,8 @@ Authorization: Bearer rcs_xxx
 ## System API
 
 除了面向普通外部调用方的 `/api/*` 接口外，Fenix 还提供一组单独的系统级管理接口：`/api/system/*`。
+
+对外文档的排除范围以 `EXTERNAL_API_EXCLUDED_PATHS` 为准；文档隐藏不改变系统密钥鉴权要求。
 
 这组接口主要给系统集成使用，和普通 External API 有两个关键区别：
 
@@ -77,10 +85,14 @@ curl -X GET 'https://rcs.example.com/api/agents?page=1&pageSize=20' \
   -H 'Authorization: Bearer rcs_xxx'
 ```
 
+普通接口返回 `{ success: true, data }`，失败返回 `{ success: false, error: { code, message } }`。Chat Completions 使用 OpenAI 原生 JSON / SSE 与错误格式。
+
 示例响应：
 
 ```json
 {
+  "success": true,
+  "data": {
   "items": [
     {
       "id": "95136b37-1af8-48cf-a29d-59e092e4f5a1",
@@ -91,15 +103,16 @@ curl -X GET 'https://rcs.example.com/api/agents?page=1&pageSize=20' \
   "total": 1,
   "page": 1,
   "pageSize": 20
+  }
 }
 ```
 
 ## 触发工作流运行
 
-`POST /api/workflow-v2/workflows/:id/run` 触发指定工作流的**已发布版本**运行；`:id` 是控制台里的工作流主键（在控制台的工作流列表页「更多 → 调用接口」里可以直接看到调用地址与示例）。
+`POST /api/v1/workflow-v2/workflows/:id/run` 触发指定工作流的**已发布版本**运行；`:id` 是控制台里的工作流主键（在控制台的工作流列表页「更多 → 调用接口」里可以直接看到调用地址与示例）。
 
 ```bash
-curl -X POST 'https://rcs.example.com/api/workflow-v2/workflows/9f1c2f9e-0d3a-4c6b-8f21-2a7b0f5c1d33/run' \
+curl -X POST 'https://rcs.example.com/api/v1/workflow-v2/workflows/9f1c2f9e-0d3a-4c6b-8f21-2a7b0f5c1d33/run' \
   -H 'Authorization: Bearer rcs_xxx' \
   -H 'Content-Type: application/json' \
   -d '{"parameters":{"input":"hello"},"isAsync":false}'
@@ -111,11 +124,14 @@ curl -X POST 'https://rcs.example.com/api/workflow-v2/workflows/9f1c2f9e-0d3a-4c
 
 ```json
 {
+  "success": true,
+  "data": {
   "executeId": "6900000000000000001",
   "data": "{\"output\":\"hello\"}",
   "token": 7,
   "cost": "0.01000",
   "debugUrl": "http://127.0.0.1:18080/work_flow?execute_id=6900000000000000001"
+  }
 }
 ```
 
@@ -148,4 +164,4 @@ curl -X POST 'https://rcs.example.com/api/workflow-v2/workflows/9f1c2f9e-0d3a-4c
 
 - 交互式文档：`http://server/docs/openapi/external`
 - Agent 管理与会话说明：`/developer/system/external-agent-session-guide`
-- 代码示例：`/docs/developer/api-demo`
+- [稳定契约](../../arch/external-api-v1.md)

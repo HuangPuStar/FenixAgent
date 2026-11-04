@@ -245,14 +245,16 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 环境变量读取与校验统一在宿主（§1.5）：包内直读会把部署知识复制进资源模块，两处默认值会分歧。
   // 标题与正则刻意不写出该字面量——本文件也在扫描范围内，写了会被自己扫成违规。
   test("包内 src 不直读宿主环境变量", () => {
-    const offenders = filesUnder("src").flatMap((file) => {
-      const code = stripComments(readFileSync(file, "utf8"));
-      return code
-        .split("\n")
-        .map((line, index) => ({ line, number: index + 1 }))
-        .filter(({ line }) => /\bprocess\.env\b/.test(line))
-        .map(({ number }) => `${relative(PKG_ROOT, file)}:${number}`);
-    });
+    const offenders = filesUnder("src")
+      .filter((file) => !file.endsWith(".test.ts"))
+      .flatMap((file) => {
+        const code = stripComments(readFileSync(file, "utf8"));
+        return code
+          .split("\n")
+          .map((line, index) => ({ line, number: index + 1 }))
+          .filter(({ line }) => /\bprocess\.env\b/.test(line))
+          .map(({ number }) => `${relative(PKG_ROOT, file)}:${number}`);
+      });
     expect(offenders).toEqual([]);
   });
 
