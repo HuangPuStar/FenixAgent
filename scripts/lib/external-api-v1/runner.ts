@@ -123,7 +123,7 @@ export async function readChatStream(response: Response, emit: (value: unknown) 
   }
 }
 
-/** Print each operation, verify its result, and always wait for Enter before proceeding. */
+/** Print and verify each operation, delegating optional pauses to the caller. */
 export class ManualRunner {
   readonly operations = new Set<string>();
   private sequence = 0;
@@ -160,7 +160,7 @@ export class ManualRunner {
     this.io.write(line);
   }
 
-  /** One visible protocol action; failure is paused and propagated, never retried. */
+  /** One visible protocol action; apply the configured pause and propagate failure without retries. */
   async step<T>(title: string, action: () => Promise<T>): Promise<T> {
     this.print(`\n[${++this.sequence}]`, title);
     try {

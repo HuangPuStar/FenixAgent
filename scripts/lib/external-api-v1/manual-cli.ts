@@ -13,7 +13,7 @@ interface ManualScenario<Config extends ConnectionConfig> {
   secrets?: (config: Config) => string[];
 }
 
-/** 每次请求或聊天后等待回车，禁止管道输入自动跑过资源清理。 */
+/** 默认连续执行；传入 -t 后每次请求或聊天等待回车。 */
 async function main<Config extends ConnectionConfig>(scenario: ManualScenario<Config>): Promise<void> {
   if (process.argv.includes("--list")) {
     console.log(
@@ -30,28 +30,35 @@ async function main<Config extends ConnectionConfig>(scenario: ManualScenario<Co
   const CONFIG = configs[scenario.configName];
   assert.ok(CONFIG, `本地配置文件缺少导出的 ${scenario.configName}，请参考 example 文件`);
   scenario.validate(CONFIG);
-  if (!process.stdin.isTTY) throw new Error("请在交互式终端运行，脚本必须等待你按回车。");
-  const terminal = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+  const interactive = process.argv.includes("-t");
+  if (interactive && !process.stdin.isTTY) throw new Error("-t 模式请在交互式终端运行，按回车继续测试。");
+  const terminal = interactive
+    ? createInterface({ input: process.stdin, output: process.stdout, terminal: false })
+    : undefined;
   const resources: Record<string, string> = {};
   const runner = new ManualRunner(
     { ...CONFIG, secrets: [...(CONFIG.secrets ?? []), ...(scenario.secrets?.(CONFIG) ?? [])] },
     {
       write: (line) => console.log(line),
-      pause: () =>
-        new Promise<void>((resolve) => {
+      pause: async () => {
+        if (!terminal) return;
+        await new Promise<void>((resolve) => {
           terminal.question("\u001b[36m观察页面后按回车继续（Ctrl+C 结束）> \u001b[0m", () => resolve());
-        }),
+        });
+      },
     },
   );
   const interrupted = () => {
     runner.print("已停止，资源线索", resources);
-    terminal.close();
+    terminal?.close();
     process.exit(130);
   };
   process.once("SIGINT", interrupted);
   process.once("SIGTERM", interrupted);
   try {
-    console.log(`开始测试 ${scenario.description}；每个接口和每轮聊天后暂停，按回车继续。`);
+    console.log(
+      `开始测试 ${scenario.description}；${interactive ? "每个接口和每轮聊天后暂停，按回车继续。" : "连续执行，不暂停。"}`,
+    );
     await scenario.run(CONFIG, runner, resources);
   } catch (error) {
     runner.print("测试终止", error instanceof Error ? error.message : String(error));
@@ -59,7 +66,7 @@ async function main<Config extends ConnectionConfig>(scenario: ManualScenario<Co
     runner.print("已通过接口", [...runner.operations]);
     process.exitCode = 1;
   } finally {
-    terminal.close();
+    terminal?.close();
     process.off("SIGINT", interrupted);
     process.off("SIGTERM", interrupted);
   }

@@ -2,6 +2,40 @@
 
 稳定协议见 [External Agent API v1](../../arch/external-api-v1.md)，字段见 `/docs/openapi/external`。下面的 API_KEY、各资源 ID 和执行节点需使用当前环境实际值。
 
+## 脚本联调
+
+在仓库根目录执行，需已安装 Bun，并启动平台服务及可用的 Agent 执行节点。
+
+1. 首次使用时复制配置模板；已有本地配置则直接编辑，避免覆盖：
+
+   ```bash
+   cp scripts/test-external-api-v1.config.example.ts scripts/test-external-api-v1.config.local.ts
+   ```
+
+2. 编辑本地配置中的 `AGENT_CONFIG`：填写 `baseUrl`、平台 `apiKey`、上游 Provider / Model、已有知识库 ID、可访问的 MCP 服务及执行节点。地址改为实际服务地址，例如 `http://127.0.0.1:3000`。本地配置已被 Git 忽略，不提交密钥。
+3. 运行 Agent 全流程测试，控制台会打印每个接口的输入、输出和检查结果：
+
+   ```bash
+   # 默认连续执行，不等待输入
+   bun scripts/test-agent-api-v1.ts
+
+   # 逐接口、逐轮对话等待回车，便于观察页面数据
+   bun scripts/test-agent-api-v1.ts -t
+
+   # 只列出覆盖的接口，不读取配置、不发请求
+   bun scripts/test-agent-api-v1.ts --list
+   ```
+
+脚本覆盖 Agent、Provider / Model、Skill、MCP、知识库查询、实例和文件上传，以及 OpenAI / ACP 各三轮对话。成功结束时清理本轮创建的配置资源，上传文件保留；失败或中断时停止执行并打印资源线索，便于排查及手动清理。测试会真实调用模型。
+
+Workflow v2 使用独立脚本，读取同一个本地配置文件中的 `WORKFLOW_V2_CONFIG`，也支持 `-t` 和 `--list`：
+
+```bash
+bun scripts/test-workflow-v2-api-v1.ts
+```
+
+工作流需事先发布，在配置中填写 `workflowId` 和输入参数；脚本只执行已有工作流并保留运行记录。
+
 ## 最小流程
 
 1. 查询或创建 Provider、Model；网关配置和模型只读。

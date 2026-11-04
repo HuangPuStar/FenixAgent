@@ -1,4 +1,4 @@
-/** Workflow v2 手工测试：bun scripts/test-workflow-v2-api-v1.ts；--list 仅列接口。 */
+/** Workflow v2 测试：bun scripts/test-workflow-v2-api-v1.ts；-t 逐步交互，--list 仅列接口。 */
 import { runManualScenario } from "./lib/external-api-v1/manual-cli";
 import {
   runWorkflowV2Scenario,

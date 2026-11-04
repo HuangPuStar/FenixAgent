@@ -1,4 +1,4 @@
-/** Agent 全流程手工测试：bun scripts/test-agent-api-v1.ts；--list 仅列接口。 */
+/** Agent 全流程测试：bun scripts/test-agent-api-v1.ts；-t 逐步交互，--list 仅列接口。 */
 import { runManualScenario } from "./lib/external-api-v1/manual-cli";
 import { AGENT_OPERATIONS, runAgentScenario, validateAgentConfig } from "./lib/external-api-v1/scenario";
 
