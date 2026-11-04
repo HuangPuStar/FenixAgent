@@ -58,6 +58,8 @@ describe("Channel 包的交付面", () => {
     expect(moduleManifest.contributions?.map((item) => item.slot)).toEqual(["web", "app", "app", "api"]);
     expect(moduleManifest.web).toEqual({
       id: "channel",
+      // 未配置基址时控制面整体 503：宿主据此把 channel 从浏览器清单里收窄，避免留下坏入口。
+      requiresEnv: ["LANGBOT_BASE_URL"],
       contribution: "@fenix/resource-channel/web/contribution",
     });
     expect(moduleManifest.envDefinitions?.map((item) => item.key).sort()).toEqual([

@@ -26,13 +26,15 @@
 
 ## 运行期模块启用标识
 
-宿主公开只读 `GET /web/system/modules`，响应 `{ success: true, data: { modules: string[], web: string[] } }`。`modules` 是当前装配的资源模块 ID（不含基础模块与 Shell），`web` 是已校验装配结果的 web ID；不返回入口说明符、URL、环境变量或任何配置值。此部署元数据不区分用户/组织，也不代替认证授权，不能挂在可选模块下。
+宿主公开只读 `GET /web/system/modules`，响应 `{ success: true, data: { modules: string[], web: string[] } }`。`modules` 是当前装配的资源模块 ID（不含基础模块与 Shell）；`web` 是当前浏览器面可用的 web ID——先取已校验装配结果的 web 贡献，再剔除 manifest `web.requiresEnv` 中任一部署配置键未提供值的项（缺失、空串与纯空白都算未配置）。因此 `modules` 含某模块而 `web` 不含它，表示模块已装配、但其浏览器面缺必需配置。不返回入口说明符、URL、环境变量或任何配置值。此部署元数据不区分用户/组织，也不代替认证授权，不能挂在可选模块下。
 
 浏览器根 Provider 用 `useRequest` 获取一次清单，导航与根路由出口共享该快照。有效 web 集合是构建期贡献与运行期清单的交集；导航再叠加 `hiddenTabs` 偏好，后者只隐藏入口，不禁止直达。贡献导航项 `/agent/<id>` 及子路径自动受统一路由边界保护，非导航入口由 owner 的 `routePrefixes` 一行声明；关闭时不挂载业务子树，显示「未启用」，加载中显示状态提示。
 
 拉取失败（含非法响应）按构建期清单 fail-open，显示非阻断提示与重试按钮，并记录一次 `assembly_modules_fetch_failed` 结构化错误信号，不输出原始异常或响应。清单是当前浏览器应用生命周期的快照，部署变更后需重新打开/刷新应用；端点禁止 HTTP 缓存。部署滚动更新应保证请求落在一致 profile 的后端集合。
 
 例如关闭新工作流：从部署 profile 的 `resources` 移除 `workflow-v2`，同时从 `web` 移除 `workflow`（两种 ID 不同），重启服务。未移除 web 引用会按既有 registry 规则启动失败，而非悄悄修正。`apps/server/src/__tests__/fixtures/assembly-without-workflow.json` 用于前后端测试示范，默认 `ce.json` 不变；旧 `workflow` 资源模块与新 `workflow-v2` 是独立模块，本机制不改变旧 API。关闭工单同理：`data.web` 不再含 `tickets`，含工单的 bundle 据此隐藏入口并拦截 `/agent/tickets/*`；默认 bundle 里没有该贡献，自然也没有入口。
+
+配置缺失走同一条收窄路径：未配置 `LANGBOT_BASE_URL` 时 `data.modules` 仍含 `channel`，但 `data.web` 不含它，控制台侧栏的「消息通道」入口不显示，直达 `/agent/channels` 被路由边界拦下——服务端控制面此时本就返回 503，入口可见反而会把人带进一个必然失败的页面。
 
 `docker/deploy.env` 的 `FENIX_FEATURE_*` 仍属于部署服务开关，不自动映射装配 profile。长期架构约束见 `docs/arch/26-deployment-topology.md`。
 

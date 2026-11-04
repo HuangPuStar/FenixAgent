@@ -67,6 +67,8 @@ export const moduleManifest = {
   ],
   web: {
     id: "channel",
+    // 未配置 LangBot 基址时控制面整体 503，页面没有可用数据；宿主据此隐藏侧栏入口并拦截该路由。
+    requiresEnv: ["LANGBOT_BASE_URL"],
     contribution: "@fenix/resource-channel/web/contribution",
   },
   contributions: [

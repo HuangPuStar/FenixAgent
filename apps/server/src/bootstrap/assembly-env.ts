@@ -33,5 +33,6 @@ export async function resolveAssemblyEnv(options: ResolveAssemblyEnvOptions = {}
   const profile = await loadAssemblyProfile(options.profilePath);
   const assembly = createModuleRegistry(options.manifests ?? generatedModuleManifests).resolveProfile(profile);
   const definitions = assembly.modules.flatMap((manifest) => manifest.envDefinitions ?? []);
-  return { profile, env: loadServerEnv(definitions, options.input), assemblyModules: projectAssemblyModules(assembly) };
+  const env = loadServerEnv(definitions, options.input);
+  return { profile, env, assemblyModules: projectAssemblyModules(assembly, env) };
 }
