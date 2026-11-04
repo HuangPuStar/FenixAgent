@@ -385,6 +385,34 @@ describe("IM 会话端口执行租约", () => {
   });
 });
 
+describe("IM 会话端口旧会话恢复", () => {
+  // 建连超时是传输层失败，不能证明旧会话已删除；回退 session/new 会覆盖仍有效的 acp_session_id。
+  test("恢复旧会话时建连超时不触发新建回退", async () => {
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const runtime = createFakeRuntime({ connectGate: gate });
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort({ relayConnectTimeoutMs: 5 });
+
+    const error = await capturePortError(
+      port.openSession({
+        target: { ...target("rcs_restore_timeout"), acpSessionId: "ses_existing" },
+        instance: INSTANCE,
+      }),
+    );
+
+    expect(error.code).toBe("IM_RELAY_CONNECT_TIMEOUT");
+    expect(runtime.turns.size).toBe(0);
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+
+    openGate();
+    // 迟到 relay 由 waitWithSignal 的 onLateValue 关闭；留一轮宏任务给清理，未处理异常会让用例失败。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+});
+
 describe("IM 会话端口自动唤醒", () => {
   // 手动停止的实例收到 IM 消息时视为唤醒意图：重启一次，并用重启后的代次返回实例信息。
   test("实例停止时自动唤醒并返回重启后的运行代次", async () => {

@@ -41,6 +41,9 @@ interface OpenedTurn {
 /** 唤醒失败对外的稳定字符串码；资源包只按码分类，不共享具体错误类型。 */
 const IM_WAKE_FAILED = "IM_WAKE_FAILED";
 
+/** relay 建连超时的稳定错误码；调用方据此区分传输失败与会话不存在。 */
+const IM_RELAY_CONNECT_TIMEOUT = "IM_RELAY_CONNECT_TIMEOUT";
+
 /** IM 无请求信号，relay 建连必须有界，否则执行租约会在等待期间无限期阻止实例空闲回收。 */
 const IM_RELAY_CONNECT_TIMEOUT_MS = 30_000;
 
@@ -52,6 +55,29 @@ function isInstanceStoppedError(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "INSTANCE_STOPPED"
   );
+}
+
+function isRelayConnectTimeout(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === IM_RELAY_CONNECT_TIMEOUT
+  );
+}
+
+/**
+ * relay 建连超时。
+ *
+ * 传输层失败不能证明旧 ACP 会话已删除；按错误码区分可避免跨包 instanceof 失效。
+ */
+class ImRelayConnectTimeoutError extends Error {
+  readonly code = IM_RELAY_CONNECT_TIMEOUT;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ImRelayConnectTimeoutError";
+  }
 }
 
 /**
@@ -69,8 +95,9 @@ class ImWakeFailedError extends Error {
 }
 
 /** ACP 会话的 `prompt` 应答在整轮结束时才返回，因此这里只把「发送成功」当作已接受。 */
-export function createChannelImSessionPort(): ImSessionPort {
+export function createChannelImSessionPort(options: { relayConnectTimeoutMs?: number } = {}): ImSessionPort {
   const runtime = () => getBoundAgentRuntime();
+  const relayConnectTimeoutMs = options.relayConnectTimeoutMs ?? IM_RELAY_CONNECT_TIMEOUT_MS;
   // 以 handleId 而不是 conversationId 为键：同一聊天换 Agent 后并发冷启动会各自持有一个 turn，
   // 按聊天键存会让后一次 openSession 覆盖前一次，唤醒 prompt 发到错误的会话。
   const opened = new Map<string, OpenedTurn>();
@@ -113,8 +140,8 @@ export function createChannelImSessionPort(): ImSessionPort {
   async function connectRelayBounded(instanceId: string, rcsSessionId: string) {
     const controller = new AbortController();
     const timer = setTimeout(
-      () => controller.abort(new Error("IM relay connection timed out")),
-      IM_RELAY_CONNECT_TIMEOUT_MS,
+      () => controller.abort(new ImRelayConnectTimeoutError("IM relay connection timed out")),
+      relayConnectTimeoutMs,
     );
     try {
       return await waitWithSignal(runtime().session.connectRelay(instanceId, rcsSessionId), controller.signal, (late) =>
@@ -216,6 +243,8 @@ export function createChannelImSessionPort(): ImSessionPort {
               acpSessionId: restored.sessionId,
             };
           } catch (error) {
+            // 建连超时属传输层失败，无法证明旧会话已删除；回退新建会覆盖仍有效的 acp_session_id。
+            if (isRelayConnectTimeout(error)) throw error;
             // 会话可能已在 Agent 侧删除：按规格 §6.3 新建会话，由调用方回写 `acp_session_id`。
             logWarn(
               `[im-session] ACP 会话恢复失败，改为新建：conversationId=${input.target.conversationId}`,
