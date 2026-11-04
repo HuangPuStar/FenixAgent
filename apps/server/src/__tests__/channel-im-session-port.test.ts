@@ -8,7 +8,12 @@ import {
   type PromptTurnStartResult,
   type RuntimeSnapshot,
 } from "@fenix/agent-runtime/runtime";
-import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
+import {
+  hasActiveAgentExecutions,
+  releaseAgentExecutions,
+  resetAgentRuntimePort,
+  stubAgentRuntimePort,
+} from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs, stubDb, stubModuleConfig } from "@fenix/platform-sdk/testing";
 import { createChannelImSessionPort } from "../services/channel-im-session-port";
 
@@ -25,6 +30,9 @@ interface FakeTurn {
   readonly prompts: string[];
   /** 记录 ACP 下发的 MCP 条目，用来断言订阅元数据的键名。 */
   readonly mcpServers: readonly Record<string, unknown>[];
+  /** 真实 turn 在 terminal 或未发 prompt 的 release 时通知执行终态。 */
+  readonly onExecutionFinished?: () => void;
+  prompted: boolean;
   released: boolean;
 }
 
@@ -34,8 +42,15 @@ interface FakeRuntime {
   readonly turns: Map<string, FakeTurn>;
 }
 
+interface FakeRuntimeOptions {
+  /** 模拟 session/new 握手失败。 */
+  startError?: Error;
+  /** 模拟 relay 同步发送失败。 */
+  promptError?: Error;
+}
+
 /** 只实现端口用到的三个动词：connectRelay / createAgentSession / startPromptTurn。 */
-function createFakeRuntime(): FakeRuntime {
+function createFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
   const turns = new Map<string, FakeTurn>();
   const relayOwners = new WeakMap<object, string>();
   let sessionSeq = 0;
@@ -58,24 +73,36 @@ function createFakeRuntime(): FakeRuntime {
     createPromptTurn() {
       throw new Error("用例不应构造 PromptTurn");
     },
-    async startPromptTurn(options): Promise<PromptTurnStartResult> {
-      const rcsSessionId = relayOwners.get(options.session.relayHandle);
+    async startPromptTurn(start): Promise<PromptTurnStartResult> {
+      if (options.startError) throw options.startError;
+      const rcsSessionId = relayOwners.get(start.session.relayHandle);
       if (rcsSessionId === undefined) throw new Error("relay 未经过 connectRelay");
       sessionSeq += 1;
-      const record: FakeTurn = { prompts: [], mcpServers: options.mcpServers ?? [], released: false };
+      const record: FakeTurn = {
+        prompts: [],
+        mcpServers: start.mcpServers ?? [],
+        onExecutionFinished: start.onExecutionFinished,
+        prompted: false,
+        released: false,
+      };
       turns.set(rcsSessionId, record);
       const turn: PromptTurn = {
         prompt(content) {
+          // 与真实 turn 一致：先标记已发 prompt，同步发送失败时因此不会回调执行终态。
+          record.prompted = true;
+          if (options.promptError) throw options.promptError;
           for (const item of content) record.prompts.push(item.text);
         },
         events: () => (async function* () {})(),
         cancel: async () => {},
         release: () => {
           record.released = true;
+          // 与真实 turn 一致：只有尚未发 prompt 的 release 才算执行终态。
+          if (!record.prompted) record.onExecutionFinished?.();
         },
         dispose: async () => {},
       };
-      return { turn, session: options.session, sessionId: options.sessionId ?? `ses_fake_${sessionSeq}` };
+      return { turn, session: start.session, sessionId: start.sessionId ?? `ses_fake_${sessionSeq}` };
     },
     sendToAgentWs: () => false,
     sendToInstanceRelay: () => false,
@@ -190,6 +217,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // 执行集合是模块级的；用例中断言的租约若未释放会泄漏到同进程的后续文件。
+  releaseAgentExecutions(INSTANCE.instanceId);
   resetAgentRuntimePort();
   resetAllStubs();
 });
@@ -254,6 +283,72 @@ describe("IM 会话端口并发冷启动", () => {
       name: "im",
       _meta: { "peri.subscriptions": { resources: ["im://inbox"] } },
     });
+  });
+});
+
+describe("IM 会话端口执行租约", () => {
+  // 冷启动的进程内 relay 不计入 relayCount；只有租约能让空闲回收看到在途 turn，terminal 后必须释放。
+  test("冷启动持有执行租约，turn 终止后释放", async () => {
+    const runtime = createFakeRuntime();
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const session = await port.openSession({ target: target("rcs_lease"), instance: INSTANCE });
+
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(true);
+    const onFinished = runtime.turns.get("rcs_lease")?.onExecutionFinished;
+    expect(onFinished).toBeDefined();
+    onFinished?.();
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+
+    await port.close(session);
+  });
+
+  // 未发 prompt 的 turn 不会经 terminal 通知；关闭时必须显式释放，否则实例会一直被视为有执行而无法回收。
+  test("未发 prompt 关闭会话时释放执行租约", async () => {
+    const runtime = createFakeRuntime();
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const session = await port.openSession({ target: target("rcs_close_unprompted"), instance: INSTANCE });
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(true);
+
+    await port.close(session);
+
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+  });
+
+  // 握手失败的冷启动不会产生 turn，租约必须在 openSession 的失败路径上立即归还。
+  test("openSession 握手失败后不残留执行租约", async () => {
+    const handshakeError = new Error("session/new rejected");
+    const runtime = createFakeRuntime({ startError: handshakeError });
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const error = await capturePortError(
+      port.openSession({ target: target("rcs_handshake_fail"), instance: INSTANCE }),
+    );
+
+    expect(error).toBe(handshakeError);
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+  });
+
+  // relay 同步发送失败时 turn 内部不会回调执行终态，端口必须自行释放并把原始错误交给调用方。
+  test("唤醒 prompt 同步发送失败时释放执行租约并原样上抛", async () => {
+    const sendError = new Error("relay send failed");
+    const runtime = createFakeRuntime({ promptError: sendError });
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const session = await port.openSession({ target: target("rcs_send_fail"), instance: INSTANCE });
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(true);
+
+    const error = await capturePortError(port.sendWakePrompt({ session, text: "唤醒" }));
+
+    expect(error).toBe(sendError);
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
+
+    await port.close(session);
   });
 });
 

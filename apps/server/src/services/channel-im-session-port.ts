@@ -1,4 +1,9 @@
-import { type AgentSession, getBoundAgentRuntime, type PromptTurn } from "@fenix/agent-runtime/runtime";
+import {
+  type AgentSession,
+  acquireAgentExecution,
+  getBoundAgentRuntime,
+  type PromptTurn,
+} from "@fenix/agent-runtime/runtime";
 import { findOrCreateNamedApiInstance, getAgentRuntimeConfig } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
 import {
@@ -21,9 +26,13 @@ import {
  * `im-<conversationId>`（`creation_source = api`）；一次投递只持有自己的 relay 消费租约，不拥有实例生命周期。
  */
 
+type AgentExecutionLease = ReturnType<typeof acquireAgentExecution>;
+
 interface OpenedTurn {
   readonly session: AgentSession;
   readonly turn: PromptTurn;
+  /** 本次投递的执行租约；turn 终止前不能被空闲回收，未发 prompt 时由 close 释放。 */
+  readonly execution: AgentExecutionLease;
   /** prompt 已经发出；此时不能提前关闭 relay，否则会话租约无法在 turn 终止时释放。 */
   promptSent: boolean;
 }
@@ -99,6 +108,7 @@ export function createChannelImSessionPort(): ImSessionPort {
   async function openTurn(input: {
     target: ImSessionTarget;
     instanceId: string;
+    execution: AgentExecutionLease;
     sessionId?: string;
     mcpServers: readonly Record<string, unknown>[];
   }): Promise<{ session: AgentSession; turn: PromptTurn; sessionId: string }> {
@@ -109,6 +119,8 @@ export function createChannelImSessionPort(): ImSessionPort {
         session,
         ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
         mcpServers: input.mcpServers,
+        // IM 的进程内 relay 不经过 InstanceRegistry，只有租约能让回收判定看见在途 turn。
+        onExecutionFinished: () => input.execution.release(),
       });
       return { session, turn: started.turn, sessionId: started.sessionId };
     } catch (error) {
@@ -152,55 +164,75 @@ export function createChannelImSessionPort(): ImSessionPort {
     },
 
     async openSession(input) {
-      const mcpServers = await buildMcpServers(input.target);
-      handleSequence += 1;
-      const handleId = String(handleSequence);
-      if (input.target.acpSessionId) {
-        try {
-          const restored = await openTurn({
-            target: input.target,
-            instanceId: input.instance.instanceId,
-            sessionId: input.target.acpSessionId,
-            mcpServers,
-          });
-          opened.set(handleId, {
-            session: restored.session,
-            turn: restored.turn,
-            promptSent: false,
-          });
-          return {
-            handleId,
-            conversationId: input.target.conversationId,
-            instanceId: input.instance.instanceId,
-            acpSessionId: restored.sessionId,
-          };
-        } catch (error) {
-          // 会话可能已在 Agent 侧删除：按规格 §6.3 新建会话，由调用方回写 `acp_session_id`。
-          logWarn(
-            `[im-session] ACP 会话恢复失败，改为新建：conversationId=${input.target.conversationId}`,
-            error instanceof Error ? error.message : undefined,
-          );
-        }
-      }
+      // 放在任何 await 之前：冷启动期间既没有 relayCount 也没有 turn，只有租约能阻止空闲回收。
+      const execution = acquireAgentExecution({ userId: input.target.ownerUserId, source: "interactive" });
+      try {
+        // ensureInstance 已确保 runtime 就绪，因此本执行可以立即进入回收保护。
+        execution.attach(input.instance.instanceId);
+        execution.confirmRuntime();
 
-      const created = await openTurn({
-        target: input.target,
-        instanceId: input.instance.instanceId,
-        mcpServers,
-      });
-      opened.set(handleId, { session: created.session, turn: created.turn, promptSent: false });
-      return {
-        handleId,
-        conversationId: input.target.conversationId,
-        instanceId: input.instance.instanceId,
-        acpSessionId: created.sessionId,
-      };
+        const mcpServers = await buildMcpServers(input.target);
+        handleSequence += 1;
+        const handleId = String(handleSequence);
+        if (input.target.acpSessionId) {
+          try {
+            const restored = await openTurn({
+              target: input.target,
+              instanceId: input.instance.instanceId,
+              execution,
+              sessionId: input.target.acpSessionId,
+              mcpServers,
+            });
+            opened.set(handleId, {
+              session: restored.session,
+              turn: restored.turn,
+              execution,
+              promptSent: false,
+            });
+            return {
+              handleId,
+              conversationId: input.target.conversationId,
+              instanceId: input.instance.instanceId,
+              acpSessionId: restored.sessionId,
+            };
+          } catch (error) {
+            // 会话可能已在 Agent 侧删除：按规格 §6.3 新建会话，由调用方回写 `acp_session_id`。
+            logWarn(
+              `[im-session] ACP 会话恢复失败，改为新建：conversationId=${input.target.conversationId}`,
+              error instanceof Error ? error.message : undefined,
+            );
+          }
+        }
+
+        const created = await openTurn({
+          target: input.target,
+          instanceId: input.instance.instanceId,
+          execution,
+          mcpServers,
+        });
+        opened.set(handleId, { session: created.session, turn: created.turn, execution, promptSent: false });
+        return {
+          handleId,
+          conversationId: input.target.conversationId,
+          instanceId: input.instance.instanceId,
+          acpSessionId: created.sessionId,
+        };
+      } catch (error) {
+        execution.release();
+        throw error;
+      }
     },
 
     async sendWakePrompt(input: ImWakePromptInput) {
       const entry = opened.get(input.session.handleId);
       if (!entry) throw new Error("IM 冷启动会话尚未打开");
-      entry.turn.prompt([{ type: "text", text: input.text }]);
+      try {
+        entry.turn.prompt([{ type: "text", text: input.text }]);
+      } catch (error) {
+        // prompt 同步发送失败时 turn 内部不会回调 onExecutionFinished，只能在这里释放。
+        entry.execution.release();
+        throw error;
+      }
       entry.promptSent = true;
     },
 
@@ -210,7 +242,10 @@ export function createChannelImSessionPort(): ImSessionPort {
       opened.delete(handle.handleId);
       // 已发出 prompt 时保留 turn 监听：turn 终止时会释放会话租约并关闭 relay。
       entry.turn.release();
-      if (!entry.promptSent) await entry.session.dispose();
+      if (!entry.promptSent) {
+        entry.execution.release();
+        await entry.session.dispose();
+      }
     },
   };
 }
