@@ -40,6 +40,8 @@ interface FakeRuntime {
   readonly api: AgentRuntimeSessionApi;
   /** 按 rcsSessionId 索引的 turn 记录，用来断言唤醒 prompt 命中哪一路会话。 */
   readonly turns: Map<string, FakeTurn>;
+  /** connectRelay 已进入；配合 connectGate 观察建连进行中的租约状态。 */
+  readonly connectStarted: Promise<void>;
 }
 
 interface FakeRuntimeOptions {
@@ -47,6 +49,8 @@ interface FakeRuntimeOptions {
   startError?: Error;
   /** 模拟 relay 同步发送失败。 */
   promptError?: Error;
+  /** 建连挂起直到外部放行，用来证明租约先于 connectRelay resolve 建立。 */
+  connectGate?: Promise<void>;
 }
 
 /** 只实现端口用到的三个动词：connectRelay / createAgentSession / startPromptTurn。 */
@@ -54,9 +58,15 @@ function createFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
   const turns = new Map<string, FakeTurn>();
   const relayOwners = new WeakMap<object, string>();
   let sessionSeq = 0;
+  let enterConnect!: () => void;
+  const connectStarted = new Promise<void>((resolve) => {
+    enterConnect = resolve;
+  });
 
   const api: AgentRuntimeSessionApi = {
     async connectRelay(_instanceId, rcsSessionId) {
+      enterConnect();
+      if (options.connectGate) await options.connectGate;
       const relay: RelayHandle & { state: "open" | "closed" } = {
         state: "open",
         send: () => {},
@@ -112,7 +122,7 @@ function createFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
     removeEventBus: () => {},
   };
 
-  return { api, turns };
+  return { api, turns, connectStarted };
 }
 
 const CONVERSATION_ID = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
@@ -349,6 +359,29 @@ describe("IM 会话端口执行租约", () => {
     expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
 
     await port.close(session);
+  });
+
+  // 建连悬挂时实例既无 relayCount 也无 turn；租约必须已在 connectRelay resolve 前持有，否则会被空闲回收。
+  test("relay 建连完成前已持有执行租约", async () => {
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const runtime = createFakeRuntime({ connectGate: gate });
+    stubAgentRuntimePort({ session: runtime.api });
+    const port = createChannelImSessionPort();
+
+    const opening = port.openSession({ target: target("rcs_connect_gate"), instance: INSTANCE });
+    await runtime.connectStarted;
+
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(true);
+
+    openGate();
+    const session = await opening;
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(true);
+
+    await port.close(session);
+    expect(hasActiveAgentExecutions(INSTANCE.instanceId)).toBe(false);
   });
 });
 

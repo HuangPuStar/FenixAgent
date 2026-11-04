@@ -3,6 +3,7 @@ import {
   acquireAgentExecution,
   getBoundAgentRuntime,
   type PromptTurn,
+  waitWithSignal,
 } from "@fenix/agent-runtime/runtime";
 import { findOrCreateNamedApiInstance, getAgentRuntimeConfig } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
@@ -39,6 +40,9 @@ interface OpenedTurn {
 
 /** 唤醒失败对外的稳定字符串码；资源包只按码分类，不共享具体错误类型。 */
 const IM_WAKE_FAILED = "IM_WAKE_FAILED";
+
+/** IM 无请求信号，relay 建连必须有界，否则执行租约会在等待期间无限期阻止实例空闲回收。 */
+const IM_RELAY_CONNECT_TIMEOUT_MS = 30_000;
 
 /** 手动停止的实例由 coordinator 以这个码拒绝 ensure；只有它代表「可以显式唤醒」。 */
 function isInstanceStoppedError(error: unknown): boolean {
@@ -105,6 +109,22 @@ export function createChannelImSessionPort(): ImSessionPort {
     ];
   }
 
+  /** 建连超时后由 `waitWithSignal` 关闭迟到的 relay，避免租约失败路径再泄漏句柄。 */
+  async function connectRelayBounded(instanceId: string, rcsSessionId: string) {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error("IM relay connection timed out")),
+      IM_RELAY_CONNECT_TIMEOUT_MS,
+    );
+    try {
+      return await waitWithSignal(runtime().session.connectRelay(instanceId, rcsSessionId), controller.signal, (late) =>
+        late.close(),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function openTurn(input: {
     target: ImSessionTarget;
     instanceId: string;
@@ -112,7 +132,7 @@ export function createChannelImSessionPort(): ImSessionPort {
     sessionId?: string;
     mcpServers: readonly Record<string, unknown>[];
   }): Promise<{ session: AgentSession; turn: PromptTurn; sessionId: string }> {
-    const relayHandle = await runtime().session.connectRelay(input.instanceId, input.target.rcsSessionId);
+    const relayHandle = await connectRelayBounded(input.instanceId, input.target.rcsSessionId);
     const session = runtime().session.createAgentSession({ relayHandle, instanceId: input.instanceId });
     try {
       const started = await runtime().session.startPromptTurn({
