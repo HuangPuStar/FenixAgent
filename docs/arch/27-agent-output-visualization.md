@@ -3,7 +3,7 @@
 > 状态：设计选型（2026-10-08，2026-10-29 修订）。本文只锁定**方向、边界与四条承载路径的定位**，不锁定组件字段级契约——组件目录由 `@peri-code/sdk@0.3.0` 提供，宿主不自持。
 > 修订说明（2026-10-29）：声明式通道不再自研。围栏语言由 `ui-spec`（JSON 组件树）改为 `openui`（OpenUI Lang 程序）；解析、组件库、渲染器与服务端系统提示词统一交给 `@peri-code/sdk` 的 OpenUI 能力；内置技能由 `ui-spec` 改名为 `openui`，旧围栏只按普通代码块做历史兼容。
 > 范围：对话内「Agent 输出」的展示形态。核心是四条承载路径——**iframe / agent-sites 自定义卡片 / OpenUI 声明式通道 / MCP Apps**——各自的位置与分工；每条路径都写清「宿主/平台要做什么」「Agent 或提供方要做什么」「用户得到什么」。
-> 权威性：消息时间线、Y.Doc schema、投影与重连语义以 [19-yjs-chat-streaming](./19-yjs-chat-streaming.md) 为准；Markdown / 自定义标签 / iframe 的渲染与安全规则以前端开发规范 §6.1、§6.2 与 [05-chat](./05-chat.md) 为准；MCP Apps 的协议、沙箱与授权细节以 [Peri MCP Apps 接入设计](../design/2026-08-28-peri-mcp-apps-integration-design.md) 为准。
+> 权威性：消息时间线、Y.Doc schema、投影与重连语义以 [19-yjs-chat-streaming](./19-yjs-chat-streaming.md) 为准；Markdown / 自定义标签 / iframe 的渲染与安全规则以前端开发规范 §6.1、§6.2 与 [05-chat](./05-chat.md) 为准。
 > 非目标：定义新协议栈；替代工具卡片、文件预览等既有渲染面。
 
 ## 1. 决策摘要

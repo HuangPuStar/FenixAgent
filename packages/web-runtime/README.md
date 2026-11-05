@@ -74,8 +74,7 @@ web/                  源码；必须在 web/ 下（Tailwind @source 约定，�
 
 ## 迁移来源
 
-2026-09-18 由 `apps/web` 迁出，见 `docs/design/2026-09-18-packages-web-ui-components-migration.md` 的
-「Bucket C 归属表 / C1」：
+由 `apps/web` 迁出的公共请求与事件基建包括：
 `apps/web/src/{api/request.ts, lib/{config-events,artifacts-preview-events,chat-stats,structured-to-thread,todo}.ts,
 hooks/{use-changed-files-stats,usePageVisible}.ts}` 与 `apps/web/src/i18n/index.ts` 的 `NS` 常量表。
 实现逐字保留，仅修正包内跨模块引用路径。

@@ -109,7 +109,7 @@
 | `deploy/assembly/ce.json`（默认） | 无 | 公共 Git 关闭；进程不读连接配置、零出站请求 |
 | `deploy/assembly/ce-git.json` | `git` | 仅启用公共 Git，供后续消费者使用 |
 
-profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应用根下的 `deploy/assembly/ce.json`，换文件用该键传绝对路径（相对路径启动期即被拒绝）。**`FENIX_FEATURE_GIT` 与 assembly 是两层开关、互不自动映射**：前者只决定 `docker/git/` 的 Forgejo 容器是否启动，后者决定模块是否加载；关掉工单不等于可以停 Forgejo（其他消费者仍在用），启动了 Forgejo 也不等于 AOS 有 Git 能力。两者通过能力名对齐，理由与通用规则见 [ADR：装配 profile 派生的前后端模块启用标识](../adr/2026-10-08-assembly-capability-gate.md) 与 [Docker 编排体系](../operations/docker-topology.md) §13。
+profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应用根下的 `deploy/assembly/ce.json`，换文件用该键传绝对路径（相对路径启动期即被拒绝）。**`FENIX_FEATURE_GIT` 与 assembly 是两层开关、互不自动映射**：前者只决定 `docker/git/` 的 Forgejo 容器是否启动，后者决定模块是否加载；关掉工单不等于可以停 Forgejo（其他消费者仍在用），启动了 Forgejo 也不等于 AOS 有 Git 能力。两者通过能力名对齐，通用规则见 [Docker 编排体系](../operations/docker-topology.md) §13。
 
 `create` 只在 git 进入 profile 时被调用，因此「启用即必须有连接」由组合根判定：配置文件路径为空或没有任何连接时，在产生副作用前抛错并指向 `AOS_GIT_CONFIG_FILE`；宿主投影在**未配置时不读文件**（默认装配根本不含 `AOS_*` 键），但**配置了路径却读不出来**（非绝对路径、文件缺失、JSON 非法）时启动期直接失败，不降级成「没有连接」。适配器构造只建信号量与配置，**不发出站请求**——首次调用才连 Forgejo。
 

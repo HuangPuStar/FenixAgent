@@ -2,7 +2,7 @@
  * 租户（organization）↔ 上游应用绑定的**唯一写侧**（设计 §3.2：一个 organization 一个 App）。
  *
  * ## 载体是「应用（Project）」而不是「bot」（2026-10-09 实测，理由见
- * `docs/design/2026-10-09-workflow-v2-api-channel-release.md`）
+ * `docs/arch/25-workflow-v2.md` §5.1）
  *
  * workflow 的 `project_id` 指向应用，而「把应用发布到 API 渠道」是 `connector_workflow_version` 唯一的写入
  * 路径——对外触发接口能跑起来的前提；bot 载体没有这条链路（bot 发布实测不写登记表）。

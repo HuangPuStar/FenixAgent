@@ -40,3 +40,10 @@
 | Y.Doc schema、Turn 状态机、Action/Ack 协议 | [19-yjs-chat-streaming](./19-yjs-chat-streaming.md) |
 | 实例 spawn / 生命周期 / 编排域 | [20-orchestration-management](./20-orchestration-management.md) |
 | 文件操作信道（file-ws、条件请求、变更事件） | [12-files](./12-files.md) |
+
+## 会话分组
+
+1. Chat Space 由 `@fenix/agent-runtime` 持有，按 `(instanceUid, userId)` 隔离；Facade 校验实例与组织归属，分组不改变 ACP 会话本身。
+2. 同一实例内，一个会话至多属于一个显式分组；「默认」展示未归组会话，不创建默认分组记录。将会话移出分组只解除归属，不删除会话。
+3. 在分组内新建会话时，以本次 `create_session` 的 committed Ack 返回的真实 ACP session ID 写入归属，不能根据共享投影的 active session 猜测，避免多标签页串组。
+4. 归属移动仅由指针拖拽触发。当前触屏与键盘没有等效移动入口；增加入口前需单独验证复合会话行的焦点与可访问性。

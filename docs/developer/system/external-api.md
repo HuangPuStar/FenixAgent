@@ -11,10 +11,6 @@ Fenix 对外提供了一套独立的 External API，供其他系统通过 API Ke
 
 具体字段、请求体和响应体定义，请直接以交互式文档为准，不要以本文档中的示例推断全部接口形态。
 
-## 接口联调
-
-仓库提供 `bun scripts/test-agent-api-v1.ts` 全流程测试脚本，默认连续执行，传 `-t` 可逐步等待回车。配置准备、覆盖范围和工作流脚本见 [脚本联调](./external-agent-session-guide.md#脚本联调)。
-
 ## API Key
 
 登录控制台后，进入 API Key 页面创建密钥。系统会返回一次性明文 token，形如：
