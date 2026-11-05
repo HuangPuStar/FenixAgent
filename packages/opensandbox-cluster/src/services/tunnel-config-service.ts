@@ -13,7 +13,11 @@ export interface CreateTunnelServerInput {
   name: string;
   workspace_root: string;
   api_key: string;
-  max_sandboxes: number;
+  max_sandboxes?: number;
+  cpu_capacity?: number;
+  memory_capacity_mb?: number;
+  disk_capacity_gb?: number;
+  gpu_capacity?: number;
   status?: string;
 }
 

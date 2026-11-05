@@ -11,6 +11,7 @@ export class ProxyError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code = "PROXY_ERROR",
   ) {
     super(message);
   }
@@ -44,6 +45,33 @@ export class ProxyService {
     }
     if (!resolvedServerId) throw new ProxyError(404, "proxy target not found");
     const credentials = this.servers.getCredentials(resolvedServerId);
+    const managed = sandboxId ? this.allocations.binding(sandboxId) : undefined;
+    if (managed?.allocationMode === "resources") {
+      if (
+        !/^\/?v1\/sandboxes\//.test(path) ||
+        /[\\]|%2f|%5c/i.test(path) ||
+        Array.from(path).some((character) => character.charCodeAt(0) < 32)
+      )
+        throw new ProxyError(403, "invalid managed proxy path");
+      if (managed.state === "released") throw new ProxyError(410, "allocation released", "ALLOCATION_RELEASED");
+      if (managed.state === "failed") throw new ProxyError(409, "create failed", "CREATE_FAILED");
+      if (managed.state === "expired" || (managed.expiresAt ?? Infinity) <= Date.now())
+        throw new ProxyError(410, "lease expired", "LEASE_EXPIRED");
+      if (managed.state !== "active") throw new ProxyError(409, "allocation is not active");
+      const normalized = new URL(path, "http://cluster").pathname;
+      const prefix = `/v1/sandboxes/${encodeURIComponent(managed.providerSandboxId ?? "")}`;
+      if (!managed.providerSandboxId || !(normalized === prefix || normalized.startsWith(`${prefix}/`)))
+        throw new ProxyError(403, "managed sandbox target mismatch");
+      const suffix = normalized.slice(prefix.length);
+      const read = ["GET", "HEAD"].includes(request.method);
+      if (
+        !read &&
+        !(suffix.startsWith("/proxy/") || (request.method === "POST" && ["/pause", "/resume"].includes(suffix)))
+      )
+        throw new ProxyError(403, "managed lifecycle mutation forbidden");
+    } else if (credentials?.schedulingMode === "resources") {
+      throw new ProxyError(403, "resource nodes require a sandbox binding");
+    }
     if (!credentials) throw new ProxyError(404, "OpenSandbox Server not found");
     if (credentials.status === "disabled") {
       throw new ProxyError(503, "OpenSandbox Server is unavailable");

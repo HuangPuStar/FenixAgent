@@ -1,11 +1,5 @@
 import { Elysia } from "elysia";
-import {
-  bodyOf,
-  type PoolInput,
-  requirePositiveInteger,
-  requireString,
-  type ServerInput,
-} from "../schemas/admin-schemas";
+import { bodyOf, type PoolInput, requireString, type ServerInput } from "../schemas/admin-schemas";
 import { isValidClusterApiKey } from "../security/api-auth";
 import { ConflictError, type PoolService } from "../services/pool-service";
 import type { ServerService } from "../services/server-service";
@@ -42,6 +36,9 @@ export function createAdminRoutes(
       return pools.create({
         id: requireString(input.id, "id"),
         name: requireString(input.name, "name"),
+        scheduling_mode: input.scheduling_mode,
+        default_lease_seconds: input.default_lease_seconds,
+        max_lease_seconds: input.max_lease_seconds,
         status: input.status,
       });
     })
@@ -55,9 +52,12 @@ export function createAdminRoutes(
         })(),
     )
     .put("/pools/:poolId", ({ params, body }) => {
-      const input = bodyOf<Pick<PoolInput, "name" | "status">>(body);
+      const input = bodyOf<Partial<PoolInput>>(body);
       return pools.update(params.poolId, {
         name: input.name ? requireString(input.name, "name") : undefined,
+        scheduling_mode: input.scheduling_mode,
+        default_lease_seconds: input.default_lease_seconds,
+        max_lease_seconds: input.max_lease_seconds,
         status: input.status,
       });
     })
@@ -73,7 +73,11 @@ export function createAdminRoutes(
           name: requireString(input.name, "name"),
           workspace_root: requireString(input.workspace_root, "workspace_root"),
           api_key: requireString(input.api_key, "api_key"),
-          max_sandboxes: requirePositiveInteger(input.max_sandboxes, "max_sandboxes"),
+          max_sandboxes: input.max_sandboxes,
+          cpu_capacity: input.cpu_capacity,
+          memory_capacity_mb: input.memory_capacity_mb,
+          disk_capacity_gb: input.disk_capacity_gb,
+          gpu_capacity: input.gpu_capacity,
           status: input.status,
         });
       }
@@ -84,7 +88,11 @@ export function createAdminRoutes(
         base_url: requireString(input.base_url, "base_url"),
         workspace_root: requireString(input.workspace_root, "workspace_root"),
         api_key: requireString(input.api_key, "api_key"),
-        max_sandboxes: requirePositiveInteger(input.max_sandboxes, "max_sandboxes"),
+        max_sandboxes: input.max_sandboxes,
+        cpu_capacity: input.cpu_capacity,
+        memory_capacity_mb: input.memory_capacity_mb,
+        disk_capacity_gb: input.disk_capacity_gb,
+        gpu_capacity: input.gpu_capacity,
         status: input.status,
       });
       return (await servers.healthCheck(server.id)) ?? server;

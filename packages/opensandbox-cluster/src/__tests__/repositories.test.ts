@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
 import { PoolRepository } from "../repositories/pool-repository";
@@ -17,13 +18,7 @@ beforeEach(() => {
   sqlite = new Database(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   const db = drizzle(sqlite, { schema });
-  sqlite.exec(`
-    CREATE TABLE sandbox_pool (id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE opensandbox_server (id TEXT PRIMARY KEY, pool_id TEXT NOT NULL REFERENCES sandbox_pool(id), name TEXT NOT NULL, transport_mode TEXT NOT NULL DEFAULT 'direct', base_url TEXT NOT NULL, route_host TEXT UNIQUE, workspace_root TEXT NOT NULL, api_key_ciphertext TEXT NOT NULL, max_sandboxes INTEGER NOT NULL, status TEXT NOT NULL, health_status TEXT NOT NULL, last_health_at INTEGER, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE opensandbox_server_credential (server_id TEXT PRIMARY KEY REFERENCES opensandbox_server(id) ON DELETE CASCADE, token_hash TEXT NOT NULL, token_ciphertext TEXT NOT NULL, token_prefix TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, rotated_at INTEGER, revoked_at INTEGER, last_used_at INTEGER, CHECK (status IN ('active', 'revoked')));
-    CREATE TABLE opensandbox_tunnel_connection (server_id TEXT PRIMARY KEY REFERENCES opensandbox_server(id) ON DELETE CASCADE, frp_run_id TEXT NOT NULL, status TEXT NOT NULL, connected_at INTEGER, disconnected_at INTEGER, last_seen_at INTEGER NOT NULL, health_status TEXT NOT NULL, last_health_at INTEGER, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, CHECK (status IN ('connecting', 'connected', 'disconnected')), CHECK (health_status IN ('unknown', 'healthy', 'unhealthy')));
-    CREATE TABLE sandbox_binding (sandbox_id TEXT PRIMARY KEY, pool_id TEXT NOT NULL REFERENCES sandbox_pool(id), server_id TEXT NOT NULL REFERENCES opensandbox_server(id), created_at INTEGER NOT NULL);
-  `);
+  migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
   poolRepository = new PoolRepository(db);
   serverRepository = new ServerRepository(db);
   bindingRepository = new BindingRepository(db);

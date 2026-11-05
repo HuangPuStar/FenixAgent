@@ -1,635 +1,198 @@
-# OpenSandbox Cluster 当前架构
+# OpenSandbox Cluster 架构
 
-## 1. 定位和边界
+## 1. 职责与模块
 
-OpenSandbox Cluster 是一个独立部署的 Bun 服务，负责：
-
-- 管理资源池和 OpenSandbox Server 节点；
-- 在资源池内为 `sandbox_id` 选择一个 Server；
-- 保存 `sandbox_id -> server_id` 的绑定关系；
-- 代理调用方对 OpenSandbox Server 的 HTTP 请求；
-- 自动注入目标 Server 的 `OPEN-SANDBOX-API-KEY`；
-- 在创建沙盒时改写 host volume 路径，限制宿主机挂载范围；
-- 使用 SQLite 保存自身数据。
-
-Cluster 不负责：
-
-- 运行 Docker daemon 或 OpenSandbox Server；
-- 创建、恢复、暂停或删除远程沙盒；
-- 解析或保存 OpenSandbox 返回的 Provider sandbox ID；
-- 维护远程沙盒状态机；
-- 自动迁移沙盒或自动故障转移；
-- 管理 FenixAgent 的组织、用户和环境数据；
-- 提供 Web 管理界面。
-
-Cluster 只认识调用方提供的业务 `sandbox_id`。OpenSandbox Server 返回的 Provider sandbox ID 由上游 Provider 保存和使用；上游通过业务 `sandbox_id` 经过 Cluster 找到绑定的 Server，再将 Provider sandbox ID 放入代理路径访问具体远程沙盒。Cluster 不保存这两个 ID 的对应关系。
-
-## 2. 总体架构
+OpenSandbox Cluster 是独立部署的 Bun 服务，管理资源池和 OpenSandbox Server，完成节点调度、沙盒绑定和 HTTP 代理。资源模式下还负责容量预留、沙盒创建与租期回收；节点执行实际资源限制。
 
 ```text
-FenixAgent / 其他调用方
-          |
-          | Authorization: Bearer <cluster-service-api-key>
-          v
-OpenSandbox Cluster
-  |-- SQLite
-  |     |-- sandbox_pool
-  |     |-- opensandbox_server
-  |     |-- sandbox_binding
-  |     `-- tunnel credential / connection
-  |
-  |-- direct: HTTP + OPEN-SANDBOX-API-KEY ------> OpenSandbox Server
-  |
-  `-- tunnel: HTTP -> frps vhost -> frpc -------> OpenSandbox Server
-                                                    |
-                                                    v
-                                          节点自己的 Docker daemon
-                                          Sandbox 容器 + execd
+调用方 → Cluster → direct HTTP ───────────→ OpenSandbox Server → Docker / 沙盒
+            │   └→ frps vhost → 节点 frpc ─→ OpenSandbox Server
+            └→ SQLite
 ```
 
-Cluster 只通过 HTTP 访问 OpenSandbox Server，不访问 Docker Socket。direct 模式访问 Server 的 `base_url`；tunnel 模式由 Server 内的 frpc 主动连接 Cluster 的 frps，Server 不需要提供入站端口。节点内部的 Docker daemon、沙盒容器和镜像由 OpenSandbox Server 管理。
+| 模块 | 职责 |
+| --- | --- |
+| `PoolService` / `ServerService` | 池、节点配置及容量校验 |
+| `AllocationService` | 数量调度、绑定查询、资源统计 |
+| `SandboxLifecycleService` | 资源预留、远端创建与销毁、状态协调 |
+| `ReconciliationWorker` | 到期回收与失败重试 |
+| `ServerTargetResolver` / `ServerConnectionMonitor` | 连接解析、隧道健康与断线检测 |
+| `ProxyService` / `OpenSandboxHttpClient` | 代理授权、节点认证、HTTP 转发与挂载路径改写 |
 
-### 2.1 实际目录
+## 2. 调度模式
 
-```text
-packages/opensandbox-cluster/
-├── src/
-├── drizzle/
-├── package.json
-├── drizzle.config.ts
-└── .env.example              # 本地 Bun 启动配置
+模式由池的 `scheduling_mode` 决定，默认 `count`。
 
-docker/opensandbox-cluster/
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example              # Docker 部署配置
-└── README.md
-```
+| 规则 | 数量模式 `count` | 资源模式 `resources` |
+| --- | --- | --- |
+| 容量 | 节点 `max_sandboxes` | 节点 CPU、内存、硬盘、GPU 容量 |
+| 创建 | 调用方分配绑定后，通过代理创建 | Cluster 预留资源后创建 |
+| 远端沙盒 ID | 调用方保存 | binding 保存 |
+| 释放 | 调用方删除远端沙盒后释放绑定 | Cluster 确认销毁后归还资源 |
+| 租期 | 绑定持续到显式释放 | 固定租期，到期回收 |
+
+资源单位统一为 CPU 核数（支持小数）、内存 MB、硬盘 GB、GPU 数量。CPU、内存、硬盘须大于 0，GPU 为非负整数。
+
+### 2.1 节点选择
+
+新分配只选择 `active` 节点：direct 节点须为 `healthy`；tunnel 节点须连接为 `connected`、健康且心跳未过期。资源模式还要求池为 `active`；数量模式按节点状态筛选。
+
+- **数量模式**：筛选绑定数小于 `max_sandboxes` 的节点，按已用数量占比升序选择。注册容量须为正整数；更新时允许空闲节点设为 0。
+- **资源模式**：逐节点计算 `剩余资源 = 配置容量 - 非终态预留`，四类申请量均不超过同一节点剩余量才可分配。候选节点按分配后的最高资源占比升序选择，相同时按节点 ID 排序。
+
+资源准入使用十进制精确求和与比较。池资源查询按节点返回；跨节点资源不能拼成一次申请。
+
+### 2.2 配置变更约束
+
+- 切换池模式前须移空节点，并释放所有非终态绑定。
+- 节点有占用时不能迁移到其他池，缩容不能低于已占用数量或资源。
+- `draining` 节点只承接已有绑定；`disabled` 节点拒绝代理访问。
+- 删除池或节点前须清除所有外键引用，包含保留的资源模式终态记录；有历史引用的对象可停用。
 
 ## 3. 数据模型
 
-当前 Cluster 使用 SQLite，迁移文件为：
+表定义位于 [`src/db/schema.ts`](../../packages/opensandbox-cluster/src/db/schema.ts)，使用 SQLite 和 Drizzle 迁移。
 
 ```text
-packages/opensandbox-cluster/drizzle/0000_initial.sql
+sandbox_pool 1 ── N opensandbox_server
+sandbox_pool 1 ── N sandbox_binding
+opensandbox_server 1 ── N sandbox_binding
+opensandbox_server 1 ── 1 opensandbox_server_credential
+opensandbox_server 1 ── 1 opensandbox_tunnel_connection
 ```
 
-### 3.1 模型关系
+### 3.1 池与节点
 
-```text
-sandbox_pool 1 ---- N opensandbox_server
-sandbox_pool 1 ---- N sandbox_binding
-opensandbox_server 1 ---- N sandbox_binding
-
-sandbox_binding.sandbox_id 是全局主键
-sandbox_binding.server_id 指向实际承载沙盒的 Server
-```
-
-### 3.2 sandbox_pool
-
-| 字段 | SQLite 类型 | 说明 |
+| 表 | 核心字段 | 含义 |
 | --- | --- | --- |
-| `id` | `text` | 调用方控制的资源池 ID，主键 |
-| `name` | `text` | 资源池名称 |
-| `status` | `text` | 默认 `active`，当前仅持久化，不参与 allocate 过滤 |
-| `created_at` | `integer` | 创建时间，epoch milliseconds |
-| `updated_at` | `integer` | 更新时间，epoch milliseconds |
+| `sandbox_pool` | `id`、`name`、`status` | 池标识与管理状态 |
+| | `scheduling_mode` | 调度模式 |
+| | `default_lease_seconds`、`max_lease_seconds` | 资源模式默认和最大租期，均至少 60 秒，默认值不超过最大值 |
+| `opensandbox_server` | `id`、`pool_id`、`name` | 节点标识及所属池 |
+| | `transport_mode`、`base_url`、`route_host` | direct 地址或 tunnel 路由 |
+| | `workspace_root`、`api_key_ciphertext` | 挂载根目录、加密的节点 API Key |
+| | `max_sandboxes` | 数量模式容量 |
+| | `cpu_capacity`、`memory_capacity_mb`、`disk_capacity_gb`、`gpu_capacity` | 资源模式可分配容量 |
+| | `status`、`health_status`、`last_health_at`、`last_error` | 管理与健康状态 |
 
-资源池没有 `max_sandboxes` 字段。查询资源池时，服务实时计算：
+两表均记录 `created_at`、`updated_at`，时间为 epoch milliseconds。容量按池模式校验，资源模式节点的 `max_sandboxes` 为空。
 
-- `currentSandboxes`：该资源池下 binding 数量；
-- `capacitySandboxes`：所有 Server 的 `maxSandboxes` 之和；
-- `availableSandboxes`：状态为 `active` 且健康状态为 `healthy` 的 Server 剩余容量之和。
+### 3.2 沙盒绑定
 
-资源池 `status` 是资源池管理元数据；分配时实际依据资源池下 Server 的 `active`、`healthy` 状态和容量选择可用节点。资源池是否可用不由单独的远程沙盒状态决定。
+`sandbox_binding` 是节点落点和资源预留的权威记录，`sandbox_id` 为调用方提供的全局唯一业务 ID。
 
-### 3.3 opensandbox_server
-
-| 字段 | SQLite 类型 | 说明 |
+| 字段组 | 字段 | 含义 |
 | --- | --- | --- |
-| `id` | `text` | 调用方控制的 Server ID，主键 |
-| `pool_id` | `text` | 所属资源池 ID，外键 |
-| `name` | `text` | Server 名称 |
-| `base_url` | `text` | OpenSandbox Server 基础 URL，按原值保存 |
-| `transport_mode` | `text` | `direct` 或 `tunnel`，默认 `direct` |
-| `route_host` | `text` | tunnel vhost Host；切换后保留，direct 节点为空 |
-| `workspace_root` | `text` | Cluster 改写 host volume 时使用的绝对路径 |
-| `api_key_ciphertext` | `text` | 使用 `SERVER_API_KEY_ENCRYPTION_KEY` 加密保存 |
-| `max_sandboxes` | `integer` | 该 Server 的容量上限 |
-| `status` | `text` | 默认 `active`，常用值为 `active`、`draining`、`disabled` |
-| `health_status` | `text` | 默认 `unknown`，健康检查后为 `healthy` 或 `unhealthy` |
-| `last_health_at` | `integer` | 最近一次手动健康检查时间 |
-| `last_error` | `text` | 最近一次健康检查失败信息 |
-| `created_at` | `integer` | 创建时间 |
-| `updated_at` | `integer` | 更新时间 |
+| 定位 | `sandbox_id`、`pool_id`、`server_id`、`allocation_mode` | 业务标识、节点与分配模式 |
+| 资源 | `cpu`、`memory_mb`、`disk_gb`、`gpu_count` | 资源模式预留量 |
+| 创建关联 | `attempt_id`、`request_hash`、`provider_sandbox_id` | 创建尝试标识、请求摘要、真实远端 ID |
+| 生命周期 | `state`、`lease_seconds`、`expires_at`、`release_reason` | 状态、固定租期与释放原因 |
+| 协调 | `retry_count`、`next_retry_at`、`last_error` | 重试调度与诊断 |
+| 时间 | `created_at`、`updated_at` | 创建与更新时间 |
 
-约束和实际行为：
+数量模式释放时删除绑定，可复用业务 ID。资源模式保留终态记录，后续申请使用新 ID；`server_id + provider_sandbox_id` 唯一。
 
-- `pool_id` 必须指向已存在的资源池；
-- `workspace_root` 必须是绝对路径，不能是 `/`，不能包含 NUL 或路径穿越；
-- 查询 Server 时不会返回明文 API Key；
-- `active + healthy` 的 Server 才会被 `allocate` 选中；
-- `disabled` 或 `unhealthy` 的 Server 不允许代理请求；
-- `draining` 不会被新分配选中，但当前代理实现不会因为 `draining` 阻止已有绑定请求；
-- 删除存在 binding 的 Server 会返回冲突；
-- 修改容量上限时，不能小于当前 binding 数量；
-- 修改有 binding 的 Server 的 `pool_id` 会返回冲突。
+已分配资源从同节点非终态绑定实时汇总，剩余量由容量减去预留量计算。资源查询中的 `pending` 是 `creating`、`uncertain`、`releasing` 的预留量，已包含在 `allocated` 中。完整创建请求、环境变量和镜像凭据不持久化。
 
-`base_url` 在切换到 tunnel 后仍保留，`transport_mode` 是当前请求路径的唯一选择依据，因此同一 Server 可以切回 direct。tunnel 专属的凭证和当前连接状态分别保存在 `opensandbox_server_credential`、`opensandbox_tunnel_connection` 中；每个 Server 只有一条当前连接记录。
+### 3.3 隧道凭证与连接
 
-### 3.4 opensandbox_server_credential
+- `opensandbox_server_credential`：每节点一条注册凭证。`token_hash` 用于校验，`token_ciphertext` 用于生成可重新下载的 `frpc.toml`，并记录吊销与轮换状态。
+- `opensandbox_tunnel_connection`：每节点一条当前连接，记录 `frp_run_id`、连接状态、健康状态、心跳和错误。重连更新原记录；回调按 run ID 校验，防止旧连接覆盖新连接。
 
-保存 tunnel Server 的注册凭证。数据库只保存 token hash，明文 token 只在生成 `frpc.toml` 时用于返回配置，不在普通 Server 查询中返回。
+## 4. 沙盒生命周期
 
-### 3.5 opensandbox_tunnel_connection
+### 4.1 数量模式
 
-保存 Server 与 frps 的当前连接 lease，包括 `frp_run_id`、`status`、`health_status`、`last_seen_at`、`disconnected_at` 和 `last_error`。frpc 重连更新原记录；回调按 run ID fencing，旧连接不能覆盖新连接。
+1. `allocate` 在事务内选择节点并写入绑定。同一业务 ID、同一池返回原绑定；跨池重复分配返回冲突。
+2. 调用方通过绑定代理创建和操作远端沙盒，并保存真实远端 ID。
+3. 调用方删除远端沙盒，成功后释放绑定。只删除远端沙盒会继续占用数量额度。
 
-### 3.6 sandbox_binding
+### 4.2 资源模式
 
-| 字段 | SQLite 类型 | 说明 |
+1. 校验资源、租期和挂载路径，在事务内选择节点并写入 `creating` 预留；`expires_at` 从预留时开始计算。
+2. 向节点发送一次原生创建请求，携带资源限制、有限 `timeout` 和 `fenix.cluster.attempt_id` metadata。
+3. 获取真实远端 ID 后转为 `active`；结果未知时进入 `uncertain`，由后台查询协调。
+4. 主动释放或到期时先保存释放意图，进入 `releasing`。远端删除后查询确认 `404`，再转为终态并归还资源。
+
+| 状态 | 含义 | 占用资源 |
 | --- | --- | --- |
-| `sandbox_id` | `text` | 调用方控制的沙盒 ID，全局主键 |
-| `pool_id` | `text` | 分配时使用的资源池 ID，外键 |
-| `server_id` | `text` | 实际承载 Server ID，外键 |
-| `created_at` | `integer` | 绑定创建时间 |
+| `creating` | 已预留，创建中 | 是 |
+| `active` | 已取得远端 ID，可访问 | 是 |
+| `uncertain` | 创建结果未知，等待关联查询 | 是 |
+| `releasing` | 已要求释放，等待确认销毁 | 是 |
+| `released` | 主动释放完成 | 否 |
+| `expired` | 到期回收完成 | 否 |
+| `failed` | 确认创建失败 | 否 |
 
-该表只保存落点和容量占用，不保存：
+同一业务 ID 和相同参数重复创建返回原记录，参数冲突返回 `409`；重试不重置租期。暂停沙盒仍占用资源，租期固定。
 
-- OpenSandbox 返回的 Provider sandbox ID；
-- 远程沙盒状态；
-- allocation status；
-- released_at；
-- last_error。
+### 4.3 故障与回收
 
-binding 写入即计入容量。远程沙盒删除成功后，调用方还需要调用 release 接口删除 binding。
+`attempt_id` 是查询关联标识，节点不提供基于它的创建幂等保证。因此每条预留只发送一次创建 POST；结果未知时按 metadata 查找，只有唯一匹配才接管远端 ID。空列表不能证明在途创建失败，须继续保留预留；长期无法确认时由运维核实。
 
-因此，binding 是分布式分配记录，不是远程沙盒生命周期记录。远程沙盒处于创建中、运行中、停止或删除状态，都不会改变 binding；只有调用方明确 release 后，容量才会归还。
+原生创建返回 `422` 视为确定失败；其他失败或超时保留预留。释放意图优先于迟到的创建结果，避免取消后恢复为可用状态。
 
-同一个 `sandbox_id` 在 Cluster 内全局唯一。如果它已经绑定到其他资源池，重复 allocate 会返回冲突。
+后台 worker 启动即扫描，随后每 5 秒处理到期与待协调记录，每批最多 100 条、远端并发 4；协调失败按指数退避重试。进程重启后从持久记录恢复处理。
 
-## 4. 核心流程
+`expires_at` 是访问和回收期限，到期立即拒绝新的代理请求。节点的相对 `timeout` 提供 Cluster 断联时的回收后备；已建立的请求随远端沙盒销毁终止。
 
-### 4.1 Server 注册
+## 5. 连接、认证与代理
 
-```text
-调用方 POST /api/v1/servers
-        |
-        | 校验 pool_id、workspace_root、API Key 和容量
-        v
-写入 SQLite
-        |
-        v
-health_status = unknown
-        |
-        | 注册流程立即调用目标 Server 的 GET /health
-        v
-返回 healthy / unhealthy 的 Server 记录
-```
+### 5.1 节点连接
 
-注册流程会在写入后立即执行一次健康检查，因此正常情况下注册接口返回的
-`healthStatus` 已经是 `healthy` 或 `unhealthy`，不会长期停留在 `unknown`。注册和修改只保存连接信息，不会创建或删除远程 OpenSandbox Server。
+- **direct**：Cluster 访问节点 `base_url`；注册时和手动触发时检查健康。
+- **tunnel**：节点 frpc 主动连接 frps，Cluster 通过 vhost 和 `route_host` 访问节点；建链后及后台定时检查健康，并清理过期连接。
 
-创建 tunnel Server 时可在请求中指定 `transport_mode=tunnel`，此时允许不提供
-`base_url`，并创建 tunnel credential 和 route host；Server 启动 frpc 后再通过 FRP
-Login 建立连接并执行健康检查。
+连接模式由 `transport_mode` 决定。direct 切换 tunnel 前须停机并通过离线检查，原绑定和节点 API Key 保留。Cluster 重启时将隧道连接标为断开，等待重建；重连不改变沙盒绑定。
 
-已有 direct Server 切换 tunnel 使用 `PUT /api/v1/servers/:serverId/tunnel`。调用前必须
-停止 Server，Cluster 确认 direct 地址离线后才一次性切换模式。重复调用幂等复用原有配置，
-原 `base_url`、binding 和 Server API Key 保留。
+绑定始终路由到原节点；节点故障不会自动迁移沙盒。
 
-### 4.2 allocate 选择 Server
+### 5.2 代理权限
+
+业务 ID 定位绑定和节点，真实远端 ID 定位节点内沙盒。资源模式代理要求绑定为 `active`、未到期，且目标路径匹配其真实远端 ID；允许读取、沙盒子服务操作及 pause/resume。创建、销毁等生命周期操作通过受管接口执行，资源节点的通用 Server 代理被禁用。
+
+管理、分配和代理 API 使用 `Authorization: Bearer <cluster-service-api-key>`。Cluster 转发时移除调用方认证，注入解密后的节点 `OPEN-SANDBOX-API-KEY`；普通节点查询隐藏密钥。
+
+HTTP 代理保留 query、上游状态码及响应体，过滤 hop-by-hop headers，支持流式请求和响应。`PROXY_RESPONSE_TIMEOUT_MS` 控制请求超时；`PROXY_CONNECT_TIMEOUT_MS` 当前未接入独立连接超时。
+
+### 5.3 挂载路径
+
+代理原生 JSON 创建请求时，将 `volumes[*].host.path` 映射到节点 `workspace_root` 下：
 
 ```text
-POST /api/v1/pools/:poolId/sandboxes/:sandboxId/allocate
-        |
-        v
-SQLite BEGIN IMMEDIATE
-        |
-        | 已有 sandbox_id 绑定？
-        |-- 是：同 pool 返回原绑定；不同 pool 返回 409
-        |
-        | 查询 pool 下 Server
-        |-- 过滤 status=active
-        |-- 过滤 health_status=healthy
-        |-- tunnel 还必须有 connected、healthy 且未过期的 connection
-        |-- 过滤 current < max_sandboxes
-        |
-        | 按 current / max_sandboxes 升序选择
-        v
-写入 sandbox_binding
-        |
-        v
-COMMIT，返回 server_id 和 proxy_url
+user-123/ws → {workspace_root}/user-123/ws
 ```
 
-调度锁只覆盖 SQLite 中的容量判断、Server 选择和 binding 写入，不覆盖后续远程 HTTP 请求。
+`ws`、`/ws`、`./ws` 统一为相对路径，拒绝越界、Windows 盘符路径和 NUL。`workspace_root` 必须是安全绝对路径且不能为 `/`；容器内 `mountPath` 和 PVC 保持原值。用户目录等业务前缀由调用方提供。
 
-当前算法只按负载比例升序排序，没有额外的稳定 tie-breaker。
+节点 Compose 挂载路径、`sandbox.toml` 的 `storage.allowed_host_paths` 与注册的 `workspace_root` 须一致。
 
-### 4.3 通过 sandbox_id 代理
+## 6. API 职责
 
-```text
-调用方请求 /api/v1/sandboxes/:sandboxId/proxy/*path
-        |
-        v
-查询 sandbox_binding
-        |
-        v
-找到 server_id，读取 Server 配置和解密 API Key
-        |
-        v
-拼接 base_url + 原始 path
-        |
-        v
-覆盖 OPEN-SANDBOX-API-KEY，转发请求
-```
-
-Cluster 不会根据当前健康状态重新选择 Server，也不会迁移已有 binding。
-
-### 4.4 创建沙盒时的 volume 改写
-
-只有满足以下条件时才改写请求体：
-
-- HTTP 方法为 `POST`；
-- 目标 path 正好是 `v1/sandboxes`；
-- `Content-Type` 包含 `application/json`；
-- 请求通过 `sandbox_id` 代理，因此能取得 `workspace_root`。
-
-调用方传入：
-
-```json
-{
-  "volumes": [
-    {
-      "name": "workspace",
-      "host": { "path": "ws" },
-      "mountPath": "/workspace"
-    }
-  ]
-}
-```
-
-Fenix 转换为用户稳定路径后传入 Cluster：
-
-```text
-user-123/ws
-```
-
-Cluster 转发为：
-
-```text
-{workspace_root}/user-123/ws
-```
-
-规则：
-
-- `ws`、`/ws`、`./ws` 会归一化到同一个相对路径；
-- host volume 的 `path` 必须是相对 workspace 的路径；
-- Windows drive path、NUL 字节和 `..` 路径穿越会被拒绝；
-- Cluster 不生成、不保存、不解释 `userId`，也不会把 `sandbox_id` 插入工作区路径；`sandbox_id` 仍只用于 binding 路由和远程沙盒生命周期请求；
-- 只改写 `volume.host.path`，不改写容器内的 `mountPath`；
-- PVC 或其他没有 `host` 对象的 volume 保持原样；
-- 非 JSON 创建请求不会执行 volume 改写。
-
-不同业务镜像的默认容器内 workspace `mountPath` 不由 Cluster 决定，应该由上游调用方根据镜像配置生成；Cluster 只负责宿主机 `workspace_root` 映射和路径安全校验。
-
-### 4.5 删除流程
-
-Cluster 不自动删除远程沙盒，也不维护远程沙盒状态。调用方负责先通过业务 `sandbox_id` 代理请求，将 Provider sandbox ID 传给 OpenSandbox Server 完成远程删除；远程删除成功后再释放 binding：
-
-```text
-DELETE /api/v1/sandboxes/:sandboxId/proxy/...
-        |
-        | 远程 OpenSandbox 删除成功
-        v
-DELETE /api/v1/sandboxes/:sandboxId/allocation
-```
-
-如果只删除远程沙盒而不释放 binding，容量会继续被占用。
-
-## 5. 接口
-
-### 5.1 通用约定
-
-- 管理、分配和代理接口前缀均为 `/api/v1`；
-- 除 `GET /health` 外，管理、分配和代理接口都使用 `Authorization: Bearer <cluster-service-api-key>`；
-- Cluster 不接受调用方自带的 `OPEN-SANDBOX-API-KEY` 作为目标认证；
-- 代理时由 Cluster 自动设置目标 Server 的 `OPEN-SANDBOX-API-KEY`；
-- 代理会保留 query string；
-- 代理会移除 hop-by-hop headers；
-- 代理响应状态码和响应体直接返回；
-- GET、HEAD 不发送请求体，其他方法支持流式请求体；
-- 代理响应超时由 `PROXY_RESPONSE_TIMEOUT_MS` 控制，默认 120000ms；
-- 当前 `PROXY_CONNECT_TIMEOUT_MS` 已作为配置项存在，但 HTTP 客户端实际只使用响应超时信号。
-
-### 5.2 健康检查
-
-```text
-GET /health
-```
-
-响应：
-
-```json
-{"status":"healthy"}
-```
-
-### 5.3 资源池管理
-
-```text
-POST   /api/v1/pools
-GET    /api/v1/pools
-GET    /api/v1/pools/:poolId
-PUT    /api/v1/pools/:poolId
-DELETE /api/v1/pools/:poolId
-```
-
-创建请求：
-
-```json
-{
-  "id": "pool-default",
-  "name": "Default"
-}
-```
-
-修改请求只支持 `name` 和 `status`：
-
-```json
-{
-  "name": "Updated Pool",
-  "status": "active"
-}
-```
-
-查询资源池响应字段为 camelCase，例如：
-
-```json
-{
-  "id": "pool-default",
-  "name": "Default",
-  "status": "active",
-  "createdAt": 1785838035130,
-  "updatedAt": 1785838035130,
-  "currentSandboxes": 1,
-  "capacitySandboxes": 4,
-  "availableSandboxes": 3
-}
-```
-
-删除存在 Server 或 binding 的资源池会返回冲突。
-
-### 5.4 OpenSandbox Server 管理
-
-```text
-POST   /api/v1/servers
-GET    /api/v1/servers
-GET    /api/v1/servers/:serverId
-PUT    /api/v1/servers/:serverId
-DELETE /api/v1/servers/:serverId
-POST   /api/v1/servers/:serverId/health-check
-PUT    /api/v1/servers/:serverId/tunnel
-GET    /api/v1/servers/:serverId/tunnel/frpc.toml
-```
-
-创建请求：
-
-```json
-{
-  "id": "server-node-1",
-  "pool_id": "pool-default",
-  "name": "Node 1",
-  "base_url": "http://node-1:8090",
-  "workspace_root": "/workspace",
-  "api_key": "replace-with-server-api-key",
-  "max_sandboxes": 10
-}
-```
-
-`PUT /api/v1/servers/:serverId` 接收部分字段，支持：
-
-```json
-{
-  "pool_id": "pool-default",
-  "name": "Node 1 Updated",
-  "base_url": "http://node-1:8090",
-  "workspace_root": "/workspace",
-  "api_key": "new-server-api-key",
-  "max_sandboxes": 10,
-  "status": "active"
-}
-```
-
-Server 查询响应不会包含 `apiKeyCiphertext` 或明文 API Key，字段示例：
-
-```json
-{
-  "id": "server-node-1",
-  "poolId": "pool-default",
-  "name": "Node 1",
-  "baseUrl": "http://node-1:8090",
-  "workspaceRoot": "/workspace",
-  "maxSandboxes": 10,
-  "status": "active",
-  "healthStatus": "healthy",
-  "lastHealthAt": 1785838035156,
-  "lastError": null,
-  "currentSandboxes": 0
-}
-```
-
-健康检查请求目标 Server 的 `/health`：
-
-- HTTP 响应为 2xx：记录 `healthy`；
-- 非 2xx、连接失败或超时：记录 `unhealthy`；
-- 创建 Server 时自动触发一次；
-- 修改 Server 不自动触发健康检查；
-- 也可以调用 `POST /api/v1/servers/:serverId/health-check` 手动刷新；
-- 当前没有后台定时健康检查。
-
-### 5.5 分配和绑定
-
-```text
-POST   /api/v1/pools/:poolId/sandboxes/:sandboxId/allocate
-GET    /api/v1/sandboxes/:sandboxId/allocation
-DELETE /api/v1/sandboxes/:sandboxId/allocation
-```
-
-成功分配响应：
-
-```json
-{
-  "sandbox_id": "sbi_xxx",
-  "pool_id": "pool-default",
-  "server_id": "server-node-1",
-  "proxy_url": "/api/v1/sandboxes/sbi_xxx/proxy"
-}
-```
-
-同一 `sandbox_id` 重复在同一个 pool 调用 allocate 会返回原绑定；如果已经属于其他 pool，会返回 `409`。allocate 不调用 OpenSandbox Server，不创建远程沙盒。
-
-### 5.6 按 sandbox_id 代理
-
-```text
-ANY /api/v1/sandboxes/:sandboxId/proxy/*path
-```
-
-示例：
-
-```text
-GET    /api/v1/sandboxes/sbi_xxx/proxy/v1/sandboxes/osb_xxx
-POST   /api/v1/sandboxes/sbi_xxx/proxy/v1/sandboxes
-DELETE /api/v1/sandboxes/sbi_xxx/proxy/v1/sandboxes/osb_xxx
-```
-
-未找到 binding 返回 `404`。目标 Server 为 `disabled` 或 `unhealthy` 时返回 `503`。目标 Server 请求异常一般返回 `502`，响应超时返回 `504`。
-
-### 5.7 按 server_id 代理
-
-```text
-ANY /api/v1/servers/:serverId/proxy/*path
-```
-
-该接口直接按 `server_id` 找到 Server，不做容量分配，也不创建或修改 binding。它和其他接口一样需要 Cluster API Key，不承担额外的资源分配职责。
-
-## 6. 错误和一致性
-
-### 6.1 错误状态
-
-主要状态码：
-
-| 场景 | 状态码 |
+| 接口 | 职责 |
 | --- | --- |
-| Cluster API Key 缺失或错误 | 401 |
-| 资源池、Server 或 binding 不存在 | 404 |
-| 资源池或 Server 有关联记录，不能删除 | 409 |
-| 没有可用 Server | 409 |
-| 请求参数不合法 | 400 |
-| Server 为 disabled/unhealthy，不能代理 | 503 |
-| 目标 Server 请求失败 | 502 |
-| 目标 Server 请求超时 | 504 |
+| `GET /health` | 无认证健康检查 |
+| `/api/v1/pools`、`/api/v1/servers` | 池与节点 CRUD，单资源使用 `/:id`，修改使用 PUT |
+| `POST /api/v1/servers/:serverId/health-check` | 检查节点健康 |
+| `PUT /api/v1/servers/:serverId/tunnel` | 准备隧道配置并切换连接模式 |
+| `GET /api/v1/servers/:serverId/tunnel/frpc.toml` | 下载节点隧道配置 |
+| `POST / DELETE /api/v1/servers/:serverId/tunnel/token` | 轮换或吊销注册凭证 |
+| `POST /api/v1/pools/:poolId/sandboxes/:sandboxId/allocate` | 数量模式分配绑定 |
+| `GET / DELETE /api/v1/sandboxes/:sandboxId/allocation` | 查询或释放绑定；资源绑定的释放委托生命周期服务 |
+| `/api/v1/sandboxes/:sandboxId/proxy/*path` | 按业务 ID 代理 |
+| `/api/v1/servers/:serverId/proxy/*path` | 按节点代理 |
+| `POST /api/v2/pools/:poolId/sandboxes` | 资源模式创建，返回 `201` 或 `202`，Location 指向查询接口 |
+| `GET /api/v2/sandboxes/:sandboxId` | 查询生命周期、预留资源、远端 ID 和到期时间 |
+| `DELETE /api/v2/sandboxes/:sandboxId` | 主动销毁；完成返回 `204`，回收中返回 `202` |
+| `GET /api/v1/servers/:serverId/resources` | 查询节点容量、预留与剩余量 |
+| `GET /api/v1/pools/:poolId/resources` | 按节点查询池资源 |
 
-目标 Server 返回的 HTTP 状态码和响应体会直接透传，不会被 Cluster 转换为 Cluster 错误结构。
+请求示例见 [使用说明](../../packages/opensandbox-cluster/README.md)。
 
-### 6.2 远程请求失败
+## 7. 持久化与部署约束
 
-allocate 成功后，Cluster 不知道调用方是否已经成功创建远程沙盒。远程创建超时或失败时，binding 不会自动回滚，也不会自动换 Server。调用方需要根据实际远程结果选择重试、继续使用或显式 release。
+容量判断、节点选择和绑定写入使用 SQLite `BEGIN IMMEDIATE` 事务，远端 HTTP 调用在事务外执行。当前部署为单 Cluster 实例、单 frps；多实例调度需要共享存储和协调机制。
 
-### 6.3 单实例 SQLite 并发
+启动时自动执行数据库迁移。升级前停止服务，备份 SQLite（含 WAL）及 `SERVER_API_KEY_ENCRYPTION_KEY`；数据库与原加密密钥配套恢复。
 
-容量分配使用 SQLite `BEGIN IMMEDIATE`，在单个 Cluster 进程内串行化分配事务。当前部署是单实例服务；没有实现多 Cluster 实例之间的分布式锁或高可用协调。
-
-## 7. Docker 部署
-
-### 7.1 Cluster 部署文件
-
-```text
-docker/opensandbox-cluster/
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
-Compose 只启动一个 Cluster 容器，不挂载 Docker Socket：
-
-```yaml
-services:
-  opensandbox-cluster:
-    build:
-      context: ../..
-      dockerfile: docker/opensandbox-cluster/Dockerfile
-    ports:
-      - "${PORT:-8080}:8080"
-    env_file:
-      - .env
-    volumes:
-      - opensandbox-cluster-data:/data
-```
-
-容器启动入口会先执行 `src/db/migrate.ts` 中的迁移，再启动 HTTP 服务。数据库路径默认是：
-
-```text
-/data/opensandbox-cluster.db
-```
-
-### 7.2 Cluster 环境变量
-
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `8080` | 宿主机端口映射和应用监听端口 |
-| `HOST` | `0.0.0.0` | 应用监听地址 |
-| `DATABASE_PATH` | `/data/opensandbox-cluster.db` | 容器内 SQLite 路径 |
-| `CLUSTER_SERVICE_API_KEY` | 无 | 必填，Cluster API 鉴权 |
-| `SERVER_API_KEY_ENCRYPTION_KEY` | 无 | 必填，必须为 32 字节 |
-| `PROXY_CONNECT_TIMEOUT_MS` | `3000` | 当前作为配置项存在，HTTP 客户端未实际使用 |
-| `PROXY_RESPONSE_TIMEOUT_MS` | `120000` | 代理响应超时时间 |
-
-### 7.3 节点连接关系
-
-direct Server：Cluster 必须能够访问 Server 的 `base_url`。Server 容器不需要加入 Cluster 的 Compose 网络，可以使用宿主机 IP、DNS 或其他 Cluster 可达地址。
-
-tunnel Server：Server 内的 frpc 主动访问 frps 的 `FRP_BIND_PORT`，Cluster 通过 frps vhost 访问 Server；Server 不发布管理端口或沙盒端口。frps 的 Plugin 和 vhost 端口只在 Cluster 内部网络可见。
-
-direct 节点使用 DinD 部署：
-
-```text
-docker/opensandbox-server/docker-compose.yml
-        |
-        v
-OpenSandbox Server 容器
-  |-- /var/lib/docker  -> ./data/docker（bind）
-  |-- /workspace -> ./workspace
-  `-- /offline -> ./offline
-        |
-        v
-    DinD daemon -> Sandbox containers
-```
-
-tunnel 节点使用独立目录：
-
-```text
-docker/opensandbox-server-tunnel/docker-compose.yml
-        |
-        v
-OpenSandbox Server + frpc
-        |
-        v
-主动连接 Cluster:frps
-```
-
-节点注册时，`workspace_root`、`sandbox.toml` 的 `allowed_host_paths` 和 Compose 内的容器路径必须一致。当前示例统一为 `/workspace`。
-
-## 8. FenixAgent 调用顺序
-
-Cluster 只提供资源池和 HTTP 透传能力。上游 Provider 的实际调用顺序是：
-
-```text
-首次创建
-  1. POST /api/v1/pools/:poolId/sandboxes/:businessSandboxId/allocate
-  2. POST /api/v1/sandboxes/:businessSandboxId/proxy/v1/sandboxes
-     （请求体由 Provider 负责创建，响应中的 providerSandboxId 由 Provider 保存）
-
-后续 get / resume / exec / 文件 / 端口操作
-  直接调用 sandbox proxy，并在路径中使用 providerSandboxId，不重复 allocate
-
-销毁
-  1. 通过 sandbox proxy 删除远程沙盒
-  2. 远程删除成功后 DELETE /api/v1/sandboxes/:businessSandboxId/allocation
-```
-
-不同业务镜像的默认容器内 workspace 挂载点由上游 Provider 根据镜像配置决定。Cluster 只处理宿主机侧的 workspace 隔离和路径安全。
-
-## 9. 架构限制
-
-- Cluster 只负责 Server 选择、绑定和 HTTP 代理，不负责远程沙盒生命周期、状态同步或故障恢复。
-- binding 是容量占用和路由记录，不是远程沙盒状态记录；孤儿 binding 需要由调用方或运维流程显式释放。
-- SQLite 调度锁只适用于单 Cluster 实例；多实例部署需要增加共享数据库或分布式锁协调。
-- 健康状态由注册时、FRP 建链后的健康探测和显式健康检查更新，不承担跨节点自动故障迁移。
-- 不提供 Web 管理页面，资源池、Server、绑定和代理能力通过 HTTP API 提供。
-- 节点部署模型以 OpenSandbox Server + DinD 为边界，Server 内部 Docker 运行时不属于 Cluster 的管理范围。
-- tunnel 采用单 Cluster、单 frps；每个 Server 只有一条当前 tunnel connection，断线恢复不改变 sandbox binding。
-- 资源池状态字段用于资源池管理，不替代 Server 的容量和健康状态；实际分配由可用 Server 决定。
-- Host volume 只允许落在 Server 注册的 `workspace_root` 范围内；容器内挂载点由上游 Provider 根据业务镜像决定。
-- Cluster 不保存 Provider sandbox ID；上游 Provider 必须持久化业务 sandbox ID 与 Provider sandbox ID 的关联。
+部署配置见 [Cluster 部署说明](../../docker/opensandbox-cluster/README.md)，节点部署见 [direct](../../docker/opensandbox-server/README.md) 和 [tunnel](../../docker/opensandbox-server-tunnel/README.md)。

@@ -3,6 +3,7 @@ import { createDatabase } from "./db/client";
 import { createAdminRoutes } from "./routes/admin";
 import { createAllocationRoutes } from "./routes/allocation";
 import { createFrpPluginRoutes } from "./routes/frp-plugin";
+import { createManagedRoutes } from "./routes/managed-sandboxes";
 import { handleProxyRequest } from "./routes/proxy";
 import { createTunnelRoutes } from "./routes/tunnel";
 import { createSecretBox } from "./security/secret-box";
@@ -10,6 +11,7 @@ import { AllocationService } from "./services/allocation-service";
 import { FrpPluginService } from "./services/frp-plugin-service";
 import { PoolService } from "./services/pool-service";
 import { ProxyService } from "./services/proxy-service";
+import { SandboxLifecycleService } from "./services/sandbox-lifecycle-service";
 import { ServerService } from "./services/server-service";
 import { TunnelConfigService } from "./services/tunnel-config-service";
 import type { ClusterConfig, HealthResponse } from "./types";
@@ -17,6 +19,7 @@ import type { ClusterConfig, HealthResponse } from "./types";
 export interface AppDependencies {
   fetch?: typeof fetch;
   recoverTunnel?: (serverId: string) => Promise<boolean>;
+  lifecycle?: SandboxLifecycleService;
   healthCheck?: (serverId: string) => Promise<"unknown" | "healthy" | "unhealthy">;
 }
 
@@ -36,7 +39,8 @@ export function createAppWithDatabase(
   const pools = new PoolService(db);
   const servers = new ServerService(db, createSecretBox(_config.serverApiKeyEncryptionKey), fetchImpl);
   const tunnels = new TunnelConfigService(db, _config, createSecretBox(_config.serverApiKeyEncryptionKey), servers);
-  const allocations = new AllocationService(db, sqlite, _config);
+  const lifecycle = dependencies.lifecycle ?? new SandboxLifecycleService(db, sqlite, _config, servers, fetchImpl);
+  const allocations = new AllocationService(db, sqlite, _config, lifecycle);
   const proxy = new ProxyService(
     servers,
     allocations,
@@ -52,6 +56,7 @@ export function createAppWithDatabase(
     .use(createAdminRoutes(_config, pools, servers, tunnels, dependencies.healthCheck))
     .use(createTunnelRoutes(_config, tunnels))
     .use(includePlugin ? createFrpPluginRoutes(_config, new FrpPluginService(db)) : new Elysia())
+    .use(createManagedRoutes(_config, allocations, lifecycle))
     .use(createAllocationRoutes(_config, allocations))
     .all(
       "*",

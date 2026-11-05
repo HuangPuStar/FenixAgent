@@ -30,7 +30,7 @@ export function handleProxyRequest(
     .catch((error: unknown) => {
       const proxyError = error instanceof ProxyError ? error : new ProxyError(502, "proxy request failed");
       return Response.json(
-        { error: { code: "PROXY_ERROR", message: proxyError.message } },
+        { error: { code: proxyError.code, message: proxyError.message } },
         { status: proxyError.status },
       );
     });

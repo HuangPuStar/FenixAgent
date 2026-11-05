@@ -1,9 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import type { ClusterDatabase } from "../db/client";
-import { opensandboxServer, opensandboxTunnelConnection, sandboxPool } from "../db/schema";
+import { opensandboxServer, opensandboxTunnelConnection, sandboxBinding, sandboxPool } from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
 import type { ClusterConfig } from "../types";
+import { decimalSum, dimensions, sumResources } from "./resource-accounting";
+import { allocated, capacity, LifecycleError } from "./resource-allocation";
+import type { SandboxLifecycleService } from "./sandbox-lifecycle-service";
 import { SchedulerLock } from "./scheduler-lock";
 
 export class AllocationError extends Error {
@@ -18,11 +21,52 @@ export class AllocationService {
     private readonly db: ClusterDatabase,
     sqlite: Database,
     private readonly config?: ClusterConfig,
+    private readonly lifecycle?: SandboxLifecycleService,
   ) {
     this.bindings = new BindingRepository(db);
     this.lock = new SchedulerLock(sqlite);
   }
 
+  /** Read node budgets and retained nonterminal reservations. */
+  serverResources(id: string) {
+    const server = this.db.select().from(opensandboxServer).where(eq(opensandboxServer.id, id)).get();
+    if (!server) throw new LifecycleError("NOT_FOUND", 404, "server not found");
+    const budget = capacity(server),
+      used = allocated(this.db, id);
+    return {
+      server_id: id,
+      capacity: budget,
+      allocated: used,
+      pending: sumResources(
+        this.db
+          .select()
+          .from(sandboxBinding)
+          .where(eq(sandboxBinding.serverId, id))
+          .all()
+          .filter(
+            (row) => row.allocationMode === "resources" && ["creating", "uncertain", "releasing"].includes(row.state),
+          )
+          .map((row) => ({ cpu: row.cpu!, memoryMb: row.memoryMb!, diskGb: row.diskGb!, gpuCount: row.gpuCount! })),
+      ),
+      remaining: Object.fromEntries(
+        dimensions.map((k) => [k, budget[k] === null ? null : decimalSum([budget[k], -used[k]])]),
+      ),
+    };
+  }
+  /** Aggregate per-node views without using pool totals for admission. */
+  poolResources(poolId: string) {
+    if (!this.db.select().from(sandboxPool).where(eq(sandboxPool.id, poolId)).get())
+      throw new LifecycleError("NOT_FOUND", 404, "pool not found");
+    return {
+      pool_id: poolId,
+      servers: this.db
+        .select()
+        .from(opensandboxServer)
+        .where(eq(opensandboxServer.poolId, poolId))
+        .all()
+        .map((server) => this.serverResources(server.id)),
+    };
+  }
   allocate(poolId: string, sandboxId: string) {
     return this.lock.run(() => {
       const existing = this.bindings.findBySandboxId(sandboxId);
@@ -31,8 +75,9 @@ export class AllocationService {
         return this.response(existing.sandboxId, existing.poolId, existing.serverId);
       }
 
-      if (!this.db.select().from(sandboxPool).where(eq(sandboxPool.id, poolId)).get())
-        throw new Error("pool not found");
+      const pool = this.db.select().from(sandboxPool).where(eq(sandboxPool.id, poolId)).get();
+      if (!pool) throw new Error("pool not found");
+      if (pool.schedulingMode !== "count") throw new AllocationError("resource pools require v2 managed create");
       const connections = new Map(
         this.db
           .select()
@@ -57,8 +102,11 @@ export class AllocationService {
           );
         })
         .map((server) => ({ server, current: this.bindings.countByServer(server.id) }))
-        .filter(({ server, current }) => current < server.maxSandboxes)
-        .sort((left, right) => left.current / left.server.maxSandboxes - right.current / right.server.maxSandboxes);
+        .filter(({ server, current }) => current < (server.maxSandboxes ?? 0))
+        .sort(
+          (left, right) =>
+            left.current / (left.server.maxSandboxes ?? 1) - right.current / (right.server.maxSandboxes ?? 1),
+        );
 
       const selected = servers[0]?.server;
       if (!selected) throw new AllocationError("pool has no available OpenSandbox Server");
@@ -67,12 +115,29 @@ export class AllocationService {
     });
   }
 
+  binding(sandboxId: string) {
+    return this.bindings.findBySandboxId(sandboxId);
+  }
+
   find(sandboxId: string) {
     const binding = this.bindings.findBySandboxId(sandboxId);
-    return binding ? this.response(binding.sandboxId, binding.poolId, binding.serverId) : undefined;
+    return binding
+      ? {
+          ...this.response(binding.sandboxId, binding.poolId, binding.serverId),
+          allocation_mode: binding.allocationMode,
+          provider_sandbox_id: binding.providerSandboxId,
+          state: binding.state,
+          expires_at: binding.expiresAt,
+        }
+      : undefined;
   }
 
   release(sandboxId: string) {
+    const binding = this.binding(sandboxId);
+    if (binding?.allocationMode === "resources") {
+      if (!this.lifecycle) throw new Error("lifecycle unavailable");
+      return this.lifecycle.release(sandboxId);
+    }
     return this.bindings.deleteBySandboxId(sandboxId);
   }
 

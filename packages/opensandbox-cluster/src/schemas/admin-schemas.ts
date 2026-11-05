@@ -1,6 +1,9 @@
 export interface PoolInput {
   id: string;
   name: string;
+  scheduling_mode?: string;
+  default_lease_seconds?: number;
+  max_lease_seconds?: number;
   status?: string;
 }
 
@@ -11,7 +14,11 @@ export interface ServerInput {
   base_url?: string;
   workspace_root: string;
   api_key: string;
-  max_sandboxes: number;
+  max_sandboxes?: number;
+  cpu_capacity?: number;
+  memory_capacity_mb?: number;
+  disk_capacity_gb?: number;
+  gpu_capacity?: number;
   status?: string;
   transport_mode?: "direct" | "tunnel";
 }
