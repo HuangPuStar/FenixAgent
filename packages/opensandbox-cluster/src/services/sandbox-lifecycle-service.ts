@@ -128,7 +128,7 @@ export class SandboxLifecycleService {
         env: input.resources.environment,
         volumes,
         timeout: row.leaseSeconds,
-        metadata: { ...input.sandbox.metadata, "fenix.cluster.attempt_id": row.attemptId! },
+        metadata: { ...input.sandbox.metadata, "opensandbox.cluster.attempt_id": row.attemptId! },
       };
       const response = await this.remote(row, "POST", "/v1/sandboxes", body);
       if (!response.ok) {
@@ -196,7 +196,7 @@ export class SandboxLifecycleService {
     try {
       if (!row.providerSandboxId) {
         const query = new URLSearchParams({
-          metadata: new URLSearchParams({ "fenix.cluster.attempt_id": row.attemptId! }).toString(),
+          metadata: new URLSearchParams({ "opensandbox.cluster.attempt_id": row.attemptId! }).toString(),
           page: "1",
           pageSize: "200",
         });

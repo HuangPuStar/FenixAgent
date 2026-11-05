@@ -113,7 +113,7 @@ opensandbox_server 1 ── 1 opensandbox_tunnel_connection
 ### 4.2 资源模式
 
 1. 校验资源、租期和挂载路径，在事务内选择节点并写入 `creating` 预留；`expires_at` 从预留时开始计算。
-2. 向节点发送一次原生创建请求，携带资源限制、有限 `timeout` 和 `fenix.cluster.attempt_id` metadata。
+2. 向节点发送一次原生创建请求，携带资源限制、有限 `timeout` 和 `opensandbox.cluster.attempt_id` metadata。
 3. 获取真实远端 ID 后转为 `active`；结果未知时进入 `uncertain`，由后台查询协调。
 4. 主动释放或到期时先保存释放意图，进入 `releasing`。远端删除后查询确认 `404`，再转为终态并归还资源。
 
