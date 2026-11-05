@@ -108,7 +108,11 @@ test("two instances with two sessions each route interleaved JSON/SSE and contin
     const label = ["a1", "a2", "b1", "b2"][index];
     expect(text).toContain(label + "-first");
     expect(text).toContain(label + "-last");
-    for (const other of ["a1", "a2", "b1", "b2"].filter((s) => s !== label)) expect(text).not.toContain(other + "-");
+    // 随机 completion ID 可能包含短标签前缀，只检查实际发送的完整输出片段。
+    for (const other of ["a1", "a2", "b1", "b2"].filter((s) => s !== label)) {
+      expect(text).not.toContain(`${other}-first`);
+      expect(text).not.toContain(`${other}-last`);
+    }
   }
   pending.length = 0;
   expected = 2;

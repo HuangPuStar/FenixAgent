@@ -11,6 +11,8 @@ WORKDIR /app
 
 COPY packages/logger ./packages/logger
 COPY packages/opensandbox-cluster/package.json ./packages/opensandbox-cluster/package.json
+# 页面已构建为静态文件，运行镜像无需安装 UI 源码及其依赖。
+RUN bun -e 'const path = "packages/opensandbox-cluster/package.json"; const pkg = await Bun.file(path).json(); delete pkg.dependencies["@fenix/ui-components"]; delete pkg.devDependencies; await Bun.write(path, JSON.stringify(pkg));'
 RUN echo '{"private":true,"workspaces":["packages/*"]}' > package.json && bun install --production
 
 WORKDIR /app/packages/opensandbox-cluster

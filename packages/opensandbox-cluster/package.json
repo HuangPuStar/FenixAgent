@@ -14,13 +14,13 @@
   "dependencies": {
     "@elysiajs/openapi": "^1.4.15",
     "@fenix/logger": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
     "@noble/ciphers": "^2.2.0",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "smol-toml": "1.7.1"
   },
   "devDependencies": {
-    "@fenix/ui-components": "workspace:*",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-router": "^1.170.7",
     "@types/bun": "^1.3.14",
