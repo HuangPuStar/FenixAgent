@@ -97,7 +97,7 @@ function createFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
       };
       turns.set(rcsSessionId, record);
       const turn: PromptTurn = {
-        sessionId: options.sessionId ?? `ses_fake_${sessionSeq}`,
+        sessionId: start.sessionId ?? `ses_fake_${sessionSeq}`,
         prompt(content) {
           // 与真实 turn 一致：先标记已发 prompt，同步发送失败时因此不会回调执行终态。
           record.prompted = true;
