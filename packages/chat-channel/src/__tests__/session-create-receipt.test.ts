@@ -1,7 +1,7 @@
 // create_session 的创建回执：committed Ack 必须携带 Agent 实际创建出的 session id。
 //
 // 为什么单列一个文件：这条回执是「在该分组新建会话」把归属绑定到本页本次创建的唯一依据
-// （见 docs/design/2026-10-15-chat-space-design.md §6.5）。共享投影里的 active session 变化
+// （见 docs/arch/05-chat.md「会话分组」）。共享投影里的 active session 变化
 // 无法回答「这次点击创建出了哪个会话」——同一 Y.Doc 上别的标签页创建/切换同样会改它。
 // 本文件覆盖三条边界：正常回执、被后续切换取代的迟到回执、Agent 拒绝与 relay 断开的空回执。
 

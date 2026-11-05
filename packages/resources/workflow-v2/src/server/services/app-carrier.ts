@@ -1,7 +1,7 @@
 /**
  * 租户 App 的**上游载体协议**：端点、请求体、响应读取与「目标不存在」判定。
  *
- * 为什么存在两种载体（2026-10-09 实测，背景见 `docs/design/2026-10-09-workflow-v2-api-channel-release.md`）：
+ * 为什么存在两种载体（2026-10-09 实测，背景见 `docs/arch/25-workflow-v2.md` §5.1）：
  * 上游把「workflow 属主」与「可发布到渠道的载体」统一在**应用（Project）实体**上——workflow 的 `project_id`
  * 指向应用，「把应用发布到 API 渠道」是 `connector_workflow_version` 唯一的写入路径，即对外触发接口能跑起来
  * 的前提。bot 载体没有这条链路（`ReleaseApplicationWorkflows` 只按应用取 workflow；bot 发布实测不写登记表）。

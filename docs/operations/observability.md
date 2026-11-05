@@ -2,7 +2,7 @@
 
 ## 1. 发布前检查
 
-1. 应用基线与冻结版本见 `docs/design/observability-implementation.md`；镜像 tag 是候选运行组合，不代表已通过真实数据验收。上线记录应用 SHA、Bun 版本（当前冻结 1.4.3，CI 与生产镜像一致）、三类镜像 digest、配置版本和目标 CPU 架构。
+1. 应用基线与依赖版本以部署产物的 build info、`bun.lock` 和镜像声明为准；镜像 tag 是候选运行组合，不代表已通过真实数据验收。上线记录应用 SHA、Bun 版本（当前冻结 1.4.3，CI 与生产镜像一致）、三类镜像 digest、配置版本和目标 CPU 架构。
 2. 数据目录都在各自编排的 `./data`；Collector 为 UID/GID 10001 创建 `data/storage`，至少预留 5GiB。OO 需核实镜像运行用户与数据权限。
 3. 凭据由秘密管理器或不入库 `.env` 注入。OO root 初始化与 Collector 采集凭据分开，应用不接收 OO 凭据。
 4. feature 只控制本目录：`FENIX_FEATURE_OTEL_COLLECTOR`、`FENIX_FEATURE_OPENOBSERVE` 默认关闭，由目录发现/环境生成器登记，不会互相启用。

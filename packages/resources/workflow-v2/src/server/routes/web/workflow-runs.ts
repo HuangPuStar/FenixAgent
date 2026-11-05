@@ -235,7 +235,7 @@ export function createWebWorkflowV2RunRoutes(
    * 归属校验按上游 ID（`findWorkflowByUpstreamId`）：运行记录条目里带的就是它。已知边界：上游按 execute id
    * 查询时不校验「该运行属于这个 workflow」（实测：workflow_id 不存在也回 `code=0` 并原样回显参数），若调用方
    * 构造「本组织 workflowId + 他组织 executeId」，上游会照常返回——execute id 只在本组织运行记录里可见，且
-   * 归属校验仍拦下未登记的 workflow，风险受限（登记与移除条件见 `docs/design/2026-10-10-workflow-v2-run-io.md` §5）。
+   * 归属校验仍拦下未登记的 workflow，风险受限（边界与移除条件见 `docs/arch/25-workflow-v2.md` §8）。
    */
   app.get(
     "/run-records/:executeId/io",

@@ -150,7 +150,7 @@ export function AgentTemplatePanel({
           </span>
           {/* 原生 `<h3>` / `<p>`（原 `DialogTitle` / `DialogDescription`）：刻度不变，但不再经组件内的 `cn`
               合并——`text-16` 不在 tailwind-merge 的字号组里，与同一元素上的 `text-slate-800` 一起进 `cn`
-              会被丢掉（`docs/design/issues/2026-09-28-web-style-closure-defects.md` §五.2）。 */}
+              会被丢掉。 */}
           <h3
             className="mt-1.5 text-16 leading-none font-semibold tracking-tight text-slate-800"
             data-slot="editor-template-title"

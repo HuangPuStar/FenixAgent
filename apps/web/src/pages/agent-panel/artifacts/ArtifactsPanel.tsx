@@ -48,8 +48,6 @@ interface ArtifactsPanelProps {
  * 装配的站点组件（`SiteTabsBar` / `SiteFrame` / `MountSiteDialog`）来自 `@fenix/agent-config/web`，
  * 所以它不能进 machine 包——`machine` 是 §2.3 矩阵的固定基础资源，导入 `@fenix/agent-config` 会同时
  * 触发包内 `machine-package-contract.test.ts` 的禁则与 `agent-config/web → machine/web` 的环。
- * 首次出现于 `docs/design/2026-09-18-packages-web-ui-components-migration.md` 的「留在 apps/web」
- * 裁定，本行是它的收窄版：留的是装配，不是任何一侧的域实现。
  *
  * 落点（2026-09-28）：本文件连同 `TopModeTabs.tsx` / `artifacts-dialogs.tsx` 从 `apps/web/src/shell/artifacts/`
  * 归位到 `apps/web/src/pages/agent-panel/artifacts/`，**不迁出宿主**——这一簇同时装配 agent-config /

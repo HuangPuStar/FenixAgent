@@ -1,10 +1,9 @@
-# Agent Instance 持久化与生命周期架构（目标设计权威）
+# Agent Instance 持久化与生命周期架构
 
 外部 v1 的协议与独立兼容约束见 [External Agent API v1](./external-api-v1.md)。
 
-> 状态：目标设计，待实施（2026-08-31 评审确认）。
 > 范围：Agent Instance 的持久身份、用户归属、来源、默认实例、统一运行时、生命周期、状态权威，以及 HTTP、Workflow、Interactive Chat 三条调用路径的共同契约。
-> 权威性：本文是 Agent Instance **业务身份与生命周期语义**的唯一架构权威。详细数据结构、状态转移、并发矩阵、接口与实施切片见 [`../design/agent-instance.md`](../design/agent-instance.md)。现有实现与本文冲突时，实施阶段直接替换旧逻辑，不建立兼容层。
+> 权威性：本文是 Agent Instance **业务身份与生命周期语义**的唯一架构权威。Instance 的持久身份、生命周期和调用路径均遵守本文契约。
 > 非目标：跨节点 runtime owner lease、旧 runtime 认领、服务启动自动恢复、Instance rename、切换默认实例、独立 start API。本期只规定未来多节点演进边界。
 
 ## 1. 决策摘要
@@ -293,7 +292,6 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 
 | 文档 | 权威范围 |
 |---|---|
-| [`../design/agent-instance.md`](../design/agent-instance.md) | 本架构的详细数据模型、状态机、并发矩阵、接口、测试和实施切片 |
 | [`20-orchestration-management.md`](./20-orchestration-management.md) | Controller、AgentNode、Core runtime 与 Machine 编排实现 |
 | [`19-yjs-chat-streaming.md`](./19-yjs-chat-streaming.md) | Chat/YJS 实时投影、relay、ACP Session、多标签页与重连 |
 | [`03-auth.md`](./03-auth.md) | 认证、组织上下文与授权边界 |

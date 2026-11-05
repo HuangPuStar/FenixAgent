@@ -130,7 +130,7 @@ export function createApiWorkflowV2Routes(
         releaseStatus: released.status,
       });
       // 「承载对象不是可发布的应用实体」是**永久性**前置条件缺失（历史 bot 载体，见
-      // `docs/design/2026-10-09-workflow-v2-api-channel-release.md` §4）：重试永远不会好，
+      // `docs/arch/25-workflow-v2.md` §5.1）：重试永远不会好，
       // 因此换一条不含「稍后重试」暗示的文案，把可行动方向指向平台管理员。
       if (released.status === "app_not_publishable") {
         return {

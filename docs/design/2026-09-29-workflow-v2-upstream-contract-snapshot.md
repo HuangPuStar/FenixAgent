@@ -186,7 +186,7 @@ WORKFLOW_V2_PROBE_EMAIL=<探针邮箱> WORKFLOW_V2_PROBE_PASSWORD=<探针密码>
 | `history_schema` 成功样本 | 缺有效 `commit_id`（`save` 不回传 commit_id，`canvas` 也不返回）；当前只记录 panic 样本 |
 | `test_resume` 成功样本 | 需要一个会中断的工作流（问答/输入节点）与 `event_id`；探针用 start→end 空跑，取不到中断事件 |
 | `released_workflows` / `list_publish_workflow` 的非空样本 | 需要把 App 作为「产品」发布上架（上游审核链路），超出探针范围 |
-| ~~`list_spans` / `get_trace` 的有数据样本~~ | **2026-10-09 结案（结论与预期相反）**：有真实执行也不会有数据——两个端点都是**桩实现**（样本：workflow `7694581096108785664` 的 3 次成功执行，窗口覆盖其 `create_time`，`list_spans` 仍回 `{"spans":null}`、`get_trace` 回 `{}`）。执行级数据要从 `get_process` / `get_node_execute_history`（会话面，需 `execute_id`）或 `/v1/workflow/get_run_history`（PAT，GET，需 `execute_id`）取。**2026-10-09 更新**：`list_spans` 的结论已失效——上游同日以 commit `3a028cf1` 补上实现（契约见 [run-list-api-request](./2026-10-09-workflow-v2-upstream-run-list-api-request.md) §7），平台同日切回 HTTP；`get_trace` **仍为桩实现**（`GetTraceSDK`），关于它的结论维持不变 |
+| ~~`list_spans` / `get_trace` 的有数据样本~~ | **2026-10-09 结案（结论与预期相反）**：有真实执行也不会有数据——两个端点都是**桩实现**（样本：workflow `7694581096108785664` 的 3 次成功执行，窗口覆盖其 `create_time`，`list_spans` 仍回 `{"spans":null}`、`get_trace` 回 `{}`）。执行级数据要从 `get_process` / `get_node_execute_history`（会话面，需 `execute_id`）或 `/v1/workflow/get_run_history`（PAT，GET，需 `execute_id`）取。**2026-10-09 更新**：`list_spans` 的结论已失效——上游同日以 commit `3a028cf1` 补上实现（契约见 [Workflow V2 架构](../arch/25-workflow-v2.md) §8），平台同日切回 HTTP；`get_trace` **仍为桩实现**（`GetTraceSDK`），关于它的结论维持不变 |
 | 白名单节点的执行与 `node_type` 细节 | 探针只跑默认的 start→end 空图，`node_type` 返回的 `nodes_properties` 未覆盖 llm/http/code 等节点的真实字段；节点白名单（2C）需在阶段 1 用真实节点补测 |
 | 并发与限流（§9.1 第 5 条） | 未做压测；单会话限制已由 A4 证实，配额上限未知 |
 | 多副本并发登录（§9.1 第 3 条） | 单进程验证了「重登踢旧会话」，多副本行为需部署后验证 |
