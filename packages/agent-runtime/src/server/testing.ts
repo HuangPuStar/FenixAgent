@@ -408,4 +408,5 @@ registerStubResetter(resetEnvironmentRepoStubForTest);
 registerStubResetter(resetCoreRuntimeFacadeStub);
 registerStubResetter(resetMachineRegistryPortStub);
 
+export { hasActiveAgentExecutions, releaseAgentExecutions } from "../services/agent-execution-admission";
 export { releaseAgentSessionTurns } from "../services/agent-session-admission";

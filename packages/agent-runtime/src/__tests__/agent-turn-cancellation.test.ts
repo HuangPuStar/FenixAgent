@@ -114,9 +114,10 @@ test("handshake without acknowledgement capability fails before sending session/
 test("session handshake timeout rejects and ignores a late acknowledgement", async () => {
   const transport = relay();
   const session = createAgentSession({ instanceId: "instance", relayHandle: transport.handle });
-  await expect(startPromptTurn({ session, sessionId: "ses-existing", handshakeTimeoutMs: 10 })).rejects.toThrow(
-    "unconfirmed",
-  );
+  const pending = startPromptTurn({ session, sessionId: "ses-existing", handshakeTimeoutMs: 10 });
+  await expect(pending).rejects.toThrow("unconfirmed");
+  const error = await pending.catch((caught: unknown) => caught);
+  expect((error as { code?: unknown }).code).toBe("ACP_HANDSHAKE_TIMEOUT");
   expect(transport.listeners.size).toBe(0);
   transport.emit({ jsonrpc: "2.0", id: transport.requests[0].id, result: { sessionId: "ses-late" } });
   expect(transport.requests).toHaveLength(1);
