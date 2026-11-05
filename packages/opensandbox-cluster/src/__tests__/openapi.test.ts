@@ -9,7 +9,10 @@ interface Spec {
   security: unknown;
   components: {
     securitySchemes: { BearerAuth: { scheme: string } };
-    schemas: Record<string, { properties: Record<string, { description: string }> }>;
+    schemas: Record<
+      string,
+      { properties: Record<string, { description: string }>; required?: string[]; oneOf?: unknown[] }
+    >;
   };
   paths: Record<
     string,
@@ -50,6 +53,11 @@ test("serves OpenAPI site and a usable public schema without weakening API authe
     expect(spec.components.securitySchemes.BearerAuth.scheme).toBe("bearer");
     expect(spec.paths["/api/v1/pools"].post.requestBody.content["application/json"].schema).toBeDefined();
     expect(spec.components.schemas.ServerInput.properties.disk_capacity_gb.description).toContain("GB");
+    expect(spec.components.schemas.ServerInput.required).not.toContain("base_url");
+    expect(spec.components.schemas.ServerInput.oneOf).toEqual([
+      { properties: { transport_mode: { enum: ["direct"] } }, required: ["base_url"] },
+      { properties: { transport_mode: { enum: ["tunnel"] } }, required: ["transport_mode"] },
+    ]);
     expect(
       spec.paths["/api/v1/servers/{serverId}/tunnel/frpc.toml"].get.responses[200].content["application/toml"],
     ).toBeDefined();

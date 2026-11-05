@@ -61,6 +61,10 @@ export const clusterOpenApiSchemas: Schema = {
     type: "object",
     required: ["id", "pool_id", "name", "workspace_root", "api_key"],
     properties: serverInput,
+    oneOf: [
+      { properties: { transport_mode: { enum: ["direct"] } }, required: ["base_url"] },
+      { properties: { transport_mode: { enum: ["tunnel"] } }, required: ["transport_mode"] },
+    ],
   },
   ServerUpdate: { type: "object", properties: serverUpdate },
   Server: {

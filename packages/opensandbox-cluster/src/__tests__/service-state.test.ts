@@ -196,6 +196,27 @@ describe("OpenSandbox 管理服务内存状态", () => {
     expect(poolService.findById("pool-1")).toMatchObject({ capacitySandboxes: 0, availableSandboxes: 0 });
   });
 
+  // 数量容量不可包含小数，拒绝后不得污染现有可调度额度。
+  test("拒绝将数量节点容量更新为非整数", () => {
+    createPool();
+    createServer();
+
+    for (const capacity of [0.5, 1.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => serverService.update("server-1", { max_sandboxes: capacity })).toThrow();
+      expect(serverService.findById("server-1")?.maxSandboxes).toBe(2);
+    }
+  });
+
+  // 创建必须提供正整数，零容量仅允许已有空闲节点更新。
+  test("数量节点创建拒绝零容量及非整数", () => {
+    createPool();
+
+    for (const capacity of [0, -1, 0.5, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => createServer("invalid", "pool-1", { max_sandboxes: capacity })).toThrow();
+      expect(serverService.findById("invalid")).toBeUndefined();
+    }
+  });
+
   // 列表按池过滤，避免控制面混入其他池的服务器。
   test("按池筛选服务器列表", () => {
     createPool();

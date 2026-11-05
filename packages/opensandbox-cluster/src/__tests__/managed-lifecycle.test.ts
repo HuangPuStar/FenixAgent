@@ -1,72 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { createAppWithDatabase } from "../app";
-import { loadConfig } from "../config";
-import { createDatabase } from "../db/client";
-import { opensandboxServer, sandboxBinding } from "../db/schema";
-import { createSecretBox } from "../security/secret-box";
-import { PoolService } from "../services/pool-service";
-import { type ManagedCreate, SandboxLifecycleService } from "../services/sandbox-lifecycle-service";
-import { ServerService } from "../services/server-service";
+import { sandboxBinding } from "../db/schema";
+import { fixture, input } from "./managed-fixture";
 
-const handles: ReturnType<typeof createDatabase>[] = [];
-afterEach(() => {
-  for (const h of handles.splice(0)) h.sqlite.close();
-});
-function fixture(
-  fetchImpl: (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => Promise<Response> = async () =>
-    Response.json({ id: "native-1" }),
-) {
-  const handle = createDatabase(":memory:");
-  handles.push(handle);
-  const { db, sqlite } = handle;
-  migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
-  const config = {
-    ...loadConfig({
-      SERVER_API_KEY_ENCRYPTION_KEY: "0".repeat(32),
-      CLUSTER_SERVICE_API_KEY: "test-key",
-      FRP_TOKEN: "test",
-      FRP_PUBLIC_ADDRESS: "localhost",
-    }),
-    databasePath: ":memory:",
-  };
-  const pools = new PoolService(db);
-  pools.create({
-    id: "p",
-    name: "P",
-    scheduling_mode: "resources",
-    default_lease_seconds: 60,
-    max_lease_seconds: 3600,
-  });
-  const servers = new ServerService(db, createSecretBox(config.serverApiKeyEncryptionKey));
-  servers.create({
-    id: "n",
-    pool_id: "p",
-    name: "N",
-    base_url: "http://node",
-    workspace_root: "/data/ws",
-    api_key: "test",
-    cpu_capacity: 0.3,
-    memory_capacity_mb: 100,
-    disk_capacity_gb: 10,
-    gpu_capacity: 1,
-  });
-  db.update(opensandboxServer).set({ healthStatus: "healthy" }).run();
-  const lifecycle = new SandboxLifecycleService(
-    db,
-    sqlite,
-    config,
-    servers,
-    Object.assign(fetchImpl, { preconnect: fetch.preconnect }),
-  );
-  return { db, sqlite, config, pools, servers, lifecycle };
-}
-const input = (id: string, cpu = 0.1, gpuCount = 0): ManagedCreate => ({
-  sandbox_id: id,
-  resources: { cpu, memoryMb: 10, diskGb: 1, gpuCount },
-  sandbox: { image: { uri: "alpine" } },
-});
 // 节点明确拒绝镜像拉取时返回具体错误，并移除本次预留，允许修正参数后重试。
 test("rejected image creates return errors without retaining allocations", async () => {
   let fail = true;
@@ -118,19 +55,18 @@ test("managed DELETE removes active and terminal records after confirmed destruc
     expect(lifecycle.find(state)).toBeUndefined();
   }
 });
-// 旧版本记录了明确 HTTP 失败且节点无匹配沙盒时，删除不能永久卡在 releasing。
-test("historical HTTP creation failures can finish cleanup when discovery confirms absence", async () => {
-  const { lifecycle, db } = fixture(async (_url, init) =>
+// HTTP 创建错误和空清单都不能证明远端未创建，删除必须保留预留等待后续确认。
+test("HTTP create errors retain reservations after empty discovery", async () => {
+  const { lifecycle, servers } = fixture(async (_url, init) =>
     init?.method === "POST"
       ? new Response(null, { status: 500 })
       : Response.json({ items: [], pagination: { hasNextPage: false, totalItems: 0 } }),
   );
-  await lifecycle.create("p", input("old-failed"));
-  db.update(sandboxBinding)
-    .set({ lastError: "create HTTP 500" })
-    .where(eq(sandboxBinding.sandboxId, "old-failed"))
-    .run();
-  expect((await lifecycle.release("old-failed")).state).toBe("released");
+  await lifecycle.create("p", input("unknown"));
+  expect(await lifecycle.remove("unknown")).toMatchObject({ state: "releasing" });
+  expect(lifecycle.find("unknown")?.state).toBe("releasing");
+  expect(servers.findById("n")?.allocatedResources?.cpu).toBe(0.1);
+  await expect(lifecycle.create("p", input("full", 0.3))).rejects.toMatchObject({ code: "NO_CAPACITY" });
 });
 // 四维容量必须在同一节点满足，最后一张 GPU 并发只能创建一个。
 test("reserves decimals and the final GPU without overselling", async () => {
@@ -467,8 +403,8 @@ test("explicit delete upgrades an in-progress expiry", async () => {
   expect(await lifecycle.remove("expiry-delete")).toBeUndefined();
   expect(lifecycle.find("expiry-delete")).toBeUndefined();
 });
-// 发现查询暂时失败不能抹去已完成 HTTP 创建失败的证据，否则历史记录将永久卡住。
-test("historical rejected creation remains cleanable after discovery recovers", async () => {
+// 查询恢复后的空结果仍不能证明创建失败，不能将已有预留归还。
+test("HTTP error reservations survive empty discovery after a lookup failure", async () => {
   let healthy = false;
   const { lifecycle, db } = fixture(async (_url, init) =>
     init?.method === "POST"
@@ -482,7 +418,7 @@ test("historical rejected creation remains cleanable after discovery recovers", 
   healthy = true;
   db.update(sandboxBinding).set({ nextRetryAt: 0 }).run();
   await lifecycle.reconcileDue();
-  expect(lifecycle.find("old-retry")?.state).toBe("released");
+  expect(lifecycle.find("old-retry")?.state).toBe("releasing");
 });
 // 两个交错 DELETE 不得在其中一个已删行后让另一个读取空记录崩溃。
 test("concurrent managed deletes both complete without retaining history", async () => {

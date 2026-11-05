@@ -3,8 +3,9 @@ import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
 import type { ClusterDatabase } from "../db/client";
 import type { ClusterConfig } from "../types";
 import type { AllocationService } from "./allocation-service";
+import { COUNT_ATTEMPT_METADATA_KEY, type CountRecoveryService } from "./count-recovery-service";
 import { nativeCreateError } from "./native-create-error";
-import { nativeResources } from "./native-resources";
+import { type NativeResources, nativeResources } from "./native-resources";
 import { LifecycleError } from "./resource-allocation";
 import { isSandboxCreateRequest, SandboxVolumeRewriteError } from "./sandbox-volume-rewriter";
 import type { ServerService } from "./server-service";
@@ -36,6 +37,7 @@ export class ProxyService {
     db?: ClusterDatabase,
     config?: ClusterConfig,
     private readonly recoverTunnel?: (serverId: string) => Promise<boolean>,
+    private readonly countRecovery?: CountRecoveryService,
   ) {
     this.client = new OpenSandboxHttpClient(connectTimeoutMs, responseTimeoutMs, fetchImpl);
     this.resolver = db && config ? new ServerTargetResolver(db, config) : undefined;
@@ -45,10 +47,19 @@ export class ProxyService {
 
   /** Conditional console creates roll back only when the node has definitely rejected creation. */
   async proxy(request: Request, path: string, serverId?: string, sandboxId?: string): Promise<Response> {
-    const conditional =
-      sandboxId && request.headers.get("if-none-match") === "*" && isSandboxCreateRequest(request.method, path);
-    const original = conditional ? this.allocations.binding(sandboxId) : undefined;
-    if (!conditional || original?.allocationMode !== "count") return this.forward(request, path, serverId, sandboxId);
+    const create = sandboxId && isSandboxCreateRequest(request.method, path);
+    const conditional = create && request.headers.get("if-none-match") === "*";
+    const original = create ? this.allocations.binding(sandboxId) : undefined;
+    if (!conditional || original?.allocationMode !== "count") {
+      const complete = original?.allocationMode === "count" ? this.countRecovery?.begin(original) : undefined;
+      try {
+        return await this.forward(request, path, serverId, sandboxId);
+      } finally {
+        complete?.();
+      }
+    }
+    if (this.countRecovery?.hasInFlight(original.attemptId))
+      throw new ProxyError(409, "allocation creation is already in progress", "ALLOCATION_CHANGED");
     try {
       const etag: unknown = JSON.parse(request.headers.get("if-match") ?? "null");
       if (typeof etag !== "string") throw new ProxyError(400, "If-Match is required for conditional create");
@@ -58,16 +69,26 @@ export class ProxyService {
       if (error instanceof SyntaxError) throw new ProxyError(400, "invalid If-Match");
       throw error;
     }
+    const complete = this.countRecovery?.begin(original);
     try {
-      const response = await this.forward(request, path, serverId, sandboxId);
+      const forwarded = await this.withCountAttempt(request, original.attemptId!);
+      const response = await this.forward(forwarded, path, serverId, sandboxId);
+      if (response.ok) {
+        // Native creation has committed even if every local completion write is unavailable.
+        try {
+          if (!this.allocations.binding(original.sandboxId)?.providerSandboxId)
+            this.allocations.finishCountCreate(original, false);
+        } catch (error) {
+          this.logObservationFailure(sandboxId, original.serverId, error);
+        }
+        return response;
+      }
       if (!response.ok) {
         const failure = await nativeCreateError(response.clone(), [
           this.servers.getCredentials(original.serverId)!.apiKey,
         ]);
         this.allocations.finishCountCreate(original, failure.rejected);
         if (failure.rejected) response.headers.set("X-Cluster-Create-Rejected", "true");
-      } else if (!this.allocations.binding(original.sandboxId)?.providerSandboxId) {
-        this.allocations.finishCountCreate(original, false);
       }
       return response;
     } catch (error) {
@@ -82,10 +103,33 @@ export class ProxyService {
           },
         );
       throw error;
+    } finally {
+      complete?.();
     }
   }
 
+  private async withCountAttempt(request: Request, attemptId: string): Promise<Request> {
+    let body: unknown;
+    try {
+      body = await request.clone().json();
+    } catch {
+      throw new ProxyError(400, "sandbox create body must be valid JSON");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw new ProxyError(400, "sandbox create body must be an object");
+    const metadata = "metadata" in body ? body.metadata : undefined;
+    if (metadata !== undefined && (!metadata || typeof metadata !== "object" || Array.isArray(metadata)))
+      throw new ProxyError(400, "sandbox metadata must be an object");
+    const headers = new Headers(request.headers);
+    headers.delete("content-length");
+    return new Request(request, {
+      headers,
+      body: JSON.stringify({ ...body, metadata: { ...metadata, [COUNT_ATTEMPT_METADATA_KEY]: attemptId } }),
+    });
+  }
+
   private async forward(request: Request, path: string, serverId?: string, sandboxId?: string): Promise<Response> {
+    this.assertCountCreateAvailable(request, path, sandboxId);
     let resolvedServerId = serverId;
     if (sandboxId) {
       const allocation = this.allocations.find(sandboxId);
@@ -151,6 +195,8 @@ export class ProxyService {
         throw error;
       }
     }
+    // Tunnel recovery can yield while a management create claims this binding.
+    this.assertCountCreateAvailable(request, path, sandboxId);
     const createSnapshot =
       managed?.allocationMode === "count" && isSandboxCreateRequest(request.method, path) ? request.clone() : undefined;
     try {
@@ -165,16 +211,23 @@ export class ProxyService {
       if (managed?.allocationMode === "count" && response.ok && isSandboxCreateRequest(request.method, path)) {
         try {
           const result: unknown = await response.clone().json();
-          if (result && typeof result === "object" && "id" in result && typeof result.id === "string")
-            this.allocations.rememberProviderId(managed, result.id, nativeResources(await createSnapshot?.json()));
+          if (result && typeof result === "object" && "id" in result && typeof result.id === "string") {
+            let resources: NativeResources | undefined;
+            try {
+              resources = nativeResources(await createSnapshot?.json());
+            } catch (error) {
+              this.logObservationFailure(sandboxId, resolvedServerId, error);
+            }
+            try {
+              this.allocations.rememberProviderId(managed, result.id, resources);
+            } catch (error) {
+              this.logObservationFailure(sandboxId, resolvedServerId, error);
+              this.allocations.rememberProviderId(managed, result.id, resources);
+            }
+          }
         } catch (error) {
           // Observing an ID must not turn an already successful native create into a caller-visible failure.
-          logger.error("count sandbox ID observation failed", {
-            sandboxId,
-            serverId: resolvedServerId,
-            errorKind: error instanceof Error ? error.name : "UnknownError",
-            error,
-          });
+          this.logObservationFailure(sandboxId, resolvedServerId, error);
         }
       }
       return response;
@@ -187,5 +240,21 @@ export class ProxyService {
         { cause: error },
       );
     }
+  }
+
+  private assertCountCreateAvailable(request: Request, path: string, sandboxId?: string): void {
+    if (!sandboxId || request.headers.get("if-none-match") === "*" || !isSandboxCreateRequest(request.method, path))
+      return;
+    const current = this.allocations.binding(sandboxId);
+    if (current?.allocationMode === "count" && ["creating", "uncertain"].includes(current.state))
+      throw new ProxyError(409, "allocation creation is already in progress or unresolved", "ALLOCATION_CHANGED");
+  }
+
+  private logObservationFailure(sandboxId: string | undefined, serverId: string, error: unknown): void {
+    logger.error("count sandbox ID observation failed", {
+      sandboxId,
+      serverId,
+      errorKind: error instanceof Error ? error.name : "UnknownError",
+    });
   }
 }

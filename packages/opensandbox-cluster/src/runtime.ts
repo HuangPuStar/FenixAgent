@@ -2,6 +2,8 @@ import { createAppWithDatabase } from "./app";
 import { createDatabase } from "./db/client";
 import { createLoggedFrpPluginApp } from "./routes/frp-plugin";
 import { createSecretBox } from "./security/secret-box";
+import { AllocationService } from "./services/allocation-service";
+import { CountRecoveryService } from "./services/count-recovery-service";
 import { FrpPluginService } from "./services/frp-plugin-service";
 import { ReconciliationWorker, SandboxLifecycleService } from "./services/sandbox-lifecycle-service";
 import { ServerConnectionMonitor } from "./services/server-connection-monitor";
@@ -25,13 +27,21 @@ export function createClusterRuntime(config: ClusterConfig): ClusterRuntime {
     config,
     new ServerService(db, createSecretBox(config.serverApiKeyEncryptionKey)),
   );
-  const worker = new ReconciliationWorker(lifecycle);
+  const servers = new ServerService(db, createSecretBox(config.serverApiKeyEncryptionKey));
+  const countRecovery = new CountRecoveryService(
+    db,
+    config,
+    servers,
+    new AllocationService(db, sqlite, config, lifecycle),
+  );
+  const worker = new ReconciliationWorker(lifecycle, countRecovery);
   const apiApp = createAppWithDatabase(
     config,
     db,
     sqlite,
     {
       lifecycle,
+      countRecovery,
       recoverTunnel: async (serverId) => (await monitor.checkServer(serverId)) === "healthy",
       healthCheck: (serverId) => monitor.checkServer(serverId),
     },

@@ -6,6 +6,7 @@ import type { ClusterDatabase } from "../db/client";
 import { type SandboxBinding, sandboxBinding } from "../db/schema";
 import { redactLogValue } from "../logging/redact";
 import type { ClusterConfig } from "../types";
+import type { CountRecoveryService } from "./count-recovery-service";
 import { nativeCreateError } from "./native-create-error";
 import type { Resources } from "./resource-accounting";
 import { LifecycleError, reserve, terminalStates } from "./resource-allocation";
@@ -215,22 +216,6 @@ export class SandboxLifecycleService {
           this.patch(row, { providerSandboxId: result.items[0]!.id, state: "active" });
           row = this.row(id)!;
         } else {
-          if (
-            row.releaseReason &&
-            !this.inFlight.has(id) &&
-            result.items.length === 0 &&
-            !result.pagination?.hasNextPage &&
-            (result.pagination?.totalItems ?? 0) === 0 &&
-            /^create HTTP \d{3}(?:;|$)/.test(row.lastError ?? "")
-          ) {
-            this.patch(row, {
-              state: row.releaseReason === "expiry" ? "expired" : "released",
-              nextRetryAt: null,
-              lastError: null,
-            });
-            if (this.row(id)?.releaseReason === "delete") this.deleteAttempt(row);
-            return;
-          }
           this.patch(row, { state: row.releaseReason ? "releasing" : "uncertain", nextRetryAt: Date.now() + 5000 });
           return;
         }
@@ -291,7 +276,7 @@ export class SandboxLifecycleService {
       .limit(100)
       .all();
     let cursor = 0;
-    await Promise.all(
+    const results = await Promise.allSettled(
       Array.from({ length: 4 }, async () => {
         while (cursor < rows.length) {
           const row = rows[cursor++];
@@ -299,6 +284,8 @@ export class SandboxLifecycleService {
         }
       }),
     );
+    const failures = results.filter((result) => result.status === "rejected").map((result) => result.reason);
+    if (failures.length) throw new AggregateError(failures, "resource reconciliation batch failed");
   }
   private row(id: string) {
     return this.db.select().from(sandboxBinding).where(eq(sandboxBinding.sandboxId, id)).get();
@@ -389,14 +376,17 @@ export class SandboxLifecycleService {
 export class ReconciliationWorker {
   private timer?: ReturnType<typeof setInterval>;
   private pending?: Promise<void>;
-  constructor(private readonly lifecycle: SandboxLifecycleService) {}
+  constructor(
+    private readonly lifecycle: SandboxLifecycleService,
+    private readonly countRecovery?: CountRecoveryService,
+  ) {}
   start() {
     const tick = () => {
       if (!this.pending)
-        this.pending = this.lifecycle
-          .reconcileDue()
-          .catch((error: unknown) => {
-            logger.error("sandbox reconciliation batch failed", error);
+        this.pending = Promise.allSettled([this.lifecycle.reconcileDue(), this.countRecovery?.reconcileDue()])
+          .then((results) => {
+            for (const result of results)
+              if (result.status === "rejected") logger.error("sandbox reconciliation batch failed", result.reason);
           })
           .finally(() => {
             this.pending = undefined;
@@ -409,5 +399,6 @@ export class ReconciliationWorker {
     clearInterval(this.timer);
     await this.pending;
     await this.lifecycle.drain();
+    await this.countRecovery?.drain();
   }
 }

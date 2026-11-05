@@ -182,8 +182,8 @@ export class ServerService {
     if (pool.schedulingMode === "count") {
       const max = input.max_sandboxes ?? current?.maxSandboxes;
       // 旧更新接口允许空闲节点缩容到 0；仅首次注册要求正整数。
-      if (max === null || max === undefined || (!current && (!Number.isInteger(max) || max < 1)))
-        throw new Error("max_sandboxes must be a positive integer");
+      if (max === null || max === undefined || !Number.isInteger(max) || max < (current ? 0 : 1))
+        throw new Error(`max_sandboxes must be a ${current ? "non-negative" : "positive"} integer`);
       return { maxSandboxes: max, cpuCapacity: null, memoryCapacityMb: null, diskCapacityGb: null, gpuCapacity: null };
     }
     const values = {

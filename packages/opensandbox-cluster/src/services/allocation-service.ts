@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ClusterDatabase } from "../db/client";
 import { opensandboxServer, opensandboxTunnelConnection, sandboxBinding, sandboxPool } from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
@@ -136,6 +136,7 @@ export class AllocationService {
       if (
         current?.allocationMode !== "count" ||
         current.state !== "active" ||
+        !current.attemptId ||
         current.providerSandboxId ||
         this.etag(current) !== expectedEtag
       )
@@ -169,13 +170,22 @@ export class AllocationService {
     this.lock.run(() => {
       this.db
         .update(sandboxBinding)
-        .set({ ...resources, providerSandboxId: providerId, state: "active", updatedAt: Date.now() })
+        .set({
+          ...resources,
+          providerSandboxId: providerId,
+          state: "active",
+          retryCount: 0,
+          nextRetryAt: null,
+          lastError: null,
+          updatedAt: Date.now(),
+        })
         .where(
           and(
             eq(sandboxBinding.sandboxId, original.sandboxId),
             eq(sandboxBinding.serverId, original.serverId),
             eq(sandboxBinding.createdAt, original.createdAt),
             eq(sandboxBinding.allocationMode, "count"),
+            inArray(sandboxBinding.state, ["active", "creating", "uncertain"]),
             original.attemptId ? eq(sandboxBinding.attemptId, original.attemptId) : isNull(sandboxBinding.attemptId),
             isNull(sandboxBinding.providerSandboxId),
           ),
@@ -217,7 +227,12 @@ export class AllocationService {
       if (!this.lifecycle) throw new Error("lifecycle unavailable");
       return this.lifecycle.release(sandboxId);
     }
-    return this.lock.run(() => this.bindings.deleteBySandboxId(sandboxId));
+    return this.lock.run(() => {
+      const current = this.bindings.findBySandboxId(sandboxId);
+      if (current?.state === "creating" || (current?.state === "uncertain" && !current.providerSandboxId))
+        throw new LifecycleError("ALLOCATION_CHANGED", 409, "creation is pending; allocation cannot be released");
+      return this.bindings.deleteBySandboxId(sandboxId);
+    });
   }
 
   private etag(binding: typeof sandboxBinding.$inferSelect) {

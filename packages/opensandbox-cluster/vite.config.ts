@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  root: new URL("./web", import.meta.url).pathname,
+  root: fileURLToPath(new URL("./web", import.meta.url)),
   plugins: [react(), tailwindcss()],
   build: { outDir: "../dist/web", emptyOutDir: true },
   server: {

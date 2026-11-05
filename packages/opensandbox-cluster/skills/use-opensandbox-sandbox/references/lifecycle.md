@@ -49,11 +49,13 @@
 ```text
 DELETE {proxy_url}/v1/sandboxes/{provider_sandbox_id}
 GET    {proxy_url}/v1/sandboxes/{provider_sandbox_id}  → 确认 404
-GET    /api/v1/sandboxes/{sandboxId}/allocation       → 读取最新 allocation_etag
-DELETE /api/v1/sandboxes/{sandboxId}/allocation      → If-Match: 最新 ETag 的 JSON 字符串
+GET    /api/v1/sandboxes/{sandboxId}/allocation       → 核对 provider_sandbox_id，读取 allocation_etag
+DELETE /api/v1/sandboxes/{sandboxId}/allocation      → If-Match: 本次核对响应中 ETag 的 JSON 字符串
 ```
 
-真实 ID 写入绑定后 ETag 会变化，不复用创建前的 ETag。释放返回 `409` 时重新核实分配代次，不能去掉条件头强制释放。
+销毁前记录真实 ID；确认原生 GET 返回 `404` 后，重新查询绑定，必须核对 `provider_sandbox_id` 等于刚销毁的真实 ID。若不同或为空，立即停止释放并报告绑定已变化；不能使用新绑定的 ETag 删除其他调用方的沙盒绑定。
+
+真实 ID 写入绑定后 ETag 会变化，不复用创建前的 ETag。核对成功后，只使用同一次 GET 响应的 `allocation_etag` 作为 `If-Match`。该条件保证核对与 DELETE 之间绑定未被并发修改；若返回 `409`，停止释放并重新核实分配代次，不能只换成最新 ETag 重试，也不能去掉条件头强制释放。
 
 ## 查询与挂载
 

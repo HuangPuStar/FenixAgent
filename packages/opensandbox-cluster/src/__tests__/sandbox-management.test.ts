@@ -259,6 +259,7 @@ test("conditional create is claimed once and keeps unknown results", async () =>
   const first = create();
   for (let i = 0; i < 100 && posts === 0; i++) await Bun.sleep(1);
   expect((await create()).status).toBe(409);
+  expect((await req("/api/v1/sandboxes/job/allocation", "DELETE")).status).toBe(409);
   expect(
     (await req("/api/v1/sandboxes/job/allocation", "DELETE", undefined, true, { "If-Match": headers["If-Match"] }))
       .status,
@@ -267,6 +268,7 @@ test("conditional create is claimed once and keeps unknown results", async () =>
   expect((await first).status).toBe(502);
   expect((await create()).status).toBe(409);
   expect(posts).toBe(1);
+  expect((await req("/api/v1/sandboxes/job/allocation", "DELETE")).status).toBe(409);
   expect(((await (await req("/api/v1/sandboxes/job/allocation")).json()) as { state: string }).state).toBe("uncertain");
 });
 // 转发前节点不可用也属于确定未创建，管理请求应释放本次数量绑定。
