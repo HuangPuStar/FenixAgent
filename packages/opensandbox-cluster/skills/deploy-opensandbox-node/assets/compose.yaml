@@ -1,0 +1,19 @@
+services:
+  opensandbox-server:
+    image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.2.0
+    command: [opensandbox-server, --config, /etc/opensandbox/sandbox.toml]
+    privileged: true
+    cgroup: host
+    restart: unless-stopped
+    volumes:
+      - ./data/docker:/var/lib/docker
+      - ./data/opensandbox:/root/.opensandbox
+      - ./workspace:/workspace
+      - ./offline:/offline:ro
+      - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8080/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s

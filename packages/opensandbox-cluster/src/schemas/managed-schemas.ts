@@ -39,5 +39,6 @@ export const managedErrorResponses = {
   409: managedErrorSchema,
   410: managedErrorSchema,
   500: managedErrorSchema,
+  502: managedErrorSchema,
   503: managedErrorSchema,
 };

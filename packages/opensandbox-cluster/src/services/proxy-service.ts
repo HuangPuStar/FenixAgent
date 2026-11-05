@@ -1,19 +1,26 @@
+import { createLogger } from "@fenix/logger";
 import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
 import type { ClusterDatabase } from "../db/client";
 import type { ClusterConfig } from "../types";
 import type { AllocationService } from "./allocation-service";
-import { SandboxVolumeRewriteError } from "./sandbox-volume-rewriter";
+import { nativeCreateError } from "./native-create-error";
+import { nativeResources } from "./native-resources";
+import { LifecycleError } from "./resource-allocation";
+import { isSandboxCreateRequest, SandboxVolumeRewriteError } from "./sandbox-volume-rewriter";
 import type { ServerService } from "./server-service";
 import type { ServerTarget } from "./server-target-resolver";
 import { ServerTargetError, ServerTargetResolver } from "./server-target-resolver";
+
+const logger = createLogger("cluster.proxy");
 
 export class ProxyError extends Error {
   constructor(
     readonly status: number,
     message: string,
     readonly code = "PROXY_ERROR",
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -36,7 +43,49 @@ export class ProxyService {
 
   private readonly resolver?: ServerTargetResolver;
 
+  /** Conditional console creates roll back only when the node has definitely rejected creation. */
   async proxy(request: Request, path: string, serverId?: string, sandboxId?: string): Promise<Response> {
+    const conditional =
+      sandboxId && request.headers.get("if-none-match") === "*" && isSandboxCreateRequest(request.method, path);
+    const original = conditional ? this.allocations.binding(sandboxId) : undefined;
+    if (!conditional || original?.allocationMode !== "count") return this.forward(request, path, serverId, sandboxId);
+    try {
+      const etag: unknown = JSON.parse(request.headers.get("if-match") ?? "null");
+      if (typeof etag !== "string") throw new ProxyError(400, "If-Match is required for conditional create");
+      this.allocations.beginCountCreate(original.sandboxId, etag);
+    } catch (error) {
+      if (error instanceof LifecycleError) throw new ProxyError(error.status, error.message, error.code);
+      if (error instanceof SyntaxError) throw new ProxyError(400, "invalid If-Match");
+      throw error;
+    }
+    try {
+      const response = await this.forward(request, path, serverId, sandboxId);
+      if (!response.ok) {
+        const failure = await nativeCreateError(response.clone(), [
+          this.servers.getCredentials(original.serverId)!.apiKey,
+        ]);
+        this.allocations.finishCountCreate(original, failure.rejected);
+        if (failure.rejected) response.headers.set("X-Cluster-Create-Rejected", "true");
+      } else if (!this.allocations.binding(original.sandboxId)?.providerSandboxId) {
+        this.allocations.finishCountCreate(original, false);
+      }
+      return response;
+    } catch (error) {
+      const rejected = error instanceof ProxyError && ![502, 504].includes(error.status);
+      this.allocations.finishCountCreate(original, rejected);
+      if (rejected)
+        return Response.json(
+          { error: { code: error.code, message: error.message } },
+          {
+            status: error.status,
+            headers: { "X-Cluster-Create-Rejected": "true" },
+          },
+        );
+      throw error;
+    }
+  }
+
+  private async forward(request: Request, path: string, serverId?: string, sandboxId?: string): Promise<Response> {
     let resolvedServerId = serverId;
     if (sandboxId) {
       const allocation = this.allocations.find(sandboxId);
@@ -102,8 +151,10 @@ export class ProxyService {
         throw error;
       }
     }
+    const createSnapshot =
+      managed?.allocationMode === "count" && isSandboxCreateRequest(request.method, path) ? request.clone() : undefined;
     try {
-      return await this.client.request(
+      const response = await this.client.request(
         target.baseUrl,
         credentials.apiKey,
         request,
@@ -111,11 +162,29 @@ export class ProxyService {
         credentials.workspaceRoot,
         target.hostHeader,
       );
+      if (managed?.allocationMode === "count" && response.ok && isSandboxCreateRequest(request.method, path)) {
+        try {
+          const result: unknown = await response.clone().json();
+          if (result && typeof result === "object" && "id" in result && typeof result.id === "string")
+            this.allocations.rememberProviderId(managed, result.id, nativeResources(await createSnapshot?.json()));
+        } catch (error) {
+          // Observing an ID must not turn an already successful native create into a caller-visible failure.
+          logger.error("count sandbox ID observation failed", {
+            sandboxId,
+            serverId: resolvedServerId,
+            errorKind: error instanceof Error ? error.name : "UnknownError",
+            error,
+          });
+        }
+      }
+      return response;
     } catch (error) {
       if (error instanceof SandboxVolumeRewriteError) throw new ProxyError(400, error.message);
       throw new ProxyError(
         error instanceof DOMException && error.name === "TimeoutError" ? 504 : 502,
         "OpenSandbox Server request failed",
+        "PROXY_ERROR",
+        { cause: error },
       );
     }
   }

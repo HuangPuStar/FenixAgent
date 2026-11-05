@@ -1,15 +1,20 @@
 import type { Database } from "bun:sqlite";
+import { createLogger } from "@fenix/logger";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
 import type { ClusterDatabase } from "../db/client";
 import { type SandboxBinding, sandboxBinding } from "../db/schema";
+import { redactLogValue } from "../logging/redact";
 import type { ClusterConfig } from "../types";
+import { nativeCreateError } from "./native-create-error";
 import type { Resources } from "./resource-accounting";
 import { LifecycleError, reserve, terminalStates } from "./resource-allocation";
 import { rewriteSandboxCreateBody } from "./sandbox-volume-rewriter";
 import { SchedulerLock } from "./scheduler-lock";
 import type { ServerService } from "./server-service";
 import { ServerTargetResolver } from "./server-target-resolver";
+
+const logger = createLogger("cluster.lifecycle");
 /** A workspace-relative host mount supplied by the platform. */
 export interface ManagedVolume {
   name: string;
@@ -127,19 +132,27 @@ export class SandboxLifecycleService {
       };
       const response = await this.remote(row, "POST", "/v1/sandboxes", body);
       if (!response.ok) {
-        if (response.status === 422) {
-          this.patch(row, {
-            state: "failed",
-            releaseReason: "create_failure",
-            lastError: `create HTTP ${response.status}`,
-          });
-        } else this.patch(row, { state: "uncertain", lastError: `create HTTP ${response.status}` });
+        const failure = await nativeCreateError(response, [this.servers.getCredentials(row.serverId)!.apiKey]);
+        logger.error("native sandbox creation failed", {
+          sandboxId: row.sandboxId,
+          serverId: row.serverId,
+          attemptId: row.attemptId,
+          status: response.status,
+          message: failure.message,
+          rejected: failure.rejected,
+        });
+        if (failure.rejected) {
+          this.deleteAttempt(row);
+          throw new LifecycleError("CREATE_FAILED", 502, failure.message);
+        }
+        this.patch(row, { state: "uncertain", lastError: `create HTTP ${response.status}` });
       } else {
         const result = (await response.json()) as { id?: string };
         if (!result.id) throw new Error("missing native sandbox id");
         this.patch(row, { providerSandboxId: result.id, state: "active", lastError: null });
       }
     } catch (error) {
+      if (error instanceof LifecycleError && error.code === "CREATE_FAILED") throw error;
       this.logFailure(row, "create", error);
       this.patch(row, { state: "uncertain", lastError: `native create result unknown (${this.errorKind(error)})` });
     } finally {
@@ -148,7 +161,9 @@ export class SandboxLifecycleService {
     if (row.expiresAt! <= Date.now() && !this.row(row.sandboxId)?.releaseReason)
       await this.release(row.sandboxId, "expiry");
     else if (this.row(row.sandboxId)?.releaseReason) await this.reconcile(row.sandboxId);
-    return this.find(row.sandboxId)!;
+    const result = this.find(row.sandboxId);
+    if (!result) throw new LifecycleError("ALLOCATION_RELEASED", 410, "allocation deleted");
+    return result;
   }
   /** Persist release intent before contacting the node. */
   async release(id: string, reason = "manual") {
@@ -159,7 +174,16 @@ export class SandboxLifecycleService {
     if (terminalStates.includes(row.state)) return this.dto(row);
     this.patch(row, { state: "releasing", releaseReason: reason, nextRetryAt: Date.now() });
     await this.reconcile(id);
-    return this.find(id)!;
+    return this.find(id) ?? this.dto({ ...row, state: "released" });
+  }
+  /** Explicit deletion removes history only after the node's destruction is confirmed. */
+  async remove(id: string) {
+    const original = this.row(id);
+    if (!original) throw new LifecycleError("NOT_FOUND", 404, "allocation not found");
+    const result = await this.release(id, "delete");
+    if (!terminalStates.includes(result.state)) return result;
+    this.deleteAttempt(original);
+    return;
   }
   /** Reconcile known IDs or metadata-correlated resources; absence cannot prove an unknown POST failed. */
   async reconcile(id: string) {
@@ -177,7 +201,7 @@ export class SandboxLifecycleService {
           pageSize: "200",
         });
         const res = await this.remote(row, "GET", "/v1/sandboxes?" + query);
-        if (!res.ok) throw new Error("lookup failed");
+        if (!res.ok) throw new Error(`native sandbox lookup HTTP ${res.status}`);
         const result = (await res.json()) as {
           items: { id: string }[];
           pagination?: { hasNextPage?: boolean; totalItems?: number };
@@ -191,6 +215,22 @@ export class SandboxLifecycleService {
           this.patch(row, { providerSandboxId: result.items[0]!.id, state: "active" });
           row = this.row(id)!;
         } else {
+          if (
+            row.releaseReason &&
+            !this.inFlight.has(id) &&
+            result.items.length === 0 &&
+            !result.pagination?.hasNextPage &&
+            (result.pagination?.totalItems ?? 0) === 0 &&
+            /^create HTTP \d{3}(?:;|$)/.test(row.lastError ?? "")
+          ) {
+            this.patch(row, {
+              state: row.releaseReason === "expiry" ? "expired" : "released",
+              nextRetryAt: null,
+              lastError: null,
+            });
+            if (this.row(id)?.releaseReason === "delete") this.deleteAttempt(row);
+            return;
+          }
           this.patch(row, { state: row.releaseReason ? "releasing" : "uncertain", nextRetryAt: Date.now() + 5000 });
           return;
         }
@@ -201,14 +241,15 @@ export class SandboxLifecycleService {
           return;
         }
         const res = await this.remote(row, "DELETE", `/v1/sandboxes/${encodeURIComponent(row.providerSandboxId!)}`);
-        if (!res.ok && res.status !== 404) throw new Error("delete failed");
+        if (!res.ok && res.status !== 404) throw new Error(`native sandbox delete HTTP ${res.status}`);
         const check = await this.remote(row, "GET", `/v1/sandboxes/${encodeURIComponent(row.providerSandboxId!)}`);
-        if (check.status !== 404) throw new Error("destruction unconfirmed");
+        if (check.status !== 404) throw new Error(`native sandbox destruction unconfirmed (HTTP ${check.status})`);
         this.patch(row, {
           state: row.releaseReason === "expiry" ? "expired" : "released",
           nextRetryAt: null,
           lastError: null,
         });
+        if (this.row(id)?.releaseReason === "delete") this.deleteAttempt(row);
       } else this.patch(row, { state: "active", retryCount: 0, nextRetryAt: null, lastError: null });
     } catch (error) {
       this.logFailure(row, "reconcile", error);
@@ -216,10 +257,10 @@ export class SandboxLifecycleService {
       this.patch(row, {
         retryCount: retries,
         nextRetryAt: Date.now() + Math.min(300000, 5000 * 2 ** Math.min(retries - 1, 6) * (0.8 + Math.random() * 0.4)),
-        lastError: `native lifecycle reconciliation failed (${this.errorKind(error)})`,
+        lastError: `${/^create HTTP \d{3}(?:;|$)/.test(row.lastError ?? "") ? `${row.lastError!.split(";")[0]}; ` : ""}native lifecycle reconciliation failed (${this.errorKind(error)})`,
       });
       if (retries === 10)
-        console.error("cluster reconciliation repeatedly failed", {
+        logger.error("cluster reconciliation repeatedly failed", {
           sandboxId: id,
           serverId: row.serverId,
           attemptId: row.attemptId,
@@ -262,12 +303,19 @@ export class SandboxLifecycleService {
   private row(id: string) {
     return this.db.select().from(sandboxBinding).where(eq(sandboxBinding.sandboxId, id)).get();
   }
+  private deleteAttempt(original: SandboxBinding) {
+    this.lock.run(() =>
+      this.db
+        .delete(sandboxBinding)
+        .where(and(eq(sandboxBinding.sandboxId, original.sandboxId), eq(sandboxBinding.attemptId, original.attemptId!)))
+        .run(),
+    );
+  }
   private errorKind(error: unknown): string {
     return error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "UnknownError";
   }
   private logFailure(row: SandboxBinding, operation: string, error: unknown): void {
-    // Exception messages may embed node URLs or credentials; log only the safe classification and allocation context.
-    console.warn("cluster native lifecycle failure", {
+    logger.error("cluster native lifecycle failure", {
       sandboxId: row.sandboxId,
       serverId: row.serverId,
       attemptId: row.attemptId,
@@ -275,18 +323,25 @@ export class SandboxLifecycleService {
       retryCount: row.retryCount,
       operation,
       errorKind: this.errorKind(error),
+      error: redactLogValue(error, [
+        this.config.clusterServiceApiKey,
+        this.config.frpToken,
+        new TextDecoder().decode(this.config.serverApiKeyEncryptionKey),
+      ]),
     });
   }
   private patch(original: SandboxBinding, change: Partial<SandboxBinding>) {
     this.lock.run(() => {
       const current = this.row(original.sandboxId);
       if (!current || current.attemptId !== original.attemptId || terminalStates.includes(current.state)) return;
+      const reason =
+        current.releaseReason === "delete" || change.releaseReason === "delete" ? "delete" : current.releaseReason;
       if (current.releaseReason && !terminalStates.includes(change.state ?? "")) {
-        change = { ...change, state: "releasing", releaseReason: current.releaseReason };
+        change = { ...change, state: "releasing", releaseReason: reason };
       }
       if (current.releaseReason) {
-        change.releaseReason = current.releaseReason;
-        if (change.state === "failed") change.state = current.releaseReason === "expiry" ? "expired" : "released";
+        change.releaseReason = reason;
+        if (change.state === "failed") change.state = reason === "expiry" ? "expired" : "released";
       }
       this.db
         .update(sandboxBinding)
@@ -326,7 +381,7 @@ export class SandboxLifecycleService {
       resources: { cpu: row.cpu, memoryMb: row.memoryMb, diskGb: row.diskGb, gpuCount: row.gpuCount },
       expires_at: row.expiresAt,
       provider_sandbox_id: row.providerSandboxId,
-      proxy_url: `/api/v1/sandboxes/${row.sandboxId}/proxy`,
+      proxy_url: `/api/v1/sandboxes/${encodeURIComponent(row.sandboxId)}/proxy`,
     };
   }
 }
@@ -338,9 +393,14 @@ export class ReconciliationWorker {
   start() {
     const tick = () => {
       if (!this.pending)
-        this.pending = this.lifecycle.reconcileDue().finally(() => {
-          this.pending = undefined;
-        });
+        this.pending = this.lifecycle
+          .reconcileDue()
+          .catch((error: unknown) => {
+            logger.error("sandbox reconciliation batch failed", error);
+          })
+          .finally(() => {
+            this.pending = undefined;
+          });
     };
     tick();
     this.timer = setInterval(tick, 5000);

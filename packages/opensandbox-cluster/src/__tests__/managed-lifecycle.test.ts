@@ -67,11 +67,77 @@ const input = (id: string, cpu = 0.1, gpuCount = 0): ManagedCreate => ({
   resources: { cpu, memoryMb: 10, diskGb: 1, gpuCount },
   sandbox: { image: { uri: "alpine" } },
 });
+// 节点明确拒绝镜像拉取时返回具体错误，并移除本次预留，允许修正参数后重试。
+test("rejected image creates return errors without retaining allocations", async () => {
+  let fail = true;
+  const { lifecycle, servers } = fixture(async () =>
+    fail
+      ? Response.json({ code: "DOCKER::SANDBOX_IMAGE_PULL_FAILED", message: "image does not exist" }, { status: 500 })
+      : Response.json({ id: "native-1" }),
+  );
+  await expect(lifecycle.create("p", input("invalid"))).rejects.toMatchObject({
+    code: "CREATE_FAILED",
+    message: "image does not exist",
+  });
+  expect(lifecycle.find("invalid")).toBeUndefined();
+  fail = false;
+  await lifecycle.create("p", input("invalid"));
+  expect(servers.findById("n")?.allocatedResources).toEqual({ cpu: 0.1, memoryMb: 10, diskGb: 1, gpuCount: 0 });
+});
+// 显式删除资源沙盒必须在远端确认消失后移除记录，终态记录同样允许删除。
+test("managed DELETE removes active and terminal records after confirmed destruction", async () => {
+  let gone = false;
+  const remote = Object.assign(
+    async (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      if (init?.method === "POST") return Response.json({ id: "native-1" });
+      if (init?.method === "DELETE") {
+        gone = true;
+        return new Response(null, { status: 204 });
+      }
+      return new Response(null, { status: gone ? 404 : 200 });
+    },
+    { preconnect: fetch.preconnect },
+  );
+  const { db, sqlite, config, lifecycle } = fixture(remote);
+  const app = createAppWithDatabase(config, db, sqlite, { fetch: remote, lifecycle });
+  const remove = (id: string) =>
+    app.handle(
+      new Request(`http://cluster/api/v2/sandboxes/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer test-key" },
+      }),
+    );
+  await lifecycle.create("p", input("active"));
+  expect((await remove("active")).status).toBe(204);
+  expect(lifecycle.find("active")).toBeUndefined();
+  for (const state of ["expired", "released", "failed"]) {
+    gone = false;
+    await lifecycle.create("p", input(state));
+    db.update(sandboxBinding).set({ state }).where(eq(sandboxBinding.sandboxId, state)).run();
+    expect((await remove(state)).status).toBe(204);
+    expect(lifecycle.find(state)).toBeUndefined();
+  }
+});
+// 旧版本记录了明确 HTTP 失败且节点无匹配沙盒时，删除不能永久卡在 releasing。
+test("historical HTTP creation failures can finish cleanup when discovery confirms absence", async () => {
+  const { lifecycle, db } = fixture(async (_url, init) =>
+    init?.method === "POST"
+      ? new Response(null, { status: 500 })
+      : Response.json({ items: [], pagination: { hasNextPage: false, totalItems: 0 } }),
+  );
+  await lifecycle.create("p", input("old-failed"));
+  db.update(sandboxBinding)
+    .set({ lastError: "create HTTP 500" })
+    .where(eq(sandboxBinding.sandboxId, "old-failed"))
+    .run();
+  expect((await lifecycle.release("old-failed")).state).toBe("released");
+});
 // 四维容量必须在同一节点满足，最后一张 GPU 并发只能创建一个。
 test("reserves decimals and the final GPU without overselling", async () => {
-  const { lifecycle } = fixture();
-  await lifecycle.create("p", input("a", 0.1));
-  await lifecycle.create("p", input("b", 0.2));
+  let serial = 0;
+  const { lifecycle } = fixture(async () => Response.json({ id: `native-${++serial}` }));
+  expect((await lifecycle.create("p", input("a", 0.1))).state).toBe("active");
+  expect((await lifecycle.create("p", input("b", 0.2))).state).toBe("active");
   await expect(lifecycle.create("p", input("c"))).rejects.toMatchObject({ code: "NO_CAPACITY" });
   const other = fixture();
   const results = await Promise.allSettled([
@@ -375,4 +441,66 @@ test("HTTP proxy preserves managed terminal codes", async () => {
     expect(terminal.status).toBe(status);
     expect(await terminal.json()).toMatchObject({ error: { code } });
   }
+});
+// 首次删除返回处理中后，后台协调仍须兑现删除意图，不能只留下终态记录。
+test("asynchronous deletion removes history after a later confirmation", async () => {
+  let confirm = false;
+  const { lifecycle, db } = fixture(async (_url, init) =>
+    init?.method === "POST" ? Response.json({ id: "native" }) : new Response(null, { status: confirm ? 404 : 503 }),
+  );
+  await lifecycle.create("p", input("async-delete"));
+  expect((await lifecycle.remove("async-delete"))?.state).toBe("releasing");
+  confirm = true;
+  db.update(sandboxBinding).set({ nextRetryAt: 0 }).run();
+  await lifecycle.reconcileDue();
+  expect(lifecycle.find("async-delete")).toBeUndefined();
+});
+// 手工删除可以升级尚在回收的到期意图，回收成功后清除该记录。
+test("explicit delete upgrades an in-progress expiry", async () => {
+  let confirm = false;
+  const { lifecycle } = fixture(async (_url, init) =>
+    init?.method === "POST" ? Response.json({ id: "native" }) : new Response(null, { status: confirm ? 404 : 503 }),
+  );
+  await lifecycle.create("p", input("expiry-delete"));
+  await lifecycle.release("expiry-delete", "expiry");
+  confirm = true;
+  expect(await lifecycle.remove("expiry-delete")).toBeUndefined();
+  expect(lifecycle.find("expiry-delete")).toBeUndefined();
+});
+// 发现查询暂时失败不能抹去已完成 HTTP 创建失败的证据，否则历史记录将永久卡住。
+test("historical rejected creation remains cleanable after discovery recovers", async () => {
+  let healthy = false;
+  const { lifecycle, db } = fixture(async (_url, init) =>
+    init?.method === "POST"
+      ? new Response(null, { status: 500 })
+      : healthy
+        ? Response.json({ items: [], pagination: { hasNextPage: false, totalItems: 0 } })
+        : new Response(null, { status: 503 }),
+  );
+  await lifecycle.create("p", input("old-retry"));
+  expect((await lifecycle.release("old-retry")).state).toBe("releasing");
+  healthy = true;
+  db.update(sandboxBinding).set({ nextRetryAt: 0 }).run();
+  await lifecycle.reconcileDue();
+  expect(lifecycle.find("old-retry")?.state).toBe("released");
+});
+// 两个交错 DELETE 不得在其中一个已删行后让另一个读取空记录崩溃。
+test("concurrent managed deletes both complete without retaining history", async () => {
+  let finish: () => void = () => {};
+  let deletes = 0;
+  const { lifecycle } = fixture(async (_url, init) => {
+    if (init?.method === "POST") return Response.json({ id: "native" });
+    if (init?.method === "DELETE" && ++deletes === 1)
+      await new Promise<void>((r) => {
+        finish = r;
+      });
+    return new Response(null, { status: 404 });
+  });
+  await lifecycle.create("p", input("concurrent-delete"));
+  const first = lifecycle.remove("concurrent-delete");
+  for (let i = 0; i < 100 && deletes === 0; i++) await Bun.sleep(1);
+  expect(await lifecycle.remove("concurrent-delete")).toBeUndefined();
+  finish();
+  expect(await first).toBeUndefined();
+  expect(lifecycle.find("concurrent-delete")).toBeUndefined();
 });

@@ -18,6 +18,7 @@ OpenSandbox Cluster 是独立部署的 Bun 服务，管理资源池和 OpenSandb
 | `ReconciliationWorker` | 到期回收与失败重试 |
 | `ServerTargetResolver` / `ServerConnectionMonitor` | 连接解析、隧道健康与断线检测 |
 | `ProxyService` / `OpenSandboxHttpClient` | 代理授权、节点认证、HTTP 转发与挂载路径改写 |
+| `SandboxManagementService` / Web 管理页 | 绑定列表及池、节点、沙盒管理 |
 
 ## 2. 调度模式
 
@@ -27,7 +28,7 @@ OpenSandbox Cluster 是独立部署的 Bun 服务，管理资源池和 OpenSandb
 | --- | --- | --- |
 | 容量 | 节点 `max_sandboxes` | 节点 CPU、内存、硬盘、GPU 容量 |
 | 创建 | 调用方分配绑定后，通过代理创建 | Cluster 预留资源后创建 |
-| 远端沙盒 ID | 调用方保存 | binding 保存 |
+| 远端沙盒 ID | 调用方保存，Cluster 观察成功创建并记录关联 | binding 保存 |
 | 释放 | 调用方删除远端沙盒后释放绑定 | Cluster 确认销毁后归还资源 |
 | 租期 | 绑定持续到显式释放 | 固定租期，到期回收 |
 
@@ -92,6 +93,8 @@ opensandbox_server 1 ── 1 opensandbox_tunnel_connection
 
 数量模式释放时删除绑定，可复用业务 ID。资源模式保留终态记录，后续申请使用新 ID；`server_id + provider_sandbox_id` 唯一。
 
+数量模式代理观察成功创建后记录真实 ID 与请求中的资源配额；配额仅用于展示，不参与数量调度。历史或未提供的配额保持未知。`attempt_id` 区分数量绑定的分配代次，防止迟到结果写入重建后的绑定。
+
 已分配资源从同节点非终态绑定实时汇总，剩余量由容量减去预留量计算。资源查询中的 `pending` 是 `creating`、`uncertain`、`releasing` 的预留量，已包含在 `allocated` 中。完整创建请求、环境变量和镜像凭据不持久化。
 
 ### 3.3 隧道凭证与连接
@@ -130,9 +133,13 @@ opensandbox_server 1 ── 1 opensandbox_tunnel_connection
 
 `attempt_id` 是查询关联标识，节点不提供基于它的创建幂等保证。因此每条预留只发送一次创建 POST；结果未知时按 metadata 查找，只有唯一匹配才接管远端 ID。空列表不能证明在途创建失败，须继续保留预留；长期无法确认时由运维核实。
 
-原生创建返回 `422` 视为确定失败；其他失败或超时保留预留。释放意图优先于迟到的创建结果，避免取消后恢复为可用状态。
+原生创建的明确拒绝（除超时外的 4xx、镜像拉取失败）返回创建错误并移除本次记录；网络异常或无法确认的节点错误保留预留。释放意图优先于迟到的创建结果，避免取消后恢复为可用状态。
 
-后台 worker 启动即扫描，随后每 5 秒处理到期与待协调记录，每批最多 100 条、远端并发 4；协调失败按指数退避重试。进程重启后从持久记录恢复处理。
+数量模式支持条件创建和释放，按分配代次防止重复创建或误释放；明确失败清理本次绑定，未知结果保留绑定。无条件调用保持原有分配与释放语义。
+
+显式 v2 DELETE 确认销毁后删除记录；自动到期与 v1 分配释放保留终态记录，供查询或显式删除。旧版本记录的已完成 HTTP 创建失败，在释放时查无匹配沙盒且没有在途创建后可完成回收。
+
+后台 worker 定期处理到期与待协调记录，采用有界并发和指数退避；进程重启后从持久记录恢复处理。
 
 `expires_at` 是访问和回收期限，到期立即拒绝新的代理请求。节点的相对 `timeout` 提供 Cluster 断联时的回收后备；已建立的请求随远端沙盒销毁终止。
 
@@ -153,6 +160,8 @@ opensandbox_server 1 ── 1 opensandbox_tunnel_connection
 
 管理、分配和代理 API 使用 `Authorization: Bearer <cluster-service-api-key>`。Cluster 转发时移除调用方认证，注入解密后的节点 `OPEN-SANDBOX-API-KEY`；普通节点查询隐藏密钥。
 
+日志复用 `@fenix/logger`，敏感信息脱敏，日志采集不得影响业务请求和响应。
+
 HTTP 代理保留 query、上游状态码及响应体，过滤 hop-by-hop headers，支持流式请求和响应。`PROXY_RESPONSE_TIMEOUT_MS` 控制请求超时；`PROXY_CONNECT_TIMEOUT_MS` 当前未接入独立连接超时。
 
 ### 5.3 挂载路径
@@ -167,27 +176,12 @@ user-123/ws → {workspace_root}/user-123/ws
 
 节点 Compose 挂载路径、`sandbox.toml` 的 `storage.allowed_host_paths` 与注册的 `workspace_root` 须一致。
 
-## 6. API 职责
+## 6. 接口边界
 
-| 接口 | 职责 |
-| --- | --- |
-| `GET /health` | 无认证健康检查 |
-| `/api/v1/pools`、`/api/v1/servers` | 池与节点 CRUD，单资源使用 `/:id`，修改使用 PUT |
-| `POST /api/v1/servers/:serverId/health-check` | 检查节点健康 |
-| `PUT /api/v1/servers/:serverId/tunnel` | 准备隧道配置并切换连接模式 |
-| `GET /api/v1/servers/:serverId/tunnel/frpc.toml` | 下载节点隧道配置 |
-| `POST / DELETE /api/v1/servers/:serverId/tunnel/token` | 轮换或吊销注册凭证 |
-| `POST /api/v1/pools/:poolId/sandboxes/:sandboxId/allocate` | 数量模式分配绑定 |
-| `GET / DELETE /api/v1/sandboxes/:sandboxId/allocation` | 查询或释放绑定；资源绑定的释放委托生命周期服务 |
-| `/api/v1/sandboxes/:sandboxId/proxy/*path` | 按业务 ID 代理 |
-| `/api/v1/servers/:serverId/proxy/*path` | 按节点代理 |
-| `POST /api/v2/pools/:poolId/sandboxes` | 资源模式创建，返回 `201` 或 `202`，Location 指向查询接口 |
-| `GET /api/v2/sandboxes/:sandboxId` | 查询生命周期、预留资源、远端 ID 和到期时间 |
-| `DELETE /api/v2/sandboxes/:sandboxId` | 主动销毁；完成返回 `204`，回收中返回 `202` |
-| `GET /api/v1/servers/:serverId/resources` | 查询节点容量、预留与剩余量 |
-| `GET /api/v1/pools/:poolId/resources` | 按节点查询池资源 |
+- `/api/v1`：池、节点、数量模式分配、资源查询和代理。
+- `/api/v2`：资源模式沙盒创建、查询与销毁。
 
-请求示例见 [使用说明](../../packages/opensandbox-cluster/README.md)。
+管理页复用业务 API。接口参数与响应以服务提供的 `/openapi/json` 为准，使用入口见 [README](../../packages/opensandbox-cluster/README.md)。
 
 ## 7. 持久化与部署约束
 

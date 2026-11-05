@@ -12,8 +12,11 @@
 cp .env.example .env
 bun install
 bun run src/db/migrate.ts
+bun run build:web
 bun run dev
 ```
+
+`.env.example` 的数据库路径为 `./data/opensandbox-cluster.db`，启动时自动创建父目录。
 
 `CLUSTER_SERVICE_API_KEY` 用于调用方鉴权；`SERVER_API_KEY_ENCRYPTION_KEY` 必须是 32 字节密钥，用于加密 SQLite 中的 OpenSandbox Server API Key。
 
@@ -42,6 +45,14 @@ FRP_TOKEN=replace-with-a-url-safe-random-token
 ```
 
 `FRP_TOKEN` 同时用于 frpc/frps 登录认证和 frps 回调 Cluster Plugin；建议只使用字母、数字、`-`、`_`。`FRP_BIND_PORT` 修改后，必须重新下载对应 Server 的 `frpc.toml`。
+
+## 使用入口
+
+打开 Cluster 地址（默认 `http://localhost:8080`），使用 `CLUSTER_SERVICE_API_KEY` 登录管理页。操作说明和 Skill 下载见页面内使用手册。
+
+API 文档：[`/openapi`](http://localhost:8080/openapi)，接口定义：`/openapi/json`。请求使用 `Authorization: Bearer <CLUSTER_SERVICE_API_KEY>`。
+
+开发页面时在包目录运行 `bun run dev:web`，默认访问 `http://localhost:5175`，API 转发至本机 `8080`。
 
 ## 配置节点
 
@@ -144,7 +155,7 @@ GET /api/v1/pools/:poolId/resources
 GET {proxy_url}/v1/sandboxes/{provider_sandbox_id}/proxy/44772/ping
 ```
 
-主动释放使用沙盒删除接口：销毁完成返回 `204`，回收中返回 `202`。资源在确认销毁后归还。查询及创建重试使用同一 `sandbox_id`，释放或到期后的新申请使用新 ID。
+主动删除使用沙盒删除接口：销毁并删除记录后返回 `204`，回收中返回 `202`。资源在确认销毁后归还。到期或通过分配接口释放后保留终态记录，可再次调用沙盒删除接口清理。记录保留期间，同一 `sandbox_id` 不会重新创建。
 
 Cluster 负责容量预留与分配，实际资源限制由 OpenSandbox 节点执行。
 

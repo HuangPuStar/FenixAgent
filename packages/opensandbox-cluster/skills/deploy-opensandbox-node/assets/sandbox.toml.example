@@ -1,0 +1,17 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+api_key = "<NODE_API_KEY>"
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.0.18"
+
+[docker]
+network_mode = "bridge"
+host_ip = "<NODE_HOST_IP>"
+port_range_min = 10000
+port_range_max = 10100
+
+[storage]
+allowed_host_paths = ["/workspace"]

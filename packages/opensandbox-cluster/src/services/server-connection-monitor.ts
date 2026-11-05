@@ -1,8 +1,12 @@
+import { createLogger } from "@fenix/logger";
 import type { ClusterDatabase } from "../db/client";
 import { opensandboxServer } from "../db/schema";
+import { redactLogValue } from "../logging/redact";
 import { TunnelConnectionRepository } from "../repositories/tunnel-connection-repository";
 import type { SecretBox } from "../security/secret-box";
 import type { ClusterConfig } from "../types";
+
+const logger = createLogger("cluster.connections");
 
 export class ServerConnectionMonitor {
   private readonly connections: TunnelConnectionRepository;
@@ -21,7 +25,13 @@ export class ServerConnectionMonitor {
   start(): void {
     this.reconcileStartup();
     this.staleTimer = setInterval(() => this.sweepStale(), Math.min(this.config.frpConnectionStaleMs, 10000));
-    this.healthTimer = setInterval(() => void this.checkConnected(), this.config.frpHealthIntervalMs);
+    this.healthTimer = setInterval(
+      () =>
+        void this.checkConnected().catch((error: unknown) => {
+          logger.error("connected node health checks failed", error);
+        }),
+      this.config.frpHealthIntervalMs,
+    );
   }
 
   stop(): void {
@@ -73,6 +83,7 @@ export class ServerConnectionMonitor {
         signal: AbortSignal.timeout(3000),
       });
       const health = response.ok ? "healthy" : "unhealthy";
+      if (!response.ok) logger.error("tunnel node health check failed", { serverId, status: response.status });
       this.connections.updateHealth(
         serverId,
         connection.frpRunId,
@@ -82,6 +93,10 @@ export class ServerConnectionMonitor {
       );
       return health;
     } catch (error) {
+      logger.error("tunnel node health check failed", {
+        serverId,
+        error: redactLogValue(error, [this.config.frpToken, this.config.clusterServiceApiKey]),
+      });
       const message = error instanceof Error ? error.message.slice(0, 256) : "health check failed";
       this.connections.updateHealth(serverId, connection.frpRunId, "unhealthy", now, message);
       return "unhealthy";

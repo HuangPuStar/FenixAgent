@@ -1,0 +1,4 @@
+services:
+  opensandbox-server:
+    volumes:
+      - ./frpc.toml:/etc/frp/frpc.toml:ro

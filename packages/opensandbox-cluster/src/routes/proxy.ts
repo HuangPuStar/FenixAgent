@@ -1,3 +1,4 @@
+import { recordRequestError } from "../logging/http-logger";
 import { isValidClusterApiKey } from "../security/api-auth";
 import { ProxyError, type ProxyService } from "../services/proxy-service";
 import type { ClusterConfig } from "../types";
@@ -20,14 +21,16 @@ export function handleProxyRequest(
     );
   }
   const target = serverMatch ?? sandboxMatch;
+  let id: string;
+  try {
+    id = decodeURIComponent(target![1]!);
+  } catch {
+    return Response.json({ error: { code: "INVALID_REQUEST", message: "invalid resource ID" } }, { status: 400 });
+  }
   return proxy
-    .proxy(
-      request,
-      target?.[2] ?? "",
-      serverMatch ? serverMatch[1] : undefined,
-      sandboxMatch ? sandboxMatch[1] : undefined,
-    )
+    .proxy(request, target?.[2] ?? "", serverMatch ? id : undefined, sandboxMatch ? id : undefined)
     .catch((error: unknown) => {
+      recordRequestError(request, error);
       const proxyError = error instanceof ProxyError ? error : new ProxyError(502, "proxy request failed");
       return Response.json(
         { error: { code: proxyError.code, message: proxyError.message } },

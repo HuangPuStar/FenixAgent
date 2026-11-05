@@ -28,8 +28,6 @@ export function createManagedRoutes(
       const known = error instanceof LifecycleError;
       const invalid = code === "VALIDATION" || error instanceof SandboxVolumeRewriteError;
       set.status = known ? error.status : invalid ? 400 : 500;
-      if (!known && !invalid)
-        console.error("cluster request failed", { errorKind: error instanceof Error ? error.name : "UnknownError" });
       return {
         error: {
           code: known ? error.code : invalid ? "INVALID_REQUEST" : "INTERNAL_ERROR",
@@ -84,7 +82,12 @@ export function createManagedRoutes(
           },
           { additionalProperties: false },
         ),
-        detail: { summary: "Create a resource-managed sandbox" },
+        detail: {
+          tags: ["沙盒"],
+          summary: "创建资源模式沙盒",
+          description:
+            "预留同一节点的 CPU（核）、内存（MB）、硬盘（GB）和 GPU（数量）。201 创建成功；202 结果待确认，通过 Location 查询。lease_seconds 省略时使用池默认租期，重试不会延长租期。",
+        },
       },
     )
     .get(
@@ -98,14 +101,18 @@ export function createManagedRoutes(
         params: t.Object({ sandboxId: t.String({ minLength: 1 }) }),
         headers: managedHeaders,
         response: { 200: managedSandboxSchema, ...managedErrorResponses },
-        detail: { summary: "Read managed allocation lifecycle" },
+        detail: {
+          tags: ["沙盒"],
+          summary: "查询资源模式沙盒",
+          description: "返回 Cluster 生命周期与预留资源。原生运行状态通过 proxy_url 查询。",
+        },
       },
     )
     .delete(
       "/api/v2/sandboxes/:sandboxId",
       async ({ params, set }) => {
-        const row = await lifecycle.release(params.sandboxId);
-        if (["released", "expired", "failed"].includes(row.state)) {
+        const row = await lifecycle.remove(params.sandboxId);
+        if (!row) {
           set.status = 204;
           return new Response(null, { status: 204 });
         }
@@ -116,14 +123,23 @@ export function createManagedRoutes(
         params: t.Object({ sandboxId: t.String({ minLength: 1 }) }),
         headers: managedHeaders,
         response: { 202: managedSandboxSchema, 204: t.Void(), ...managedErrorResponses },
-        detail: { summary: "Destroy a managed sandbox and return its reservation" },
+        detail: {
+          tags: ["沙盒"],
+          summary: "销毁资源模式沙盒并删除记录",
+          description: "确认远端销毁后归还资源并删除记录，完成返回 204；回收中返回 202。终态记录可直接删除。",
+        },
       },
     )
     .get("/api/v1/servers/:serverId/resources", ({ params }) => allocations.serverResources(params.serverId), {
       params: t.Object({ serverId: t.String({ minLength: 1 }) }),
       headers: managedHeaders,
       response: { 200: serverResourcesSchema, ...managedErrorResponses },
-      detail: { summary: "Read node resource accounting" },
+      detail: {
+        tags: ["资源"],
+        summary: "查询节点资源",
+        description:
+          "容量、已分配、待确认与剩余资源。pending 已包含在 allocated 中。CPU 核数、内存 MB、硬盘 GB、GPU 数量。",
+      },
     })
     .get("/api/v1/pools/:poolId/resources", ({ params }) => allocations.poolResources(params.poolId), {
       params: t.Object({ poolId: t.String({ minLength: 1 }) }),
@@ -132,6 +148,10 @@ export function createManagedRoutes(
         200: t.Object({ pool_id: t.String(), servers: t.Array(serverResourcesSchema) }),
         ...managedErrorResponses,
       },
-      detail: { summary: "Read resource accounting by node" },
+      detail: {
+        tags: ["资源"],
+        summary: "逐节点查询池资源",
+        description: "按节点返回资源统计；跨节点剩余量不能合并用于单次分配。",
+      },
     });
 }

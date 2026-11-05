@@ -1,6 +1,6 @@
 import { createAppWithDatabase } from "./app";
 import { createDatabase } from "./db/client";
-import { createFrpPluginRoutes } from "./routes/frp-plugin";
+import { createLoggedFrpPluginApp } from "./routes/frp-plugin";
 import { createSecretBox } from "./security/secret-box";
 import { FrpPluginService } from "./services/frp-plugin-service";
 import { ReconciliationWorker, SandboxLifecycleService } from "./services/sandbox-lifecycle-service";
@@ -10,7 +10,7 @@ import type { ClusterConfig } from "./types";
 
 export interface ClusterRuntime {
   apiApp: ReturnType<typeof createAppWithDatabase>;
-  pluginApp: ReturnType<typeof createFrpPluginRoutes>;
+  pluginApp: ReturnType<typeof createLoggedFrpPluginApp>;
   monitor: ServerConnectionMonitor;
   worker: ReconciliationWorker;
   close(): Promise<void>;
@@ -37,7 +37,7 @@ export function createClusterRuntime(config: ClusterConfig): ClusterRuntime {
     },
     false,
   );
-  const pluginApp = createFrpPluginRoutes(config, new FrpPluginService(db));
+  const pluginApp = createLoggedFrpPluginApp(config, new FrpPluginService(db));
   return {
     apiApp,
     pluginApp,

@@ -1,6 +1,9 @@
+import { createLogger } from "@fenix/logger";
 import { loadConfig } from "./config";
 import { migrateDatabase } from "./db/migrate";
 import { createClusterRuntime } from "./runtime";
+
+const logger = createLogger("cluster");
 
 const config = loadConfig();
 migrateDatabase(config.databasePath);
@@ -10,8 +13,8 @@ const plugin = runtime.pluginApp.listen({ hostname: config.host, port: config.fr
 runtime.monitor.start();
 runtime.worker.start();
 
-console.log(`OpenSandbox Cluster listening on http://${api.server?.hostname}:${api.server?.port}`);
-console.log(`OpenSandbox FRP plugin listening on http://${plugin.server?.hostname}:${plugin.server?.port}`);
+logger.info("OpenSandbox Cluster listening", { host: api.server?.hostname, port: api.server?.port });
+logger.info("OpenSandbox FRP plugin listening", { host: plugin.server?.hostname, port: plugin.server?.port });
 
 const shutdown = async () => {
   runtime.monitor.stop();

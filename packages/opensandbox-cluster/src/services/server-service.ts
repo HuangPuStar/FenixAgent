@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import type { ClusterDatabase } from "../db/client";
 import { BindingRepository } from "../repositories/binding-repository";
 import { PoolRepository } from "../repositories/pool-repository";
@@ -6,7 +7,9 @@ import { TunnelConnectionRepository } from "../repositories/tunnel-connection-re
 import type { SecretBox } from "../security/secret-box";
 import { ConflictError } from "./pool-service";
 import { resourceFits } from "./resource-accounting";
-import { reservations } from "./resource-allocation";
+import { allocated, reservations } from "./resource-allocation";
+
+const logger = createLogger("cluster.servers");
 
 export interface ServerMutation {
   id?: string;
@@ -150,6 +153,7 @@ export class ServerService {
       if (!row.baseUrl) return this.findById(id);
       const response = await this.fetchImpl(new URL("/health", row.baseUrl), { signal: AbortSignal.timeout(3000) });
       const healthy = response.ok;
+      if (!healthy) logger.error("direct node health check failed", { serverId: id, status: response.status });
       this.servers.update(id, {
         healthStatus: healthy ? "healthy" : "unhealthy",
         lastHealthAt: Date.now(),
@@ -157,6 +161,7 @@ export class ServerService {
         updatedAt: Date.now(),
       });
     } catch (error) {
+      logger.error("direct node health check failed", { serverId: id, error });
       this.servers.update(id, {
         healthStatus: "unhealthy",
         lastHealthAt: Date.now(),
@@ -230,6 +235,7 @@ export class ServerService {
           }
         : {}),
       currentSandboxes: this.bindings.countByServer(row.id),
+      allocatedResources: row.maxSandboxes === null ? allocated(this.db, row.id) : null,
     };
   }
 }

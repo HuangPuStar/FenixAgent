@@ -4,7 +4,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { createDatabase } from "../db/client";
-import { migrateConnection } from "../db/migrate";
+import { migrateConnection, migrateDatabase } from "../db/migrate";
+
+// 首次启动时自动创建数据库父目录，迁移后能正常读写持久数据。
+test("migration initializes a database inside missing parent directories", () => {
+  const folder = mkdtempSync(join(tmpdir(), "cluster-first-start-"));
+  const path = join(folder, "nested", "data", "cluster.db");
+  try {
+    migrateDatabase(path);
+    const { sqlite } = createDatabase(path);
+    try {
+      sqlite.exec("INSERT INTO sandbox_pool(id,name,status,created_at,updated_at) VALUES ('p','Pool','active',1,1)");
+      expect(sqlite.query("SELECT name FROM sandbox_pool WHERE id = 'p'").get()).toEqual({ name: "Pool" });
+    } finally {
+      sqlite.close();
+    }
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
 
 // 旧数据库存在绑定和隧道凭据时升级，不能丢失记录或修改旧数量策略。
 test("resource migration upgrades populated legacy schema without losing relationships", async () => {
