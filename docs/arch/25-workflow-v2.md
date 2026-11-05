@@ -86,7 +86,7 @@ flowchart TB
 | 面 | 路径 | 鉴权 | 响应口径 |
 |---|---|---|---|
 | 控制台面 | `/web/workflow-v2/*` | 控制台会话 cookie（`web` 槽注入会话守卫） | 归一化为 `{ success, data }` / `{ success: false, error }` |
-| 对外触发面 | `/api/workflow-v2/*` | 控制台 API Key（`rcs_*`，`api` 槽注入同一份会话守卫） | 域形状（成功） / `{ error: { code, message } }`（失败） |
+| 对外触发面 | `/api/v1/workflow-v2/*` | 控制台 API Key（`rcs_*`，`api` 槽注入同一份会话守卫） | 域形状（成功） / `{ error: { code, message } }`（失败） |
 | 画布透传面 | `/workflow-canvas/bff/*` | 请求头 `X-Fenix-Workflow-Ticket` | **上游原生 `{ data, code, msg }`**（含 HTTP status，原样回传） |
 | 静态反代 | `/workflow-canvas/*`（`/workflow-canvas/storage/*` 映射存储域） | 无（同源） | 上游字节流 |
 
@@ -111,7 +111,7 @@ flowchart TB
 - 存储出站的**连接地址与虚拟主机名分开**（2026-10-12）：直链 host 是上游反代的别名（`workflow-storage`，只在上游容器网络内可解析），平台与它不同网时（宿主源码运行、跨机部署）直连必然解析失败、画布内图片成片 502（`error: TypeError`）。此时用 `WORKFLOW_V2_STORAGE_UPSTREAM_URL` 把出站**连接**改道到已可达的上游入口，直链 host 仍作 `Host` 头——上游反代按 Host 选站后把它恢复成对象存储签名用的名字，故签名不参与该校验。未配置＝沿用直连直链 origin（容器内网互通的部署零影响）。
 - 节点范围裁剪的权威在服务端：`node-scope.ts` 对 `node_type` / `node_template_list` / `node_panel_search` 按 **fail-closed 许可集**（节点类型为数字字符串）过滤，客户端无法绕过。
 
-### 5.1 对外触发面（`POST /api/workflow-v2/workflows/:id/run`）
+### 5.1 对外触发面（`POST /api/v1/workflow-v2/workflows/:id/run`）
 
 外部系统按控制台的工作流主键触发**已发布版本**的运行，平台只做鉴权、归属校验与转发（不做业务处理、不解释入参语义）。
 
