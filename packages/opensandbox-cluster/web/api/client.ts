@@ -67,7 +67,7 @@ export class ClusterClient {
     return (options.text ? text : text.trim() ? JSON.parse(text) : undefined) as T;
   }
 
-  /** Count create reserves first; any unknown native result leaves the reservation for inspection. */
+  /** Count management reserves first; the server clears failed creates and exposes leftovers via node reconciliation. */
   async createSandbox(poolId: string, mode: string, input: SandboxInput) {
     if (mode === "resources")
       return this.request(`/api/v2/pools/${encodeURIComponent(poolId)}/sandboxes`, { method: "POST", body: input });

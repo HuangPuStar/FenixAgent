@@ -55,14 +55,15 @@ test("managed DELETE removes active and terminal records after confirmed destruc
     expect(lifecycle.find(state)).toBeUndefined();
   }
 });
-// HTTP 创建错误和空清单都不能证明远端未创建，删除必须保留预留等待后续确认。
-test("HTTP create errors retain reservations after empty discovery", async () => {
-  const { lifecycle, servers } = fixture(async (_url, init) =>
+// 历史未决记录的空清单仍不能证明远端不存在，释放需等待后续确认。
+test("persisted unresolved reservations survive empty discovery", async () => {
+  const { lifecycle, servers, db } = fixture(async (_url, init) =>
     init?.method === "POST"
-      ? new Response(null, { status: 500 })
+      ? Response.json({ id: "native" })
       : Response.json({ items: [], pagination: { hasNextPage: false, totalItems: 0 } }),
   );
   await lifecycle.create("p", input("unknown"));
+  db.update(sandboxBinding).set({ state: "uncertain", providerSandboxId: null }).run();
   expect(await lifecycle.remove("unknown")).toMatchObject({ state: "releasing" });
   expect(lifecycle.find("unknown")?.state).toBe("releasing");
   expect(servers.findById("n")?.allocatedResources?.cpu).toBe(0.1);
@@ -82,23 +83,20 @@ test("reserves decimals and the final GPU without overselling", async () => {
   ]);
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
 });
-// 结果未知且元数据查询为空时继续占用，重复请求不能重发创建。
-test("unknown creates retain reservations across reconciliation", async () => {
+// 超时后返回错误并清理预留，后台不能再尝试创建；修正后可显式重试。
+test("transport failures clean reservations without automatic POST retries", async () => {
   let posts = 0;
-  const { lifecycle } = fixture(async (_url, init) => {
-    if (init?.method === "POST") {
-      posts++;
-      throw new Error("timeout");
-    }
-    return Response.json({ items: [] });
+  const { lifecycle, servers } = fixture(async () => {
+    posts++;
+    throw new Error("timeout");
   });
-  expect((await lifecycle.create("p", input("a"))).state).toBe("uncertain");
-  await lifecycle.reconcile("a");
-  await lifecycle.create("p", input("a"));
+  await expect(lifecycle.create("p", input("a"))).rejects.toMatchObject({ code: "CREATE_FAILED" });
+  expect(lifecycle.find("a")).toBeUndefined();
+  expect(servers.findById("n")?.allocatedResources?.cpu).toBe(0);
+  await lifecycle.reconcileDue();
   expect(posts).toBe(1);
-  await lifecycle.release("a");
-  expect(lifecycle.find("a")?.state).toBe("releasing");
-  await expect(lifecycle.create("p", input("full", 0.3))).rejects.toMatchObject({ code: "NO_CAPACITY" });
+  await expect(lifecycle.create("p", input("a"))).rejects.toMatchObject({ code: "CREATE_FAILED" });
+  expect(posts).toBe(2);
 });
 // 已知远端 ID 删除并确认不存在后归还额度，同时保留终态阻止自动重建。
 test("release and expiry finalize only with confirmed absence", async () => {
@@ -404,16 +402,17 @@ test("explicit delete upgrades an in-progress expiry", async () => {
   expect(lifecycle.find("expiry-delete")).toBeUndefined();
 });
 // 查询恢复后的空结果仍不能证明创建失败，不能将已有预留归还。
-test("HTTP error reservations survive empty discovery after a lookup failure", async () => {
+test("historical unresolved reservations survive empty discovery after a lookup failure", async () => {
   let healthy = false;
   const { lifecycle, db } = fixture(async (_url, init) =>
     init?.method === "POST"
-      ? new Response(null, { status: 500 })
+      ? Response.json({ id: "native" })
       : healthy
         ? Response.json({ items: [], pagination: { hasNextPage: false, totalItems: 0 } })
         : new Response(null, { status: 503 }),
   );
   await lifecycle.create("p", input("old-retry"));
+  db.update(sandboxBinding).set({ state: "uncertain", providerSandboxId: null }).run();
   expect((await lifecycle.release("old-retry")).state).toBe("releasing");
   healthy = true;
   db.update(sandboxBinding).set({ nextRetryAt: 0 }).run();

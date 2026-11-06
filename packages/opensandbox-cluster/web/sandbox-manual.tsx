@@ -16,7 +16,9 @@ export function SandboxManual() {
       </p>
       <p>
         <strong>{t("资源模式 API：")}</strong>
-        {t("一次请求完成节点分配与沙盒创建。返回 201 表示创建成功，202 表示结果待确认，通过查询接口继续查看。")}
+        {t(
+          "一次请求完成节点分配与沙盒创建。返回 201 表示创建成功；失败会返回错误并清理本次预留，可能的残留可到节点页面通过「沙盒对账」检查和销毁。",
+        )}
       </p>
       <ApiCode>{`POST /api/v2/pools/{poolId}/sandboxes
 GET  /api/v2/sandboxes/{sandboxId}`}</ApiCode>

@@ -7,6 +7,7 @@ import type { Pool, Server } from "./api/types";
 import { Button, Details, Feedback, Field, Status } from "./components";
 import { PoolManual, ServerManual } from "./help";
 import { t } from "./i18n";
+import { NodeReconciliation } from "./node-reconciliation";
 import { Sandboxes } from "./sandboxes";
 import { clearSession, readSession, saveSession } from "./session";
 import { useData } from "./use-data";
@@ -96,6 +97,7 @@ function Login({ login }: { login: (key: string) => void }) {
   );
 }
 function Console({ client, logout }: { client: ClusterClient; logout: () => void }) {
+  const [reconciliation, setReconciliation] = useState<Server>();
   const { tab } = useSearch({ from: "/" });
   const [version, setVersion] = useState(0);
   const pools = useData<Pool[]>(client, "/api/v1/pools", version);
@@ -328,6 +330,9 @@ function Console({ client, logout }: { client: ClusterClient; logout: () => void
                                 <Button variant="ghost" size="sm" onClick={() => setDetails(server)}>
                                   {t("详情")}
                                 </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setReconciliation(server)}>
+                                  {t("沙盒对账")}
+                                </Button>
                                 {server.maxSandboxes === null && (
                                   <Button
                                     variant="ghost"
@@ -443,6 +448,9 @@ function Console({ client, logout }: { client: ClusterClient; logout: () => void
         />
       )}
       {details !== undefined && <Details title={t("详情")} value={details} close={() => setDetails(undefined)} />}
+      {reconciliation && (
+        <NodeReconciliation server={reconciliation} client={client} close={() => setReconciliation(undefined)} />
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { ClusterClient } from "../api/client";
 
-// 创建结果未知时保留绑定，防止重复创建和数量超卖。
-test("count create preserves its allocation when native create times out", async () => {
+// 浏览器断连不代表服务端创建失败，客户端不能自行释放仍可能在创建的绑定。
+test("browser connection loss does not independently release a count allocation", async () => {
   const calls: string[] = [];
   const client = new ClusterClient(
     () => "test",

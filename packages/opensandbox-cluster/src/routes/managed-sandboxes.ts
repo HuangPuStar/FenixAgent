@@ -86,7 +86,7 @@ export function createManagedRoutes(
           tags: ["沙盒"],
           summary: "创建资源模式沙盒",
           description:
-            "预留同一节点的 CPU（核）、内存（MB）、硬盘（GB）和 GPU（数量）。201 创建成功；202 结果待确认，通过 Location 查询。lease_seconds 省略时使用池默认租期，重试不会延长租期。",
+            "预留同一节点的 CPU（核）、内存（MB）、硬盘（GB）和 GPU（数量）。创建失败返回错误并清理本次预留；可能残留的原生沙盒通过节点对账处理。lease_seconds 省略时使用池默认租期，重试不会延长租期。",
         },
       },
     )

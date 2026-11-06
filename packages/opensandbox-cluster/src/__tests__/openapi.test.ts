@@ -62,6 +62,8 @@ test("serves OpenAPI site and a usable public schema without weakening API authe
       spec.paths["/api/v1/servers/{serverId}/tunnel/frpc.toml"].get.responses[200].content["application/toml"],
     ).toBeDefined();
     expect(spec.paths["/api/v2/pools/{poolId}/sandboxes"].post.responses[201]).toBeDefined();
+    expect(spec.paths["/api/v1/servers/{serverId}/unbound-sandboxes"].get.responses[200]).toBeDefined();
+    expect(spec.paths["/api/v1/servers/{serverId}/unbound-sandboxes/{sandboxId}"].delete.responses[204]).toBeDefined();
     expect(
       spec.paths["/api/v1/sandbox-allocations"].get.parameters.some((p: { name: string }) => p.name === "pageSize"),
     ).toBe(true);

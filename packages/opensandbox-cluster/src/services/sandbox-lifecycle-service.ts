@@ -140,22 +140,22 @@ export class SandboxLifecycleService {
           attemptId: row.attemptId,
           status: response.status,
           message: failure.message,
-          rejected: failure.rejected,
         });
-        if (failure.rejected) {
-          this.deleteAttempt(row);
-          throw new LifecycleError("CREATE_FAILED", 502, failure.message);
-        }
-        this.patch(row, { state: "uncertain", lastError: `create HTTP ${response.status}` });
+        throw new LifecycleError("CREATE_FAILED", 502, failure.message);
       } else {
         const result = (await response.json()) as { id?: string };
         if (!result.id) throw new Error("missing native sandbox id");
         this.patch(row, { providerSandboxId: result.id, state: "active", lastError: null });
       }
     } catch (error) {
-      if (error instanceof LifecycleError && error.code === "CREATE_FAILED") throw error;
       this.logFailure(row, "create", error);
-      this.patch(row, { state: "uncertain", lastError: `native create result unknown (${this.errorKind(error)})` });
+      this.deleteAttempt(row);
+      if (error instanceof LifecycleError && error.code === "CREATE_FAILED") throw error;
+      throw new LifecycleError(
+        "CREATE_FAILED",
+        502,
+        "native sandbox creation failed; inspect node reconciliation for leftovers",
+      );
     } finally {
       this.inFlight.delete(row.sandboxId);
     }

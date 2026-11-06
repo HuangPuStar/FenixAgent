@@ -147,7 +147,7 @@ GET /api/v1/pools/:poolId/resources
 }
 ```
 
-创建成功返回 `201`；处理中返回 `202`，通过响应的 `Location` 查询进度。`lease_seconds` 省略时使用池的默认租期。
+创建成功返回 `201`；处理中返回 `202`，通过响应的 `Location` 查询进度。创建失败清理本次预留，可能的残留通过节点对账处理。`lease_seconds` 省略时使用池的默认租期。
 
 使用返回的 `proxy_url` 和 `provider_sandbox_id` 访问沙盒内的服务，例如 execd：
 

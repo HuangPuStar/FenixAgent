@@ -48,7 +48,7 @@ export function SandboxEditor({
   return (
     <Editor
       title={t("新建沙盒")}
-      description={t("选择池后由 Cluster 分配节点。创建结果未知时，请在列表中查看状态。")}
+      description={t("选择池后由 Cluster 分配节点。创建失败的残留可在节点的沙盒对账中检查。")}
       close={close}
       save={async () => {
         if (countAttempted) throw new Error(t("此创建请求已发送，请关闭表单并在列表中检查，避免重复创建"));

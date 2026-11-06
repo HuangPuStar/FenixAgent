@@ -10,39 +10,24 @@ const cpuRejection =
 const startFailure = (message = cpuRejection) =>
   Response.json({ code: "DOCKER::SANDBOX_START_FAILED", message }, { status: 500 });
 
-// 节点将 Docker 创建参数拒绝包装为 500 时，仍须识别出本次创建确定未成功。
-test("recognizes Docker create rejection inside a native HTTP 500", async () => {
-  expect(await nativeCreateError(startFailure())).toMatchObject({ rejected: true });
+// 错误信息只用于诊断，已知与未知错误码都不参与失败分类。
+test("extracts structured native diagnostics", async () => {
+  expect(await nativeCreateError(startFailure())).toMatchObject({ message: expect.stringContaining("Range of CPUs") });
   expect(
-    await nativeCreateError(
-      Response.json({ detail: { code: "DOCKER::SANDBOX_START_FAILED", message: cpuRejection } }, { status: 500 }),
-    ),
-  ).toMatchObject({ rejected: true });
+    await nativeCreateError(Response.json({ detail: { code: "UNKNOWN", message: "new failure" } }, { status: 503 })),
+  ).toEqual({ message: "new failure" });
 });
 
-// 启动失败可能遗留容器，超时或服务端错误也不能证明创建未生效。
+// 管理创建遇到任何节点错误均清理绑定，原生代理调用仍保留由调用方释放的绑定。
 test.each([
-  cpuRejection.replace("/containers/create?name=sandbox-c814cddc-d6ad-4740-9f21-4b7c2eb53524", "/containers/id/start"),
-  cpuRejection.replace("400 Client Error", "408 Client Error"),
-  cpuRejection.replace("400 Client Error", "499 Client Error"),
-  cpuRejection.replace("400 Client Error", "500 Server Error"),
-  "Failed to create or start container: connection reset by peer",
-  "Docker did not return a container ID.",
-])("keeps an uncertain reservation for %s", async (message) => {
-  expect(await nativeCreateError(startFailure(message))).toMatchObject({ rejected: false });
-});
-
-// 只有节点约定的 Docker 错误结构可用于判定拒绝，未知错误中的相似文本不是证据。
-test("does not infer a Docker rejection from an unrelated native error code", async () => {
-  expect(
-    await nativeCreateError(Response.json({ code: "UNKNOWN", message: cpuRejection }, { status: 500 })),
-  ).toMatchObject({ rejected: false });
-});
-
-// 管理创建被 Docker 明确拒绝时清理绑定，原生代理调用仍保留由调用方释放的绑定。
-test("count management rolls back CPU rejection and permits a corrected retry", async () => {
+  { code: "DOCKER::SANDBOX_START_FAILED", message: cpuRejection },
+  { code: "DOCKER::SANDBOX_START_FAILED", message: 'could not select device driver "" with capabilities: [[gpu]]' },
+  { code: "UNKNOWN", message: "unexpected native failure" },
+])("count management rolls back $code and permits a corrected retry", async (failure) => {
   let rejected = true;
-  const f = fixture(async () => (rejected ? startFailure() : Response.json({ id: "native" }, { status: 201 })));
+  const f = fixture(async () =>
+    rejected ? Response.json(failure, { status: 500 }) : Response.json({ id: "native" }, { status: 201 }),
+  );
   f.pools.create({ id: "count", name: "Count" });
   f.servers.create({
     id: "count-node",
@@ -55,9 +40,13 @@ test("count management rolls back CPU rejection and permits a corrected retry", 
   });
   f.db.update(opensandboxServer).set({ healthStatus: "healthy" }).where(eq(opensandboxServer.id, "count-node")).run();
   const app = createAppWithDatabase(f.config, f.db, f.sqlite, {
-    fetch: Object.assign(async () => (rejected ? startFailure() : Response.json({ id: "native" }, { status: 201 })), {
-      preconnect: fetch.preconnect,
-    }),
+    fetch: Object.assign(
+      async () =>
+        rejected ? Response.json(failure, { status: 500 }) : Response.json({ id: "native" }, { status: 201 }),
+      {
+        preconnect: fetch.preconnect,
+      },
+    ),
   });
   const request = (path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}) =>
     app.handle(
@@ -83,7 +72,7 @@ test("count management rolls back CPU rejection and permits a corrected retry", 
     },
   );
   expect(response.status).toBe(500);
-  expect(await response.json()).toEqual({ code: "DOCKER::SANDBOX_START_FAILED", message: cpuRejection });
+  expect(await response.json()).toEqual(failure);
   expect(response.headers.get("X-Cluster-Create-Rejected")).toBe("true");
   expect((await request(allocationPath)).status).toBe(404);
   expect(f.servers.findById("count-node")?.currentSandboxes).toBe(0);
@@ -122,5 +111,24 @@ test("resource management returns capacity after a Docker create rejection", asy
   const f = fixture(async () => startFailure());
   await expect(f.lifecycle.create("p", input("rejected"))).rejects.toMatchObject({ code: "CREATE_FAILED" });
   expect(f.lifecycle.find("rejected")).toBeUndefined();
+  expect(f.servers.findById("n")?.allocatedResources?.cpu).toBe(0);
+});
+
+// GPU 启动错误和任意 5xx 均返回创建失败并清空资源预留，不猜测远端是否有残留。
+test.each([
+  { code: "DOCKER::SANDBOX_START_FAILED", message: 'could not select device driver "" with capabilities: [[gpu]]' },
+  { code: "NEW_NODE_ERROR", message: "a previously unknown error" },
+])("resource creates clean failed reservations for $code", async (failure) => {
+  const f = fixture(async () => Response.json(failure, { status: 500 }));
+  await expect(f.lifecycle.create("p", input("failed"))).rejects.toMatchObject({ code: "CREATE_FAILED" });
+  expect(f.lifecycle.find("failed")).toBeUndefined();
+  expect(f.servers.findById("n")?.allocatedResources?.cpu).toBe(0);
+});
+
+// 没有结构化错误信息的超时、断连状态和服务端错误也不能留下失败预留。
+test.each([408, 499, 503])("resource creates clear HTTP %i failures without a message", async (status) => {
+  const f = fixture(async () => new Response(null, { status }));
+  await expect(f.lifecycle.create("p", input("failed"))).rejects.toMatchObject({ code: "CREATE_FAILED" });
+  expect(f.lifecycle.find("failed")).toBeUndefined();
   expect(f.servers.findById("n")?.allocatedResources?.cpu).toBe(0);
 });

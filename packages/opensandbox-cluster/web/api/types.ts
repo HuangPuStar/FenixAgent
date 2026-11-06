@@ -67,3 +67,16 @@ export interface SandboxInput {
   };
   sandbox: { image: { uri: string }; entrypoint?: string[]; metadata?: Record<string, string> };
 }
+
+/** Live node identity information for an unbound sandbox, excluding image credentials. */
+export interface NativeSandbox {
+  provider_sandbox_id: string;
+  created_at: string | null;
+  expires_at: string | null;
+  state: string | null;
+  image: string | null;
+  entrypoint: string[];
+  metadata: Record<string, string>;
+  attempt_id: string | null;
+  resources: { [K in keyof Resources]: number | null } | null;
+}

@@ -2,10 +2,10 @@ import { createLogger } from "@fenix/logger";
 import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
 import type { ClusterDatabase } from "../db/client";
 import type { SandboxBinding } from "../db/schema";
+import { recordRequestError } from "../logging/http-logger";
 import type { ClusterConfig } from "../types";
 import type { AllocationService } from "./allocation-service";
 import { COUNT_ATTEMPT_METADATA_KEY, type CountRecoveryService } from "./count-recovery-service";
-import { nativeCreateError } from "./native-create-error";
 import { type NativeResources, nativeResources } from "./native-resources";
 import { LifecycleError } from "./resource-allocation";
 import { isSandboxCreateRequest, SandboxVolumeRewriteError } from "./sandbox-volume-rewriter";
@@ -46,7 +46,7 @@ export class ProxyService {
 
   private readonly resolver?: ServerTargetResolver;
 
-  /** Conditional console creates roll back only when the node has definitely rejected creation. */
+  /** Failed management creates release their reservation; native leftovers are handled by reconciliation. */
   async proxy(request: Request, path: string, serverId?: string, sandboxId?: string): Promise<Response> {
     const create = sandboxId && isSandboxCreateRequest(request.method, path);
     const conditional = create && request.headers.get("if-none-match") === "*";
@@ -85,18 +85,13 @@ export class ProxyService {
         }
         return response;
       }
-      if (!response.ok) {
-        const failure = await nativeCreateError(response.clone(), [
-          this.servers.getCredentials(original.serverId)!.apiKey,
-        ]);
-        this.allocations.finishCountCreate(original, failure.rejected);
-        if (failure.rejected) response.headers.set("X-Cluster-Create-Rejected", "true");
-      }
+      this.allocations.finishCountCreate(original, true);
+      response.headers.set("X-Cluster-Create-Rejected", "true");
       return response;
     } catch (error) {
-      const rejected = error instanceof ProxyError && ![502, 504].includes(error.status);
-      this.allocations.finishCountCreate(original, rejected);
-      if (rejected)
+      recordRequestError(request, error);
+      this.allocations.finishCountCreate(original, true);
+      if (error instanceof ProxyError)
         return Response.json(
           { error: { code: error.code, message: error.message } },
           {

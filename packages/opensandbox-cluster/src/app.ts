@@ -7,6 +7,7 @@ import { createAdminRoutes } from "./routes/admin";
 import { createAllocationRoutes } from "./routes/allocation";
 import { createFrpPluginRoutes } from "./routes/frp-plugin";
 import { createManagedRoutes } from "./routes/managed-sandboxes";
+import { createNodeReconciliationRoutes } from "./routes/node-reconciliation";
 import { handleProxyRequest } from "./routes/proxy";
 import { createSandboxManagementRoutes } from "./routes/sandbox-management";
 import { createTunnelRoutes } from "./routes/tunnel";
@@ -14,6 +15,7 @@ import { createSecretBox } from "./security/secret-box";
 import { AllocationService } from "./services/allocation-service";
 import { CountRecoveryService } from "./services/count-recovery-service";
 import { FrpPluginService } from "./services/frp-plugin-service";
+import { NodeReconciliationService } from "./services/node-reconciliation-service";
 import { PoolService } from "./services/pool-service";
 import { ProxyService } from "./services/proxy-service";
 import { SandboxLifecycleService } from "./services/sandbox-lifecycle-service";
@@ -77,6 +79,7 @@ export function createAppWithDatabase(
     .use(createTunnelRoutes(_config, tunnels))
     .use(includePlugin ? createFrpPluginRoutes(_config, new FrpPluginService(db)) : new Elysia())
     .use(createManagedRoutes(_config, allocations, lifecycle))
+    .use(createNodeReconciliationRoutes(_config, new NodeReconciliationService(db, _config, servers, fetchImpl)))
     .use(createSandboxManagementRoutes(_config, new SandboxManagementService(db, allocations)))
     .use(createAllocationRoutes(_config, allocations))
     .all(

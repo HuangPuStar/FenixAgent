@@ -186,6 +186,7 @@ export function ServerManual() {
           {t("维护前将节点设为 draining，停止新的分配；disabled 会同时拒绝代理访问。删除前先清理节点上的沙盒及记录。")}
         </li>
       </ol>
+      <p>{t("通过节点的「沙盒对账」检查未绑定的原生沙盒，核对身份后可销毁残留。")}</p>
       <h3 className="text-base font-semibold">{t("2. API 操作")}</h3>
       <ApiHelp />
       <ApiCode>{`POST   /api/v1/servers

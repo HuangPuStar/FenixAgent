@@ -150,7 +150,7 @@ export class AllocationService {
     });
   }
 
-  /** A rejected create can return its slot; an unknown result must retain it. */
+  /** Failed creates return their slot; successful creates with missing associations remain recoverable. */
   finishCountCreate(original: typeof sandboxBinding.$inferSelect, rejected: boolean) {
     this.lock.run(() => {
       const current = this.binding(original.sandboxId);
