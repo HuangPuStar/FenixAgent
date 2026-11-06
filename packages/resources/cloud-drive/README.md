@@ -102,7 +102,7 @@ CloudDrive 的 `/v1/search` 按 **chunk** 返回命中：同一文件可能有�
 | 重新转换进行中 / 已就绪 | 409 `CLOUD_DRIVE_CONVERSION_IN_PROGRESS` / `CLOUD_DRIVE_CONVERSION_NOT_NEEDED` |
 | 其余 | 502 |
 
-`OPERATION_PENDING` 取 409 而不是 202：请求没有被受理，202 会误导前端以为操作已经开始。上游未列出 code（如 `INVALID_ARGUMENT` / `INVALID_PATH`）同样按「其余 → 502」处理；若后续需要把用户输入错误区分成 400/422，改 `client/cloud-drive-error.ts` 一处即可。
+`OPERATION_PENDING` 取 409 而不是 202：请求没有被受理，202 会误导前端以为操作已经开始。上游未列出 code 的 `INVALID_ARGUMENT` / `INVALID_PATH` 与 HTTP 422 一样映射为 422 `CLOUD_DRIVE_INVALID_INPUT`（见 `UNPROCESSABLE_CODES`），不会被归入 502。
 
 ## 部署配置
 

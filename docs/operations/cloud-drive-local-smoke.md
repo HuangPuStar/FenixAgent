@@ -18,8 +18,11 @@
 # 1) 建库（容器内超级用户，按实际容器名调整）
 docker exec fenix-postgres-1 psql -U rcs -d postgres -c 'CREATE DATABASE fenix_clouddrive_smoke'
 
-# 2) 迁移（把 DATABASE_URL 换成指向新库；不要回显含口令的 URL）
-DATABASE_URL='postgres://<user>:<password>@127.0.0.1:5432/fenix_clouddrive_smoke' bun run db:migrate
+# 2) 迁移：连接串写进受保护的 env 文件后再执行，不要把它放进命令行（会进入 shell 历史与进程列表）
+#    文件内容：DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/fenix_clouddrive_smoke
+$EDITOR /tmp/clouddrive-smoke-db.env && chmod 600 /tmp/clouddrive-smoke-db.env
+set -a; . /tmp/clouddrive-smoke-db.env; set +a
+bun run db:migrate
 ```
 
 ## 3. 启动本地 Fenix
@@ -36,7 +39,7 @@ DATABASE_URL='postgres://<user>:<password>@127.0.0.1:5432/fenix_clouddrive_smoke
 | `CLOUDDRIVE_MASTER_KEY` | `$(cat ~/.config/clouddrive/fenix.key)`（写入 env 文件，不打印） |
 | `CLOUDDRIVE_KEY_ID` | `demo` |
 | `CLOUDDRIVE_TIMEOUT_MS` | `180000`（联调可高于默认 120000） |
-| `CLOUDDRIVE_MCP_TOKEN_SECRET` | `openssl rand -hex 32`（MCP 网关与冒烟脚本共用；不打印） |
+| `CLOUDDRIVE_MCP_TOKEN_SECRET` | `$(openssl rand -hex 32)`（写入 env 文件；sourcing 时执行，MCP 网关与冒烟脚本共用；不打印） |
 | `CLOUDDRIVE_MCP_SCOPE` | `write`（要验证写工具时；默认 `read`） |
 
 ```bash
@@ -72,7 +75,9 @@ MCP 网关（`/mcp/cloud-drive`）的冒烟脚本 `scripts/cloud-drive-mcp-smoke
 
 ```bash
 set -a; . /tmp/clouddrive-smoke.env; set +a
-CLOUD_DRIVE_MCP_SMOKE=1 FENIX_BASE_URL=http://127.0.0.1:3101 bun run scripts/cloud-drive-mcp-smoke.ts
+# 冒烟脚本不需要 master key：从进程环境移除，避免它以最小权限之外的身份运行。
+env -u CLOUDDRIVE_MASTER_KEY CLOUD_DRIVE_MCP_SMOKE=1 FENIX_BASE_URL=http://127.0.0.1:3101 \
+  bun run scripts/cloud-drive-mcp-smoke.ts
 ```
 
 覆盖 `initialize`、`tools/list` 的 scope 过滤、`me`/`list`/`search`/`stat`/`versions`/`trash_list`、

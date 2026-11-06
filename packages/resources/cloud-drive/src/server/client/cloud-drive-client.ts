@@ -224,7 +224,8 @@ export class CloudDriveClient implements CloudDriveGateway {
         method: "PATCH",
         path: `/v1/files/${encodeURIComponent(fileId)}/location`,
         body: {
-          ...(input.parentId ? { parent_id: input.parentId } : {}),
+          // null 是「移动到根目录」的有效目标，不能像可选字段一样省略。
+          parent_id: input.parentId,
           name: input.name,
           expected_metadata_revision: input.expectedMetadataRevision,
           idempotency_key: input.idempotencyKey,

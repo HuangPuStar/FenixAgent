@@ -308,6 +308,37 @@ describe("CloudDrive MCP 路由", () => {
     expect(response.status).toBe(413);
   });
 
+  // chunked 请求没有 Content-Length：必须按实际读取的字节数拦截，不能只看请求头。
+  test("无 Content-Length 的超限请求体同样返回 413", async () => {
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= 3) {
+          controller.close();
+          return;
+        }
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const request = new Request(BASE_URL, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body,
+      duplex: "half",
+    });
+    expect(request.headers.get("content-length")).toBeNull();
+
+    const response = await createApp().handle(request);
+
+    expect(response.status).toBe(413);
+  });
+
   // 工具调用的日志事件只含工具名、主体与结果，不含 token 或上游 body。
   test("工具调用结果不包含 token 与上游细节", async () => {
     const app = createApp({

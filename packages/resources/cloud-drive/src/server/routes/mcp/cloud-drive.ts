@@ -53,19 +53,52 @@ function isRpcId(value: unknown): value is string | number | null {
 }
 
 /**
+ * 按实际字节读取请求体并执行上限校验。
+ *
+ * 只信 `Content-Length` 会被 chunked 请求绕过（没有该头），因此逐块累计字节数；超限立即停止读取。
+ * 读到的文本随后重建 Request 交给 SDK，保证 body 只被消费一次。
+ */
+async function readBodyWithinLimit(request: Request): Promise<{ text: string; tooLarge: boolean }> {
+  const body = request.body;
+  if (!body) return { text: "", tooLarge: false };
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return { text: "", tooLarge: true };
+    }
+    chunks.push(value);
+  }
+
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(merged), tooLarge: false };
+}
+
+/** 用已读取的文本重建请求体：原 Request 的 body 已被消费，不能再次交给 transport。 */
+function replaceRequestBody(request: Request, body: string): Request {
+  const headers = new Headers(request.headers);
+  // 长度由运行时按新 body 计算，避免继承已失效的旧值。
+  headers.delete("content-length");
+  return new Request(request.url, { method: request.method, headers, body });
+}
+
+/**
  * 识别单条 JSON-RPC 的 `server/discover`。
  *
- * 用 `request.clone()` 读取：原始 Request 的 body 还要交给 SDK transport，不能被消费。只解析信封，
- * 不读取也不记录 `_meta` 里的 clientInfo/capabilities，避免把客户端元数据写进日志。
+ * 只解析信封，不读取也不记录 `_meta` 里的 clientInfo/capabilities，避免把客户端元数据写进日志。
  */
-async function readDiscoverRequest(request: Request): Promise<{ found: boolean; id?: unknown }> {
-  if (request.method !== "POST") return { found: false };
-  let text: string;
-  try {
-    text = await request.clone().text();
-  } catch {
-    return { found: false };
-  }
+function parseDiscoverBody(text: string): { found: boolean; id?: unknown } {
   if (!text) return { found: false };
   let payload: unknown;
   try {
@@ -117,14 +150,19 @@ export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDepend
         const claims = await verifyCloudDriveMcpToken(token, config.mcpTokenSecret, dependencies.nowSeconds?.());
         if (!claims) return status(401, { error: { code: "UNAUTHORIZED", message: "token 无效或已过期" } });
 
+        // Content-Length 只是快速拒绝；真实上限以读取到的字节数为准（chunked 请求没有该头）。
         const declared = request.headers.get("content-length");
         if (declared !== null && Number(declared) > MAX_BODY_BYTES) {
+          return status(413, { error: { code: "PAYLOAD_TOO_LARGE", message: "请求体过大" } });
+        }
+        const body = request.method === "POST" ? await readBodyWithinLimit(request) : { text: "", tooLarge: false };
+        if (body.tooLarge) {
           return status(413, { error: { code: "PAYLOAD_TOO_LARGE", message: "请求体过大" } });
         }
 
         // peri/rmcp 的首个请求是 server/discover；SDK 不实现该方法。这里只接管这一条，其余方法仍走
         // SDK，避免复制工具协议实现。
-        const discover = await readDiscoverRequest(request);
+        const discover = parseDiscoverBody(body.text);
         if (discover.found) {
           if (discover.id === undefined) return new Response(null, { status: 202 });
           if (!isRpcId(discover.id)) {
@@ -160,7 +198,8 @@ export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDepend
           sessionIdGenerator: undefined,
         });
         await server.connect(transport);
-        return transport.handleRequest(withSdkProtocolHeader(request));
+        const downstream = request.method === "POST" ? replaceRequestBody(request, body.text) : request;
+        return transport.handleRequest(withSdkProtocolHeader(downstream));
       },
       {
         detail: {
@@ -170,7 +209,7 @@ export function createCloudDriveMcpRoutes(dependencies: CloudDriveMcpRouteDepend
           description:
             "MCP Streamable HTTP stateless 入口。调用方需通过 `Authorization: Bearer <CLOUDDRIVE_MCP_TOKEN>` 鉴权；" +
             "token 由 Fenix 服务端签发，主体与 scope 从 token 派生。默认提供只读工具，" +
-            "scope=write 时额外提供 mkdir / write_text / move / rename。该接口为 MCP 协议入口，不按普通 REST 响应建模，因此在公开文档中隐藏。",
+            "scope=write 时额外提供 cloud_drive_mkdir / cloud_drive_write_text。该接口为 MCP 协议入口，不按普通 REST 响应建模，因此在公开文档中隐藏。",
         },
       },
     );

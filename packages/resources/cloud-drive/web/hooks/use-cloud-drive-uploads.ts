@@ -76,7 +76,9 @@ export function useCloudDriveUploads({ onCompleted }: UseCloudDriveUploadsOption
   const uploadOne = useCallback(
     async (id: string) => {
       const record = recordsRef.current.get(id);
-      if (!record || record.canceled) return;
+      const task = tasksRef.current.find((entry) => entry.id === id);
+      // 只处理仍处于 queued 的任务：排队期间被取消或已由另一次 retry 重新入队的 id 不得重复执行。
+      if (!record || record.canceled || task?.status !== "queued") return;
 
       const controller = new AbortController();
       record.controller = controller;
@@ -192,6 +194,8 @@ export function useCloudDriveUploads({ onCompleted }: UseCloudDriveUploadsOption
       if (!task || (task.status !== "error" && task.status !== "canceled")) return;
       const record = recordsRef.current.get(id);
       if (!record) return;
+      // 已在队列里的 id 不能重复入队，否则 pump 会把同一次重试跑两遍。
+      if (queueRef.current.includes(id)) return;
       record.canceled = false;
       updateTask(id, { status: "queued", message: null });
       queueRef.current.push(id);
@@ -223,11 +227,17 @@ export function useCloudDriveUploads({ onCompleted }: UseCloudDriveUploadsOption
     setTasks(tasksRef.current);
   }, []);
 
-  // 卸载时中止在途上传，避免请求落在已卸载组件的回调上。
+  // 卸载时中止在途上传并清空队列：只 abort 当前请求时 pump 仍会继续消费队列，
+  // 把后续任务发到已卸载的组件上。
   useEffect(() => {
     const records = recordsRef.current;
+    const queue = queueRef.current;
     return () => {
-      for (const record of records.values()) record.controller?.abort();
+      queue.length = 0;
+      for (const record of records.values()) {
+        record.canceled = true;
+        record.controller?.abort();
+      }
     };
   }, []);
 

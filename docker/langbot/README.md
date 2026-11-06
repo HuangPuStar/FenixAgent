@@ -55,8 +55,12 @@ docker compose -f docker/langbot/docker-compose.yml ps
 ```
 
 1. `curl -fsS http://127.0.0.1:5300/healthz` 返回 200（无需认证）。
-2. `curl -fsS -H "X-API-Key: $LANGBOT_API_KEY" http://127.0.0.1:5300/api/v1/platform/bots` 返回
-   `{"code":0,...}`；401 说明主服务侧密钥与本目录不一致。
+2. 先加载密钥（compose 不会把它导出到宿主机 shell），再验证 API：
+   ```bash
+   set -a; . docker/langbot/.env; set +a
+   curl -fsS -H "X-API-Key: $LANGBOT_API_KEY" http://127.0.0.1:5300/api/v1/platform/bots
+   ```
+   返回 `{"code":0,...}`；401 说明主服务侧密钥与本目录不一致。
 3. 浏览器打开 `http://127.0.0.1:5300`，按页面初始化向导创建管理员（**上游没有默认账号密码**），
    再创建模型、流水线与 Bot。
 4. 衔接层落地后，在 WebUI「API 集成 → Webhooks」新建指向 `http://rcs:3000/hooks/langbot/<channelId>`

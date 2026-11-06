@@ -2,6 +2,19 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import { z } from "zod/v4";
 
+/** 明文 HTTP 只允许回环地址：base URL 携带 master key，非回环明文会把凭据暴露到链路上。 */
+function isSecureOrLoopbackBaseUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    // 非法 URL 由前序 .url() 报告，这里不再抛错打断校验收集。
+    return false;
+  }
+  if (url.protocol === "https:") return true;
+  return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+}
+
 /**
  * CloudDrive 资源模块描述符。
  *
@@ -60,12 +73,13 @@ export const moduleManifest = {
           .string()
           .url()
           .regex(/^https?:\/\//, "只支持 http/https")
+          .refine(isSecureOrLoopbackBaseUrl, "非回环地址必须使用 https")
           .optional(),
       ),
       secret: false,
       restartRequired: true,
       description:
-        "CloudDrive REST 基址（如 http://127.0.0.1:8080），只允许 http/https；未配置或空串表示未启用个人云盘，/web/cloud-drive/* 返回 503。宿主投影为模块配置 baseUrl。",
+        "CloudDrive REST 基址（如 http://127.0.0.1:8080），只允许 http/https；非回环地址必须 https（请求头带 master key）。未配置或空串表示未启用个人云盘，/web/cloud-drive/* 返回 503。宿主投影为模块配置 baseUrl。",
     },
     {
       moduleId: "cloud-drive",
@@ -132,7 +146,7 @@ export const moduleManifest = {
       secret: false,
       restartRequired: false,
       description:
-        "CloudDrive MCP 工具面：read 只注册只读工具；write 额外注册 mkdir / write_text / move / rename。v1 不提供删除、恢复、分享与上传票据。",
+        "CloudDrive MCP 工具面：read 只注册只读工具；write 额外注册 cloud_drive_mkdir / cloud_drive_write_text。v1 不提供移动、改名、删除、恢复、分享与上传票据。",
     },
     {
       moduleId: "cloud-drive",

@@ -7,7 +7,7 @@
 
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cloudDriveApi } from "../api/cloud-drive";
 import { CLOUD_DRIVE_NS } from "../i18n/namespace";
@@ -35,6 +35,11 @@ export function useCloudDriveFiles(parentId: string | null) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
+  // 同步记录当前目录：loadMore 的迟到响应必须按「发起时的目录」判断是否仍然有效，
+  // 不能依赖 effect 时机（effect 在提交后才运行，仍可能晚于响应到达）。
+  const parentIdRef = useRef(parentId);
+  parentIdRef.current = parentId;
+
   // 切换目录时先清掉上一页的追加结果，避免新目录短暂混入旧条目。
   // biome-ignore lint/correctness/useExhaustiveDependencies: parentId 变化即重置，属有意触发。
   useEffect(() => {
@@ -51,13 +56,18 @@ export function useCloudDriveFiles(parentId: string | null) {
 
   const loadMore = async () => {
     if (!cursor || loadingMore) return;
+    const requestedParentId = parentId;
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
       const next = await unwrap(cloudDriveApi.listFiles({ ...(parentId ? { parentId } : {}), cursor }));
+      // 切换目录后迟到的响应不得写进新目录的追加页与游标。
+      if (parentIdRef.current !== requestedParentId) return;
       setAdditional((previous) => [...previous, ...next.items]);
       setCursor(next.nextCursor);
     } catch (error) {
+      // 旧目录的失败同样不得显示在新目录上。
+      if (parentIdRef.current !== requestedParentId) return;
       console.error("Failed to load more cloud drive files", error);
       setLoadMoreError(cloudDriveErrorMessage(error, (key) => String(t(key))));
     } finally {

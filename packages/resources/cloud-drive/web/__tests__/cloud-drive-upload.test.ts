@@ -7,16 +7,21 @@
 
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { type CloudDriveUploadPort, runChunkedUpload, type UploadSource } from "../lib/upload";
+import { type CloudDriveUploadPort, runChunkedUpload } from "../lib/upload";
 import type { CloudDriveUpload, CloudDriveUploadResult, CloudDriveUploadStatus } from "../types/cloud-drive";
 
-/** 轻量文件替身：只实现编排层用到的 size 与 slice，避免构造真实字节。 */
-function createSource(size: number, name = "report.pdf"): UploadSource {
+/** 轻量文件替身：只实现编排层用到的 size 与 slice，并记录每次切片的起止位置。 */
+function createSource(size: number, name = "report.pdf") {
+  const slices: Array<{ start: number; end: number }> = [];
   return {
     name,
     size,
     type: "application/pdf",
-    slice: (start, end) => ({ size: end - start }) as unknown as Blob,
+    slices,
+    slice: (start: number, end: number) => {
+      slices.push({ start, end });
+      return { size: end - start } as unknown as Blob;
+    },
   };
 }
 
@@ -128,15 +133,17 @@ describe("分片上传编排", () => {
   });
 
   // 业务意图：分片失败后先退避、再以服务端 offset 续传；服务端可能已接收部分字节，必须从真相位置继续。
+  // 同时钉住「重新切分」：重试的 chunk 起点必须等于服务端返回的 offset，不能复用失败前的旧分片。
   test("分片失败后按服务端 offset 续传而不是重传同一段", async () => {
     const port = new FakePort({
       failSend: (attempt) => (attempt === 1 ? new ApiError("网络异常，请检查连接", "NETWORK_ERROR") : null),
       failureOffset: 2,
     });
+    const source = createSource(10);
 
     await runChunkedUpload(port, {
       parentId: null,
-      file: createSource(10),
+      file: source,
       chunkBytes: 4,
       delay: noDelay,
     });
@@ -146,6 +153,8 @@ describe("分片上传编排", () => {
       [2, 4],
       [6, 4],
     ]);
+    // 每次 send 的分片必须从该次声明的 offset 开始切：起点不一致说明把旧字节写到了新位置。
+    expect(source.slices.map((slice) => slice.start)).toEqual(port.sends.map((send) => send.offset));
     expect(port.finalized).toEqual(["upload-1"]);
   });
 

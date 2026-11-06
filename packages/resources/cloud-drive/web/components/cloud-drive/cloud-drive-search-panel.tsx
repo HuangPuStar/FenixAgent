@@ -41,8 +41,8 @@ export function CloudDriveSearchPanel({
   if (results && !loading && !error && fileCount > 0) {
     summary =
       matchCount > 0
-        ? t("search.summary", { files: fileCount, matches: matchCount })
-        : t("search.summaryNoMatches", { files: fileCount });
+        ? t("search.summary", { count: fileCount, matches: matchCount })
+        : t("search.summaryNoMatches", { count: fileCount });
   }
 
   return (

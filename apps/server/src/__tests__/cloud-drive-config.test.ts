@@ -44,6 +44,23 @@ test("cloud-drive 的九个声明键投影到模块配置", () => {
   });
 });
 
+// 明文 HTTP 只允许回环地址：base URL 的请求头携带 master key，非回环 http 必须在启动期拒绝。
+test("CLOUDDRIVE_BASE_URL 仅回环地址允许 http", () => {
+  const manifests: readonly ModuleManifest[] = generatedModuleManifests;
+  const definitions = manifests.flatMap((manifest) => manifest.envDefinitions ?? []);
+  const load = (baseUrl: string) =>
+    loadServerEnv(definitions, {
+      DATABASE_URL: "postgres://127.0.0.1:5432/fenix",
+      CLOUDDRIVE_BASE_URL: baseUrl,
+    });
+
+  expect(() => load("https://drive.example.com")).not.toThrow();
+  expect(() => load("http://127.0.0.1:8080")).not.toThrow();
+  expect(() => load("http://localhost:8080")).not.toThrow();
+  expect(() => load("http://drive.example.com")).toThrow();
+  expect(() => load("not-a-url")).toThrow();
+});
+
 // 未配置 MCP 相关键时按声明默认值投影：scope 默认只读，两个 TTL 与读超时有固定默认。
 test("未设置的 MCP 键投影为声明默认值", () => {
   const manifests: readonly ModuleManifest[] = generatedModuleManifests;

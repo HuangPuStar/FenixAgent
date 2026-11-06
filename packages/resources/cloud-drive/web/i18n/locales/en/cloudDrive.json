@@ -78,8 +78,10 @@
   "search": {
     "placeholder": "Search file contents",
     "searching": "Searching…",
-    "summary": "About {{files}} files, {{matches}} matches",
-    "summaryNoMatches": "About {{files}} files",
+    "summary_one": "About {{count}} file, {{matches}} matches",
+    "summary_other": "About {{count}} files, {{matches}} matches",
+    "summaryNoMatches_one": "About {{count}} file",
+    "summaryNoMatches_other": "About {{count}} files",
     "stale": "Older version",
     "locationFailed": "Could not open the folder: {{message}}"
   },

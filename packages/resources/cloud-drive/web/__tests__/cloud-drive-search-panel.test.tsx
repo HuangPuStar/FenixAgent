@@ -197,7 +197,7 @@ describe("云盘搜索结果面板", () => {
     const marks = [...container.querySelectorAll("mark")];
     expect(marks).toHaveLength(2);
     expect(marks.map((mark) => mark.textContent)).toEqual(["report", "report"]);
-    expect(text()).toContain("About 1 files, 2 matches");
+    expect(text()).toContain("About 1 file, 2 matches");
     expect(text()).toContain("季度报告.txt");
     expect(text()).toContain("Home / 工作");
   });

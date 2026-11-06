@@ -74,6 +74,11 @@ function collectLiteralKeys(): Map<string, string[]> {
 
 const literalKeys = collectLiteralKeys();
 
+/** 复数键在字典里展开为 `_one` / `_other`，源码仍以基础键调用。 */
+function hasKey(flat: Map<string, string>, key: string): boolean {
+  return flat.has(key) || flat.has(`${key}_one`) || flat.has(`${key}_other`);
+}
+
 describe("cloud-drive 字典完整性", () => {
   // 两份字典键集必须逐字一致：缺键的语言会静默回显 key。
   test("en / zh 键集完全一致", () => {
@@ -97,8 +102,8 @@ describe("cloud-drive 字典完整性", () => {
   test('源码里的 t("key") 都能在两门字典里查到', () => {
     const missing: string[] = [];
     for (const [key, files] of literalKeys) {
-      if (!enFlat.has(key)) missing.push(`${key} 缺少 en（${files.join(", ")}）`);
-      if (!zhFlat.has(key)) missing.push(`${key} 缺少 zh（${files.join(", ")}）`);
+      if (!hasKey(enFlat, key)) missing.push(`${key} 缺少 en（${files.join(", ")}）`);
+      if (!hasKey(zhFlat, key)) missing.push(`${key} 缺少 zh（${files.join(", ")}）`);
     }
     expect(missing).toEqual([]);
   });

@@ -354,6 +354,41 @@ describe("CloudDrive 出站 client", () => {
     expect(bodies[1]).not.toHaveProperty("parent_id");
   });
 
+  // 移动到根目录必须显式发送 parent_id: null：省略该字段会被上游当成「未指定目标目录」。
+  test("移动文件到根目录时显式发送 parent_id: null", async () => {
+    let body: Record<string, unknown> | undefined;
+    let method = "";
+    let url = "";
+    const client = clientWith(async (input, init) => {
+      url = String(input);
+      method = init?.method ?? "";
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({
+        operation_id: "operation-1",
+        file_id: "file-1",
+        state: "committed",
+        error_code: null,
+        file: null,
+      });
+    });
+
+    await client.moveFile("user-a", "file-1", {
+      name: "report.txt",
+      parentId: null,
+      expectedMetadataRevision: 2,
+      idempotencyKey: "key-1",
+    });
+
+    expect(method).toBe("PATCH");
+    expect(url).toBe("http://clouddrive.test/v1/files/file-1/location");
+    expect(body).toMatchObject({
+      parent_id: null,
+      name: "report.txt",
+      expected_metadata_revision: 2,
+      idempotency_key: "key-1",
+    });
+  });
+
   // 覆盖写必须把当前版本与修订号原样送到上游；漏传会被 CloudDrive 判成 VERSION_CONFLICT。
   test("覆盖写上传发送 file_id、expected_version_id 与 expected_metadata_revision", async () => {
     let body: Record<string, unknown> | undefined;

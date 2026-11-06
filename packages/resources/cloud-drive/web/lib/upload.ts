@@ -187,10 +187,11 @@ async function transferSession(
 
   while (offset < file.size) {
     throwIfAborted(signal);
-    const chunk = file.slice(offset, Math.min(offset + chunkBytes, file.size));
 
     let attempt = 0;
     for (;;) {
+      // 每次发送都按当前 offset 重新切分：重试前会刷新服务端 offset，沿用旧分片会把旧字节写到新位置。
+      const chunk = file.slice(offset, Math.min(offset + chunkBytes, file.size));
       try {
         const next = await port.send(uploadId, offset, chunk);
         offset = Math.min(next.offset, file.size);

@@ -168,7 +168,7 @@ Agent ──Authorization: Bearer cd1.<payload>.<sig>──► POST /mcp/cloud-d
   `Mcp-Session-Id`；只暴露 tools，不实现 resources/subscriptions/skills。
 - 挂载在宿主 `app` 槽（`cloud-drive.mcp` 贡献），公开路径 `/mcp/cloud-drive`，OpenAPI 隐藏。
 - 未配置 `CLOUDDRIVE_MCP_TOKEN_SECRET`（或 baseUrl/masterKey 缺失）→ **503**；无 token/坏 token → **401**；
-  body 上限 2 MiB（`Content-Length` 预检）。
+  body 上限 2 MiB（按实际读取字节校验，无 `Content-Length` 的 chunked 请求同样拦截）。
 - 主体**只**来自 token：工具参数里没有 `user_id`/`uid`/`org`，`strictObject` 让越权字段直接失败。
 
 ### 10.2 Token

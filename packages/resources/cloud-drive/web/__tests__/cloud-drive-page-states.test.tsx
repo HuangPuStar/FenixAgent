@@ -384,7 +384,7 @@ describe("云盘页面的加载 / 空 / 失败状态", () => {
     await settle();
 
     expect(searchCalls).toBe(1);
-    expect(text()).toContain("About 1 files, 2 matches");
+    expect(text()).toContain("About 1 file, 2 matches");
     expect(text()).toContain("季度报告.txt");
     expect(text()).toContain("Home / 工作");
     expect(container.querySelectorAll("li")).toHaveLength(1);
