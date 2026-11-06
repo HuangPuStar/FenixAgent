@@ -126,3 +126,76 @@ describe("RelayEventHandler relay_closed cleanup", () => {
     expect((reopened.ydoc.getMap("root").get("entries") as Y.Map<unknown>).size).toBe(0);
   });
 });
+
+describe("RelayEventHandler agent process recovery", () => {
+  // Agent 子进程死亡只广播 connected:false；首次必须以 1011 关闭客户端触发重连，
+  // 由新 connect 重启子进程，且不得销毁实时 Doc（断链语义一：保留 Doc 供重连）。
+  test("connected:false closes clients with 1011 once and keeps realtime docs", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      type: "status",
+      payload: { connected: false },
+    } as unknown as RelayMessage);
+
+    expect(ws.closed).toEqual([[1011, "agent restarting"]]);
+    expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
+    expect(docManager.getSessionYdoc("rcs-1")).toBeDefined();
+  });
+
+  // 窗口内重复死亡说明重启无法收敛：第二次下发 INSTANCE_START_FAILED 并以 4502
+  // 终态关闭，停止自动重连，避免无限重连放大故障。
+  test("second disconnect within the window terminates with 4502 and a public error", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    const send = handler.createMessageHandler(relayOn("rcs-1"));
+
+    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+
+    expect(ws.closed).toEqual([
+      [1011, "agent restarting"],
+      [4502, "agent unavailable"],
+    ]);
+    const frame = JSON.parse(textFrames(ws)[0] ?? "{}") as {
+      type: string;
+      payload: { type: string };
+    };
+    expect(frame).toMatchObject({
+      type: "error",
+      payload: { type: "CONTROL_PLANE.INSTANCE_START_FAILED" },
+    });
+  });
+
+  // 新进程就绪（capabilities 非空）后恢复预算清零：之后再次死亡仍可获得一次自愈机会。
+  test("ready status resets the recovery budget", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    const send = handler.createMessageHandler(relayOn("rcs-1"));
+
+    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+    await send({
+      type: "status",
+      payload: { connected: true, capabilities: { loadSession: true } },
+    } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+
+    expect(ws.closed).toEqual([
+      [1011, "agent restarting"],
+      [1011, "agent restarting"],
+    ]);
+  });
+});

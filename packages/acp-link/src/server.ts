@@ -1303,6 +1303,16 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    // 冷启动竞态：connect 帧触发的 initialize 可能仍在途，此时 state.connection 已赋值
+    // 但 newSession 还没有可用的能力协商结果。等待初始化落定，避免频繁建会话时
+    // 在未就绪连接上创建 session 直接失败。
+    await waitForAgentCapabilities(state);
+    if (!state.connection) {
+      console.warn("handleNewSession: agent disconnected during initialization");
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+
     try {
       const sessionCwd = (params.cwd as string) || cwd;
       const result = await state.connection.newSession({
