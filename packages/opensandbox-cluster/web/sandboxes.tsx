@@ -209,7 +209,7 @@ export function Sandboxes({ client, pools, servers }: { client: ClusterClient; p
                         size="sm"
                         disabled={busy}
                         onClick={() => {
-                          if (confirm(t("仅删除绑定，请确认节点上的沙盒已不存在。")))
+                          if (confirm(t("仅删除绑定，不会停止正在创建或运行的沙盒。确认删除？")))
                             void action(() =>
                               client.request(`/api/v1/sandboxes/${encodeURIComponent(item.sandbox_id)}/allocation`, {
                                 method: "DELETE",

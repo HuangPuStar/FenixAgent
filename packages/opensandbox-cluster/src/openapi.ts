@@ -142,7 +142,7 @@ const paths: Paths = {
     get: operation(allocations, "查询沙盒绑定", "Allocation"),
     delete: operation(allocations, "释放沙盒绑定", "Allocation", {
       description:
-        "数量模式须先销毁远端沙盒，再释放绑定；返回已删除绑定记录。资源模式委托 Cluster 回收，返回生命周期记录。",
+        "数量模式仅删除绑定并归还数量额度，不销毁远端沙盒，允许解绑创建中或结果未知的记录。资源模式委托 Cluster 回收，返回生命周期记录。",
       parameters: [
         conditional("If-Match", '可选：allocation_etag 的 JSON 字符串，例如 "ey..."，防止释放已变化的数量绑定。'),
       ],

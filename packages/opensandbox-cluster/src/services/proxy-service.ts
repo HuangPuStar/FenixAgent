@@ -1,6 +1,7 @@
 import { createLogger } from "@fenix/logger";
 import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
 import type { ClusterDatabase } from "../db/client";
+import type { SandboxBinding } from "../db/schema";
 import type { ClusterConfig } from "../types";
 import type { AllocationService } from "./allocation-service";
 import { COUNT_ATTEMPT_METADATA_KEY, type CountRecoveryService } from "./count-recovery-service";
@@ -72,6 +73,7 @@ export class ProxyService {
     const complete = this.countRecovery?.begin(original);
     try {
       const forwarded = await this.withCountAttempt(request, original.attemptId!);
+      this.assertCountBinding(original);
       const response = await this.forward(forwarded, path, serverId, sandboxId);
       if (response.ok) {
         // Native creation has committed even if every local completion write is unavailable.
@@ -197,6 +199,8 @@ export class ProxyService {
     }
     // Tunnel recovery can yield while a management create claims this binding.
     this.assertCountCreateAvailable(request, path, sandboxId);
+    if (managed?.allocationMode === "count" && isSandboxCreateRequest(request.method, path))
+      this.assertCountBinding(managed);
     const createSnapshot =
       managed?.allocationMode === "count" && isSandboxCreateRequest(request.method, path) ? request.clone() : undefined;
     try {
@@ -240,6 +244,18 @@ export class ProxyService {
         { cause: error },
       );
     }
+  }
+
+  /** Manual unbinding can replace an allocation while body parsing or tunnel recovery is awaiting. */
+  private assertCountBinding(original: SandboxBinding): void {
+    const current = this.allocations.binding(original.sandboxId);
+    if (
+      current?.allocationMode !== "count" ||
+      current.attemptId !== original.attemptId ||
+      current.serverId !== original.serverId ||
+      current.createdAt !== original.createdAt
+    )
+      throw new ProxyError(409, "allocation changed before sandbox creation", "ALLOCATION_CHANGED");
   }
 
   private assertCountCreateAvailable(request: Request, path: string, sandboxId?: string): void {

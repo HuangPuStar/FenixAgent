@@ -212,12 +212,7 @@ export class AllocationService {
     if (expectedEtag !== undefined) {
       return this.lock.run(() => {
         const current = this.bindings.findBySandboxId(sandboxId);
-        if (
-          current?.allocationMode !== "count" ||
-          current.state === "creating" ||
-          (!current.providerSandboxId && current.state === "uncertain") ||
-          this.etag(current) !== expectedEtag
-        )
+        if (current?.allocationMode !== "count" || this.etag(current) !== expectedEtag)
           throw new LifecycleError("ALLOCATION_CHANGED", 409, "allocation changed; refresh before releasing");
         return this.bindings.deleteBySandboxId(sandboxId);
       });
@@ -227,12 +222,7 @@ export class AllocationService {
       if (!this.lifecycle) throw new Error("lifecycle unavailable");
       return this.lifecycle.release(sandboxId);
     }
-    return this.lock.run(() => {
-      const current = this.bindings.findBySandboxId(sandboxId);
-      if (current?.state === "creating" || (current?.state === "uncertain" && !current.providerSandboxId))
-        throw new LifecycleError("ALLOCATION_CHANGED", 409, "creation is pending; allocation cannot be released");
-      return this.bindings.deleteBySandboxId(sandboxId);
-    });
+    return this.lock.run(() => this.bindings.deleteBySandboxId(sandboxId));
   }
 
   private etag(binding: typeof sandboxBinding.$inferSelect) {

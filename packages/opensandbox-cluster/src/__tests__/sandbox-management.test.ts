@@ -240,7 +240,7 @@ test("conditional native rejection rolls back only the management allocation", a
     expect(res.headers.get("X-Cluster-Create-Rejected")).toBe(id === "managed" ? "true" : null);
   }
 });
-// 并发和超时的管理创建不能再次发起原生创建，也不能误释放预留。
+// 并发和超时的管理创建不能重复发起原生创建，未知结果保留到管理员显式解绑。
 test("conditional create is claimed once and keeps unknown results", async () => {
   let posts = 0;
   let finish: () => void = () => {};
@@ -259,17 +259,16 @@ test("conditional create is claimed once and keeps unknown results", async () =>
   const first = create();
   for (let i = 0; i < 100 && posts === 0; i++) await Bun.sleep(1);
   expect((await create()).status).toBe(409);
-  expect((await req("/api/v1/sandboxes/job/allocation", "DELETE")).status).toBe(409);
-  expect(
-    (await req("/api/v1/sandboxes/job/allocation", "DELETE", undefined, true, { "If-Match": headers["If-Match"] }))
-      .status,
-  ).toBe(409);
   finish();
   expect((await first).status).toBe(502);
   expect((await create()).status).toBe(409);
   expect(posts).toBe(1);
-  expect((await req("/api/v1/sandboxes/job/allocation", "DELETE")).status).toBe(409);
   expect(((await (await req("/api/v1/sandboxes/job/allocation")).json()) as { state: string }).state).toBe("uncertain");
+  expect(
+    (await req("/api/v1/sandboxes/job/allocation", "DELETE", undefined, true, { "If-Match": headers["If-Match"] }))
+      .status,
+  ).toBe(200);
+  expect((await req("/api/v1/sandboxes/job/allocation")).status).toBe(404);
 });
 // 转发前节点不可用也属于确定未创建，管理请求应释放本次数量绑定。
 test("conditional creation cleans its slot when the node is unavailable before forwarding", async () => {

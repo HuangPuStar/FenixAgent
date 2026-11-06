@@ -265,8 +265,8 @@ test("recovers a persisted creating allocation after reopening SQLite", async ()
   expect(allocations.find("job")).toMatchObject({ state: "active", provider_sandbox_id: "native" });
 });
 
-// 原请求尚在途中时恢复器不能提前关联，释放也不能越过原生创建。
-test("discovery and releases wait until the original conditional POST settles", async () => {
+// 原请求尚在途中时恢复器不能提前关联，避免观察到不完整的原生创建结果。
+test("discovery waits until the original conditional POST settles", async () => {
   let complete!: (response: Response) => void;
   let posts = 0;
   let gets = 0;
@@ -286,14 +286,12 @@ test("discovery and releases wait until the original conditional POST settles", 
   await f.recovery.reconcileDue();
   expect(gets).toBe(0);
   expect(f.row().state).toBe("creating");
-  expect(() => f.allocations.release("job")).toThrow();
-  expect(() => f.allocations.release("job", binding.allocation_etag)).toThrow();
   complete(Response.json({ id: "native" }, { status: 201 }));
   expect((await creating).status).toBe(201);
   expect(f.row()).toMatchObject({ state: "active", providerSandboxId: "native" });
 });
 
-// 旧式无条件 POST 不能绕过管理创建的在途保护，否则第二个结果会提前开放释放。
+// 旧式无条件 POST 不能绕过管理创建的在途保护，在同一绑定上重复创建。
 test("legacy create cannot bypass an in-flight conditional create", async () => {
   let complete!: (response: Response) => void;
   let posts = 0;
@@ -311,7 +309,6 @@ test("legacy create cannot bypass an in-flight conditional create", async () => 
     expect((await f.create(binding.allocation_etag, false)).status).toBe(409);
     expect(posts).toBe(1);
     expect(f.row()).toMatchObject({ state: "creating", providerSandboxId: null });
-    expect(() => f.allocations.release("job")).toThrow();
   } finally {
     complete(Response.json({ id: "native" }, { status: 201 }));
     await creating;
@@ -365,7 +362,7 @@ test("conditional create cannot overtake pending legacy creates", async () => {
   expect(posts).toBe(3);
 });
 
-// 空、歧义、未穷尽分页和错误标记都不能证明归属，更不能返还仍可能在用的预留。
+// 空、歧义、未穷尽分页和错误标记都不能证明归属，自动协调须保留预留。
 test.each([
   { name: "empty", items: [], pagination: { totalItems: 0, hasNextPage: false } },
   { name: "multiple", items: [{ id: "one" }, { id: "two" }], pagination: { totalItems: 2, hasNextPage: false } },
@@ -385,7 +382,7 @@ test.each([
   await f.recovery.reconcileDue();
   expect(f.row()).toMatchObject({ state: "uncertain", providerSandboxId: null });
   expect(f.row().nextRetryAt!).toBeGreaterThan(Date.now());
-  expect(() => f.allocations.release("job")).toThrow();
+  expect(f.allocations.find("job")).toBeDefined();
 });
 
 // 旧查询晚到不能把原生 ID 写入同一业务 ID 后来重新建立的绑定。
@@ -403,7 +400,7 @@ test("a late lookup cannot associate a replacement attempt", async () => {
   f.allocations.finishCountCreate(original, false);
   const looking = f.recovery.reconcileDue();
   await until(() => lookups === 1);
-  f.db.delete(sandboxBinding).where(eq(sandboxBinding.sandboxId, "job")).run();
+  f.allocations.release("job", binding.allocation_etag);
   f.allocate();
   const replacement = f.row().attemptId;
   complete(discovered(original.attemptId!));
