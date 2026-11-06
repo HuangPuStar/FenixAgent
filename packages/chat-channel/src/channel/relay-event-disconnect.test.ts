@@ -148,9 +148,9 @@ describe("RelayEventHandler agent process recovery", () => {
     expect(docManager.getSessionYdoc("rcs-1")).toBeDefined();
   });
 
-  // 窗口内重复死亡说明重启无法收敛：第二次下发 INSTANCE_START_FAILED 并以 4502
-  // 终态关闭，停止自动重连，避免无限重连放大故障。
-  test("second disconnect within the window terminates with 4502 and a public error", async () => {
+  // 窗口内再次死亡说明重启无法收敛：第二次下发 INSTANCE_START_FAILED 并以 4502
+  // 终态关闭，停止自动重连，避免无限重连放大故障。两次死亡来自不同进程必须分别计数。
+  test("disconnect from a new agent process within the window terminates with 4502 and a public error", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const { docManager } = await createBoundDocs("rcs-1");
@@ -159,8 +159,8 @@ describe("RelayEventHandler agent process recovery", () => {
     registry.addClient("ws-1", createClient({ ws }));
     const send = handler.createMessageHandler(relayOn("rcs-1"));
 
-    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
-    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false, agentPid: 100 } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false, agentPid: 200 } } as unknown as RelayMessage);
 
     expect(ws.closed).toEqual([
       [1011, "agent restarting"],
@@ -176,6 +176,41 @@ describe("RelayEventHandler agent process recovery", () => {
     });
   });
 
+  // 同一进程的死亡会由流 EOF 与子进程 exit 各广播一次：按 agentPid 去重后只消费一次
+  // 恢复额度，不得把正在重连的客户端以 4502 判死。
+  test("duplicate connected:false from the same agent process consumes the budget only once", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    const send = handler.createMessageHandler(relayOn("rcs-1"));
+
+    await send({ type: "status", payload: { connected: false, agentPid: 100 } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false, agentPid: 100 } } as unknown as RelayMessage);
+
+    expect(ws.closed).toEqual([[1011, "agent restarting"]]);
+    expect(textFrames(ws)).toHaveLength(0);
+  });
+
+  // 无人连接时进程死亡不消耗恢复额度：否则下一次真正需要自愈时会被直接判为终态 4502。
+  test("disconnect without a registered client does not consume the recovery budget", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const send = handler.createMessageHandler(relayOn("rcs-1"));
+
+    await send({ type: "status", payload: { connected: false, agentPid: 100 } } as unknown as RelayMessage);
+
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    await send({ type: "status", payload: { connected: false, agentPid: 200 } } as unknown as RelayMessage);
+
+    expect(ws.closed).toEqual([[1011, "agent restarting"]]);
+  });
+
   // 新进程就绪（capabilities 非空）后恢复预算清零：之后再次死亡仍可获得一次自愈机会。
   test("ready status resets the recovery budget", async () => {
     const registry = new ConnectionRegistry();
@@ -186,12 +221,12 @@ describe("RelayEventHandler agent process recovery", () => {
     registry.addClient("ws-1", createClient({ ws }));
     const send = handler.createMessageHandler(relayOn("rcs-1"));
 
-    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false, agentPid: 100 } } as unknown as RelayMessage);
     await send({
       type: "status",
-      payload: { connected: true, capabilities: { loadSession: true } },
+      payload: { connected: true, capabilities: { loadSession: true }, agentPid: 200 },
     } as unknown as RelayMessage);
-    await send({ type: "status", payload: { connected: false } } as unknown as RelayMessage);
+    await send({ type: "status", payload: { connected: false, agentPid: 200 } } as unknown as RelayMessage);
 
     expect(ws.closed).toEqual([
       [1011, "agent restarting"],

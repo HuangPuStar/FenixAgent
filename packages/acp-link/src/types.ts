@@ -120,6 +120,12 @@ export interface ProxyStatusMessage {
     connected: boolean;
     agentInfo?: { name?: string; version?: string };
     capabilities?: AgentCapabilities;
+    /**
+     * 上报该 status 的 agent 子进程 pid（可选：旧版 acp-link 不提供）。
+     * 上层用它在断连时识别「同一进程的重复广播」：connection.closed 与子进程 exit
+     * 可能各触发一次 connected:false，不按进程去重会把正在重连的客户端判死。
+     */
+    agentPid?: number;
   };
 }
 

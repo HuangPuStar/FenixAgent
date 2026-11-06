@@ -43,6 +43,7 @@ function createAgent(autoInitialize: boolean, strictInitialize = false) {
   let initialized = false;
   let killCount = 0;
   const process = Object.assign(new EventEmitter(), {
+    pid: 2_000 + Math.floor(Math.random() * 1_000),
     stdin,
     stdout,
     killed: false,
@@ -458,6 +459,30 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     await closing;
     expect(harness.agents[0]?.killCount).toBe(0);
     expect(harness.agents[0]?.process.exitCode).toBe(0);
+  });
+
+  // 流 EOF 与子进程 exit 可能先后到达：同一进程的断连只能广播一次 connected:false，
+  // 否则上层会把正在重连的客户端误判为「窗口内二次死亡」直接以 4502 终止。
+  test("stream close and process exit broadcast a single disconnect status", async () => {
+    const harness = createHarness();
+    const ws = new FakeWs();
+    await open(harness, ws);
+    const agent = harness.agents[0];
+    if (!agent) throw new Error("agent 未启动");
+    const disconnects = () =>
+      ws.messages.filter((message) => {
+        const payload = message.payload as Record<string, unknown> | undefined;
+        return message.type === "status" && payload?.connected === false;
+      });
+
+    // 先让 ACP 流 EOF（connection.closed），再让子进程退出（exit）：旧实现会广播两次。
+    agent.process.stdout.end();
+    await waitUntil(() => disconnects().length === 1);
+    agent.process.emit("exit", 0);
+    await Bun.sleep(20);
+
+    expect(disconnects()).toHaveLength(1);
+    expect(disconnects()[0]?.payload).toMatchObject({ agentPid: agent.process.pid });
   });
 
   // 初始化中的旧页面关闭后，新 relay 应复用同一次启动，不能丢失初始化结果或再启动进程。

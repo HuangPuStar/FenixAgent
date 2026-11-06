@@ -7,7 +7,7 @@ export type { RelayEventHandlerDependencies } from "./relay-event-dependencies";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
 import { PERI_AGENT_EVENT_DONE_METHOD, type PublicError, SESSION_BOUND_NOTIFICATION_METHODS } from "../schema";
 import { resetUserInputQueue, setUserInputQueueEnabled } from "../state/user-input-queue";
-import type { RelayMessage, SharedRelay } from "./connection-types";
+import type { ClientConnection, RelayMessage, SharedRelay } from "./connection-types";
 import { RelayProjection } from "./relay-projection";
 import { RelayRpcResponse } from "./relay-rpc-response";
 // packages/chat-channel/src/channel/relay-event-handler.ts
@@ -41,6 +41,11 @@ const AGENT_RECOVERY_MAX_ATTEMPTS = 1;
 /** 自动恢复计数窗口：窗口内重复死亡视为重启无法收敛。 */
 const AGENT_RECOVERY_WINDOW_MS = 60_000;
 
+/** 读取 status.payload.agentPid；旧版 acp-link 不提供时返回 null（跳过按进程去重）。 */
+function readAgentPid(payload: Record<string, unknown>): number | null {
+  return typeof payload.agentPid === "number" ? payload.agentPid : null;
+}
+
 /** 共享 relay 唯一的入站消息消费者。 */
 export class RelayEventHandler {
   /**
@@ -71,6 +76,15 @@ export class RelayEventHandler {
    * 处理器上才能拦住「重启后立刻再死」的无限重连。就绪 status 与实时资源回收时清空。
    */
   private readonly agentRecoveryAttempts = new Map<string, { count: number; startedAt: number }>();
+
+  /**
+   * rcsSessionId → 最近一次已处理的断连所属 agent 进程 pid。
+   * acp-link 的 connection.closed（流 EOF）与子进程 exit 可能对同一进程各广播一次
+   * connected:false；按 pid 去重，避免第二次广播重复收敛并再次消耗恢复额度，把正在
+   * 重连的客户端直接判成「二次死亡」以 4502 关闭。旧版 acp-link 不带 pid，退化为
+   * 不去重（与既有行为一致）。就绪 status 与实时资源回收时清空。
+   */
+  private readonly lastDisconnectedAgentPid = new Map<string, number>();
 
   private readonly projection: RelayProjection;
   private readonly responses: RelayRpcResponse;
@@ -289,43 +303,59 @@ export class RelayEventHandler {
    * INSTANCE_START_FAILED 并以 4502 终态关闭，停止自动重连，避免无限重连放大故障。
    */
   private scheduleAgentRecovery(shared: SharedRelay): void {
+    const { registry } = this.dependencies;
+    const clients: ClientConnection[] = [];
+    registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+      clients.push(entry);
+    });
+    // 没有可重连的客户端时不消耗额度：否则「无人连接时进程死亡」会白白占掉一次机会，
+    // 下一次真正的断连直接落到终态 4502。
+    if (clients.length === 0) return;
+
     const now = Date.now();
     const previous = this.agentRecoveryAttempts.get(shared.rcsSessionId);
     const withinWindow = previous != null && now - previous.startedAt <= AGENT_RECOVERY_WINDOW_MS;
     const count = withinWindow ? previous.count + 1 : 1;
-    this.agentRecoveryAttempts.set(shared.rcsSessionId, {
-      count,
-      startedAt: withinWindow ? previous.startedAt : now,
-    });
 
-    const { registry } = this.dependencies;
-    if (count <= AGENT_RECOVERY_MAX_ATTEMPTS) {
-      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+    if (count > AGENT_RECOVERY_MAX_ATTEMPTS) {
+      this.agentRecoveryAttempts.set(shared.rcsSessionId, {
+        count,
+        startedAt: withinWindow ? previous.startedAt : now,
+      });
+      const publicError = agentRuntimeError(
+        "CONTROL_PLANE.INSTANCE_START_FAILED",
+        "relay.agent_recovery_exhausted",
+        this.dependencies.log,
+      );
+      for (const entry of clients) {
         try {
-          entry.ws.close(1011, "agent restarting");
+          this.dependencies.broadcaster.sendToYjsWs(entry.ws, { type: "error", payload: publicError });
         } catch {
           /* ignore */
         }
-      });
+        try {
+          entry.ws.close(WEBSOCKET_CODES.SPAWN_REJECTED.code, "agent unavailable");
+        } catch {
+          /* ignore */
+        }
+      }
       return;
     }
 
-    const publicError = agentRuntimeError(
-      "CONTROL_PLANE.INSTANCE_START_FAILED",
-      "relay.agent_recovery_exhausted",
-      this.dependencies.log,
-    );
-    registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+    let closed = 0;
+    for (const entry of clients) {
       try {
-        this.dependencies.broadcaster.sendToYjsWs(entry.ws, { type: "error", payload: publicError });
+        entry.ws.close(1011, "agent restarting");
+        closed++;
       } catch {
         /* ignore */
       }
-      try {
-        entry.ws.close(WEBSOCKET_CODES.SPAWN_REJECTED.code, "agent unavailable");
-      } catch {
-        /* ignore */
-      }
+    }
+    // 全部关闭失败等于没有触发重连：不记这一次，保持窗口额度只被真实重连消费。
+    if (closed === 0) return;
+    this.agentRecoveryAttempts.set(shared.rcsSessionId, {
+      count,
+      startedAt: withinWindow ? previous.startedAt : now,
     });
   }
 
@@ -414,6 +444,7 @@ export class RelayEventHandler {
   private async disposeRealtimeResources(rcsSessionId: string, eligible: () => boolean): Promise<void> {
     if (!eligible()) return;
     this.agentRecoveryAttempts.delete(rcsSessionId);
+    this.lastDisconnectedAgentPid.delete(rcsSessionId);
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${rcsSessionId}`);
       this.dependencies.broadcaster.unregisterYjsDocListener(`session:${rcsSessionId}`);
@@ -442,6 +473,13 @@ export class RelayEventHandler {
     // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
     if (payload?.connected === false) {
       if (!this.isCurrentRelay(shared)) return;
+      // 同一进程的重复断连广播（流 EOF 与子进程 exit）只处理一次：第二次既不重新收敛
+      // 在途请求，也不再消耗恢复额度，否则重连中的客户端会被直接判死为 4502。
+      const disconnectedPid = readAgentPid(payload);
+      if (disconnectedPid !== null) {
+        if (this.lastDisconnectedAgentPid.get(shared.rcsSessionId) === disconnectedPid) return;
+        this.lastDisconnectedAgentPid.set(shared.rcsSessionId, disconnectedPid);
+      }
       this.dependencies.invalidateRuntimeSession?.(shared.rcsSessionId);
       registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
         entry.sessionLoaded = false;
@@ -485,8 +523,9 @@ export class RelayEventHandler {
     // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
     // 初始化完成后的就绪 status 再同步。
     if (hasCapabilities) {
-      // 新进程已就绪：恢复计数清零，允许后续再次自愈。
+      // 新进程已就绪：恢复计数与断连去重标记清零，允许后续再次自愈。
       this.agentRecoveryAttempts.delete(shared.rcsSessionId);
+      this.lastDisconnectedAgentPid.delete(shared.rcsSessionId);
       // 待发送队列能力协商：peri 把 initialize 的 clientCapabilities._meta 原样回显到
       // agentCapabilities._meta（acp-link 已声明 `peri.userInputQueue`）。协商成功才补拉
       // 一次快照（读操作）并把投影 enabled 置真；未协商保持 false，读取侧回退旧路径
