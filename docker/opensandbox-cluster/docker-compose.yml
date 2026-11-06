@@ -27,6 +27,7 @@ services:
             HOST: 0.0.0.0
             PORT: 8080
             DATABASE_PATH: /data/opensandbox-cluster.db
+            LOG_DIR: /data/logs
             # 必填项：缺失或为空即在此拦下，报错信息即修复指引（§13.12）。
             CLUSTER_SERVICE_API_KEY: ${CLUSTER_SERVICE_API_KEY:?CLUSTER_SERVICE_API_KEY 未设置：请填 docker/opensandbox-cluster/.env}
             SERVER_API_KEY_ENCRYPTION_KEY: ${SERVER_API_KEY_ENCRYPTION_KEY:?SERVER_API_KEY_ENCRYPTION_KEY 未设置：请填 docker/opensandbox-cluster/.env（32 字节）}

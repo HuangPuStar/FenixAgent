@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
 import { createSecretBox } from "../security/secret-box";
@@ -18,11 +19,7 @@ beforeEach(() => {
   sqlite = new Database(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   const db = drizzle(sqlite, { schema });
-  sqlite.exec(`
-    CREATE TABLE sandbox_pool (id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE opensandbox_server (id TEXT PRIMARY KEY, pool_id TEXT NOT NULL REFERENCES sandbox_pool(id), name TEXT NOT NULL, transport_mode TEXT NOT NULL DEFAULT 'direct', base_url TEXT NOT NULL, route_host TEXT UNIQUE, workspace_root TEXT NOT NULL, api_key_ciphertext TEXT NOT NULL, max_sandboxes INTEGER NOT NULL, status TEXT NOT NULL, health_status TEXT NOT NULL, last_health_at INTEGER, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE sandbox_binding (sandbox_id TEXT PRIMARY KEY, pool_id TEXT NOT NULL REFERENCES sandbox_pool(id), server_id TEXT NOT NULL REFERENCES opensandbox_server(id), created_at INTEGER NOT NULL);
-  `);
+  migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
   poolService = new PoolService(db);
   serverService = new ServerService(db, createSecretBox(new Uint8Array(32)));
   bindings = new BindingRepository(db);
@@ -184,6 +181,40 @@ describe("OpenSandbox 管理服务内存状态", () => {
     expect(() => serverService.update("server-1", { max_sandboxes: 0 })).toThrow(
       "max_sandboxes cannot be below current bindings",
     );
+  });
+
+  // 旧接口允许空闲节点设为零容量，并继续维护该节点而不恢复分配。
+  test("保留数量节点零容量的更新和查询行为", () => {
+    createPool();
+    createServer();
+
+    expect(serverService.update("server-1", { max_sandboxes: 0 })).toMatchObject({ maxSandboxes: 0 });
+    expect(serverService.update("server-1", { name: "Drained" })).toMatchObject({
+      name: "Drained",
+      maxSandboxes: 0,
+    });
+    expect(poolService.findById("pool-1")).toMatchObject({ capacitySandboxes: 0, availableSandboxes: 0 });
+  });
+
+  // 数量容量不可包含小数，拒绝后不得污染现有可调度额度。
+  test("拒绝将数量节点容量更新为非整数", () => {
+    createPool();
+    createServer();
+
+    for (const capacity of [0.5, 1.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => serverService.update("server-1", { max_sandboxes: capacity })).toThrow();
+      expect(serverService.findById("server-1")?.maxSandboxes).toBe(2);
+    }
+  });
+
+  // 创建必须提供正整数，零容量仅允许已有空闲节点更新。
+  test("数量节点创建拒绝零容量及非整数", () => {
+    createPool();
+
+    for (const capacity of [0, -1, 0.5, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => createServer("invalid", "pool-1", { max_sandboxes: capacity })).toThrow();
+      expect(serverService.findById("invalid")).toBeUndefined();
+    }
   });
 
   // 列表按池过滤，避免控制面混入其他池的服务器。

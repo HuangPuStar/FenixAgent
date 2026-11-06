@@ -15,6 +15,13 @@
       "when": 1786963074558,
       "tag": "0001_server_tunnel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793845816710,
+      "tag": "0002_resource-leases",
+      "breakpoints": true
     }
   ]
 }

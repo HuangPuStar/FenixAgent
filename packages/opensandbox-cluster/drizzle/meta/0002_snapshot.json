@@ -1,0 +1,718 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "79122194-2518-41c8-81f0-f3326bdfcf19",
+  "prevId": "53a5b1d4-631f-47ad-891b-d19123f8330f",
+  "tables": {
+    "opensandbox_server": {
+      "name": "opensandbox_server",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pool_id": {
+          "name": "pool_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transport_mode": {
+          "name": "transport_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'direct'"
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "route_host": {
+          "name": "route_host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "workspace_root": {
+          "name": "workspace_root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_key_ciphertext": {
+          "name": "api_key_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_sandboxes": {
+          "name": "max_sandboxes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cpu_capacity": {
+          "name": "cpu_capacity",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "memory_capacity_mb": {
+          "name": "memory_capacity_mb",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disk_capacity_gb": {
+          "name": "disk_capacity_gb",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "gpu_capacity": {
+          "name": "gpu_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "health_status": {
+          "name": "health_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unknown'"
+        },
+        "last_health_at": {
+          "name": "last_health_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "opensandbox_server_route_host_unique": {
+          "name": "opensandbox_server_route_host_unique",
+          "columns": [
+            "route_host"
+          ],
+          "isUnique": true
+        },
+        "idx_opensandbox_server_pool_id": {
+          "name": "idx_opensandbox_server_pool_id",
+          "columns": [
+            "pool_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "opensandbox_server_pool_id_sandbox_pool_id_fk": {
+          "name": "opensandbox_server_pool_id_sandbox_pool_id_fk",
+          "tableFrom": "opensandbox_server",
+          "tableTo": "sandbox_pool",
+          "columnsFrom": [
+            "pool_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "opensandbox_server_capacity_check": {
+          "name": "opensandbox_server_capacity_check",
+          "value": "max_sandboxes IS NOT NULL OR (cpu_capacity IS NOT NULL AND cpu_capacity > 0 AND memory_capacity_mb IS NOT NULL AND memory_capacity_mb > 0 AND disk_capacity_gb IS NOT NULL AND disk_capacity_gb > 0 AND gpu_capacity IS NOT NULL AND gpu_capacity >= 0 AND typeof(gpu_capacity) = 'integer')"
+        }
+      }
+    },
+    "opensandbox_server_credential": {
+      "name": "opensandbox_server_credential",
+      "columns": {
+        "server_id": {
+          "name": "server_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_ciphertext": {
+          "name": "token_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_prefix": {
+          "name": "token_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rotated_at": {
+          "name": "rotated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "opensandbox_server_credential_server_id_opensandbox_server_id_fk": {
+          "name": "opensandbox_server_credential_server_id_opensandbox_server_id_fk",
+          "tableFrom": "opensandbox_server_credential",
+          "tableTo": "opensandbox_server",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "opensandbox_server_credential_status_check": {
+          "name": "opensandbox_server_credential_status_check",
+          "value": "(status IN ('active', 'revoked'))"
+        }
+      }
+    },
+    "opensandbox_tunnel_connection": {
+      "name": "opensandbox_tunnel_connection",
+      "columns": {
+        "server_id": {
+          "name": "server_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "frp_run_id": {
+          "name": "frp_run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connected_at": {
+          "name": "connected_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disconnected_at": {
+          "name": "disconnected_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "health_status": {
+          "name": "health_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_health_at": {
+          "name": "last_health_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "opensandbox_tunnel_connection_server_id_opensandbox_server_id_fk": {
+          "name": "opensandbox_tunnel_connection_server_id_opensandbox_server_id_fk",
+          "tableFrom": "opensandbox_tunnel_connection",
+          "tableTo": "opensandbox_server",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "opensandbox_tunnel_connection_status_check": {
+          "name": "opensandbox_tunnel_connection_status_check",
+          "value": "(status IN ('connecting', 'connected', 'disconnected'))"
+        },
+        "opensandbox_tunnel_connection_health_check": {
+          "name": "opensandbox_tunnel_connection_health_check",
+          "value": "(health_status IN ('unknown', 'healthy', 'unhealthy'))"
+        }
+      }
+    },
+    "sandbox_binding": {
+      "name": "sandbox_binding",
+      "columns": {
+        "sandbox_id": {
+          "name": "sandbox_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "allocation_mode": {
+          "name": "allocation_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'count'"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "cpu": {
+          "name": "cpu",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "memory_mb": {
+          "name": "memory_mb",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disk_gb": {
+          "name": "disk_gb",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "gpu_count": {
+          "name": "gpu_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempt_id": {
+          "name": "attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_sandbox_id": {
+          "name": "provider_sandbox_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_seconds": {
+          "name": "lease_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "release_reason": {
+          "name": "release_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "retry_count": {
+          "name": "retry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_retry_at": {
+          "name": "next_retry_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "pool_id": {
+          "name": "pool_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_id": {
+          "name": "server_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sandbox_binding_attempt_id_unique": {
+          "name": "sandbox_binding_attempt_id_unique",
+          "columns": [
+            "attempt_id"
+          ],
+          "isUnique": true
+        },
+        "idx_sandbox_binding_remote_id": {
+          "name": "idx_sandbox_binding_remote_id",
+          "columns": [
+            "server_id",
+            "provider_sandbox_id"
+          ],
+          "isUnique": true
+        },
+        "idx_sandbox_binding_reconcile": {
+          "name": "idx_sandbox_binding_reconcile",
+          "columns": [
+            "allocation_mode",
+            "state",
+            "next_retry_at"
+          ],
+          "isUnique": false
+        },
+        "idx_sandbox_binding_expiry": {
+          "name": "idx_sandbox_binding_expiry",
+          "columns": [
+            "allocation_mode",
+            "expires_at"
+          ],
+          "isUnique": false
+        },
+        "idx_sandbox_binding_pool_id": {
+          "name": "idx_sandbox_binding_pool_id",
+          "columns": [
+            "pool_id"
+          ],
+          "isUnique": false
+        },
+        "idx_sandbox_binding_server_id": {
+          "name": "idx_sandbox_binding_server_id",
+          "columns": [
+            "server_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sandbox_binding_pool_id_sandbox_pool_id_fk": {
+          "name": "sandbox_binding_pool_id_sandbox_pool_id_fk",
+          "tableFrom": "sandbox_binding",
+          "tableTo": "sandbox_pool",
+          "columnsFrom": [
+            "pool_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "sandbox_binding_server_id_opensandbox_server_id_fk": {
+          "name": "sandbox_binding_server_id_opensandbox_server_id_fk",
+          "tableFrom": "sandbox_binding",
+          "tableTo": "opensandbox_server",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sandbox_binding_state_check": {
+          "name": "sandbox_binding_state_check",
+          "value": "state IN ('creating','active','uncertain','releasing','released','expired','failed')"
+        },
+        "sandbox_binding_mode_check": {
+          "name": "sandbox_binding_mode_check",
+          "value": "allocation_mode IN ('count','resources')"
+        },
+        "sandbox_binding_resource_check": {
+          "name": "sandbox_binding_resource_check",
+          "value": "allocation_mode = 'count' OR (cpu IS NOT NULL AND cpu > 0 AND memory_mb IS NOT NULL AND memory_mb > 0 AND disk_gb IS NOT NULL AND disk_gb > 0 AND gpu_count IS NOT NULL AND gpu_count >= 0 AND typeof(gpu_count) = 'integer' AND attempt_id IS NOT NULL AND request_hash IS NOT NULL AND expires_at IS NOT NULL AND lease_seconds IS NOT NULL AND lease_seconds >= 60)"
+        }
+      }
+    },
+    "sandbox_pool": {
+      "name": "sandbox_pool",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scheduling_mode": {
+          "name": "scheduling_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'count'"
+        },
+        "default_lease_seconds": {
+          "name": "default_lease_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "max_lease_seconds": {
+          "name": "max_lease_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sandbox_pool_mode_check": {
+          "name": "sandbox_pool_mode_check",
+          "value": "scheduling_mode IN ('count','resources')"
+        },
+        "sandbox_pool_lease_check": {
+          "name": "sandbox_pool_lease_check",
+          "value": "scheduling_mode = 'count' OR (default_lease_seconds IS NOT NULL AND max_lease_seconds IS NOT NULL AND default_lease_seconds >= 60 AND max_lease_seconds >= default_lease_seconds)"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

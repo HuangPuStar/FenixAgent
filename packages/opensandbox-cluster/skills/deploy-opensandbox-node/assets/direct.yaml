@@ -1,0 +1,5 @@
+services:
+  opensandbox-server:
+    ports:
+      - "8090:8080"
+      - "10000-10100:10000-10100"

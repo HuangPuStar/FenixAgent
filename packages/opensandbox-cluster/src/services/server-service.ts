@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import type { ClusterDatabase } from "../db/client";
 import { BindingRepository } from "../repositories/binding-repository";
 import { PoolRepository } from "../repositories/pool-repository";
@@ -5,6 +6,10 @@ import { ServerRepository } from "../repositories/server-repository";
 import { TunnelConnectionRepository } from "../repositories/tunnel-connection-repository";
 import type { SecretBox } from "../security/secret-box";
 import { ConflictError } from "./pool-service";
+import { resourceFits } from "./resource-accounting";
+import { allocated, reservations } from "./resource-allocation";
+
+const logger = createLogger("cluster.servers");
 
 export interface ServerMutation {
   id?: string;
@@ -14,6 +19,10 @@ export interface ServerMutation {
   workspace_root?: string;
   api_key?: string;
   max_sandboxes?: number;
+  cpu_capacity?: number;
+  memory_capacity_mb?: number;
+  disk_capacity_gb?: number;
+  gpu_capacity?: number;
   status?: string;
   transport_mode?: "direct" | "tunnel";
   route_host?: string;
@@ -26,7 +35,7 @@ export class ServerService {
   private readonly tunnelConnections: TunnelConnectionRepository;
 
   constructor(
-    db: ClusterDatabase,
+    private readonly db: ClusterDatabase,
     private readonly secretBox: SecretBox,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
@@ -47,16 +56,10 @@ export class ServerService {
   }
 
   create(
-    input: Required<
-      Pick<ServerMutation, "id" | "pool_id" | "name" | "workspace_root" | "api_key" | "max_sandboxes">
-    > & {
-      base_url?: string;
-      transport_mode?: "direct" | "tunnel";
-      route_host?: string;
-      status?: string;
-    },
+    input: ServerMutation & { id: string; pool_id: string; name: string; workspace_root: string; api_key: string },
   ) {
     if (!this.pools.findById(input.pool_id)) throw new Error("pool not found");
+    const capacity = this.capacity(input, input.pool_id);
     const now = Date.now();
     const transportMode = input.transport_mode ?? "direct";
     if (transportMode === "direct" && !input.base_url) throw new Error("base_url is required for direct transport");
@@ -70,7 +73,7 @@ export class ServerService {
       routeHost: input.route_host ?? null,
       workspaceRoot: normalizeWorkspaceRoot(input.workspace_root),
       apiKeyCiphertext: this.secretBox.encryptApiKey(input.api_key),
-      maxSandboxes: input.max_sandboxes,
+      ...capacity,
       status: input.status ?? "active",
       healthStatus: "unknown",
       createdAt: now,
@@ -95,14 +98,15 @@ export class ServerService {
     if (input.transport_mode === "direct" && !(input.base_url ?? current.baseUrl)) {
       throw new Error("base_url is required for direct transport");
     }
+    const capacity = this.capacity(input, input.pool_id ?? current.poolId, current);
     const row = this.servers.update(id, {
+      ...capacity,
       ...(input.pool_id ? { poolId: input.pool_id } : {}),
       ...(input.name ? { name: input.name } : {}),
       ...(input.base_url !== undefined ? { baseUrl: input.base_url } : {}),
       ...(input.transport_mode ? { transportMode: input.transport_mode } : {}),
       ...(input.workspace_root ? { workspaceRoot: normalizeWorkspaceRoot(input.workspace_root) } : {}),
       ...(input.api_key ? { apiKeyCiphertext: this.secretBox.encryptApiKey(input.api_key) } : {}),
-      ...(input.max_sandboxes !== undefined ? { maxSandboxes: input.max_sandboxes } : {}),
       ...(input.status ? { status: input.status } : {}),
       updatedAt: Date.now(),
     });
@@ -124,13 +128,19 @@ export class ServerService {
   }
 
   delete(id: string) {
-    if (this.bindings.countByServer(id) > 0) throw new ConflictError("server has active sandbox bindings");
+    if (this.bindings.hasServerReferences(id)) throw new ConflictError("server has active sandbox bindings");
     return this.servers.delete(id);
   }
 
   getCredentials(id: string) {
     const row = this.servers.findById(id);
-    return row ? { ...row, apiKey: this.secretBox.decryptApiKey(row.apiKeyCiphertext) } : undefined;
+    return row
+      ? {
+          ...row,
+          schedulingMode: this.pools.findById(row.poolId)?.schedulingMode,
+          apiKey: this.secretBox.decryptApiKey(row.apiKeyCiphertext),
+        }
+      : undefined;
   }
 
   async healthCheck(id: string) {
@@ -143,6 +153,7 @@ export class ServerService {
       if (!row.baseUrl) return this.findById(id);
       const response = await this.fetchImpl(new URL("/health", row.baseUrl), { signal: AbortSignal.timeout(3000) });
       const healthy = response.ok;
+      if (!healthy) logger.error("direct node health check failed", { serverId: id, status: response.status });
       this.servers.update(id, {
         healthStatus: healthy ? "healthy" : "unhealthy",
         lastHealthAt: Date.now(),
@@ -150,6 +161,7 @@ export class ServerService {
         updatedAt: Date.now(),
       });
     } catch (error) {
+      logger.error("direct node health check failed", { serverId: id, error });
       this.servers.update(id, {
         healthStatus: "unhealthy",
         lastHealthAt: Date.now(),
@@ -158,6 +170,56 @@ export class ServerService {
       });
     }
     return this.findById(id);
+  }
+
+  private capacity(
+    input: ServerMutation,
+    poolId: string,
+    current?: NonNullable<ReturnType<ServerRepository["findById"]>>,
+  ) {
+    const pool = this.pools.findById(poolId);
+    if (!pool) throw new Error("pool not found");
+    if (pool.schedulingMode === "count") {
+      const max = input.max_sandboxes ?? current?.maxSandboxes;
+      // 旧更新接口允许空闲节点缩容到 0；仅首次注册要求正整数。
+      if (max === null || max === undefined || !Number.isInteger(max) || max < (current ? 0 : 1))
+        throw new Error(`max_sandboxes must be a ${current ? "non-negative" : "positive"} integer`);
+      return { maxSandboxes: max, cpuCapacity: null, memoryCapacityMb: null, diskCapacityGb: null, gpuCapacity: null };
+    }
+    const values = {
+      cpuCapacity: input.cpu_capacity ?? current?.cpuCapacity,
+      memoryCapacityMb: input.memory_capacity_mb ?? current?.memoryCapacityMb,
+      diskCapacityGb: input.disk_capacity_gb ?? current?.diskCapacityGb,
+      gpuCapacity: input.gpu_capacity ?? current?.gpuCapacity,
+    };
+    for (const [key, value] of Object.entries(values))
+      if (
+        typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        value < (key === "gpuCapacity" ? 0 : Number.MIN_VALUE) ||
+        (key === "gpuCapacity" && !Number.isInteger(value))
+      )
+        throw new Error("invalid " + key);
+    if (
+      current &&
+      !resourceFits(
+        {
+          cpu: values.cpuCapacity!,
+          memoryMb: values.memoryCapacityMb!,
+          diskGb: values.diskCapacityGb!,
+          gpuCount: values.gpuCapacity!,
+        },
+        reservations(this.db, current.id),
+      )
+    )
+      throw new ConflictError("capacity cannot be below current reservations");
+    return { maxSandboxes: null, ...values } as {
+      maxSandboxes: null;
+      cpuCapacity: number;
+      memoryCapacityMb: number;
+      diskCapacityGb: number;
+      gpuCapacity: number;
+    };
   }
 
   private publicRow(row: NonNullable<ReturnType<ServerRepository["findById"]>>) {
@@ -173,6 +235,7 @@ export class ServerService {
           }
         : {}),
       currentSandboxes: this.bindings.countByServer(row.id),
+      allocatedResources: row.maxSandboxes === null ? allocated(this.db, row.id) : null,
     };
   }
 }
