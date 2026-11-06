@@ -15,6 +15,7 @@ export async function nativeCreateError(response: Pick<Response, "status" | "jso
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
   }
+  const dockerRejected = dockerCreateRejected(code, message);
   for (const secret of secrets) if (secret) message = message.replaceAll(secret, "[redacted]");
   // Node errors can include authenticated registry URLs or credential-bearing command arguments.
   message = Array.from(message.replace(/https?:\/\/\S+/g, "[node URL]"), (character) =>
@@ -26,6 +27,17 @@ export async function nativeCreateError(response: Pick<Response, "status" | "jso
     message,
     rejected:
       (response.status >= 400 && response.status < 500 && ![408, 499].includes(response.status)) ||
-      code === "DOCKER::SANDBOX_IMAGE_PULL_FAILED",
+      code === "DOCKER::SANDBOX_IMAGE_PULL_FAILED" ||
+      dockerRejected,
   };
+}
+
+/** A Docker create rejection precedes container creation; start/transport failures may leave one running. */
+function dockerCreateRejected(code: string, message: string): boolean {
+  if (code !== "DOCKER::SANDBOX_START_FAILED") return false;
+  // OpenSandbox wraps Docker API validation failures in HTTP 500 with this shared start-failure code.
+  const rejection = message.match(
+    /^Failed to create or start container: (4\d{2}) Client Error for (?:https?|http\+docker|http\+unix):\/\/[^/\s]+\/(?:v\d+(?:\.\d+)?\/)?containers\/create(?:\?[^\s]*)?: /,
+  );
+  return rejection !== null && !["408", "499"].includes(rejection[1]!);
 }
