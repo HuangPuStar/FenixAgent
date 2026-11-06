@@ -1,3 +1,4 @@
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { agentRuntimeError } from "./relay-errors";
 import type { RelayEventHandlerDependencies } from "./relay-event-dependencies";
 
@@ -31,6 +32,15 @@ import { failPendingUserInputRequests } from "./user-input-pending";
 import { ensureUserInputQueueSnapshot } from "./user-input-queue-action";
 import { readUserInputQueueCapability } from "./user-input-queue-wire";
 
+/**
+ * Agent 子进程死亡后，窗口内允许的自动恢复次数。
+ * acp-link 只在收到新的 connect 帧时重启子进程，因此必须由客户端重连触发；
+ * 超过次数仍死亡说明重启无法收敛（配置损坏/持续崩溃），继续重连只会无限循环。
+ */
+const AGENT_RECOVERY_MAX_ATTEMPTS = 1;
+/** 自动恢复计数窗口：窗口内重复死亡视为重启无法收敛。 */
+const AGENT_RECOVERY_WINDOW_MS = 60_000;
+
 /** 共享 relay 唯一的入站消息消费者。 */
 export class RelayEventHandler {
   /**
@@ -54,6 +64,13 @@ export class RelayEventHandler {
    * 保留的实时 Doc 将永久泄漏。
    */
   private readonly instanceSessions = new Map<string, Set<string>>();
+
+  /**
+   * rcsSessionId → 窗口内 agent 自动恢复次数。
+   * 跨 relay handle 存活：客户端按 1011 重连后共享 relay 可能被重建，计数必须留在
+   * 处理器上才能拦住「重启后立刻再死」的无限重连。就绪 status 与实时资源回收时清空。
+   */
+  private readonly agentRecoveryAttempts = new Map<string, { count: number; startedAt: number }>();
 
   private readonly projection: RelayProjection;
   private readonly responses: RelayRpcResponse;
@@ -260,6 +277,58 @@ export class RelayEventHandler {
     }
   }
 
+  /**
+   * Agent 子进程死亡后的自愈入口。
+   *
+   * acp-link 在子进程退出后只广播 status connected:false，不关闭 relay，也不主动重启；
+   * 只有收到新的 connect 帧才会 startAgent（`acp-link/src/server.ts` 的 handleConnect）。
+   * 因此这里按窗口限次以 1011 关闭客户端：客户端自动重连 → gateway 重新获取 relay 并
+   * 发送 connect → acp-link 重启子进程 → 就绪 status 到达后计数清零。
+   *
+   * 窗口内再次死亡说明重启无法收敛（配置损坏/持续崩溃）：下发
+   * INSTANCE_START_FAILED 并以 4502 终态关闭，停止自动重连，避免无限重连放大故障。
+   */
+  private scheduleAgentRecovery(shared: SharedRelay): void {
+    const now = Date.now();
+    const previous = this.agentRecoveryAttempts.get(shared.rcsSessionId);
+    const withinWindow = previous != null && now - previous.startedAt <= AGENT_RECOVERY_WINDOW_MS;
+    const count = withinWindow ? previous.count + 1 : 1;
+    this.agentRecoveryAttempts.set(shared.rcsSessionId, {
+      count,
+      startedAt: withinWindow ? previous.startedAt : now,
+    });
+
+    const { registry } = this.dependencies;
+    if (count <= AGENT_RECOVERY_MAX_ATTEMPTS) {
+      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+        try {
+          entry.ws.close(1011, "agent restarting");
+        } catch {
+          /* ignore */
+        }
+      });
+      return;
+    }
+
+    const publicError = agentRuntimeError(
+      "CONTROL_PLANE.INSTANCE_START_FAILED",
+      "relay.agent_recovery_exhausted",
+      this.dependencies.log,
+    );
+    registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+      try {
+        this.dependencies.broadcaster.sendToYjsWs(entry.ws, { type: "error", payload: publicError });
+      } catch {
+        /* ignore */
+      }
+      try {
+        entry.ws.close(WEBSOCKET_CODES.SPAWN_REJECTED.code, "agent unavailable");
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
   /** 迟到旧 relay 不得作废已经由后继实例接管的会话确认。 */
   private isCurrentRelay(shared: SharedRelay): boolean {
     const current = this.dependencies.registry.getShared(shared.instanceId, shared.userId, shared.rcsSessionId);
@@ -344,6 +413,7 @@ export class RelayEventHandler {
    */
   private async disposeRealtimeResources(rcsSessionId: string, eligible: () => boolean): Promise<void> {
     if (!eligible()) return;
+    this.agentRecoveryAttempts.delete(rcsSessionId);
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${rcsSessionId}`);
       this.dependencies.broadcaster.unregisterYjsDocListener(`session:${rcsSessionId}`);
@@ -394,6 +464,11 @@ export class RelayEventHandler {
         update: {},
         content: null,
       });
+      // 在途会话/steer 请求随进程死亡一起收敛，避免前端停在"发送中"等超时。
+      failPendingSessionMutations(shared);
+      failPendingUserInputRequests(shared);
+      // 子进程已死但 relay 仍存活：必须由客户端重连触发新的 connect 才能重启 agent。
+      this.scheduleAgentRecovery(shared);
     }
     // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
     // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
@@ -410,6 +485,8 @@ export class RelayEventHandler {
     // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
     // 初始化完成后的就绪 status 再同步。
     if (hasCapabilities) {
+      // 新进程已就绪：恢复计数清零，允许后续再次自愈。
+      this.agentRecoveryAttempts.delete(shared.rcsSessionId);
       // 待发送队列能力协商：peri 把 initialize 的 clientCapabilities._meta 原样回显到
       // agentCapabilities._meta（acp-link 已声明 `peri.userInputQueue`）。协商成功才补拉
       // 一次快照（读操作）并把投影 enabled 置真；未协商保持 false，读取侧回退旧路径
