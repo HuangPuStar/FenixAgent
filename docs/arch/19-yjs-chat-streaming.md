@@ -733,11 +733,11 @@ interface ClientAction<TType extends string, TPayload> {
 }
 ```
 
-服务端在已认证连接上发送 `yjs:command-epoch`；前端收到后才分配 `commandId = <epoch>.<UUID>`，同一未确认意图跨断线和重连保持完整 ID。代次轮换仅影响新意图；客户端不得给旧 ID 补新前缀。epoch 只承担遗忘后的防重放围栏，不替代认证、授权或 RCS 归属校验。普通 Action 不能回退到裸 UUID；该内部协议随前后端同版本部署，旧页面需刷新完成新握手。前端 Action 携带完整 `commandId` 与业务参数。`send_prompt.sessionId` 必须是用户提交时看到的 ACP 会话，执行前与当前已确认绑定严格比较：缺失、未确认或已切换均返回 `ACTION.VERSION_CONFLICT`，在用户消息、turn 与 relay 发送之前拒绝。外层队列必须保留原字段；入队时采样到的新 generation 不能替代客户端原目标。校验通过后，真正的 relay 路由字段仍由服务端确认绑定注入。`protocolVersion` / `client` 由服务端补充；`expectedProjectionVersion` 为可选前置条件。
+服务端在已认证连接上发送 `yjs:command-epoch`；前端收到后才分配 `commandId = <epoch>.<UUID>`，同一未确认副作用意图跨断线和重连保持完整 ID。代次轮换仅影响新意图；客户端不得给旧 ID 补新前缀。epoch 只承担遗忘后的防重放围栏，不替代认证、授权或 RCS 归属校验。普通 Action 不能回退到裸 UUID；该内部协议随前后端同版本部署，旧页面需刷新完成新握手。前端 Action 携带完整 `commandId` 与业务参数。`send_prompt.sessionId` 必须是用户提交时看到的 ACP 会话，执行前与当前已确认绑定严格比较：缺失、未确认或已切换均返回 `ACTION.VERSION_CONFLICT`，在用户消息、turn 与 relay 发送之前拒绝。外层队列必须保留原字段；入队时采样到的新 generation 不能替代客户端原目标。校验通过后，真正的 relay 路由字段仍由服务端确认绑定注入。`protocolVersion` / `client` 由服务端补充；`expectedProjectionVersion` 为可选前置条件。
 
 浏览器在收到确定成功回执前保留原始文本、图片与附件引用。确定拒绝后展示保留消息，用户明确选择“发送到当前会话”才建立新意图；共享投影切换不会自动改投。已交接 socket 后断线、回执丢失或 `ACTION.OUTCOME_UNKNOWN` 均显示未知结果，保留原幂等键且不提供盲目重发按钮；核对会话后由用户处理。
 
-前端命令连接的 `connected` 表示当前 socket 已打开且已收到有效命令代次；物理 open 至代次到达期间保持 `connecting`，禁止业务发送。Yjs state-vector 握手独立进行，命令就绪也不代表历史同步已完成。会话自动引导仅在命令就绪后恢复；load/resume 未成功写入 socket 不得标记已进入，自动创建只在获得本次创建回执后标记成功，在途请求须去重。断线重连须等待新 socket 的代次，旧连接迟到帧不能推进新连接状态。
+前端命令连接的 `connected` 表示当前 socket 已打开且已收到有效命令代次；物理 open 至代次到达期间保持 `connecting`，禁止业务发送。Yjs state-vector 握手独立进行，命令就绪也不代表历史同步已完成。会话自动引导仅在命令就绪后恢复；load/resume 未成功写入 socket 不得标记已进入，自动创建只在获得本次创建回执后标记成功，在途请求须去重。load/resume 的缓存命令身份只在本次动作连接内复用，断线后以新完整 ID 协调新绑定，避免旧命令的 duplicate 回执代替实际恢复；是否需要 Agent RPC 仍由运行连续性与投影凭据判定，在途旧执行器仍须先退场。prompt/create 等副作用动作的未知身份跨连接保留，不自动改写 ID。断线重连须等待新 socket 的代次，旧连接迟到帧不能推进新连接状态。
 
 ```ts
 interface ActionAck {
@@ -770,7 +770,7 @@ interface ActionError {
 
 1. 活动准入与历史结果独立：活动表只保留排队、验证和仍在执行的命令，最多 256 个 RCS 频道、每频道 512 条，cancel 各额外预留 2 个槽位。执行器退场即归还活动额度，断线未知历史不占活动名额。
 2. 已提交、已接纳后失败及退场未知结果保存在独立历史中，最多 16,384 条，每条从结算起保留最多 10 分钟，其他命令不续期。窗口内重发返回原结果或 `ACTION.OUTCOME_UNKNOWN`，不调用 Agent。容量压力可提前回收一批历史。
-3. 删除本代已接纳记录前必须先轮换服务端随机 epoch。到期主动维护并向已认证连接发布新代次；发送失败关闭该连接以重新握手。被回收 ID 的旧前缀永久不再被当前进程接受，进程重启也生成新代次。拒绝旧身份只证明不能安全重放，不证明外部执行已结束。
+3. 结果到期主动回收时，将本代已接纳命令的 `(rcsSessionId, commandId)` 留在独立身份集合中；该集合最多 16,384 项，不按 TTL 删除，命中返回 `ACTION.OUTCOME_UNKNOWN`。普通到期不轮换 epoch，避免客户端已分配的新意图被无关流量误拒。历史容量达到上限或身份集合无法容纳下一项时，必须先轮换服务端随机 epoch，才能释放旧代证据；向已认证连接发布新代次，发送失败关闭该连接以重新握手。被回收 ID 的旧前缀永久不再被当前进程接受，进程重启也生成新代次。容量换代和重启边界仍可能拒绝旧代新意图，客户端不得通过改写 ID 自动重放。拒绝旧身份只证明不能安全重放，不证明外部执行已结束。
 4. 精确去重查询、历史维护、代次核验和新占位在同一个同步段完成。旧代仍在执行的精确记录继续返回原接受状态或未知结果，最终结算不能覆盖其他记录。未接纳的验证失败可释放占位；已接纳失败保留结果墓碑。
 5. 用户显式放弃保留草稿时结束该次意图，之后手动输入相同内容使用新完整 ID；未放弃的未知意图保持原 ID。新代次不触发自动重放。
 
@@ -881,7 +881,7 @@ stateDiagram-v2
 1. 同一 `rcsSessionId` 的命令按有界队列严格串行执行（`channel/command-coordinator.ts`，队列上限默认 64，超出返回 `RATE_LIMITED`）；`eventSeq` 事件日志未实现（Q5），串行性由进程内队列保证。
 2. 默认每个会话仅允许一个活动 turn；若未来支持并行 turn，必须先引入独立 branch/thread 聚合，不能直接放宽约束。
 3. 租约不实现（Q5 评审决策）：进程内单写由队列串行 + `commandId` 去重保证；`leaseEpoch` 类型占位，为多节点部署预留。
-4. `commandId` 的历史结果在有界窗口内返回原 Ack；结果回收前先轮换命令代次，旧完整 ID 不能因遗忘而重新执行。
+4. `commandId` 的历史结果在有界窗口内返回原 Ack；结果到期后保留精确身份，容量淘汰先轮换命令代次，旧完整 ID 不能因遗忘而重新执行。
 5. Permission resolution 使用 compare-and-set：仅 `pending` 可迁移一次（`state/permission.ts` `applyPermissionResolution`），重复或过期回答返回幂等结果；迁移成功后才向 Agent 发 `permission.resolve`。
 6. 标题更新、已读状态等非 Agent 操作可独立排队，但仍通过服务端领域命令写入；不能借 YJS client update 绕过授权。
 

@@ -283,15 +283,25 @@ function ChatPanelView({
               }}
               t={tUi}
               className={INLINE_ERROR_CARD_CLASS}
+              dismissible
             />
           )}
-        {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
-        {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
+        {classifiedError && (
+          <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} dismissible />
+        )}
+        {actionError && (
+          <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} dismissible />
+        )}
         {promptRecoveryNotice}
         {sessionState.agentPublicError &&
           sessionState.agentPublicError.id !== classifiedError?.id &&
           sessionState.agentPublicError.id !== actionError?.error.id && (
-            <PublicErrorCard error={sessionState.agentPublicError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />
+            <PublicErrorCard
+              error={sessionState.agentPublicError}
+              t={tUi}
+              className={INLINE_ERROR_CARD_CLASS}
+              dismissible
+            />
           )}
         {historyRecovery && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-4">
