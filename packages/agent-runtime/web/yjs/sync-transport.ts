@@ -44,10 +44,17 @@ const SYNC_TERMINAL_CLOSE_CODES: ReadonlySet<number> = new Set([1002, 1003, 1008
 /**
  * 可重试 ERROR 的最大连续重连次数。
  *
- * 有界是必须的：容量/准入拒绝恢复后重连能成功，但持续拒绝时无限退避只会把用户永久留在「正在恢复」；
+ * 额度按一条连接尝试链累计，MANIFEST/基线成功都不清零：服务端可能在基线之后、SUBSCRIBE/ACK
+ * 阶段持续拒绝，按握手成功清零会让「MANIFEST → ERROR → 重连」无限循环。
  * 耗尽后交给旧通道兜底，由历史完整性门禁决定输入是否可用。
  */
 export const MAX_RETRYABLE_ERROR_RECONNECTS = 3;
+
+/**
+ * 基线应用后连续无 retryable 错误达到该时长，才恢复重试额度。
+ * 只有用户手动重建 sync session（新实例）会无条件清零。
+ */
+export const RETRYABLE_RECOVERY_STABLE_MS = 30_000;
 
 const SYNC_ERROR_CODE_SET: ReadonlySet<string> = new Set(SYNC_ERROR_CODES);
 
@@ -79,6 +86,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       return () => clearTimeout(handle);
     });
   const yieldToHost = options.yieldToHost ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  const now = options.now ?? Date.now;
   const socketFactory = options.socketFactory ?? createBrowserSyncSocket;
   const contentDocIds = [...new Set(options.contentDocIds ?? [])];
   const url =
@@ -99,6 +107,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   let expectedGeneration: string | null = options.generation ?? null;
   let reconnectAttempt = 0;
   let retryableErrorAttempts = 0;
+  /** 基线最近一次真实应用的时刻；任何 retryable 错误或新连接开始都会清空。 */
+  let stableSince: number | null = null;
   let reconnectCancel: (() => void) | null = null;
   let connecting = false;
   let fatal = false;
@@ -121,8 +131,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   }
   const hydration = createSyncHydrationTracker({
     onHydratingChange: (hydrating) => setState({ hydrating }),
-    // 只有真实结算才置 baselineApplied：超时结束 hydrating 不代表历史已可信。
-    onComplete: () => setState({ baselineApplied: true }),
+    // 只有真实结算才置 baselineApplied；超时结束 hydrating 不代表历史已可信。
+    onComplete: () => {
+      setState({ baselineApplied: true });
+      stableSince = now();
+    },
     timeoutMs: options.syncBaseTimeoutMs,
   });
   function sendBytes(bytes: Uint8Array): boolean {
@@ -213,6 +226,14 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       retryable: failure.retryable ?? (isSyncErrorCode(code) && isRetryableSyncErrorCode(code)),
       source: failure.source ?? "local",
     };
+    if (error.retryable) {
+      // 只有「基线已应用且此后连续 RETRYABLE_RECOVERY_STABLE_MS 无 retryable 错误」才恢复额度；
+      // MANIFEST 或单次基线成功都不能清零，否则握手后的持续拒绝会无限重连。
+      if (stableSince !== null && now() - stableSince >= RETRYABLE_RECOVERY_STABLE_MS) {
+        retryableErrorAttempts = 0;
+      }
+      stableSince = null;
+    }
     if (error.retryable && retryableErrorAttempts < MAX_RETRYABLE_ERROR_RECONNECTS) {
       retryableErrorAttempts += 1;
       console.warn("[sync-chat] retryable failure, reconnecting", {
@@ -378,6 +399,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       recoveryState: input.type === "MANIFEST" ? input.recoveryState : null,
     };
     projectionHub.reset(input.generation);
+    // 新一代基线同样要重新证明稳定期：旧 gen 的 stableSince 不得替本轮错误恢复额度。
+    stableSince = null;
     // 首批 DOC_BASE（入口 Doc + 窗口内内容块）落地前不提交半成品；更早块不进入首批等待。
     hydration.begin(entryDocIds);
 
@@ -396,7 +419,6 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       return;
     }
     reconnectAttempt = 0;
-    retryableErrorAttempts = 0;
     setState({
       status: "ready",
       error: null,
@@ -518,6 +540,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     // 连接级 runtime/store 不跨连接：重连必须 stateless HELLO，不能复用上一代 generation（1008）。
     manifest = null;
     expectedGeneration = options.generation ?? null;
+    // 新连接必须重新证明基线；上一连接的稳定期不能替本轮错误恢复额度。
+    stableSince = null;
     projectionHub.dispose();
     projectionHub = createProjectionHub();
     projectionHub.reset(expectedGeneration);
@@ -549,7 +573,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       connecting = false;
       transport = createSyncClientTransport({
         send: sendBytes,
-        now: options.now ?? Date.now,
+        now,
         yieldToHost,
         onControl: handleControl,
         onFatal: (code, detail, info) =>

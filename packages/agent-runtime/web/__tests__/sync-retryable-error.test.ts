@@ -5,7 +5,11 @@ import { encodeSyncFrame, SYNC_PROTOCOL_VERSION, type SyncFrame } from "@fenix/c
 import * as Y from "yjs";
 import type { SyncChatProjection } from "../yjs/sync-doc-hub";
 import type { SyncChatConnectionState, SyncChatSessionOptions } from "../yjs/sync-transport";
-import { createSyncChatSession, MAX_RETRYABLE_ERROR_RECONNECTS } from "../yjs/sync-transport";
+import {
+  createSyncChatSession,
+  MAX_RETRYABLE_ERROR_RECONNECTS,
+  RETRYABLE_RECOVERY_STABLE_MS,
+} from "../yjs/sync-transport";
 import type { SyncBrowserSocket } from "../yjs/yjs-ws";
 
 const GEN = "gen_retryable01";
@@ -130,12 +134,35 @@ function visibleText(projection: SyncChatProjection | undefined): string {
     .join("");
 }
 
+const ENTRY_DOC_IDS = [
+  `sync/control/${GEN}/0/control`,
+  `sync/runtime/${GEN}/0/runtime`,
+  `sync/directory/${GEN}/0/root`,
+];
+/** 首批基线包含入口 Doc 与调试后备内容块（applyDirectory 会把它加回等待集合）。 */
+const BASELINE_DOC_IDS = [...ENTRY_DOC_IDS, CONTENT_DOC];
+
+/** 完成一次真实基线：MANIFEST + 首批 DOC_BASE + drain 产生的 processed ACK。 */
+async function applyBaseline(
+  harness: ReturnType<typeof createHarness>,
+  socket: RetrySocket,
+  cycle: number,
+): Promise<void> {
+  socket.receive(manifest());
+  BASELINE_DOC_IDS.forEach((docId, index) => {
+    socket.receive(docBase(docId, `base-${cycle}`, `dlv_${cycle}_${index}`));
+  });
+  await flush();
+  expect(harness.states.at(-1)?.baselineApplied).toBe(true);
+}
+
 function createHarness(overrides: Partial<SyncChatSessionOptions> = {}) {
   RetrySocket.instances = [];
   const states: SyncChatConnectionState[] = [];
   const projections: SyncChatProjection[] = [];
   const scheduled: Array<() => void> = [];
   const delays: number[] = [];
+  let nowMs = 0;
   const session = createSyncChatSession({
     agentId: "env_1",
     instanceUid: "inst_1",
@@ -144,6 +171,7 @@ function createHarness(overrides: Partial<SyncChatSessionOptions> = {}) {
     contentDocIds: [CONTENT_DOC],
     url: URL_UNDER_TEST,
     socketFactory: (url) => new RetrySocket(url),
+    now: () => nowMs,
     yieldToHost: async () => {},
     autoReconnect: true,
     schedule: (task, delayMs) => {
@@ -161,7 +189,17 @@ function createHarness(overrides: Partial<SyncChatSessionOptions> = {}) {
     if (current === undefined) throw new Error("fake socket was not created");
     return current;
   };
-  return { session, states, projections, scheduled, delays, socket };
+  return {
+    session,
+    states,
+    projections,
+    scheduled,
+    delays,
+    socket,
+    advance: (ms: number) => {
+      nowMs += ms;
+    },
+  };
 }
 
 describe("同步会话可重试 ERROR", () => {
@@ -232,6 +270,61 @@ describe("同步会话可重试 ERROR", () => {
       });
       expect(harness.scheduled).toHaveLength(0);
       expect(RetrySocket.instances).toHaveLength(MAX_RETRYABLE_ERROR_RECONNECTS + 1);
+    } finally {
+      harness.session.dispose();
+    }
+  });
+
+  // MANIFEST 与基线成功都不能清零额度：服务端在握手后持续拒绝时必须停在有界终点。
+  test("MANIFEST 成功后持续 retryable ERROR 仍在累计额度内终止", async () => {
+    const harness = createHarness();
+    try {
+      let current = harness.socket();
+      current.open();
+      for (let attempt = 0; attempt <= MAX_RETRYABLE_ERROR_RECONNECTS; attempt += 1) {
+        if (attempt > 0) {
+          current = harness.socket();
+          current.open();
+        }
+        await applyBaseline(harness, current, attempt);
+        current.receive(errorFrame(true, "ADMISSION_REJECTED"));
+        if (attempt < MAX_RETRYABLE_ERROR_RECONNECTS) {
+          expect(harness.states.at(-1)?.status).toBe("reconnecting");
+          harness.scheduled.shift()?.();
+        }
+      }
+      expect(harness.states.at(-1)).toMatchObject({
+        status: "error",
+        error: { code: "ADMISSION_REJECTED", retryable: true, source: "error-frame" },
+      });
+      expect(harness.scheduled).toHaveLength(0);
+      expect(RetrySocket.instances).toHaveLength(MAX_RETRYABLE_ERROR_RECONNECTS + 1);
+    } finally {
+      harness.session.dispose();
+    }
+  });
+
+  // 基线应用后稳定满窗口才恢复额度：健康连接不应因为一次瞬态错误直接进入终态。
+  test("基线应用后稳定满窗口再恢复重试额度", async () => {
+    const harness = createHarness();
+    try {
+      let current = harness.socket();
+      current.open();
+      for (let attempt = 0; attempt < MAX_RETRYABLE_ERROR_RECONNECTS - 1; attempt += 1) {
+        await applyBaseline(harness, current, attempt);
+        current.receive(errorFrame(true, "ADMISSION_REJECTED"));
+        expect(harness.states.at(-1)?.status).toBe("reconnecting");
+        harness.scheduled.shift()?.();
+        current = harness.socket();
+        current.open();
+      }
+      await applyBaseline(harness, current, MAX_RETRYABLE_ERROR_RECONNECTS - 1);
+      harness.advance(RETRYABLE_RECOVERY_STABLE_MS);
+      current.receive(errorFrame(true, "ADMISSION_REJECTED"));
+      // 稳定窗口已满：本次错误重新从第一次退避开始，而不是带着旧额度进入终态。
+      expect(harness.states.at(-1)?.status).toBe("reconnecting");
+      expect(harness.scheduled).toHaveLength(1);
+      expect(harness.delays.at(-1)).toBe(1000);
     } finally {
       harness.session.dispose();
     }
