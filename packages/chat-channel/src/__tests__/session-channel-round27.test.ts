@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SessionChannel } from "../channel/session-channel";
 import type { ActionError } from "../channel/types";
-import { getSessionInfo } from "../state/chat-writer";
+import { getEntriesMap, getSessionInfo } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { committed, createHarness, submit } from "./session-channel-round27-test-helpers";
 
@@ -19,12 +19,17 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(committed(harness)?.turnId).toBeDefined();
   });
 
-  // send_prompt 的空内容仍转发协议请求，但不创建用户 turn。
-  test("send_prompt 空内容不创建 turn", async () => {
+  // send_prompt 的空内容仍转发协议请求，并建立可写 turn 与唯一用户条目（P0-09）。
+  test("send_prompt 空内容建立 turn 与唯一用户条目", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "send_prompt", commandId: "prompt-empty", content: [] });
     expect(harness.sent[0]).toMatchObject({ method: "session/prompt" });
-    expect(committed(harness)?.turnId).toBeUndefined();
+    const turnId = committed(harness)?.turnId;
+    expect(turnId).toBeDefined();
+    expect(Array.from(getEntriesMap(harness.manager.getChatYdoc("rcs-1")!).keys()).sort()).toEqual([
+      `${turnId}:assistant`,
+      `${turnId}:user`,
+    ]);
   });
 
   // cancel 必须转成精确的 session/cancel RPC。

@@ -281,17 +281,19 @@ const PERI_USER_INPUT_EVENT_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 把 peri MessageContent（untagged union：纯字符串 | ContentBlock[]）归一化为可展示文本。
+ * 消息内容（ACP ContentBlock[] / Peri MessageContent / 单个块）→ 可展示片段。
  * - 纯文本消息直接是字符串（peri 侧无包裹），原样返回；
- * - 块数组只取文本块；图片块（{ type: "image", source: { type: "base64", media_type, data } }）
- *   只留占位标记——base64 数据既不进 Y.Doc（首帧同步体积）也不回显前端；
- * - 未知块类型忽略（只展示可展示的内容，不猜语义）。
+ * - 文本块原样保留；图片块只留占位标记——base64 数据既不进 Y.Doc（首帧同步体积）
+ *   也不回显前端；未知块忽略（只展示可展示的内容，不猜语义）。
+ *
+ * 片段粒度也是回显去重的依据：引擎按内容块回显文本，含图片占位的整条展示文本
+ * 不会等于任何单个回显块。
  */
-function extractUserInputText(raw: unknown): string {
-  if (typeof raw === "string") return raw;
-  if (!Array.isArray(raw)) return "";
+export function summarizeContentParts(raw: unknown): string[] {
+  if (typeof raw === "string") return raw.length > 0 ? [raw] : [];
+  const blocks = Array.isArray(raw) ? raw : [raw];
   const parts: string[] = [];
-  for (const block of raw) {
+  for (const block of blocks) {
     if (typeof block === "string") {
       if (block.length > 0) parts.push(block);
       continue;
@@ -305,7 +307,12 @@ function extractUserInputText(raw: unknown): string {
     const text = readString(record, "text");
     if (text) parts.push(text);
   }
-  return parts.join("\n");
+  return parts;
+}
+
+/** 内容展示文本：与摘要片段同口径按 "\n" 拼接（send_prompt 用户条目与队列项共用）。 */
+export function summarizeContentDisplayText(raw: unknown): string {
+  return summarizeContentParts(raw).join("\n");
 }
 
 /** 队列项状态归一化：未知取值收敛为 unknown（前向兼容，状态机由 peri 权威） */
@@ -323,7 +330,7 @@ function normalizeUserInputItem(raw: unknown): UserInputQueueItemProjection | nu
   if (!inputId) return null;
   return {
     inputId,
-    content: truncateUtf8Safe(extractUserInputText(readVariant(record, "content")), USER_INPUT_CONTENT_MAX),
+    content: truncateUtf8Safe(summarizeContentDisplayText(readVariant(record, "content")), USER_INPUT_CONTENT_MAX),
     originalDraft: truncateUtf8Safe(
       readVariantString(record, "original_draft", "originalDraft") ?? "",
       USER_INPUT_DRAFT_MAX,
@@ -396,7 +403,7 @@ function normalizePeriUserInputEvent(
   const rawContent = readVariant(data, "content");
   // content 必须是字符串或块数组（peri MessageContent 的两种形态），其余视为协议违规
   if (!inputId || (typeof rawContent !== "string" && !Array.isArray(rawContent))) return null;
-  const text = truncateUtf8Safe(extractUserInputText(rawContent), USER_INPUT_CONTENT_MAX);
+  const text = truncateUtf8Safe(summarizeContentDisplayText(rawContent), USER_INPUT_CONTENT_MAX);
   return {
     type: "user_input_delivered",
     update: {},
