@@ -454,10 +454,11 @@ bindCoreRuntimePort({
 bindMachineRegistryPort({
   registerMachine: (input) => registryRegistry.get("registerMachine")(input),
   disconnectMachine: (machineId, reason) => registryRegistry.get("disconnectMachine")(machineId, reason),
-  handleHeartbeat: (machineId) => registryHeartbeatRegistry.get("handleHeartbeat")(machineId),
-  startHeartbeat: (machineId, intervalMs, onTimeout) =>
-    registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout),
-  stopHeartbeat: (machineId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId),
+  handleHeartbeat: (machineId, connectionId) =>
+    registryHeartbeatRegistry.get("handleHeartbeat")(machineId, connectionId),
+  startHeartbeat: (machineId, intervalMs, onTimeout, connectionId) =>
+    registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout, connectionId),
+  stopHeartbeat: (machineId, connectionId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId, connectionId),
   // 只读投影绑**真实实现**：它读的 DB 就是本文件换过的替身（`getMachineDatabase()` 与
   // `getAgentConfigDatabase()` 同源于 platform-sdk 的 `getDatabase()`），因此行为与迁移前「调用方自己
   // select」一致，没有需要替身化的进程状态。

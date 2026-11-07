@@ -1,7 +1,7 @@
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { machine, registryEvent } from "@fenix/resource-machine/db";
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getMachineAgentConfigPort } from "../agent-config-port";
 import { getMachineDatabase } from "../db";
 import { getMachineLifecyclePort } from "../machine-lifecycle-port";
@@ -337,11 +337,18 @@ export async function disconnectMachine(machineId: string, reason: string): Prom
     });
 }
 
-export async function markHeartbeatTimeout(machineId: string): Promise<void> {
-  await getMachineDatabase()
-    .update(machine)
-    .set({ status: "offline", updatedAt: new Date() })
-    .where(eq(machine.id, machineId));
+/**
+ * 标记机器心跳超时离线。
+ *
+ * `staleBefore` 是本次超时判定对应的截止时刻：只有该时刻之前持久化的心跳算过期，
+ * 慢落库期间写入的新心跳必须优先，旧 timer 回调不得把它覆盖成离线。
+ */
+export async function markHeartbeatTimeout(machineId: string, staleBefore?: Date): Promise<void> {
+  const where = staleBefore
+    ? and(eq(machine.id, machineId), or(isNull(machine.lastHeartbeatAt), lt(machine.lastHeartbeatAt, staleBefore)))
+    : eq(machine.id, machineId);
+
+  await getMachineDatabase().update(machine).set({ status: "offline", updatedAt: new Date() }).where(where);
 
   await getMachineDatabase()
     .insert(registryEvent)
@@ -354,9 +361,10 @@ export async function markHeartbeatTimeout(machineId: string): Promise<void> {
 }
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
+  // 心跳成功落库即证明机器在线：若旧 timeout 的条件写入抢先落成 offline，这里负责纠回。
   await getMachineDatabase()
     .update(machine)
-    .set({ lastHeartbeatAt: new Date(), updatedAt: new Date() })
+    .set({ status: "online", lastHeartbeatAt: new Date(), updatedAt: new Date() })
     .where(eq(machine.id, machineId));
 }
 

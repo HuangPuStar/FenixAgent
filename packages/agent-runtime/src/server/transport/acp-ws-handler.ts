@@ -51,6 +51,10 @@ export function recordAcpInstanceActivity(instanceId: string, message: Record<st
 const pendingMachineRegistrations = new Set<string>();
 const MACHINE_CONNECTION_CONFLICT_REASON = "machine_already_connected";
 
+/** Machine 心跳间隔；超时判定取 3 个周期，注册 timer 与断连前复核共用同一阈值。 */
+const MACHINE_HEARTBEAT_INTERVAL_MS = 30_000;
+const MACHINE_HEARTBEAT_TIMEOUT_MS = MACHINE_HEARTBEAT_INTERVAL_MS * 3;
+
 /**
  * 服务端 keep_alive 数据帧间隔（ms）。
  *
@@ -282,14 +286,18 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
     // 启动心跳超时检测：远程服务直接关闭时 TCP 不会发 FIN，
     // 依赖心跳超时触发完整断连清理（包括关闭前端 relay WS）
-    const HEARTBEAT_INTERVAL_MS = 30000;
     logger.info(
-      `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${HEARTBEAT_INTERVAL_MS}ms timeout=${HEARTBEAT_INTERVAL_MS * 3}ms`,
+      `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${MACHINE_HEARTBEAT_INTERVAL_MS}ms timeout=${MACHINE_HEARTBEAT_TIMEOUT_MS}ms`,
     );
-    getMachineRegistryPort().startHeartbeat(result.id, HEARTBEAT_INTERVAL_MS, () => {
-      logger.info(`[MACHINE-HEARTBEAT] Timeout triggered for machineId=${result.id}`);
-      triggerMachineDisconnect(wsId, result.id, "heartbeat timeout");
-    });
+    getMachineRegistryPort().startHeartbeat(
+      result.id,
+      MACHINE_HEARTBEAT_INTERVAL_MS,
+      () => {
+        logger.info(`[MACHINE-HEARTBEAT] Timeout triggered for machineId=${result.id}`);
+        triggerMachineDisconnect(wsId, result.id, "heartbeat timeout");
+      },
+      wsId,
+    );
   } catch (err) {
     logError("Machine register error:", err);
     sendToWs(entry.ws, { type: "error", message: "Machine registration failed" });
@@ -354,14 +362,17 @@ export async function handleAcpWsMessage(
 
     if (msg.type === "heartbeat") {
       if (entry.isMachine && entry.machineId && entry.cleanSlateConfirmed) {
+        entry.lastHeartbeatAt = Date.now();
+        // 网络存活刷新必须先于装配副作用：handleHeartbeat 内部同步推进 deadline，
+        // 落库失败或激活抛错都不能把刚收到的心跳当作失联。
+        getMachineRegistryPort()
+          .handleHeartbeat(entry.machineId, entry.wsId)
+          .catch((err) => {
+            logError("Heartbeat handling error:", err);
+          });
         try {
           // clean-slate 已确认但激活曾部分失败时，heartbeat 是同一在线连接的幂等自愈点。
           activateRemoteMachine(entry);
-          getMachineRegistryPort()
-            .handleHeartbeat(entry.machineId)
-            .catch((err) => {
-              logError("Heartbeat handling error:", err);
-            });
         } catch (err) {
           logError("Remote machine activation error:", err);
         }
@@ -551,7 +562,7 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
   }
   handleMachineDisconnect(entry, reason).catch(() => {});
   getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
-  getMachineRegistryPort().stopHeartbeat(machineId);
+  getMachineRegistryPort().stopHeartbeat(machineId, entry.wsId);
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
   import("../../services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();
@@ -572,6 +583,18 @@ function triggerMachineDisconnect(wsId: string, machineId: string, reason: strin
   if (!entry) {
     // entry 已被删除（例如 WS 已正常关闭），直接按 machineId 做清理
     triggerMachineCleanupByMachineId(machineId, reason);
+    return;
+  }
+
+  // 超时回调可能晚于同一连接的新心跳或新连接接管：只有确实静默超过阈值的当前连接才允许被断开。
+  const lastHeartbeatAt = entry.lastHeartbeatAt ?? entry.openTime;
+  if (entry.machineId !== machineId || Date.now() - lastHeartbeatAt < MACHINE_HEARTBEAT_TIMEOUT_MS) {
+    logger.info(`[MACHINE-HEARTBEAT] Ignored stale timeout for wsId=${wsId} machineId=${machineId}`);
+    return;
+  }
+  const activeConn = findMachineConnectionById(machineId);
+  if (activeConn && activeConn.wsId !== wsId) {
+    logger.info(`[MACHINE-HEARTBEAT] Ignored timeout for replaced connection: wsId=${wsId} current=${activeConn.wsId}`);
     return;
   }
 

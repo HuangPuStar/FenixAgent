@@ -6,9 +6,9 @@ export interface MachineRegistryPort {
     machineId: string;
   }): Promise<{ id: string; isNew: boolean }>;
   disconnectMachine(machineId: string, reason: string): Promise<void>;
-  handleHeartbeat(machineId: string): Promise<void>;
-  startHeartbeat(machineId: string, intervalMs: number, onTimeout: () => void): void;
-  stopHeartbeat(machineId: string): void;
+  handleHeartbeat(machineId: string, connectionId?: string): Promise<void>;
+  startHeartbeat(machineId: string, intervalMs: number, onTimeout: () => void, connectionId?: string): void;
+  stopHeartbeat(machineId: string, connectionId?: string): void;
   /**
    * 按 machine id 批量取 **agent 名**投影（environment 的 `machineName` 用它）；空入参返回空 Map。
    *
