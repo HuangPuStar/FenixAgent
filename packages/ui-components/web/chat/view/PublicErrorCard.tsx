@@ -1,5 +1,8 @@
 import type { TFunction } from "i18next";
+import { X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
+import { Button } from "../../ui/button";
 import { type PublicErrorTextSource, publicErrorText } from "./public-error-text";
 
 export interface PublicErrorCardProps {
@@ -7,6 +10,8 @@ export interface PublicErrorCardProps {
   error: PublicErrorTextSource & { id: string };
   /** 容器附加类：调用方给外边距等上下文间距，组件本身不带外边距。 */
   className?: string;
+  /** 顶部临时提示可手动关闭，且五秒后自动隐藏；历史消息默认保留。 */
+  dismissible?: boolean;
   /**
    * 调用方注入的取词函数。标题键 `chat.components.messageBubble.turnError` 归本包命名空间，
    * 但绑定哪本字典由调用方决定（宿主消费方 `ChatPanel` 读的是 `NS.UI_COMPONENTS`，
@@ -27,7 +32,16 @@ export interface PublicErrorCardProps {
  * 正文一律由 `type` 决定（`publicErrorText`），不读 `error.message`：后者是 wire/日志字段且恒为
  * 英文，直接上屏会让中文界面永远显示英文。
  */
-export function PublicErrorCard({ error, className, t }: PublicErrorCardProps) {
+export function PublicErrorCard({ error, className, t, dismissible = false }: PublicErrorCardProps) {
+  const [dismissedErrorId, setDismissedErrorId] = useState<string | null>(null);
+  const dismissed = dismissedErrorId === error.id;
+  useEffect(() => {
+    if (!dismissible || dismissed) return;
+    const timer = setTimeout(() => setDismissedErrorId(error.id), 5_000);
+    return () => clearTimeout(timer);
+  }, [dismissible, dismissed, error.id]);
+
+  if (dismissible && dismissed) return null;
   return (
     <div
       className={cn(
@@ -36,7 +50,21 @@ export function PublicErrorCard({ error, className, t }: PublicErrorCardProps) {
       )}
       role="alert"
     >
-      <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
+        {dismissible && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            aria-label={t("chat.components.messageBubble.dismissError")}
+            onClick={() => setDismissedErrorId(error.id)}
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
+      </div>
       <p className="mt-1 whitespace-pre-wrap">{publicErrorText(t, error)}</p>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <span className="break-all">Type: {error.type}</span>

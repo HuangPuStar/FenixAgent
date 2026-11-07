@@ -225,6 +225,7 @@
         "addToConversation": "Add to conversation",
         "copy": "Copy",
         "copyFailed": "Copy failed",
+        "dismissError": "Dismiss error",
         "expand": "Expand",
         "imagePreview": "Image preview",
         "openSystemMessage": "Double-click to view system reminder details",
