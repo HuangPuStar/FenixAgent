@@ -258,7 +258,7 @@ describe("local create 的换代归属", () => {
     unmount();
   }, 30_000);
 
-  // commandId 分配失败（代次未就绪）也属于未确认 create：撤销归属，后续远端 load 首帧必须 loading。
+  // 代次未就绪的 create 必须撤销归属，握手就绪后的远端 load 首帧仍应等待回放。
   test("commandId 分配失败的 create 不消费后续远端 load", async () => {
     const { latest, socket, unmount } = connect(false);
     act(() => replaceProjection("complete"));
@@ -273,6 +273,12 @@ describe("local create 的换代归属", () => {
       false,
     );
 
+    expect(latest.current?.connectionState).toBe("connecting");
+    act(() => socket.receiveFromServer({ type: "yjs:command-epoch", epoch: "11111111-1111-4111-8111-111111111111" }));
+    expect(latest.current?.connectionState).toBe("connected");
+    await act(async () => {
+      await Bun.sleep(300);
+    });
     act(() => replaceProjection(null));
     expect(latest.current?.sessionState.loading).not.toBeNull();
     await act(async () => {

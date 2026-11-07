@@ -32,7 +32,7 @@ export function useChatPanelActions({
   showActionError,
 }: Options) {
   const { t } = useTranslation(AGENT_CHAT_NS);
-  const commandIds = useRef(new Map<string, string>());
+  const commandIds = useRef(new Map<string, { id: string; connectionScoped: boolean }>());
   const pendingCreates = useRef(new Map<string, (id: string | null) => void>());
   const pendingPrompts = useRef(new Map<string, PreservedPrompt>());
   const [preservedPrompts, setPreservedPrompts] = useState<PreservedPrompt[]>([]);
@@ -45,7 +45,7 @@ export function useChatPanelActions({
     return JSON.stringify(intent);
   }, []);
   const releaseCommandId = useCallback((id: string) => {
-    for (const [key, value] of commandIds.current) if (value === id) commandIds.current.delete(key);
+    for (const [key, value] of commandIds.current) if (value.id === id) commandIds.current.delete(key);
   }, []);
   const settleCreate = useCallback((id: string, result: string | null): boolean => {
     const settle = pendingCreates.current.get(id);
@@ -88,6 +88,11 @@ export function useChatPanelActions({
     [releaseCommandId, failCreate, showActionError, preserve],
   );
   const handleConnectionLost = useCallback(() => {
+    // load/resume 用于确认本次连接的绑定；旧结果去重不能替代新连接的恢复。
+    // prompt/create 等副作用意图仍保留原 ID，不能随连接结束而重新执行。
+    for (const [key, identity] of commandIds.current) {
+      if (identity.connectionScoped) commandIds.current.delete(key);
+    }
     for (const prompt of pendingPrompts.current.values()) preserve({ ...prompt, outcomeUnknown: true });
     pendingPrompts.current.clear();
     // 断线后 create 回执不会到达：撤销归属，避免重连后的远端 load 被误认成新建。
@@ -104,9 +109,14 @@ export function useChatPanelActions({
     (data: Record<string, unknown>): boolean => {
       const key = commandKey(data);
       const explicitId = typeof data.commandId === "string" ? data.commandId : null;
-      const id = explicitId ?? commandIds.current.get(key) ?? allocateCommandId();
+      const id = explicitId ?? commandIds.current.get(key)?.id ?? allocateCommandId();
       if (id === null) return false;
-      if (!explicitId) commandIds.current.set(key, id);
+      if (!explicitId) {
+        commandIds.current.set(key, {
+          id,
+          connectionScoped: data.action === "load_session" || data.action === "resume_session",
+        });
+      }
       if (data.action === "send_prompt" && Array.isArray(data.content)) {
         pendingPrompts.current.set(id, {
           commandId: id,

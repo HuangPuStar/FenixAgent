@@ -34,6 +34,7 @@ const STABLE_CONNECTION_MS = 30_000;
  */
 export const SEND_BACKPRESSURE_THRESHOLD_BYTES = 64 * 1024;
 
+/** connected 表示当前 socket 已收到有效命令代次，可以发送操作；物理 open 仍属 connecting。 */
 export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
 
 export type YjsWsError = PublicError;
@@ -87,11 +88,12 @@ export interface YjsWsClient {
   connect(): void;
   disconnect(): void;
   /**
-   * 发送一帧。返回**是否真正写入 socket**：未连接或触发发送背压（见
+   * 发送一帧。返回**是否真正写入 socket**：命令握手未就绪、未连接或触发发送背压（见
    * `SEND_BACKPRESSURE_THRESHOLD_BYTES`）时为 `false`——调用方据此重试或给出反馈，
    * 不得把 `false` 当成已送达（静默丢弃是「消息无声消失」的根因）。
    */
   send(data: unknown): boolean;
+  /** 当前 socket 已打开且命令握手就绪，与 connected 状态口径一致。 */
   isConnected(): boolean;
   /** 当前 socket 收到的命令代次；握手前及断连后不能分配新命令身份。 */
   getCommandEpoch(): string | null;
@@ -212,6 +214,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
     commandEpoch = null;
+    connectedAt = null;
     setState("connecting");
     const socket = new WebSocket(url);
     // yjs:update 二进制帧要求以 ArrayBuffer 形态到达（浏览器默认 blob 需异步解包），
@@ -221,8 +224,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onopen = () => {
       if (destroyed || ws !== socket) return;
-      connectedAt = Date.now();
-      setState("connected");
+      // 同步握手不依赖命令代次；业务操作须等 command-epoch 到达后再放行。
       for (const vector of getYjsStateVectors?.() ?? []) {
         socket.send(
           toWebSocketBuffer(encodeYjsStateVectorFrame(vector.docName, vector.generation, vector.stateVector)),
@@ -273,7 +275,12 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
             /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(msg.epoch) &&
             msg.epoch !== commandEpoch
           ) {
+            const firstEpoch = commandEpoch === null;
             commandEpoch = msg.epoch;
+            if (firstEpoch) {
+              connectedAt = Date.now();
+              setState("connected");
+            }
             options.onCommandEpoch?.(commandEpoch);
           }
           return;
@@ -378,8 +385,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   }
 
   function send(data: unknown): boolean {
-    if (ws?.readyState !== WebSocket.OPEN) {
-      console.warn("[yjs-ws] send FAILED: readyState=", ws?.readyState);
+    if (!isConnected() || !ws) {
+      console.warn("[yjs-ws] send FAILED: command channel is not ready");
       return false;
     }
     // 前端发送背压（前端规范 §8.6）：原先只判 readyState，排队的帧在连接死掉后不会重放，
@@ -395,7 +402,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   }
 
   function isConnected() {
-    return ws?.readyState === WebSocket.OPEN;
+    return ws?.readyState === WebSocket.OPEN && commandEpoch !== null;
   }
 
   return { connect, disconnect, send, isConnected, getCommandEpoch: () => commandEpoch };
