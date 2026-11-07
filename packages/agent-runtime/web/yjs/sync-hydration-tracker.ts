@@ -14,6 +14,11 @@ export const SYNC_BASE_TIMEOUT_MS = 5_000;
 
 export interface SyncHydrationTrackerOptions {
   readonly onHydratingChange: (hydrating: boolean) => void;
+  /**
+   * 全部等待文档都由 DOC_BASE + processed APPLY_ACK 真正结算时回调一次。
+   * 超时只解除展示层 hydrating，不触发本回调：发送门禁不能把“等不到基线”当成已应用。
+   */
+  readonly onComplete?: () => void;
   readonly timeoutMs?: number;
 }
 
@@ -65,12 +70,13 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
     deliveryDoc = new Map();
   }
 
-  function finish(): void {
+  function finish(complete: boolean): void {
     cancelTimer();
     pendingDocs.clear();
     clearDeliveries();
     done = true;
     setHydrating(false);
+    if (complete) options.onComplete?.();
   }
 
   function scheduleTimeout(): void {
@@ -78,7 +84,8 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
     timer = setTimeout(() => {
       timer = null;
       // 超时按「基线已尽力送达」处理：展示层还有 maxWait 兜底，宁可显示已有内容。
-      finish();
+      // 但它不是应用成功，不能触发 onComplete（发送门禁继续等真实证据）。
+      finish(false);
     }, timeoutMs);
   }
 
@@ -89,7 +96,7 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
       pendingDelivery.delete(docId);
       deliveryDoc.delete(deliveryId);
     }
-    if (pendingDocs.size === 0) finish();
+    if (pendingDocs.size === 0) finish(true);
   }
 
   return {
@@ -99,7 +106,8 @@ export function createSyncHydrationTracker(options: SyncHydrationTrackerOptions)
       clearDeliveries();
       done = false;
       if (pendingDocs.size === 0) {
-        finish();
+        // 没有待等文档就没有“基线已应用”的证据，不触发 onComplete。
+        finish(false);
         return;
       }
       setHydrating(true);

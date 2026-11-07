@@ -25,6 +25,11 @@ export interface UseSyncChatStateOptions {
   readonly projectionVersion?: number;
   /** enter 确认运行态恢复后递增，让终止的同步连接重新握手。 */
   readonly connectionAttempt?: number;
+  /**
+   * 用户显式重试历史同步时递增：清除当前 scope 的 sync fallback 并新建一条同步连接。
+   * 与 `connectionAttempt` 分开是为了让「网络恢复」和「用户要求重建数据通道」各自可追踪。
+   */
+  readonly recoveryAttempt?: number;
   readonly contentDocIds?: readonly string[];
   readonly generation?: string;
   /** 测试注入；生产使用浏览器 WebSocket。 */
@@ -96,6 +101,7 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
     options.sessionKey,
     options.projectionVersion ?? null,
     options.connectionAttempt ?? 0,
+    options.recoveryAttempt ?? 0,
   ]);
   const [snapshot, setSnapshot] = useState({ scope, state: EMPTY_STATE });
   const fallbackScope = useRef<string | null>(null);
@@ -172,9 +178,14 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
           },
         }));
         if (legacyFallback) {
+          // retryable=true 说明可重试重连已耗尽（传输层只在耗尽后才上报 error），
+          // 把来源与判定写进诊断，避免线上把容量拒绝误判成协议不兼容。
           console.warn("[sync-chat] fallback to legacy", {
             code: connection.error?.code,
             reason: connection.error?.message,
+            retryable: connection.error?.retryable,
+            source: connection.error?.source,
+            fallbackReason: connection.error?.retryable === true ? "retry-exhausted" : "terminal",
           });
           fallbackScope.current = scope;
           active = false;

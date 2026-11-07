@@ -1,11 +1,16 @@
 // 默认启用的隔离 transport：二进制 JSON 握手，重连重建镜像，错误由 hook 判定回退。
 import {
   createSyncClientTransport,
+  isRetryableSyncErrorCode,
+  SYNC_ERROR_CODES,
   type SyncClientTransport,
   type SyncClientTransportOptions,
+  type SyncErrorCode,
 } from "@fenix/chat-channel/sync-client";
 import type {
   SyncChatConnectionState,
+  SyncChatError,
+  SyncChatErrorSource,
   SyncChatSession,
   SyncChatSessionOptions,
   SyncManifestSummary,
@@ -35,6 +40,20 @@ const DEFAULT_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 10000] as const;
 
 /** 新协议专属终态关闭码：服务端明确拒绝/无法承载该协议时不再重连（1006 等网络断开仍退避重试）。 */
 const SYNC_TERMINAL_CLOSE_CODES: ReadonlySet<number> = new Set([1002, 1003, 1008, 1009, 1011]);
+
+/**
+ * 可重试 ERROR 的最大连续重连次数。
+ *
+ * 有界是必须的：容量/准入拒绝恢复后重连能成功，但持续拒绝时无限退避只会把用户永久留在「正在恢复」；
+ * 耗尽后交给旧通道兜底，由历史完整性门禁决定输入是否可用。
+ */
+export const MAX_RETRYABLE_ERROR_RECONNECTS = 3;
+
+const SYNC_ERROR_CODE_SET: ReadonlySet<string> = new Set(SYNC_ERROR_CODES);
+
+function isSyncErrorCode(code: string): code is SyncErrorCode {
+  return SYNC_ERROR_CODE_SET.has(code);
+}
 
 export type {
   SyncChatConnectionState,
@@ -79,6 +98,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   let manifestHandled = false;
   let expectedGeneration: string | null = options.generation ?? null;
   let reconnectAttempt = 0;
+  let retryableErrorAttempts = 0;
   let reconnectCancel: (() => void) | null = null;
   let connecting = false;
   let fatal = false;
@@ -101,6 +121,8 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
   }
   const hydration = createSyncHydrationTracker({
     onHydratingChange: (hydrating) => setState({ hydrating }),
+    // 只有真实结算才置 baselineApplied：超时结束 hydrating 不代表历史已可信。
+    onComplete: () => setState({ baselineApplied: true }),
     timeoutMs: options.syncBaseTimeoutMs,
   });
   function sendBytes(bytes: Uint8Array): boolean {
@@ -160,23 +182,55 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     transport = null;
     manifestHandled = false;
   }
-  function fail(code: string, message: string): void {
-    if (disposed) return;
-    fatal = true;
-    setState({ status: "error", error: { code, message }, hydrating: false });
-    teardownTransport();
+  /** 关闭当前 socket 并摘掉回调：失败路径自行换代，迟到的 onclose 不得再驱动状态机。 */
+  function closeSocketForFailure(): void {
     const current = socket;
     socket = null;
-    if (current !== null) {
-      current.onopen = null;
-      current.onmessage = null;
-      current.onerror = null;
-      current.onclose = null;
-      try {
-        localClose = true;
-        current.close(1002, "sync protocol error");
-      } catch {}
+    connecting = false;
+    if (current === null) return;
+    current.onopen = null;
+    current.onmessage = null;
+    current.onerror = null;
+    current.onclose = null;
+    try {
+      localClose = true;
+      current.close(1002, "sync protocol error");
+    } catch {}
+    // 回调已摘除，本轮关闭不会再经过 handleClose；复位标记避免下一次真实关闭被误记为本地关闭。
+    localClose = false;
+  }
+
+  function fail(
+    code: string,
+    message: string,
+    failure: { readonly retryable?: boolean; readonly source?: SyncChatErrorSource } = {},
+  ): void {
+    if (disposed) return;
+    const error: SyncChatError = {
+      code,
+      message,
+      // 未显式给出时按协议错误表推导：容量/准入等瞬态码必须走重连，结构错误仍是终态。
+      retryable: failure.retryable ?? (isSyncErrorCode(code) && isRetryableSyncErrorCode(code)),
+      source: failure.source ?? "local",
+    };
+    if (error.retryable && retryableErrorAttempts < MAX_RETRYABLE_ERROR_RECONNECTS) {
+      retryableErrorAttempts += 1;
+      console.warn("[sync-chat] retryable failure, reconnecting", {
+        code: error.code,
+        source: error.source,
+        attempt: retryableErrorAttempts,
+        maxAttempts: MAX_RETRYABLE_ERROR_RECONNECTS,
+      });
+      teardownTransport();
+      closeSocketForFailure();
+      scheduleReconnect(error);
+      return;
     }
+    // 终态或重试耗尽：状态置 error 后由 hook 决定是否回退旧通道，诊断字段随状态上抛。
+    fatal = true;
+    setState({ status: "error", error, hydrating: false });
+    teardownTransport();
+    closeSocketForFailure();
   }
   const tapContentFrame = createSyncContentTap({
     retainedDocs,
@@ -342,6 +396,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       return;
     }
     reconnectAttempt = 0;
+    retryableErrorAttempts = 0;
     setState({
       status: "ready",
       error: null,
@@ -352,6 +407,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       hasLaterHistory: false,
       historyLoading: false,
       reconnectAttempt: 0,
+      baselineApplied: false,
     });
     // 调试后备内容块同样只订阅窗口内的最近块；目录到达后会再次按权威顺序裁决。
     if (debugContentDocIds.length > 0) contentSubscription?.applyDirectory(debugContentDocIds, true);
@@ -374,7 +430,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
         return;
       }
       case "ERROR":
-        fail(frame.code, frame.message ?? frame.code);
+        fail(frame.code, frame.message ?? frame.code, { retryable: frame.retryable, source: "error-frame" });
         return;
       default:
         return;
@@ -394,20 +450,30 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       fail("CAPACITY_EXCEEDED", "socket is saturated while sending HELLO");
     }
   }
-  function scheduleReconnect(): void {
+  function scheduleReconnect(error: SyncChatError | null = null): void {
     if (disposed || fatal) return;
     if (options.autoReconnect === false) {
-      setState({ status: "closed" });
+      setState({ status: "closed", error, hydrating: false });
       return;
     }
     const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)] ?? 10000;
     reconnectAttempt += 1;
-    setState({ status: "reconnecting", reconnectAttempt, hydrating: false });
+    setState({ status: "reconnecting", error, reconnectAttempt, hydrating: false });
     reconnectCancel = schedule(() => {
       reconnectCancel = null;
       connect();
     }, delay);
   }
+  function socketCloseError(input: {
+    readonly code: string;
+    readonly reason: string;
+    readonly wasClean: boolean;
+    readonly local: boolean;
+  }): SyncChatError {
+    // 关闭码是传输层终态判定，与 ERROR 帧的重试语义分开：这里一律不可重试。
+    return { ...formatSyncCloseError(input), retryable: false, source: "socket-close" };
+  }
+
   function handleClose(current: SyncBrowserSocket, code: number, reason: string, wasClean: boolean): void {
     if (socket !== current) return;
     socket = null;
@@ -425,7 +491,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     if (SYNC_TERMINAL_CLOSE_CODES.has(code)) {
       setState({
         status: "error",
-        error: formatSyncCloseError({ code: `WS_${code}`, reason, wasClean: clean, local }),
+        error: socketCloseError({ code: `WS_${code}`, reason, wasClean: clean, local }),
         hydrating: false,
       });
       return;
@@ -435,9 +501,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       setState({
         status: "closed",
         error:
-          outcome.uiCode === null
-            ? null
-            : formatSyncCloseError({ code: outcome.uiCode, reason, wasClean: clean, local }),
+          outcome.uiCode === null ? null : socketCloseError({ code: outcome.uiCode, reason, wasClean: clean, local }),
         hydrating: false,
       });
       return;
@@ -462,6 +526,7 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       error: null,
       reconnectAttempt,
       hydrating: false,
+      baselineApplied: false,
       manifest: null,
       generation: expectedGeneration,
     });
@@ -471,7 +536,10 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
       current = socketFactory(url);
     } catch (error) {
       connecting = false;
-      fail("SOCKET_CONNECT_FAILED", error instanceof Error ? error.message : "failed to create websocket");
+      // 建立失败通常是瞬态（浏览器调度、网络栈）；显式标为可重试，其余未识别码默认终态。
+      fail("SOCKET_CONNECT_FAILED", error instanceof Error ? error.message : "failed to create websocket", {
+        retryable: true,
+      });
       return;
     }
     socket = current;
@@ -484,7 +552,11 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
         now: options.now ?? Date.now,
         yieldToHost,
         onControl: handleControl,
-        onFatal: (code, detail) => fail(code, detail ?? code),
+        onFatal: (code, detail, info) =>
+          fail(code, detail ?? code, {
+            retryable: info?.retryable,
+            source: info?.source,
+          }),
       });
       setState({ status: "handshaking" });
       sendHello();
@@ -495,7 +567,10 @@ export function createSyncChatSession(options: SyncChatSessionOptions): SyncChat
     };
     current.onclose = (code, reason, wasClean) => handleClose(current, code, reason, wasClean);
     current.onerror = () => {
-      if (socket === current) setState({ error: { code: "SOCKET_ERROR", message: "websocket error" } });
+      if (socket === current)
+        setState({
+          error: { code: "SOCKET_ERROR", message: "websocket error", retryable: true, source: "socket-close" },
+        });
     };
   }
   /** 当前代次的内容块目录：优先权威目录 Doc，调试注入仅作后备。 */

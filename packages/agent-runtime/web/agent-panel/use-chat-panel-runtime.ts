@@ -125,16 +125,19 @@ export function useChatPanelRuntime({
   const replacementVersion = useDocHubReplacementVersion(docHubKey);
   const syncChatSearch = typeof window === "undefined" ? "" : window.location.search;
   const syncEnabled = readSyncChatSwitch(syncChatSearch);
+  const syncOrganizationId = readSyncChatOrganizationId();
   const syncChat = useSyncChatState({
     enabled: syncEnabled && authState === "ready",
     agentId,
     instanceUid: sessionId ?? null,
     rcsSessionId: rcsSessionKey ?? null,
-    organizationId: readSyncChatOrganizationId(),
+    organizationId: syncOrganizationId,
     sessionKey: syncSessionKey,
     // 投影换代（load/create）必须换同步连接：服务端按旧 Doc 代次隔离 store 与历史。
     projectionVersion: replacementVersion,
     connectionAttempt: reconnectAttempt,
+    // 历史重试必须同时重建失效的同步通道；只重连旧连接无法解除降级。
+    recoveryAttempt: historyRecoveryAttempt,
   });
   // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
   const mergeScope = `${docHubKey}:${replacementVersion}`;
@@ -164,10 +167,21 @@ export function useChatPanelRuntime({
   const syncTerminalError =
     syncChat.connection.status === "error" ||
     (syncChat.connection.status === "closed" && syncChat.connection.error !== null);
+  // 同步基线已由 DOC_BASE + processed APPLY_ACK 实际应用：socket 建立、握手成功或超时兜底都不算恢复。
+  const syncRecovered = syncChat.connection.status === "ready" && syncChat.connection.baselineApplied;
+  const syncActive =
+    syncEnabled &&
+    authState === "ready" &&
+    agentId !== null &&
+    sessionId != null &&
+    rcsSessionKey !== undefined &&
+    syncOrganizationId !== null;
   // 同步已失效且旧通道历史不完整：旧通道不是可信权威，继续发送会让新问答落在不可见投影里。
+  // 同步已启用但基线尚未落地时同样阻断，避免用户重试后只凭新 socket 建立就放开输入。
   const syncDegradedBlocked = shouldBlockPromptOnIncompleteLegacy({
     legacyFallback: syncChat.legacyFallback,
     historyIncomplete: historyRecovery !== null,
+    syncPending: syncActive && !syncRecovered,
   });
   // 换代（load/create）后旧通道才是这一代历史的权威：同步连接在新世代的空 Doc 上握手，
   // 回放又不进入同步 ingress，基线里没有可等的内容。继续让 blocked 等它只会把切换拖成 loading。
