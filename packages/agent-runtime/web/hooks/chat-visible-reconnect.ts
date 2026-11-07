@@ -13,6 +13,17 @@
 export type ChatWsConnectionState = "disconnected" | "connecting" | "connected" | "error";
 
 /**
+ * 页面恢复前台或网络恢复时，物理连接可能停在 connecting（socket 已 OPEN、命令握手未完成）。
+ * 这种连接不会触发 close，也不会自己重连，只能显式重建一次传输来探测链路。
+ *
+ * 只对 connecting 生效：connected 时重建会打断在途回复；disconnected/error 已有退避重连
+ * 与手动恢复入口，重复重建只会放大请求。探测不重发任何结果未知的动作。
+ */
+export function shouldProbeStuckConnectionOnResume(connectionState: ChatWsConnectionState): boolean {
+  return connectionState === "connecting";
+}
+
+/**
  * 判断缓存 ChatPanel 从后台切回前台时是否应自动触发一次 WS 重连。
  *
  * 后台期间实例可能被 idle/activity 回收（4001）或客户端 keepalive 超时（4501）
