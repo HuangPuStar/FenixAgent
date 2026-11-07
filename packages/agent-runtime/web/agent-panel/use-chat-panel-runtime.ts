@@ -339,7 +339,11 @@ export function useChatPanelRuntime({
       onConnectionState: (state: YjsWsState) => {
         if (disposed) return;
         transportState = state;
-        if (state === "connecting") connectionEpoch = beginConnection();
+        if (state === "connecting") {
+          // 主动重建会屏蔽旧 socket 回调，恢复身份仍须随每次新连接失效。
+          handleConnectionLost();
+          connectionEpoch = beginConnection();
+        }
         if (!ownsConnection(connectionEpoch)) return;
         if (state === "connecting") {
           setInitialSyncKey(null);
