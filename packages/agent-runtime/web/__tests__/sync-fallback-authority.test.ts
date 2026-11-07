@@ -8,7 +8,11 @@ import { shouldFallbackToLegacy } from "../hooks/use-sync-chat-state";
 import { INITIAL_SYNC_CHAT_STATE } from "../yjs/sync-chat-state";
 
 function errorState(code: string) {
-  return { ...INITIAL_SYNC_CHAT_STATE, status: "error" as const, error: { code, message: "failed" } };
+  return {
+    ...INITIAL_SYNC_CHAT_STATE,
+    status: "error" as const,
+    error: { code, message: "failed", retryable: false, source: "error-frame" as const },
+  };
 }
 
 describe("同步终态回退", () => {
@@ -42,5 +46,23 @@ describe("同步终态回退", () => {
     expect(shouldBlockPromptOnIncompleteLegacy({ legacyFallback: true, historyIncomplete: true })).toBe(true);
     expect(shouldBlockPromptOnIncompleteLegacy({ legacyFallback: true, historyIncomplete: false })).toBe(false);
     expect(shouldBlockPromptOnIncompleteLegacy({ legacyFallback: false, historyIncomplete: true })).toBe(false);
+  });
+
+  // 同步已启用但新基线未落地时，清掉 fallback 也不能放开输入：socket 建立不是恢复证明。
+  test("同步基线未落地时保持阻断", () => {
+    expect(
+      shouldBlockPromptOnIncompleteLegacy({
+        legacyFallback: false,
+        historyIncomplete: true,
+        syncPending: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockPromptOnIncompleteLegacy({
+        legacyFallback: false,
+        historyIncomplete: true,
+        syncPending: false,
+      }),
+    ).toBe(false);
   });
 });

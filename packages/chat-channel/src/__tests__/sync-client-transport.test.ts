@@ -115,6 +115,7 @@ interface Harness {
   readonly sent: SyncFrame[];
   readonly controls: SyncFrame[];
   readonly fatals: Array<{ code: string; detail?: string }>;
+  readonly fatalInfo: Array<{ retryable: boolean; source: string } | undefined>;
   /** 服务端侧：编码后喂给 `onFrame`（走真实解码路径）。 */
   receive(frame: SyncFrame): void;
   setSendOk(ok: boolean): void;
@@ -141,6 +142,7 @@ function createHarness(): Harness {
   const sent: SyncFrame[] = [];
   const controls: SyncFrame[] = [];
   const fatals: Array<{ code: string; detail?: string }> = [];
+  const fatalInfo: Array<{ retryable: boolean; source: string } | undefined> = [];
   let sendOk = true;
   const transport = createSyncClientTransport({
     send: (bytes) => {
@@ -153,13 +155,17 @@ function createHarness(): Harness {
     now: () => 1700000000000,
     yieldToHost: async () => {},
     onControl: (frame) => controls.push(frame),
-    onFatal: (code, detail) => fatals.push({ code, detail }),
+    onFatal: (code, detail, info) => {
+      fatals.push({ code, detail });
+      fatalInfo.push(info);
+    },
   });
   return {
     transport,
     sent,
     controls,
     fatals,
+    fatalInfo,
     receive: (frame) => transport.onFrame(encodeSyncFrame(frame)),
     setSendOk: (ok) => {
       sendOk = ok;
@@ -251,6 +257,27 @@ describe("sync client transport 入站帧派发", () => {
     ]);
     expect(harness.controls).toEqual([]);
     expect(harness.sent).toEqual([]);
+  });
+
+  // 服务端的 retryable 必须原样上抛：调用方据此选择有界重连，丢字段会把瞬态拒绝永久降级。
+  test("ERROR 帧保留 retryable 与 error-frame 来源", () => {
+    const harness = createHarness();
+    harness.receive({
+      type: "ERROR",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      code: "ADMISSION_REJECTED",
+      retryable: true,
+      message: "temporary capacity exhausted",
+    });
+    expect(harness.fatalInfo).toEqual([{ retryable: true, source: "error-frame" }]);
+    harness.receive({
+      type: "ERROR",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      code: "PROTOCOL_VERSION_UNSUPPORTED",
+      retryable: false,
+      message: "unsupported version",
+    });
+    expect(harness.fatalInfo.at(-1)).toEqual({ retryable: false, source: "error-frame" });
   });
 
   // onmessage 边界不允许抛错：解码失败转 onFatal，异常不得逃到事件循环。

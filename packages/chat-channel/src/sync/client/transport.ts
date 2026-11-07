@@ -32,7 +32,12 @@
 // 循环，抛错没有接收者）。
 
 import { CLIENT_BUDGET } from "../capacity/profile";
-import { asSyncProtocolError, type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
+import {
+  asSyncProtocolError,
+  isRetryableSyncErrorCode,
+  type SyncErrorCode,
+  SyncProtocolError,
+} from "../protocol/errors";
 import {
   type ApplyAckFrame,
   type DocBaseFrame,
@@ -53,14 +58,28 @@ import {
   type DocHub,
 } from "./doc-hub";
 
+/** 协议级失败的来源：服务端 ERROR 帧，或本层无法承载的本地校验失败。 */
+export type SyncFatalSource = "error-frame" | "local";
+
+export interface SyncFatalInfo {
+  /** 服务端在 ERROR 帧里声明、或本层按错误码判定的可重试语义。 */
+  readonly retryable: boolean;
+  readonly source: SyncFatalSource;
+}
+
 export interface SyncClientTransportOptions {
   readonly send: (bytes: Uint8Array) => boolean; // 已认证 WS 发送；false = 饱和，调用方重试
   readonly now: () => number;
   readonly yieldToHost: () => Promise<void>;
   /** 收到控制帧（HELLO/MANIFEST/SEALED/GENERATION_REPLACE/ERROR）：本层不自行解释，交给上层。 */
   readonly onControl?: (frame: SyncFrame) => void;
-  /** 协议级失败（ERROR 帧或解码失败）：调用方据此提示重建连接。 */
-  readonly onFatal: (code: string, detail?: string) => void;
+  /**
+   * 协议级失败（ERROR 帧或解码失败）：调用方据此提示重建连接。
+   *
+   * `info.retryable` 必须原样保留：ERROR 帧的 retryable 是服务端对「重连是否有成功可能」的判定，
+   * 调用方只能据此区分有界重连与永久降级；丢掉它会把瞬时容量拒绝误判成终态。
+   */
+  readonly onFatal: (code: string, detail?: string, info?: SyncFatalInfo) => void;
 }
 
 export interface SyncClientTransport {
@@ -243,7 +262,7 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
 
   function reportFatal(error: SyncProtocolError): void {
     // 只把稳定码与安全短句交给调用方：`SyncProtocolError` 不回显输入，`cause` 留给本地诊断。
-    options.onFatal(error.code, error.message);
+    options.onFatal(error.code, error.message, { retryable: error.retryable, source: "local" });
   }
 
   function emitFrame(frame: SyncFrame): void {
@@ -273,7 +292,10 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
       // 持续饱和且待发控制帧超过整份客户端控制预算：连接已不可用，清空积压并显式上报（不静默丢）。
       pending.length = 0;
       pendingBytes = 0;
-      options.onFatal("CAPACITY_EXCEEDED", "pending sync control frames exceed the client control budget");
+      options.onFatal("CAPACITY_EXCEEDED", "pending sync control frames exceed the client control budget", {
+        retryable: isRetryableSyncErrorCode("CAPACITY_EXCEEDED"),
+        source: "local",
+      });
       return;
     }
     pending.push(bytes);
@@ -338,7 +360,10 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
     const reason = classifyRejectReason(outcome.reason);
     if (reason === null) {
       // 词表外的拒绝原因意味着 doc-hub 的契约漂移：账本已结清，但没有可执行的动作，只能按协议级失败上报。
-      options.onFatal("MALFORMED_FRAME", "apply outcome carries an unknown reject reason");
+      options.onFatal("MALFORMED_FRAME", "apply outcome carries an unknown reject reason", {
+        retryable: false,
+        source: "local",
+      });
       return;
     }
     const action = REJECT_ACTION[reason];
@@ -347,7 +372,10 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
       return;
     }
     if (action.kind === "fatal") {
-      options.onFatal(action.code, reason);
+      options.onFatal(action.code, reason, {
+        retryable: isRetryableSyncErrorCode(action.code),
+        source: "local",
+      });
     }
   }
 
@@ -358,7 +386,7 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
     const identity = identities.get(docId);
     if (identity === undefined) {
       // 从未收到该 Doc 的数据帧（或身份表已淘汰最旧项）：RESYNC 必填的旧 epoch/attempt 无从给出。
-      options.onFatal("DOC_NOT_FOUND", detail);
+      options.onFatal("DOC_NOT_FOUND", detail, { retryable: false, source: "local" });
       return;
     }
     if (!force && resyncInFlight.has(docId)) {
@@ -459,9 +487,9 @@ export function createSyncClientTransport(options: SyncClientTransportOptions): 
         acceptDataFrame(frame);
         return;
       case "ERROR":
-        // ERROR 帧是服务端的终态通告：`onFatal` 的签名（码 + 安全短句）与它一一对应，
-        // 因此不再重复投给 `onControl`（同一个事实两个出口只会让调用方重复决策）。
-        options.onFatal(frame.code, frame.message);
+        // ERROR 帧的 retryable 是服务端的重试判定，必须原样交给调用方；本层不再重复投给 `onControl`
+        // （同一个事实两个出口只会让调用方重复决策）。
+        options.onFatal(frame.code, frame.message, { retryable: frame.retryable, source: "error-frame" });
         return;
       default:
         options.onControl?.(frame);

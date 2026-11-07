@@ -17,9 +17,23 @@ export interface SyncManifestSummary {
   readonly recoveryState: string | null;
 }
 
+/** 同步失败来源：服务端 ERROR 帧、本层本地校验失败，或传输层关闭码。 */
+export type SyncChatErrorSource = "error-frame" | "local" | "socket-close";
+
+export interface SyncChatError {
+  readonly code: string;
+  readonly message: string;
+  /**
+   * 服务端 ERROR 帧的重试判定，或本层按错误码推导的同类语义。
+   * 调用方据此区分「有界重连」与「明确终态」，不得把所有失败一律降级到旧通道。
+   */
+  readonly retryable: boolean;
+  readonly source: SyncChatErrorSource;
+}
+
 export interface SyncChatConnectionState {
   readonly status: SyncChatStatus;
-  readonly error: { readonly code: string; readonly message: string } | null;
+  readonly error: SyncChatError | null;
   readonly generation: string | null;
   readonly manifest: SyncManifestSummary | null;
   readonly subscribedDocIds: readonly string[];
@@ -32,6 +46,11 @@ export interface SyncChatConnectionState {
   readonly reconnectAttempt: number;
   /** 初次基线（MANIFEST 后首批 DOC_BASE）尚未全部落地；展示层据此收起半成品。 */
   readonly hydrating: boolean;
+  /**
+   * 本轮连接的基线已由 DOC_BASE + processed APPLY_ACK 真正应用。
+   * 与 `hydrating` 不同：超时兜底只结束 hydrating，不会置真；发送门禁据此判断历史是否可信。
+   */
+  readonly baselineApplied: boolean;
 }
 
 export const INITIAL_SYNC_CHAT_STATE: SyncChatConnectionState = Object.freeze({
@@ -45,6 +64,7 @@ export const INITIAL_SYNC_CHAT_STATE: SyncChatConnectionState = Object.freeze({
   historyLoading: false,
   reconnectAttempt: 0,
   hydrating: false,
+  baselineApplied: false,
 });
 
 export interface SyncChatSessionOptions {

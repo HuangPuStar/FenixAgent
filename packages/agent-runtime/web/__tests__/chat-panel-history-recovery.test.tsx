@@ -343,6 +343,120 @@ describe("ChatPanel 历史恢复证明", () => {
     }
   });
 
+  // 可重试 sync 故障 + 旧历史过大时，历史重试必须同时重建 sync 通道；只有新基线应用后才解除门禁。
+  test("可重试 sync 故障后历史重试重建 sync 连接并以基线应用解除门禁", async () => {
+    installFakeWebSocket();
+    const hadLocalStorage = Object.hasOwn(globalThis, "localStorage");
+    runtimeGlobal.localStorage = win.localStorage;
+    win.localStorage.setItem("active_org_id", "org-1");
+    const harness = renderRuntime();
+    const key = harness.latest.current!.rcsSessionKey!;
+    const generation = "generation-retryable";
+    const encode = (body: Record<string, unknown>) => new TextEncoder().encode(JSON.stringify(body));
+    const emptyDoc = new Y.Doc();
+    const payload = Buffer.from(Y.encodeStateAsUpdate(emptyDoc)).toString("base64");
+    emptyDoc.destroy();
+    const encodedLength = Buffer.from(payload, "base64").byteLength;
+    const base = (docId: string, deliveryId: string) =>
+      encode({
+        type: "DOC_BASE",
+        protocolVersion: 1,
+        docId,
+        generation,
+        transportEpoch: "tx_retry",
+        subscriptionEpoch: "sub_retry",
+        syncAttemptId: "att_retry",
+        deliveryId,
+        baseSeq: 0,
+        mode: "full",
+        payloadDigest: "sha256:test",
+        encodedLength,
+        payload,
+      });
+    const controlDocId = `sync/control/${generation}/0/control`;
+    const runtimeDocId = `sync/runtime/${generation}/0/runtime`;
+    const directoryDocId = `sync/directory/${generation}/0/root`;
+    try {
+      const legacy = legacySockets()[0]!;
+      const sync = syncSockets()[0]!;
+      act(() => {
+        legacy.open();
+        sync.open();
+      });
+      act(() =>
+        legacy.onmessage?.({
+          data: JSON.stringify({
+            type: "yjs:history-incomplete",
+            generation,
+            docs: [`chat:${key}`],
+            reason: "too_large",
+            bytes: 9_440_845,
+            limitBytes: 8 * 1024 * 1024,
+          }),
+        } as MessageEvent),
+      );
+      act(() =>
+        sync.onmessage?.({
+          data: encode({
+            type: "ERROR",
+            protocolVersion: 1,
+            code: "ADMISSION_REJECTED",
+            retryable: true,
+            message: "temporary capacity exhausted",
+          }),
+        } as MessageEvent),
+      );
+      // 可重试失败先走自动重连；旧历史仍不完整，门禁保持。
+      expect(harness.latest.current!.syncDegradedBlocked).toBe(true);
+
+      act(() => harness.latest.current!.retryHistoryRecovery());
+      expect(legacySockets()).toHaveLength(2);
+      expect(syncSockets()).toHaveLength(2);
+      const retryLegacy = legacySockets()[1]!;
+      const retrySync = syncSockets()[1]!;
+      act(() => {
+        retryLegacy.open();
+        retrySync.open();
+      });
+      // 只建立新 socket 不等于同步已恢复：基线未落地前继续阻断输入。
+      expect(harness.latest.current!.syncDegradedBlocked).toBe(true);
+
+      act(() =>
+        retrySync.onmessage?.({
+          data: encode({
+            type: "MANIFEST",
+            protocolVersion: 1,
+            generation,
+            pointerRevision: 1,
+            referenceRevision: 1,
+            controlDocId,
+            runtimeDocId,
+            directoryDocId,
+            recoveryState: "ready",
+          }),
+        } as MessageEvent),
+      );
+      for (const [docId, deliveryId] of [
+        [controlDocId, "dlv_control"],
+        [runtimeDocId, "dlv_runtime"],
+        [directoryDocId, "dlv_directory"],
+      ] as const) {
+        act(() => retrySync.onmessage?.({ data: base(docId, deliveryId) } as MessageEvent));
+      }
+      await act(async () => {
+        await Bun.sleep(20);
+      });
+      expect(harness.latest.current!.syncChat.connection.status).toBe("ready");
+      expect(harness.latest.current!.syncChat.connection.hydrating).toBe(false);
+      expect(harness.latest.current!.syncChat.connection.baselineApplied).toBe(true);
+      expect(harness.latest.current!.syncDegradedBlocked).toBe(false);
+    } finally {
+      win.localStorage.removeItem("active_org_id");
+      if (!hadLocalStorage) Reflect.deleteProperty(runtimeGlobal, "localStorage");
+      harness.unmount();
+    }
+  });
+
   // 部分完成后发生投影换代时，旧文档证明必须失效，不能拼接两代结果解除门禁。
   test("旧 chat 证明不能与换代后的 session 证明拼齐缺失集合", () => {
     installFakeWebSocket();

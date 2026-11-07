@@ -7,6 +7,8 @@
 
 // 目录分页布局是前后端共用的字节契约；该模块只依赖 yjs 与身份规则，浏览器安全。
 export * from "../protocol/directory";
+// 错误码表必须与传输层同源：上层据 `retryable` 决定有界重连还是终态降级，不能在消费方复制一份判定。
+export { isRetryableSyncErrorCode, SYNC_ERROR_CODES, type SyncErrorCode } from "../protocol/errors";
 // 客户端的目录旁路需要按同一套 docId 规则识别页 Doc；身份模块同样不触碰 Node 内建。
 export * from "../protocol/identity";
 export * from "./apply-queue";
