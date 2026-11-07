@@ -17,7 +17,7 @@ import {
   NO_LOCAL_CREATE,
   resolveNoReplaySession,
 } from "../hooks/chat-replay-signal";
-import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
+import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "../hooks/chat-visible-reconnect";
 import { applyChatHydration, useChatHydration } from "../hooks/use-chat-hydration";
 import { useChatState } from "../hooks/use-chat-state";
 import { useDocHubReplacementVersion } from "../hooks/use-doc-hub-replacement";
@@ -92,9 +92,23 @@ export function useChatPanelRuntime({
   // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
   // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
   const [autoReconnecting, setAutoReconnecting] = useState(false);
+  // 有界自动重试已耗尽：与终态关闭码区分，UI 停止「正在重连」并给出显式重连入口。
+  const [reconnectExhausted, setReconnectExhausted] = useState(false);
   // 终态关闭码的 UI 语义（策略表 uiCode）：只有终态关闭才有值，新连接开始时清空。
   const [terminalUiCode, setTerminalUiCode] = useState<TerminalWsUiCode | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
+  /**
+   * 显式重连：优先让当前客户端清零计数后立即建连；建连守卫曾提前返回（尚无客户端）时
+   * 重建连接 effect。面板、草稿与会话身份都在 hook 状态里，重连不改变它们。
+   */
+  const retryConnection = useCallback(() => {
+    const ws = yjsWsRef.current;
+    if (ws) {
+      ws.restart();
+      return;
+    }
+    setReconnectAttempt((attempt) => attempt + 1);
+  }, []);
   const pageVisible = useChatPageVisible();
   /** 本地 create 请求代次：每次 create 递增，load/resume 归零；scope 绑定在换代帧完成。 */
   const localCreateEpochRef = useRef(0);
@@ -247,6 +261,32 @@ export function useChatPanelRuntime({
     return () => clearInterval(interval);
   }, [pageVisible, connectionState]);
 
+  // 自动重试耗尽（或终态断开）后，网络恢复与页面回到前台必须能重新开始一轮有界重试，
+  // 而不是要求用户刷新或重新进入面板。终态由 shouldAutoReconnectOnVisible 拦截；
+  // 已有自动重试在途时直接返回，避免 online 反复触发把失败计数清零、突破有界上限。
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let previousDocumentVisible = document.visibilityState !== "hidden";
+    const maybeRestart = (previous: boolean, next: boolean) => {
+      if (autoReconnecting) return;
+      if (!shouldAutoReconnectOnVisible(previous, next, connectionState, terminalUiCode)) return;
+      retryConnection();
+    };
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState !== "hidden";
+      const previous = previousDocumentVisible;
+      previousDocumentVisible = visible;
+      maybeRestart(previous, visible);
+    };
+    const onOnline = () => maybeRestart(false, true);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [autoReconnecting, connectionState, terminalUiCode, retryConnection]);
+
   // 创建 YjsWs 连接
   // biome-ignore lint/correctness/useExhaustiveDependencies: 两种重试计数分别由 enter 和历史同步重试驱动，强制重建失效连接。
   useLayoutEffect(() => {
@@ -344,12 +384,14 @@ export function useChatPanelRuntime({
         if (state === "connecting") {
           setInitialSyncKey(null);
           setAutoReconnecting(false);
+          setReconnectExhausted(false);
           // 重试/自动重连开始：历史缺失保持到缺失文档真正重新交付，连接事件不构成恢复证明。
           // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。
           setTerminalUiCode(null);
           setConnectionState("connecting");
         } else if (state === "connected") {
           setAutoReconnecting(false);
+          setReconnectExhausted(false);
           setConnectionState("connected");
 
           // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
@@ -358,10 +400,20 @@ export function useChatPanelRuntime({
           handleConnectionLost();
           // 连接进入错误终态同样结束本次重试态；历史缺失保留，用户可再次点击重试。
           closeConnection(connectionEpoch);
+          setReconnectExhausted(false);
+          setConnectionState("error");
+        } else if (state === "exhausted") {
+          // 传输层已停止自动重试：立即结束「正在自动重连」提示，交给渲染层展示重连入口。
+          // 这里不重发任何未知结果的 prompt——恢复只重建连接，不重放用户输入。
+          handleConnectionLost();
+          closeConnection(connectionEpoch);
+          setAutoReconnecting(false);
+          setReconnectExhausted(true);
           setConnectionState("error");
         } else {
           closeConnection(connectionEpoch);
           handleConnectionLost();
+          setReconnectExhausted(false);
           setConnectionState("disconnected");
         }
       },
@@ -460,6 +512,8 @@ export function useChatPanelRuntime({
     syncDegradedBlocked,
     retryHistoryRecovery,
     autoReconnecting,
+    reconnectExhausted,
+    retryConnection,
     terminalUiCode,
     rcsSessionKey,
     historyScopeKey: mergeScope,

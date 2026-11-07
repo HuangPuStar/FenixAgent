@@ -34,8 +34,13 @@ const STABLE_CONNECTION_MS = 30_000;
  */
 export const SEND_BACKPRESSURE_THRESHOLD_BYTES = 64 * 1024;
 
-/** connected 表示当前 socket 已收到有效命令代次，可以发送操作；物理 open 仍属 connecting。 */
-export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
+/**
+ * connected 表示当前 socket 已收到有效命令代次，可以发送操作；物理 open 仍属 connecting。
+ *
+ * `exhausted` 专指「有界自动重试已耗尽」（连续短连接失败达到上限），与 `error`（服务端终态
+ * 关闭码）区分：上层必须结束「正在自动重连」提示并提供显式 `restart()` 入口。
+ */
+export type YjsWsState = "connecting" | "connected" | "disconnected" | "error" | "exhausted";
 
 export type YjsWsError = PublicError;
 
@@ -87,6 +92,14 @@ export interface YjsSyncComplete {
 export interface YjsWsClient {
   connect(): void;
   disconnect(): void;
+  /**
+   * 显式重连：取消待执行的退避定时器，清零短连接失败计数与退避档位后立即建连。
+   *
+   * 只由用户「重连」操作或 online / visibilitychange 恢复策略调用——自动重连耗尽后必须由上层
+   * 明确决定是否开始新一轮有界重试，传输层不会自行突破上限。`disconnect()` 之后的客户端保持
+   * 销毁，`restart()` 不会把它重新拉起。
+   */
+  restart(): void;
   /**
    * 发送一帧。返回**是否真正写入 socket**：命令握手未就绪、未连接或触发发送背压（见
    * `SEND_BACKPRESSURE_THRESHOLD_BYTES`）时为 `false`——调用方据此重试或给出反馈，
@@ -357,7 +370,9 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         consecutiveUnstableDisconnects += 1;
       }
       if (consecutiveUnstableDisconnects >= MAX_CONSECUTIVE_UNSTABLE_DISCONNECTS) {
-        setState("error");
+        // 明确告知「自动重试已耗尽」：上层据此停止重连提示并给出显式重启入口，
+        // 不能与终态关闭码混用同一个 error 状态。
+        setState("exhausted");
         return;
       }
       setState("disconnected");
@@ -368,6 +383,21 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       if (destroyed || ws !== socket) return;
       // onclose 会跟随触发，统一处理
     };
+  }
+
+  /**
+   * 新一轮有界重试的起点：计数归零后重新按 1s 起步退避，避免耗尽后一直停留在 30s 档。
+   * 已销毁（显式 disconnect）时保持终态，不被任何恢复策略重新拉起。
+   */
+  function restart() {
+    if (destroyed) return;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    consecutiveUnstableDisconnects = 0;
+    reconnectDelayIdx = 0;
+    connect();
   }
 
   function disconnect() {
@@ -405,5 +435,5 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     return ws?.readyState === WebSocket.OPEN && commandEpoch !== null;
   }
 
-  return { connect, disconnect, send, isConnected, getCommandEpoch: () => commandEpoch };
+  return { connect, disconnect, restart, send, isConnected, getCommandEpoch: () => commandEpoch };
 }
