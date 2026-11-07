@@ -82,11 +82,19 @@ describe("registry heartbeat 代次与存活判定", () => {
     expect(events).toEqual(["timeout write started", "heartbeat persisted", "timeout write completed"]);
     expect(events).not.toContain("disconnect");
 
-    // 新计时器仍归当前 entry 所有：stop 必须能清除它，之后不再触发超时。
-    stopHeartbeat(MACHINE, "ws-old");
-    jest.advanceTimersByTime(TIMEOUT * 2);
+    // 刷新后的计时器仍生效：推进到新截止时间会触发一次真实超时。
+    const before = events.length;
+    jest.advanceTimersByTime(TIMEOUT - 1);
     await flushMicrotasks();
     expect(events).not.toContain("disconnect");
+    jest.advanceTimersByTime(1);
+    await flushMicrotasks();
+    expect(events.slice(before)).toEqual(["timeout write started", "timeout write completed", "disconnect"]);
+
+    // 真实超时清理只发生一次，后续不再重复。
+    jest.advanceTimersByTime(TIMEOUT * 2);
+    await flushMicrotasks();
+    expect(events.filter((event) => event === "disconnect")).toHaveLength(1);
   });
 
   // 持久化连续阻塞/拒绝超过 90 秒，真实到达的心跳仍保持在线；真正停跳后只超时一次。

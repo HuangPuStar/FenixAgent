@@ -598,6 +598,7 @@ function triggerMachineDisconnect(wsId: string, machineId: string, reason: strin
     return;
   }
 
+  // 校验通过后才进入清理：performMachineCleanup 会停心跳，健康连接若被提前停表就再也等不到下一次超时。
   logger.debug(`Triggering machine disconnect: wsId=${wsId} machineId=${machineId} reason=${reason}`);
 
   // 关闭残留 WS 连接
@@ -696,6 +697,7 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   if (entry.isMachine && entry.machineId) {
     entry.remoteTransport?.close(reason ?? "Machine connection closed");
     logger.info(`[ACP-WS-CLOSE] calling performMachineCleanup for machineId=${entry.machineId}`);
+    // 清理按 entry.wsId 停心跳：快速重连时旧 close 只失效自己的 timer，不会影响新连接。
     performMachineCleanup(entry, reason ?? undefined);
   }
 }

@@ -24,6 +24,7 @@ const START = new Date("2026-01-01T00:00:00.000Z");
 type Connection = { ws: WsConnection; wsId: string };
 
 let timeoutCallbacks: Array<() => void>;
+let stopCalls: Array<{ machineId: string; connectionId?: string }>;
 let connections: Connection[];
 
 function createMockWs(): WsConnection {
@@ -38,8 +39,8 @@ async function flushMicrotasks(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-/** 建立 machine 连接并完成注册与 clean-slate 确认（心跳分支要求 cleanSlateConfirmed）。 */
-async function connectMachine(wsId: string, machineId = MACHINE_ID): Promise<WsConnection> {
+/** 建立 machine 连接并完成注册；`confirm` 控制是否发送 clean-slate 确认（心跳分支要求已确认）。 */
+async function connectMachine(wsId: string, machineId = MACHINE_ID, confirm = true): Promise<WsConnection> {
   const ws = createMockWs();
   connections.push({ ws, wsId });
   handleAcpWsOpen(ws, wsId, "user_p0_07", null, true);
@@ -50,11 +51,13 @@ async function connectMachine(wsId: string, machineId = MACHINE_ID): Promise<WsC
     machine_id: machineId,
   });
   await flushMicrotasks();
-  await handleAcpWsMessage(ws, wsId, {
-    type: "clean_slate_confirmed",
-    protocol_version: MACHINE_PROTOCOL_VERSION,
-    server_epoch: SERVER_EPOCH,
-  });
+  if (confirm) {
+    await handleAcpWsMessage(ws, wsId, {
+      type: "clean_slate_confirmed",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      server_epoch: SERVER_EPOCH,
+    });
+  }
   return ws;
 }
 
@@ -63,6 +66,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   setSystemTime(START);
   timeoutCallbacks = [];
+  stopCalls = [];
   connections = [];
   stubMachineRegistryPort({
     registerMachine: async ({ machineId }) => ({ id: machineId, isNew: true }),
@@ -71,7 +75,9 @@ beforeEach(() => {
       timeoutCallbacks.push(onTimeout);
     },
     handleHeartbeat: async () => {},
-    stopHeartbeat: () => {},
+    stopHeartbeat: (machineId, connectionId) => {
+      stopCalls.push({ machineId, connectionId });
+    },
   });
   stubCoreRuntimeFacade({ getInstance: () => null, listInstances: () => [] });
 });
@@ -128,5 +134,56 @@ describe("machine 心跳超时断连复核", () => {
     oldCallback();
 
     expect(closeMock).not.toHaveBeenCalled();
+  });
+
+  // 过期 timeout 回调被跳过时不得停止当前连接的心跳 timer；之后真正静默仍断开一次。
+  test("过期 timeout 回调保留心跳 timer，后续真实静默仍断开一次", async () => {
+    const ws = await connectMachine("ws_p0_07_stale");
+    await handleAcpWsMessage(ws, "ws_p0_07_stale", { type: "heartbeat" });
+
+    setSystemTime(new Date(START.getTime() + 1_000));
+    const closeMock = ws.close as ReturnType<typeof mock>;
+    closeMock.mockClear();
+    timeoutCallbacks[0]();
+
+    expect(closeMock).not.toHaveBeenCalled();
+    // 提前 return 不得先停心跳，否则后续真实超时永远不会触发。
+    expect(stopCalls).toHaveLength(0);
+
+    // 模拟仍生效的 timer 在阈值之后触发：此时确已静默，必须断开并只停一次心跳。
+    setSystemTime(new Date(START.getTime() + 91_000));
+    timeoutCallbacks[0]();
+
+    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(closeMock).toHaveBeenCalledWith(1011, "heartbeat timeout");
+    expect(stopCalls).toEqual([{ machineId: MACHINE_ID, connectionId: "ws_p0_07_stale" }]);
+  });
+
+  // 快速重连时旧连接 close 只能停自己的心跳 timer，新连接仍按自己的期限断开。
+  test("旧连接 close 不影响新连接的心跳 timer", async () => {
+    const oldWsId = "ws_p0_07_old_close";
+    const oldWs = await connectMachine(oldWsId, MACHINE_ID, false);
+    // 旧 socket 进入关闭中，重复连接检查才允许新连接注册。
+    (oldWs as { readyState: number }).readyState = 0;
+
+    const newWsId = "ws_p0_07_new_close";
+    const newWs = await connectMachine(newWsId, MACHINE_ID, false);
+    const newCloseMock = newWs.close as ReturnType<typeof mock>;
+
+    // 让新连接暂时不可见于 activeConn 检查，强制旧 close 的清理走到 stopHeartbeat 调用点。
+    (newWs as { readyState: number }).readyState = 0;
+    handleAcpWsClose(oldWs, oldWsId);
+    expect(stopCalls).toEqual([{ machineId: MACHINE_ID, connectionId: oldWsId }]);
+
+    // 新连接的 timer 未被旧 close 停止：恢复后真正静默仍会断开新连接一次。
+    (newWs as { readyState: number }).readyState = 1;
+    setSystemTime(new Date(START.getTime() + 91_000));
+    timeoutCallbacks[1]();
+
+    expect(newCloseMock).toHaveBeenCalledTimes(1);
+    expect(stopCalls).toEqual([
+      { machineId: MACHINE_ID, connectionId: oldWsId },
+      { machineId: MACHINE_ID, connectionId: newWsId },
+    ]);
   });
 });
