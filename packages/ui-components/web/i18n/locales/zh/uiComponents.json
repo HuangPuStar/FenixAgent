@@ -225,6 +225,7 @@
         "addToConversation": "添加到对话",
         "copy": "复制",
         "copyFailed": "复制失败",
+        "dismissError": "关闭错误提示",
         "expand": "展开",
         "imagePreview": "图片预览",
         "openSystemMessage": "双击查看系统提醒详情",
