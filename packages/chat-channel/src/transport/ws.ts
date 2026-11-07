@@ -23,6 +23,24 @@ const MAX_CONSECUTIVE_UNSTABLE_DISCONNECTS = 6;
 /** 连接持续达到此时间才视为稳定恢复，并清零短连接失败计数。 */
 const STABLE_CONNECTION_MS = 30_000;
 
+/** 物理 open 后等待 `yjs:command-epoch` 的上限；超时立即断开，复用既有非终态重连。 */
+export const DEFAULT_COMMAND_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+/**
+ * 已握手连接允许的最长无入站间隔。服务端每 30s 发一次 keep_alive，
+ * 留三次容错以覆盖后台标签页的定时器节流；任何入站帧都算进展，长工具执行不会误断。
+ */
+export const DEFAULT_INBOUND_LIVENESS_TIMEOUT_MS = 90_000;
+
+/** 应用层 deadline 主动断开时使用的非终态码：4000 为应用私有码，不在关闭码策略表内。 */
+export const DEADLINE_CLOSE_CODE = 4000;
+
+/** 握手 deadline 的关闭原因，便于日志与测试区分「握手未完成」与「入站停止」。 */
+export const COMMAND_HANDSHAKE_TIMEOUT_REASON = "command_handshake_timeout";
+
+/** 持续存活 deadline 的关闭原因。 */
+export const INBOUND_LIVENESS_TIMEOUT_REASON = "inbound_liveness_timeout";
+
 /**
  * 发送背压软阈值（**字节**）。与 broadcaster 的服务端发送口径同值（64 KB，
  * `CLAUDE.md` YJS/Chat 第 9 条），单位即 `WebSocket.bufferedAmount` 的单位。
@@ -42,6 +60,17 @@ export type YjsWsError = PublicError;
 export interface YjsWsClose {
   code: number;
   reason: string;
+}
+
+/**
+ * 应用层连接截止时间：用于识别「socket 仍是 OPEN、但对端不再交付」的半开连接与握手悬挂。
+ * 两者都通过主动关闭复用既有的有界退避重连，不新增重试通道。
+ */
+export interface YjsWsDeadlines {
+  /** 物理 open 后等待命令代次的上限，默认 {@link DEFAULT_COMMAND_HANDSHAKE_TIMEOUT_MS}。 */
+  handshakeMs?: number;
+  /** 已握手连接的最长无入站间隔，默认 {@link DEFAULT_INBOUND_LIVENESS_TIMEOUT_MS}。 */
+  livenessMs?: number;
 }
 
 export interface YjsWsOptions {
@@ -76,6 +105,8 @@ export interface YjsWsOptions {
    * 完成本轮 sync 握手且无失败文档时发送。
    */
   onSyncComplete?: (info: YjsSyncComplete) => void;
+  /** 应用层握手与入站进展截止时间；缺省使用模块默认值。 */
+  deadlines?: YjsWsDeadlines;
 }
 
 /** 初始同步完成信号：`docs` 是本次握手中确认已交付的文档名。 */
@@ -97,6 +128,14 @@ export interface YjsWsClient {
   isConnected(): boolean;
   /** 当前 socket 收到的命令代次；握手前及断连后不能分配新命令身份。 */
   getCommandEpoch(): string | null;
+}
+
+/**
+ * 归一化注入的截止时间：非有限值或非正数回退到默认值。
+ * 非法配置不能把健康检查关掉，否则半开连接又会永久假 connected。
+ */
+function resolveDeadlineMs(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 /**
@@ -194,9 +233,59 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   let connectedAt: number | null = null;
   let destroyed = false;
   let commandEpoch: string | null = null;
+  const handshakeDeadlineMs = resolveDeadlineMs(options.deadlines?.handshakeMs, DEFAULT_COMMAND_HANDSHAKE_TIMEOUT_MS);
+  const livenessDeadlineMs = resolveDeadlineMs(options.deadlines?.livenessMs, DEFAULT_INBOUND_LIVENESS_TIMEOUT_MS);
+  let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+  let livenessTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 最近一次入站（任何帧，含服务端 keep_alive）的时间；用于判定连接是否仍有进展。 */
+  let lastInboundAt = 0;
 
   function setState(state: YjsWsState) {
     onConnectionState?.(state);
+  }
+
+  function clearDeadlineTimers() {
+    if (handshakeTimer) {
+      clearTimeout(handshakeTimer);
+      handshakeTimer = null;
+    }
+    if (livenessTimer) {
+      clearTimeout(livenessTimer);
+      livenessTimer = null;
+    }
+  }
+
+  /** 以非终态码主动断开：后续由既有 `onclose` 分支完成计数与有界退避重连。 */
+  function closeForDeadline(socket: WebSocket, reason: string) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    socket.close(DEADLINE_CLOSE_CODE, reason);
+  }
+
+  function startHandshakeDeadline(socket: WebSocket) {
+    if (handshakeTimer) clearTimeout(handshakeTimer);
+    handshakeTimer = setTimeout(() => {
+      handshakeTimer = null;
+      if (destroyed || ws !== socket) return;
+      closeForDeadline(socket, COMMAND_HANDSHAKE_TIMEOUT_REASON);
+    }, handshakeDeadlineMs);
+  }
+
+  /**
+   * 按「最后入站 + 存活期限」安排一次检查。入站只更新时间戳而不重排定时器，
+   * 避免流式更新期间每帧都创建/销毁 timer；检查提前触发时按剩余时间续排。
+   */
+  function armLivenessDeadline(socket: WebSocket) {
+    if (livenessTimer) clearTimeout(livenessTimer);
+    const remaining = Math.max(0, livenessDeadlineMs - (Date.now() - lastInboundAt));
+    livenessTimer = setTimeout(() => {
+      livenessTimer = null;
+      if (destroyed || ws !== socket) return;
+      if (Date.now() - lastInboundAt >= livenessDeadlineMs) {
+        closeForDeadline(socket, INBOUND_LIVENESS_TIMEOUT_REASON);
+        return;
+      }
+      armLivenessDeadline(socket);
+    }, remaining);
   }
 
   function scheduleReconnect() {
@@ -213,6 +302,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     if (destroyed) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
+    clearDeadlineTimers();
+    lastInboundAt = Date.now();
     commandEpoch = null;
     connectedAt = null;
     setState("connecting");
@@ -224,6 +315,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onopen = () => {
       if (destroyed || ws !== socket) return;
+      startHandshakeDeadline(socket);
       // 同步握手不依赖命令代次；业务操作须等 command-epoch 到达后再放行。
       for (const vector of getYjsStateVectors?.() ?? []) {
         socket.send(
@@ -234,6 +326,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onmessage = (event: MessageEvent) => {
       if (destroyed || ws !== socket) return;
+      lastInboundAt = Date.now();
       const data = event.data;
       // 二进制 yjs:update 帧（SP-A4）：零拷贝解析，替代历史 base64+JSON 逐字节解码慢路径
       if (typeof data !== "string") {
@@ -278,7 +371,12 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
             const firstEpoch = commandEpoch === null;
             commandEpoch = msg.epoch;
             if (firstEpoch) {
+              if (handshakeTimer) {
+                clearTimeout(handshakeTimer);
+                handshakeTimer = null;
+              }
               connectedAt = Date.now();
+              armLivenessDeadline(socket);
               setState("connected");
             }
             options.onCommandEpoch?.(commandEpoch);
@@ -339,6 +437,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onclose = (event: CloseEvent) => {
       if (destroyed || ws !== socket) return;
+      clearDeadlineTimers();
       ws = null;
       commandEpoch = null;
       const close = { code: event.code, reason: event.reason };
@@ -373,6 +472,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   function disconnect() {
     destroyed = true;
     commandEpoch = null;
+    clearDeadlineTimers();
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
