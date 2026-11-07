@@ -2,6 +2,7 @@ import { createLogger, error as logError } from "@fenix/logger";
 import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { touchEnvironmentPoll } from "../../services/environment-acp";
+import { reconcileMachineInstances } from "../../services/machine-instance-cleanup";
 import {
   dispatchAgentNodeDisconnect,
   dispatchAgentNodeWsClose,
@@ -14,6 +15,7 @@ import { getAgentRuntimeConfig } from "../config";
 import { agentInstanceService } from "../services/agent-instance-service";
 import { getBoundCoreRuntimePort, getBoundCoreRuntime as getCoreRuntime } from "../services/core-runtime-port";
 import { getMachineRegistryPort } from "../services/machine-registry-port";
+import { parseMachineInventory, reconcileMachineInventory } from "./machine-inventory";
 
 const logger = createLogger("transport-acp-ws-handler");
 
@@ -50,6 +52,59 @@ export function recordAcpInstanceActivity(instanceId: string, message: Record<st
 /** 服务端明确拒绝的 machine 重复连接：客户端收到后不得自动重连。 */
 const pendingMachineRegistrations = new Set<string>();
 const MACHINE_CONNECTION_CONFLICT_REASON = "machine_already_connected";
+
+/** 断连宽限期内保留的 machine 清理任务；同 epoch 重连会取消它。 */
+const pendingMachineCleanups = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; entry: AcpConnectionEntry | null; reason: string }
+>();
+
+function machineReconnectGraceMs(): number {
+  return getAgentRuntimeConfig().machineReconnectGraceMs ?? 45_000;
+}
+
+function cancelMachineCleanup(machineId: string): void {
+  const pending = pendingMachineCleanups.get(machineId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingMachineCleanups.delete(machineId);
+}
+
+/**
+ * 短暂断连先保留 Core runtime 映射与 relay listener：同 epoch 重连才能重新绑定并继续观察在途 turn。
+ * 只有宽限期到期仍无 owner 连接时才执行原有收口。
+ */
+function scheduleMachineCleanup(entry: AcpConnectionEntry | null, machineId: string, reason: string): void {
+  cancelMachineCleanup(machineId);
+  const graceMs = machineReconnectGraceMs();
+  if (graceMs <= 0) {
+    performMachineCleanup(entry, machineId, reason);
+    return;
+  }
+  const timer = setTimeout(() => {
+    pendingMachineCleanups.delete(machineId);
+    if (findMachineConnectionById(machineId)) return;
+    performMachineCleanup(entry, machineId, reason);
+  }, graceMs);
+  timer.unref?.();
+  pendingMachineCleanups.set(machineId, { timer, entry, reason });
+}
+
+/** clean-slate / 新 epoch 注册时立即执行待定清理，旧 runtime 不能被新连接继承。 */
+function flushMachineCleanup(machineId: string, reason: string): void {
+  const pending = pendingMachineCleanups.get(machineId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingMachineCleanups.delete(machineId);
+  // 新连接此刻已写入 machineId，但尚未确认/激活；立即收口旧 runtime 是调用方的明确决定。
+  performMachineCleanup(pending.entry, machineId, reason, true);
+}
+
+/** 测试用：清空断连调度，避免跨用例的定时器落到已解绑的宿主端口。 */
+export function resetMachineDisconnectSchedulingForTest(): void {
+  for (const pending of pendingMachineCleanups.values()) clearTimeout(pending.timer);
+  pendingMachineCleanups.clear();
+}
 
 /**
  * 服务端 keep_alive 数据帧间隔（ms）。
@@ -184,6 +239,22 @@ export function handleAcpWsOpen(
   ws.close(4003, "Unidentified connection; provide either boundEnvId or registry secret");
 }
 
+/** 同 epoch 新连接接管时关闭旧 owner；旧连接后续帧因 entry 已删除而被忽略。 */
+function fencePreviousMachineOwner(currentWsId: string, machineId: string): void {
+  for (const [oldWsId, candidate] of connections) {
+    if (oldWsId === currentWsId || !candidate.isMachine || candidate.machineId !== machineId) continue;
+    connections.delete(oldWsId);
+    // 先推进编排节点到 disconnected，新连接才能 attach 新 socket。
+    dispatchAgentNodeWsClose(candidate.ws);
+    try {
+      candidate.ws.close(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code, "machine connection superseded");
+    } catch {
+      // 旧连接可能已进入 CLOSING；接管流程不依赖它的关闭确认。
+    }
+    logger.info(`[MACHINE-FENCE] superseded previous connection machineId=${machineId} oldWsId=${oldWsId}`);
+  }
+}
+
 /** Handle machine register message — WS registration for machine */
 async function handleMachineRegister(wsId: string, msg: Record<string, unknown>): Promise<void> {
   const entry = connections.get(wsId);
@@ -218,13 +289,15 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     return;
   }
 
+  // 客户端携带上次看到的 epoch：相同说明主服务未重启，可进入 inventory/reconcile；
+  // 缺失或不同（含首次注册、旧客户端）仍走 clean-slate。
+  const claimedSameEpoch = typeof msg.server_epoch === "string" && msg.server_epoch === SERVER_EPOCH;
+  const inventory = claimedSameEpoch ? parseMachineInventory(msg.instances) : null;
+  const canReconcile = claimedSameEpoch && inventory !== null;
+
   // registerMachine 包含数据库 await。用 pending 集合先占住 machine_id，避免两个新 WS
   // 在数据库写入完成前同时通过在线检查；已完成注册的连接则从 connections 直接识别。
-  const hasActiveConnection = [...connections.values()].some(
-    (candidate) => candidate.isMachine && candidate.machineId === specifiedMachineId && candidate.ws.readyState === 1,
-  );
-  const hasActiveAgentNodeConnection = getAgentNodeService().hasActiveConnection(specifiedMachineId);
-  if (hasActiveConnection || hasActiveAgentNodeConnection || pendingMachineRegistrations.has(specifiedMachineId)) {
+  if (pendingMachineRegistrations.has(specifiedMachineId)) {
     sendToWs(entry.ws, {
       type: "error",
       code: "MACHINE_ALREADY_CONNECTED",
@@ -236,6 +309,27 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     );
     return;
   }
+  if (canReconcile) {
+    // 同 epoch 的合法重连由新连接接管；旧连接被 fence，避免双投递。
+    fencePreviousMachineOwner(wsId, specifiedMachineId);
+  } else {
+    const hasActiveConnection = [...connections.values()].some(
+      (candidate) => candidate.isMachine && candidate.machineId === specifiedMachineId && candidate.ws.readyState === 1,
+    );
+    const hasActiveAgentNodeConnection = getAgentNodeService().hasActiveConnection(specifiedMachineId);
+    if (hasActiveConnection || hasActiveAgentNodeConnection) {
+      sendToWs(entry.ws, {
+        type: "error",
+        code: "MACHINE_ALREADY_CONNECTED",
+        message: `Machine '${specifiedMachineId}' already has an active connection`,
+      });
+      entry.ws.close(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code, MACHINE_CONNECTION_CONFLICT_REASON);
+      logger.warn(
+        `[MACHINE-CONNECTION-CONFLICT] rejected duplicate connection machineId=${specifiedMachineId} wsId=${wsId}`,
+      );
+      return;
+    }
+  }
 
   pendingMachineRegistrations.add(specifiedMachineId);
 
@@ -246,39 +340,81 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       machineId: specifiedMachineId,
     });
 
+    // DB 记录是新的（例如机器记录被删除后重建）时不能继承旧 runtime。
+    const sameEpoch = canReconcile && !result.isNew;
     entry.machineId = result.id;
     entry.cleanSlateConfirmed = false;
+    entry.reconcileAccepted = undefined;
     entry.capabilities = { engineTypes: supportedEngineTypes.map((engine) => engine.type) };
     logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
-    // registerRemoteNode 会删除该 machine 上的旧 core 实例；提前捕获，供 relay 层精确关闭旧前端连接。
-    const facade = getCoreRuntime();
-    const replacedInstanceIds =
-      !result.isNew && facade
-        ? facade
-            .listInstances()
-            .filter((instance) => instance.nodeId === result.id)
-            .map((instance) => instance.instanceId)
-        : [];
+    const engineTypes = supportedEngineTypes.map((engine) => engine.type);
 
-    // remote runtime 与编排节点只能在 Machine 清空旧 epoch runtime 并确认后装配。
-    // 在确认前保持 fail-closed，避免主服务重启窗口把新命令发给旧进程集合。
+    if (sameEpoch && inventory) {
+      cancelMachineCleanup(result.id);
+      // 先切换 transport 并保留 runtime 映射；relay 句柄持有同一 transport 对象，rebind 后继续观察。
+      getBoundCoreRuntimePort().registerRemoteNode(result.id, entry.ws, entry, engineTypes, {
+        preserveRuntime: true,
+      });
+      const decision = reconcileMachineInventory(result.id, inventory);
+      const acceptedUids = new Set(decision.accepted.map((instance) => instance.instance_uid));
+      entry.reconcileAccepted = new Map(
+        decision.accepted.map((instance) => [instance.instance_uid, instance.runtime_generation]),
+      );
+      const removedInstanceIds = reconcileMachineInstances(result.id, acceptedUids);
+      if (removedInstanceIds.length > 0) {
+        import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
+          closeClientsForMachineInstances(removedInstanceIds, "machine runtime missing after reconnect");
+        });
+      }
+      sendToWs(entry.ws, {
+        type: "registered",
+        machine_id: result.id,
+        is_new: result.isNew,
+        protocol_version: MACHINE_PROTOCOL_VERSION,
+        server_epoch: SERVER_EPOCH,
+        clean_slate_required: false,
+        reconcile: {
+          accepted_instances: decision.accepted,
+          rejected_instances: decision.rejected,
+        },
+      });
+      logger.info(
+        `[MACHINE-RECONCILE] machineId=${result.id} accepted=${decision.accepted.length} rejected=${decision.rejected.length} removed=${removedInstanceIds.length}`,
+      );
+    } else {
+      // 旧 epoch 的运行事实不可确认：先收敛服务端映射，再要求 machine 终止旧进程。
+      flushMachineCleanup(result.id, "clean-slate registration");
 
-    // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
-    if (replacedInstanceIds.length > 0) {
-      import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
-        closeClientsForMachineInstances(replacedInstanceIds, "machine reconnected");
+      // registerRemoteNode 会删除该 machine 上的旧 core 实例；提前捕获，供 relay 层精确关闭旧前端连接。
+      const facade = getCoreRuntime();
+      const replacedInstanceIds =
+        !result.isNew && facade
+          ? facade
+              .listInstances()
+              .filter((instance) => instance.nodeId === result.id)
+              .map((instance) => instance.instanceId)
+          : [];
+
+      // remote runtime 与编排节点只能在 Machine 清空旧 epoch runtime 并确认后装配。
+      // 在确认前保持 fail-closed，避免主服务重启窗口把新命令发给旧进程集合。
+
+      // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
+      if (replacedInstanceIds.length > 0) {
+        import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
+          closeClientsForMachineInstances(replacedInstanceIds, "machine reconnected");
+        });
+      }
+
+      sendToWs(entry.ws, {
+        type: "registered",
+        machine_id: result.id,
+        is_new: result.isNew,
+        protocol_version: MACHINE_PROTOCOL_VERSION,
+        server_epoch: SERVER_EPOCH,
+        clean_slate_required: true,
       });
     }
-
-    sendToWs(entry.ws, {
-      type: "registered",
-      machine_id: result.id,
-      is_new: result.isNew,
-      protocol_version: MACHINE_PROTOCOL_VERSION,
-      server_epoch: SERVER_EPOCH,
-      clean_slate_required: true,
-    });
 
     // 启动心跳超时检测：远程服务直接关闭时 TCP 不会发 FIN，
     // 依赖心跳超时触发完整断连清理（包括关闭前端 relay WS）
@@ -295,18 +431,6 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     sendToWs(entry.ws, { type: "error", message: "Machine registration failed" });
   } finally {
     pendingMachineRegistrations.delete(specifiedMachineId);
-  }
-}
-
-/** Handle machine disconnection — updates status and writes event */
-async function handleMachineDisconnect(entry: AcpConnectionEntry, reason?: string): Promise<void> {
-  if (!entry.machineId) return;
-
-  try {
-    await getMachineRegistryPort().disconnectMachine(entry.machineId, reason ?? "connection closed");
-    logger.debug(`Machine disconnected: id=${entry.machineId} reason=${reason ?? "(none)"}`);
-  } catch (err) {
-    logError("Machine disconnect error:", err);
   }
 }
 
@@ -379,6 +503,11 @@ export async function handleAcpWsMessage(
         entry.ws.close(4406, "invalid clean-slate confirmation");
         continue;
       }
+      if (entry.reconcileAccepted) {
+        // 同 epoch 连接只能走 reconcile_confirmed；错用 clean-slate 会跳过实例对账。
+        entry.ws.close(4406, "clean-slate confirmation on reconcile connection");
+        continue;
+      }
       if (entry.cleanSlateConfirmed) {
         logger.warn("Rejected duplicate clean-slate confirmation", { machineId: entry.machineId });
         entry.ws.close(4406, "duplicate clean-slate confirmation");
@@ -403,16 +532,91 @@ export async function handleAcpWsMessage(
       continue;
     }
 
+    if (msg.type === "reconcile_confirmed") {
+      if (
+        !entry.isMachine ||
+        !entry.machineId ||
+        msg.protocol_version !== MACHINE_PROTOCOL_VERSION ||
+        msg.server_epoch !== SERVER_EPOCH ||
+        !entry.reconcileAccepted
+      ) {
+        entry.ws.close(4406, "invalid reconcile confirmation");
+        continue;
+      }
+      if (entry.cleanSlateConfirmed) {
+        logger.warn("Rejected duplicate reconcile confirmation", { machineId: entry.machineId });
+        entry.ws.close(4406, "duplicate reconcile confirmation");
+        continue;
+      }
+      const confirmed = parseMachineInventory(msg.instances);
+      if (!confirmed) {
+        entry.ws.close(4406, "invalid reconcile inventory");
+        continue;
+      }
+      const accepted = entry.reconcileAccepted;
+      const confirmedUids = new Set<string>();
+      let invalid = false;
+      for (const item of confirmed) {
+        if (
+          accepted.get(item.instanceUid) !== item.runtimeGeneration ||
+          item.serverEpoch !== SERVER_EPOCH ||
+          !item.processAlive
+        ) {
+          invalid = true;
+          break;
+        }
+        confirmedUids.add(item.instanceUid);
+      }
+      if (invalid) {
+        entry.ws.close(4406, "reconcile inventory does not match accepted instances");
+        continue;
+      }
+      // 服务端已接受但机器未确认的实例：进程已不在，按死亡事实收敛并关闭其前端 relay。
+      const removedInstanceIds = reconcileMachineInstances(entry.machineId, confirmedUids);
+      if (removedInstanceIds.length > 0) {
+        import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
+          closeClientsForMachineInstances(removedInstanceIds, "machine runtime missing after reconnect");
+        });
+      }
+      entry.cleanSlateConfirmed = true;
+      entry.reconcileAccepted = undefined;
+      try {
+        activateRemoteMachine(entry);
+      } catch (err) {
+        // 与 clean-slate 相同：确认状态保留，heartbeat 是幂等自愈点。
+        logError("Remote machine activation error:", err);
+      }
+      logger.info("[MACHINE-RECONCILE] Confirmed instance inventory", {
+        machineId: entry.machineId,
+        instanceUids: [...confirmedUids],
+      });
+      continue;
+    }
+
     // machine 连接：新协议消息（prepare_result/start_result/stop_result/relay）路由到 remote transport
     if (entry.isMachine && entry.remoteTransport) {
       const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
       if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
-        if (!entry.cleanSlateConfirmed) {
-          entry.ws.close(4406, "clean-slate not confirmed");
-          continue;
-        }
         const instanceId = (msg as Record<string, unknown>).instance_id;
         const generation = (msg as Record<string, unknown>).runtime_generation;
+        if (!entry.cleanSlateConfirmed) {
+          if (!entry.reconcileAccepted) {
+            entry.ws.close(4406, "clean-slate not confirmed");
+            continue;
+          }
+          // 同 epoch 对账窗口只放行已接受实例的在途输出，避免旧实例消息经新连接注入。
+          if (
+            typeof instanceId !== "string" ||
+            typeof generation !== "number" ||
+            entry.reconcileAccepted.get(instanceId) !== generation
+          ) {
+            logger.warn("Rejected remote lifecycle message before reconciliation", {
+              type: msg.type,
+              machineId: entry.machineId,
+            });
+            continue;
+          }
+        }
         if (
           typeof instanceId !== "string" ||
           typeof generation !== "number" ||
@@ -451,12 +655,25 @@ export async function handleAcpWsMessage(
       "session_resumed",
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
-      if (!entry.cleanSlateConfirmed) {
-        entry.ws.close(4406, "clean-slate not confirmed");
-        continue;
-      }
       const instanceId = (msg as Record<string, unknown>).instance_id;
       const generation = (msg as Record<string, unknown>).runtime_generation;
+      if (!entry.cleanSlateConfirmed) {
+        if (!entry.reconcileAccepted) {
+          entry.ws.close(4406, "clean-slate not confirmed");
+          continue;
+        }
+        if (
+          typeof instanceId !== "string" ||
+          typeof generation !== "number" ||
+          entry.reconcileAccepted.get(instanceId) !== generation
+        ) {
+          logger.warn("Rejected remote session message before reconciliation", {
+            type: msg.type,
+            machineId: entry.machineId,
+          });
+          continue;
+        }
+      }
       if (
         typeof instanceId !== "string" ||
         typeof generation !== "number" ||
@@ -516,27 +733,34 @@ export async function handleAcpWsMessage(
 }
 
 /**
- * 机器断连的完整清理流程。
- * 同时被 handleAcpWsClose（WS 正常关闭）、triggerMachineDisconnect（心跳超时/sweep 检测）复用。
+ * 机器断连后的完整收口。
+ *
+ * 只由宽限期到期（或显式 clean-slate 注册）触发；短暂断连期间 runtime 映射与 relay listener 保留，
+ * 供同 epoch 重连重新绑定。`entry` 为空表示 sweep 等只有 machineId 的入口。
  */
-function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void {
-  const machineId = entry.machineId;
-  if (!machineId) return;
-
+function performMachineCleanup(
+  entry: AcpConnectionEntry | null,
+  machineId: string,
+  reason?: string,
+  force = false,
+): void {
   // 检查是否已有更新的 WS 连接接管了此 machineId（快速重连场景）
-  const activeConn = findMachineConnectionById(machineId);
-  if (activeConn) {
-    logger.info(
-      `[MACHINE-CLEANUP] Machine ${machineId} has newer active connection (wsId=${activeConn.wsId}) — closing stale relay connections`,
-    );
-    return;
+  if (!force) {
+    const activeConn = findMachineConnectionById(machineId);
+    if (activeConn) {
+      logger.info(
+        `[MACHINE-CLEANUP] Machine ${machineId} has newer active connection (wsId=${activeConn.wsId}) — skipping cleanup`,
+      );
+      return;
+    }
   }
 
   // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并停止
   // 重连尝试，等待机器主动重连；E-P2.2 方案 A）。
   // 必须放在快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用为
   // connected，旧 socket 的 close 事件不应把节点打断为 disconnected。
-  dispatchAgentNodeWsClose(entry.ws);
+  if (entry) dispatchAgentNodeWsClose(entry.ws);
+  else dispatchAgentNodeDisconnect(machineId);
 
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
@@ -549,7 +773,11 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
       agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration, machineId);
     }
   }
-  handleMachineDisconnect(entry, reason).catch(() => {});
+  getMachineRegistryPort()
+    .disconnectMachine(machineId, reason ?? "connection closed")
+    .catch((err) => {
+      logError("Machine disconnect error:", err);
+    });
   getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
   getMachineRegistryPort().stopHeartbeat(machineId);
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
@@ -564,13 +792,13 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
 }
 
 /**
- * 心跳超时或 sweep 检测到断连时，主动触发完整清理。
- * 需要关闭残留的 WS 并执行 performMachineCleanup。
+ * 心跳超时或 sweep 检测到断连时，关闭残留 WS 并进入宽限期。
+ * 宽限期内同 epoch 重连会取消清理并重新绑定；超时才执行 performMachineCleanup。
  */
 function triggerMachineDisconnect(wsId: string, machineId: string, reason: string): void {
   const entry = connections.get(wsId);
   if (!entry) {
-    // entry 已被删除（例如 WS 已正常关闭），直接按 machineId 做清理
+    // entry 已被删除（例如 WS 已正常关闭），直接按 machineId 调度
     triggerMachineCleanupByMachineId(machineId, reason);
     return;
   }
@@ -586,10 +814,18 @@ function triggerMachineDisconnect(wsId: string, machineId: string, reason: strin
     }
   }
   connections.delete(wsId);
-  performMachineCleanup(entry, reason);
+  // 保留 transport listener 供 rebind；只拒绝结果未知的在途请求。
+  entry.remoteTransport?.disconnect?.(reason);
+  getMachineRegistryPort()
+    .disconnectMachine(machineId, reason)
+    .catch((err) => {
+      logError("Machine disconnect error:", err);
+    });
+  dispatchAgentNodeWsClose(entry.ws);
+  scheduleMachineCleanup(entry, machineId, reason);
 }
 
-/** 仅凭 machineId 做清理（entry 已不存在时由 sweep 使用）。导出供 registry-heartbeat sweep 调用。 */
+/** 仅凭 machineId 做断连调度（entry 已不存在时由 sweep 使用）。导出供 registry-heartbeat sweep 调用。 */
 export function triggerMachineCleanupByMachineId(machineId: string, reason: string): void {
   // 先检查是否有活跃连接（可能已重连）
   const activeConn = findMachineConnectionById(machineId);
@@ -608,21 +844,7 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
       logError("Machine disconnect error:", err);
     });
 
-  const disconnectedInstances = getCoreRuntime()
-    .listInstances()
-    .filter((instance) => instance.nodeId === machineId);
-  const instanceIds = disconnectedInstances.map((instance) => instance.instanceId);
-  for (const instance of disconnectedInstances) {
-    if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
-      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration, machineId);
-    }
-  }
-
-  getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
-  getMachineRegistryPort().stopHeartbeat(machineId);
-  import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
-    closeClientsForMachineInstances(instanceIds, "machine unavailable");
-  });
+  scheduleMachineCleanup(null, machineId, reason);
 }
 
 /**
@@ -669,11 +891,20 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   // 先删除连接记录，避免后续清理逻辑查到已失效的旧 entry
   connections.delete(wsId);
 
-  // machine 连接断连处理
+  // machine 连接断连处理：短暂断连只进入宽限期，保留 runtime 映射等待同 epoch 重连；
+  // 新连接已在宽限期内接管时，performMachineCleanup 的 activeConn guard 会跳过。
   if (entry.isMachine && entry.machineId) {
-    entry.remoteTransport?.close(reason ?? "Machine connection closed");
-    logger.info(`[ACP-WS-CLOSE] calling performMachineCleanup for machineId=${entry.machineId}`);
-    performMachineCleanup(entry, reason ?? undefined);
+    entry.remoteTransport?.disconnect?.(reason ?? "Machine connection closed");
+    // 断连后由本模块的宽限期计时负责收口；保留心跳 timer 会在 90s 时再次调度并延长收口。
+    getMachineRegistryPort().stopHeartbeat(entry.machineId);
+    getMachineRegistryPort()
+      .disconnectMachine(entry.machineId, reason ?? "connection closed")
+      .catch((err) => {
+        logError("Machine disconnect error:", err);
+      });
+    dispatchAgentNodeWsClose(entry.ws);
+    logger.info(`[ACP-WS-CLOSE] scheduling machine cleanup for machineId=${entry.machineId}`);
+    scheduleMachineCleanup(entry, entry.machineId, reason ?? "Machine connection closed");
   }
 }
 
@@ -777,6 +1008,7 @@ export function sendToAgentWs(agentId: string, msg: object): boolean {
 
 /** Gracefully close all ACP WebSocket connections */
 export function closeAllAcpConnections(): void {
+  for (const machineId of pendingMachineCleanups.keys()) cancelMachineCleanup(machineId);
   if (connections.size === 0) return;
 
   logger.debug(`Gracefully closing ${connections.size} ACP connection(s)...`);

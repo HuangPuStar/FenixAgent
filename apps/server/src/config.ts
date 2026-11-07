@@ -66,6 +66,8 @@ function buildConfig(env: ServerEnv) {
     /** Server→client keep_alive data-frame interval (seconds). Keeps reverse
      *  proxies from closing idle connections. Default 20s. */
     wsKeepaliveInterval: readDeclaredEnv<number>(env, "RCS_WS_KEEPALIVE_INTERVAL"),
+    /** Machine disconnect grace before runtime mappings are torn down (ms). Default 45s. */
+    machineReconnectGraceMs: readDeclaredEnv<number>(env, "RCS_MACHINE_RECONNECT_GRACE_MS"),
     /** Idle timeout in seconds before an unobserved non-interactive ACP instance is auto-stopped. */
     acpIdleTimeoutSeconds: readDeclaredEnv<number>(env, "RCS_ACP_IDLE_TIMEOUT_SECONDS"),
     /** Sweep interval in seconds for non-interactive ACP instance cleanup. */

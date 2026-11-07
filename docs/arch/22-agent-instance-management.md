@@ -251,6 +251,17 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 - 该复位不覆盖：`stop`/`delete` 操作失败产生的 `unknown`、shutdown 排空产生的 `unknown`（二者不带机器归属，不参与复位、保持 `unknown`，仍须先完成 clean-slate/reconcile；`unknown` gate 仍只放行 `stop`，见 :227-228）；普通机器不重连时按上文第 7 条保持 `unknown`；托管沙盒允许下述按需恢复。
 - shutdown 中同样不参与复位：`handleMachineCleanSlate` 与延后补做都带 `!this.#shuttingDown` 守卫（:123、:264），原因见 :262-263 注释——进程退出中不得把 shutdown drain 留下的未确认 runtime 伪装成 `stopped`。delete 被断连 fence 后 `deleting` 残留属相邻缺口，本次不修。
 
+### 同 epoch 传输重连（2026-11-07）
+
+clean-slate 只适用于「主服务 epoch 变化 / Machine 首次注册」；同一主服务进程内的网络重连不得终止在途实例：
+
+1. 机器断连后服务端保留 Core runtime 实例映射与 relay listener，默认 45 秒宽限期（`machineReconnectGraceMs`，仅进程内配置）后才执行原有断连收口。
+2. 机器 `register` 携带上次看到的 `server_epoch` 与存活实例清单（`instance_uid` / `runtime_generation` / `server_epoch` / `session_id` / `process_alive`）。epoch 相同且机器记录已存在时，服务端返回 `clean_slate_required: false` 与 `reconcile.accepted_instances/rejected_instances`。
+3. 服务端按 Core runtime 的 `nodeId`、`runtimeGeneration`、`serverEpoch` 与 `status=running` 核对归属；只有匹配项保留 PID、运行代次与在途 turn。跨机器、跨 epoch、进程已退出、非 running 的条目一律拒绝，机器收到后严格停止并遗忘。
+4. 新连接立即成为 owner：旧连接被服务端 fence（关闭并移出连接表），机器端也忽略旧 socket 的后续事件，防止双投递。
+5. transport 在断连期间保留 session listener，只拒绝结果未知的在途请求；断连期间到达的 stop 意图延后到 `rebind` 后补发。relay/session 恢复只恢复观察，不自动重发 prompt。
+6. `reconcile_confirmed` 携带机器最终确认的实例清单；服务端将已接受但未确认的实例按死亡事实收敛并关闭其前端 relay，然后才允许 lifecycle 流量。旧客户端首次注册不带 epoch，仍按 clean-slate 处理。
+
 ### 沙盒销毁/机器退役的确定终止（2026-10-21）
 
 `MachineHostPort.unregisterCoreRuntimeNode` 只被「机器退役 / 释放沙盒」调用，是**确定终止**而非暂时断连：Provider 资源已销毁，旧 Agent 进程不可能回连。该路径经 `unregisterRemoteNode(machineId, { runtimeTerminated: true })` 调用 `AgentInstanceRuntimeCoordinator.handleRuntimeTerminated`，把相关条目直接复位为 `stopped`：

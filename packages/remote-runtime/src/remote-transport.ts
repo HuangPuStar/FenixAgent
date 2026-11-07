@@ -42,6 +42,19 @@ export interface RemoteTransport {
   close(reason?: string): void;
   /** 外部路由注入收到的消息（由 RCS acp-ws-handler 调用，替代 onmessage 劫持） */
   injectMessage(message: TransportMessage): void;
+  /**
+   * 同 epoch 传输重连：切换到新连接。
+   *
+   * 保留 session listener（在途 turn 继续观察）与断连期间到达的 stop 意图，
+   * 已发送但结果未知的请求不会重放。
+   */
+  rebind?(ws: WsConnectionLike): void;
+  /**
+   * 传输暂时断连：拒绝结果未知的在途请求，但保留 session listener 等待 rebind。
+   *
+   * 终态清理仍走 `close`，它会同时释放 listener。
+   */
+  disconnect?(reason?: string): void;
 }
 
 // ── 默认超时 ──────────────────────────────────
@@ -61,7 +74,7 @@ export interface WsConnectionLike {
  * 创建基于 WS 连接的 RemoteTransport。
  * 支持 onmessage 劫持（直连场景）和 injectMessage（RCS 路由场景）两种消息接收方式。
  */
-export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
+export function createWsRemoteTransport(initialWs: WsConnectionLike): RemoteTransport {
   const pendingRequests = new Map<
     string,
     {
@@ -69,9 +82,19 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
       reject: (err: Error) => void;
       timer: ReturnType<typeof setTimeout>;
       fence?: { instanceUid: string; runtimeGeneration: number; serverEpoch: string };
+      message: TransportMessage;
     }
   >();
   const sessionListeners = new Set<(instanceId: string, sessionId: string, message: TransportMessage) => void>();
+  // 断连期间到达或结果未知的 stop 意图：stop 是幂等终止意图，重连后补发不会重复外部副作用。
+  // 其他 lifecycle 请求一律失败，避免「结果未知却重放」。
+  const deferredStops: Array<{
+    message: TransportMessage;
+    resolve: (msg: TransportMessage) => void;
+    reject: (err: Error) => void;
+  }> = [];
+  let ws: WsConnectionLike | null = initialWs;
+  let connected = true;
 
   function handleMessage(msg: TransportMessage): void {
     if (msg.request_id) {
@@ -101,9 +124,9 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
   }
 
   // 劫持 onmessage（直连场景，acp-link 直接连接 transport 时使用）
-  const originalOnMessage = ws.onmessage;
-  if ("onmessage" in ws)
-    ws.onmessage = (event: { data: string | Buffer }) => {
+  const originalOnMessage = initialWs.onmessage;
+  if ("onmessage" in initialWs)
+    initialWs.onmessage = (event: { data: string | Buffer }) => {
       if (originalOnMessage) originalOnMessage(event);
 
       const text = typeof event.data === "string" ? event.data : event.data.toString();
@@ -123,33 +146,65 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
     return `req_${Date.now()}_${requestIdCounter}`;
   }
 
+  function dispatch(
+    message: TransportMessage,
+    resolve: (msg: TransportMessage) => void,
+    reject: (err: Error) => void,
+    options?: TransportSendOptions,
+  ): void {
+    const target = ws;
+    if (!connected || !target) {
+      reject(new Error(`Remote transport is disconnected: type=${message.type}`));
+      return;
+    }
+    const requestId = message.request_id ?? nextRequestId();
+    const timeout = options?.timeout ?? (message.type === "prepare" ? PREPARE_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      reject(new Error(`Transport request timed out: type=${message.type} request_id=${requestId}`));
+    }, timeout);
+
+    const fence =
+      typeof message.instance_uid === "string" &&
+      typeof message.runtime_generation === "number" &&
+      typeof message.server_epoch === "string"
+        ? {
+            instanceUid: message.instance_uid,
+            runtimeGeneration: message.runtime_generation,
+            serverEpoch: message.server_epoch,
+          }
+        : undefined;
+    pendingRequests.set(requestId, { resolve, reject, timer, fence, message });
+
+    const outgoing: TransportMessage = { ...message, request_id: requestId };
+    logger.info("→ remote sendAndWait", { type: outgoing.type, requestId, instanceId: outgoing.instance_id });
+    target.send(JSON.stringify(outgoing));
+  }
+
+  /** 断连：结果未知的 stop 延后到重连补发，其余请求立即失败。 */
+  function rejectAfterDisconnect(reason: string): void {
+    for (const [requestId, pending] of pendingRequests) {
+      clearTimeout(pending.timer);
+      pendingRequests.delete(requestId);
+      if (pending.message.type === "stop") {
+        deferredStops.push({ message: pending.message, resolve: pending.resolve, reject: pending.reject });
+      } else {
+        pending.reject(new Error(reason));
+      }
+    }
+  }
+
   return {
     sendAndWait(message, options) {
-      const requestId = message.request_id ?? nextRequestId();
-      const timeout = options?.timeout ?? (message.type === "prepare" ? PREPARE_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
-
-      return new Promise<TransportMessage>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pendingRequests.delete(requestId);
-          reject(new Error(`Transport request timed out: type=${message.type} request_id=${requestId}`));
-        }, timeout);
-
-        const fence =
-          typeof message.instance_uid === "string" &&
-          typeof message.runtime_generation === "number" &&
-          typeof message.server_epoch === "string"
-            ? {
-                instanceUid: message.instance_uid,
-                runtimeGeneration: message.runtime_generation,
-                serverEpoch: message.server_epoch,
-              }
-            : undefined;
-        pendingRequests.set(requestId, { resolve, reject, timer, fence });
-
-        const outgoing: TransportMessage = { ...message, request_id: requestId };
-        logger.info("→ remote sendAndWait", { type: outgoing.type, requestId, instanceId: outgoing.instance_id });
-        ws.send(JSON.stringify(outgoing));
-      });
+      if (!connected) {
+        if (message.type === "stop") {
+          return new Promise<TransportMessage>((resolve, reject) => {
+            deferredStops.push({ message, resolve, reject });
+          });
+        }
+        return Promise.reject(new Error(`Remote transport is disconnected: type=${message.type}`));
+      }
+      return new Promise<TransportMessage>((resolve, reject) => dispatch(message, resolve, reject, options));
     },
 
     onSessionMessage(listener) {
@@ -160,17 +215,37 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
     },
 
     send(message) {
+      // 断连窗口只保留观察与状态，不缓存待重发的下行消息（prompt 结果未知，禁止重放）。
+      if (!connected || !ws) {
+        logger.debug("→ remote send dropped while disconnected", {
+          type: message.type,
+          instanceId: message.instance_id,
+        });
+        return;
+      }
       logger.info("→ remote send", { type: message.type, instanceId: message.instance_id });
       ws.send(JSON.stringify(message));
     },
 
     close(reason = "Remote transport closed") {
-      for (const [requestId, pending] of pendingRequests) {
-        clearTimeout(pending.timer);
-        pending.reject(new Error(reason));
-        pendingRequests.delete(requestId);
-      }
+      connected = false;
+      ws = null;
+      rejectAfterDisconnect(reason);
+      for (const deferred of deferredStops.splice(0)) deferred.reject(new Error(reason));
       sessionListeners.clear();
+    },
+
+    disconnect(reason = "Remote transport disconnected") {
+      if (!connected) return;
+      connected = false;
+      ws = null;
+      rejectAfterDisconnect(reason);
+    },
+
+    rebind(nextWs) {
+      ws = nextWs;
+      connected = true;
+      for (const deferred of deferredStops.splice(0)) dispatch(deferred.message, deferred.resolve, deferred.reject);
     },
 
     injectMessage(message) {

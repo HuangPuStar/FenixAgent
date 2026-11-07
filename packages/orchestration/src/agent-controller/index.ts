@@ -100,14 +100,16 @@ export class AgentController {
    * 与 stopInstance 的语义差异：批量场景无"目标不存在"概念，不抛
    * INSTANCE_NOT_FOUND；重复调用幂等（表内无匹配实例时直接返回空数组）。
    * @param machineId 目标机器 ID（与 Instance.machineId 匹配）
+   * @param keepInstanceIds 同 epoch 重连已确认仍存活的实例，保留其活跃表条目
    * @returns 被移除实例的 instanceId 列表（宿主据此触发实例级后续清理，如
    *   SP-C2 的内存 Y.Doc 回收；无匹配时为空数组）
    */
-  stopInstancesByMachineId(machineId: string): string[] {
+  stopInstancesByMachineId(machineId: string, keepInstanceIds?: ReadonlySet<string>): string[] {
     const removedInstanceIds: string[] = [];
     // 快照遍历：终止过程会从活跃表删除条目，迭代中删除可变 Map 不安全
     for (const instance of [...this.#instances.values()]) {
       if (instance.machineId !== machineId) continue;
+      if (keepInstanceIds?.has(instance.instanceId)) continue;
       this.#terminateInstance(instance);
       removedInstanceIds.push(instance.instanceId);
     }

@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type AgentNode, type AgentNodeSocket, AgentNodeUnavailableError } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreRuntimeFacade, stubMachineRegistryPort } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubCoreRuntimeFacade, stubMachineRegistryPort } from "../server/testing";
 import { getAgentNodeService } from "../transport/agent-node-bridge";
 
 /** 最小 AgentNodeSocket：close 立即确认。 */
@@ -37,7 +37,8 @@ class MockSocket implements AgentNodeSocket {
 let registeredNode: AgentNode | null = null;
 
 beforeEach(() => {
-  resetAllStubs();
+  // 断连立即清理语义：宽限期置 0，避免定时器跨用例落到已解绑的宿主端口。
+  initializeAgentRuntimeModuleConfig({ machineReconnectGraceMs: 0 });
   // disconnectMachine 必须配置：未配置时空 stub 返回 undefined，
   // triggerMachineCleanupByMachineId 的 .catch 会对 undefined 调用抛 TypeError
   stubMachineRegistryPort({ disconnectMachine: async () => {} });

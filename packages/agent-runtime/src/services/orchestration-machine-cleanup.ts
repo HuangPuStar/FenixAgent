@@ -65,9 +65,15 @@ export function cleanupOrchestrationInstancesForMachine(machineId: string): numb
   return removeOrchestrationInstancesForMachine(machineId).length;
 }
 
-/** 同 {@link cleanupOrchestrationInstancesForMachine}，但返回被移除的实例 uid（供上报运行态终止的调用方使用）。 */
-export function removeOrchestrationInstancesForMachine(machineId: string): string[] {
-  const removedInstanceIds = _deps.getOrchestrationController().stopInstancesByMachineId(machineId);
+/**
+ * 同 {@link cleanupOrchestrationInstancesForMachine}，但保留存活实例（同 epoch 重连对账）。
+ * @param keepInstanceIds 机器已确认仍在运行的实例；缺省表示全部清理。
+ */
+export function removeOrchestrationInstancesForMachine(
+  machineId: string,
+  keepInstanceIds?: ReadonlySet<string>,
+): string[] {
+  const removedInstanceIds = _deps.getOrchestrationController().stopInstancesByMachineId(machineId, keepInstanceIds);
   if (removedInstanceIds.length > 0) {
     // machineId 属内部机器标识（非用户输入），日志记录不违反脱敏约束
     log(
