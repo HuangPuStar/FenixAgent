@@ -71,9 +71,7 @@ const connectedMachineIds: string[] = [];
 let savedRelayLifecyclePort: RelayLifecyclePort | null = null;
 
 /** 统一的注册端口替身：用例只覆盖需要改变的方法，其余保持与本文件 beforeEach 一致。 */
-function installMachineRegistryStub(
-  overrides: Partial<Parameters<typeof stubMachineRegistryPort>[0]> = {},
-): void {
+function installMachineRegistryStub(overrides: Partial<Parameters<typeof stubMachineRegistryPort>[0]> = {}): void {
   stubMachineRegistryPort({
     registerMachine: async ({ machineId }) => ({ id: machineId, isNew: false }),
     disconnectMachine: async () => {},
