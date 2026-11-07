@@ -255,10 +255,10 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 
 clean-slate 只适用于「主服务 epoch 变化 / Machine 首次注册」；同一主服务进程内的网络重连不得终止在途实例：
 
-1. 机器断连后服务端保留 Core runtime 实例映射与 relay listener，默认 45 秒宽限期（`machineReconnectGraceMs`，仅进程内配置）后才执行原有断连收口。
+1. 机器断连后服务端保留 Core runtime 实例映射与 relay listener，默认 45 秒宽限期（`machineReconnectGraceMs`，仅进程内配置）后才执行原有断连收口。宽限到期时若新连接仍在 `registerMachine`（DB await，尚未写入 `entry.machineId`），清理必须延后重试，不得删除旧 runtime。
 2. 机器 `register` 携带上次看到的 `server_epoch` 与存活实例清单（`instance_uid` / `runtime_generation` / `server_epoch` / `session_id` / `process_alive`）。epoch 相同且机器记录已存在时，服务端返回 `clean_slate_required: false` 与 `reconcile.accepted_instances/rejected_instances`。
 3. 服务端按 Core runtime 的 `nodeId`、`runtimeGeneration`、`serverEpoch` 与 `status=running` 核对归属；只有匹配项保留 PID、运行代次与在途 turn。跨机器、跨 epoch、进程已退出、非 running 的条目一律拒绝，机器收到后严格停止并遗忘。
-4. 新连接立即成为 owner：旧连接被服务端 fence（关闭并移出连接表），机器端也忽略旧 socket 的后续事件，防止双投递。
+4. `registerMachine` 成功后新连接才成为 owner：旧连接被服务端 fence（关闭并移出连接表），机器端也忽略旧 socket 的后续事件，防止双投递；注册失败时旧连接与心跳保持原样，客户端可在同一连接重试。
 5. transport 在断连期间保留 session listener，只拒绝结果未知的在途请求；断连期间到达的 stop 意图延后到 `rebind` 后补发。relay/session 恢复只恢复观察，不自动重发 prompt。
 6. `reconcile_confirmed` 携带机器最终确认的实例清单；服务端将已接受但未确认的实例按死亡事实收敛并关闭其前端 relay，然后才允许 lifecycle 流量。旧客户端首次注册不带 epoch，仍按 clean-slate 处理。
 

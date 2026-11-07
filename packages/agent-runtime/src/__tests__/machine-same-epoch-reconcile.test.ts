@@ -65,9 +65,28 @@ const registeredNodes = new Map<string, { id: string; mode: string; engineTypes:
 const registerCalls: Array<{ machineId: string; options?: RegisterRemoteNodeOptions }> = [];
 const unregisterCalls: string[] = [];
 const machineHeartbeats: string[] = [];
+const stoppedHeartbeats: string[] = [];
 const transports = new Map<string, ReturnType<typeof createWsRemoteTransport>>();
 const connectedMachineIds: string[] = [];
 let savedRelayLifecyclePort: RelayLifecyclePort | null = null;
+
+/** 统一的注册端口替身：用例只覆盖需要改变的方法，其余保持与本文件 beforeEach 一致。 */
+function installMachineRegistryStub(
+  overrides: Partial<Parameters<typeof stubMachineRegistryPort>[0]> = {},
+): void {
+  stubMachineRegistryPort({
+    registerMachine: async ({ machineId }) => ({ id: machineId, isNew: false }),
+    disconnectMachine: async () => {},
+    startHeartbeat: () => {},
+    handleHeartbeat: async (machineId) => {
+      machineHeartbeats.push(machineId);
+    },
+    stopHeartbeat: (machineId) => {
+      stoppedHeartbeats.push(machineId);
+    },
+    ...overrides,
+  });
+}
 
 const facade = {
   getInstance: (instanceId: string) => coreInstances.get(instanceId) ?? null,
@@ -163,18 +182,11 @@ beforeEach(() => {
   registerCalls.length = 0;
   unregisterCalls.length = 0;
   machineHeartbeats.length = 0;
+  stoppedHeartbeats.length = 0;
   transports.clear();
   connectedMachineIds.length = 0;
 
-  stubMachineRegistryPort({
-    registerMachine: async ({ machineId }) => ({ id: machineId, isNew: false }),
-    disconnectMachine: async () => {},
-    startHeartbeat: () => {},
-    handleHeartbeat: async (machineId) => {
-      machineHeartbeats.push(machineId);
-    },
-    stopHeartbeat: () => {},
-  });
+  installMachineRegistryStub();
   bindAgentInstanceRuntimeOperations({
     spawnInstance: async () => {},
     stopInstance: async () => {},
@@ -402,6 +414,129 @@ describe("same-epoch machine reconnect", () => {
     await settle();
     expect(machineHeartbeats.length).toBe(heartbeatsBefore);
     expect(registeredFrame(next).clean_slate_required).toBe(false);
+  });
+
+  // 注册挂起时旧宽限 timer 到期：新连接尚未写入 machineId，runtime/实例不得被清理。
+  test("slow registration keeps runtime when the grace timer fires", async () => {
+    jest.useFakeTimers();
+    const instanceId = "inst_slow_register";
+    const { ws, wsId } = await bootstrap(instanceId);
+    handleAcpWsClose(ws, wsId, 1006, "network loss");
+    jest.advanceTimersByTime(1000);
+    await settle();
+    expect(unregisterCalls).toEqual([]);
+
+    let resolveRegister: (value: { id: string; isNew: boolean }) => void = () => {};
+    const pendingRegister = new Promise<{ id: string; isNew: boolean }>((resolve) => {
+      resolveRegister = resolve;
+    });
+    installMachineRegistryStub({ registerMachine: () => pendingRegister });
+
+    const next = createMockWs();
+    handleAcpWsOpen(next, "ws_slow_register", MACHINE_USER, null, true);
+    const registration = handleAcpWsMessage(next, "ws_slow_register", {
+      type: "register",
+      agent_name: "same-epoch-machine",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      machine_id: MACHINE_ID,
+      server_epoch: SERVER_EPOCH,
+      instances: inventoryFor(instanceId, 1),
+    });
+    await settle();
+    // 宽限期到期时 registerMachine 仍挂起：必须先保留旧 runtime，等注册结果。
+    jest.advanceTimersByTime(45_000);
+    await settle();
+    expect(findMachineConnectionById(MACHINE_ID)).toBeNull();
+    expect(unregisterCalls).toEqual([]);
+    expect(deletedInstanceIds).toEqual([]);
+    expect(coreInstances.has(instanceId)).toBe(true);
+    expect(agentInstanceService.getRuntimeSnapshot(instanceId).state).toBe("running");
+
+    resolveRegister({ id: MACHINE_ID, isNew: false });
+    await registration;
+    await settle();
+    expect(registeredFrame(next).clean_slate_required).toBe(false);
+    expect(registeredFrame(next).reconcile).toMatchObject({
+      accepted_instances: [{ instance_uid: instanceId, runtime_generation: 1 }],
+      rejected_instances: [],
+    });
+    expect(registerCalls.at(-1)?.options?.preserveRuntime).toBe(true);
+    expect(unregisterCalls).toEqual([]);
+    expect(coreInstances.has(instanceId)).toBe(true);
+    expect(agentInstanceService.getRuntimeSnapshot(instanceId).state).toBe("running");
+  });
+
+  // 注册服务失败不得提前 fence：旧连接与心跳继续可用，同一连接重试成功后旧连接才被接管。
+  test("failed registration keeps the previous connection and heartbeat, retry succeeds", async () => {
+    const instanceId = "inst_register_failure";
+    const { ws: oldWs, wsId: oldWsId } = await bootstrap(instanceId);
+    const heartbeatsBefore = machineHeartbeats.length;
+
+    installMachineRegistryStub({
+      registerMachine: async () => {
+        throw new Error("registry unavailable");
+      },
+    });
+    const next = createMockWs();
+    handleAcpWsOpen(next, "ws_register_fail", MACHINE_USER, null, true);
+    await handleAcpWsMessage(next, "ws_register_fail", {
+      type: "register",
+      agent_name: "same-epoch-machine",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      machine_id: MACHINE_ID,
+      server_epoch: SERVER_EPOCH,
+      instances: inventoryFor(instanceId, 1),
+    });
+    await settle();
+
+    expect(next.sent.map((line) => JSON.parse(line))).toContainEqual({
+      type: "error",
+      message: "Machine registration failed",
+    });
+    expect(oldWs.closeCalls).toBe(0);
+    expect(findMachineConnectionById(MACHINE_ID)?.wsId).toBe(oldWsId);
+    expect(stoppedHeartbeats).toEqual([]);
+
+    await handleAcpWsMessage(oldWs, oldWsId, { type: "heartbeat" });
+    await settle();
+    expect(machineHeartbeats.length).toBe(heartbeatsBefore + 1);
+
+    installMachineRegistryStub();
+    await handleAcpWsMessage(next, "ws_register_fail", {
+      type: "register",
+      agent_name: "same-epoch-machine",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      machine_id: MACHINE_ID,
+      server_epoch: SERVER_EPOCH,
+      instances: inventoryFor(instanceId, 1),
+    });
+    await settle();
+
+    expect(oldWs.closeCalls).toBe(1);
+    expect(findMachineConnectionById(MACHINE_ID)?.wsId).toBe("ws_register_fail");
+    expect(registeredFrame(next).clean_slate_required).toBe(false);
+  });
+
+  // canReconcile 但 DB 记录是新的：注册成功后仍必须 fence 旧连接，再走 clean-slate。
+  test("same-epoch registration with isNew fences the previous connection", async () => {
+    const instanceId = "inst_is_new";
+    const { ws } = await bootstrap(instanceId);
+    installMachineRegistryStub({
+      registerMachine: async ({ machineId }) => ({ id: machineId, isNew: true }),
+    });
+
+    const next = await openConnection("ws_is_new_fence", {
+      type: "register",
+      agent_name: "same-epoch-machine",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      machine_id: MACHINE_ID,
+      server_epoch: SERVER_EPOCH,
+      instances: inventoryFor(instanceId, 1),
+    });
+
+    expect(ws.closeCalls).toBe(1);
+    expect(registeredFrame(next).clean_slate_required).toBe(true);
+    expect(registerCalls.at(-1)?.options?.preserveRuntime).toBeUndefined();
   });
 
   // 机器最终确认清单才是权威：服务端已接受但未确认的实例必须按死亡事实收敛。

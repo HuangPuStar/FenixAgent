@@ -70,22 +70,38 @@ function cancelMachineCleanup(machineId: string): void {
   pendingMachineCleanups.delete(machineId);
 }
 
+/** 注册挂起时清理 timer 的重试间隔：不删除 runtime，也不让宽限 timer 静默消失。 */
+const MACHINE_REGISTRATION_RETRY_MS = 1_000;
+
 /**
  * 短暂断连先保留 Core runtime 映射与 relay listener：同 epoch 重连才能重新绑定并继续观察在途 turn。
  * 只有宽限期到期仍无 owner 连接时才执行原有收口。
  */
 function scheduleMachineCleanup(entry: AcpConnectionEntry | null, machineId: string, reason: string): void {
   cancelMachineCleanup(machineId);
+  armMachineCleanup(entry, machineId, reason);
+}
+
+function armMachineCleanup(entry: AcpConnectionEntry | null, machineId: string, reason: string): void {
   const graceMs = machineReconnectGraceMs();
-  if (graceMs <= 0) {
+  if (graceMs <= 0 && !pendingMachineRegistrations.has(machineId)) {
     performMachineCleanup(entry, machineId, reason);
     return;
   }
+  // 注册中的连接尚未把 machineId 写入 entry，findMachineConnectionById 看不到它。
+  // grace=0 的配置也必须先等注册落地，因此用固定短间隔重试而不是立即清理。
+  const delayMs = graceMs > 0 ? graceMs : MACHINE_REGISTRATION_RETRY_MS;
   const timer = setTimeout(() => {
+    // registerMachine 包含 DB await；此时清理会与随后的 reconcile 竞争并删掉旧 runtime。
+    if (pendingMachineRegistrations.has(machineId)) {
+      logger.info(`[MACHINE-CLEANUP] registration pending, defer cleanup machineId=${machineId}`);
+      armMachineCleanup(entry, machineId, reason);
+      return;
+    }
     pendingMachineCleanups.delete(machineId);
     if (findMachineConnectionById(machineId)) return;
     performMachineCleanup(entry, machineId, reason);
-  }, graceMs);
+  }, delayMs);
   timer.unref?.();
   pendingMachineCleanups.set(machineId, { timer, entry, reason });
 }
@@ -309,10 +325,9 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     );
     return;
   }
-  if (canReconcile) {
-    // 同 epoch 的合法重连由新连接接管；旧连接被 fence，避免双投递。
-    fencePreviousMachineOwner(wsId, specifiedMachineId);
-  } else {
+  // 同 epoch 的合法重连由新连接接管；fence 必须等 registerMachine 成功后再执行，
+  // 否则注册失败会提前关闭旧连接/心跳，而旧 runtime 只能等心跳超时。
+  if (!canReconcile) {
     const hasActiveConnection = [...connections.values()].some(
       (candidate) => candidate.isMachine && candidate.machineId === specifiedMachineId && candidate.ws.readyState === 1,
     );
@@ -339,6 +354,10 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       tenantId,
       machineId: specifiedMachineId,
     });
+
+    // 注册成功才允许新 owner 接管：失败时旧连接与心跳保持原样，客户端可原地重试。
+    // 必须在 clean-slate / reconcile 分支之前执行，且不受 result.isNew 影响。
+    fencePreviousMachineOwner(wsId, specifiedMachineId);
 
     // DB 记录是新的（例如机器记录被删除后重建）时不能继承旧 runtime。
     const sameEpoch = canReconcile && !result.isNew;
@@ -744,8 +763,14 @@ function performMachineCleanup(
   reason?: string,
   force = false,
 ): void {
-  // 检查是否已有更新的 WS 连接接管了此 machineId（快速重连场景）
+  // 检查是否已有更新的 WS 连接接管了此 machineId（快速重连场景）。
+  // 注册中的新连接尚未写入 entry.machineId，必须由 pending 集合兜底：
+  // 此时删除 runtime 会让注册完成后的 reconcile 继承不到旧实例。
   if (!force) {
+    if (pendingMachineRegistrations.has(machineId)) {
+      scheduleMachineCleanup(entry, machineId, reason ?? "machine registration in progress");
+      return;
+    }
     const activeConn = findMachineConnectionById(machineId);
     if (activeConn) {
       logger.info(
