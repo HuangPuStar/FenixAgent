@@ -291,12 +291,11 @@ export const TURN_TERMINAL_STATUSES: ReadonlySet<TurnStatus> = new Set([
 export const TOOL_TERMINAL_STATUSES: ReadonlySet<ToolCallStatus> = new Set(["completed", "error", "cancelled"]);
 
 /**
- * 权限请求默认超时：pending 超时后迁移 expired（CAS）。
- * 单一真相：聚合层（permission_requested 投影 expiresAt）与超时定时器
- * （session-channel / doc-manager）必须一致，否则定时器按一个超时、投影按
- * 另一个超时，前端倒计时与后端失效时刻漂移。
+ * 权限请求兜底超时：上游（acp-link 本地/远端创建方）未携带 expiresAt 的老版本
+ * 仍按 30s 失效，投影的兜底值不得比上游更晚，否则界面会继续展示已被 Agent
+ * 取消的权限。新版本一律使用 permission_request 携带的权威 expiresAt。
  */
-export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
+export const DEFAULT_PERMISSION_TIMEOUT_MS = 30_000;
 
 /**
  * AskUserQuestion 默认超时：pending 超时后迁移 expired（CAS）。

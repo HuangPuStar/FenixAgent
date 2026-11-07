@@ -13,6 +13,8 @@ export interface PermissionOption {
 export interface PermissionRequestPayload {
   requestId: string;
   sessionId: string;
+  /** 创建方给出的权威失效时刻（ISO）；ChatChannel 投影与前端倒计时只读取此值。 */
+  expiresAt?: string;
   options: PermissionOption[];
   toolCall: {
     toolCallId: string;

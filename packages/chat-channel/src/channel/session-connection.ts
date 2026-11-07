@@ -92,7 +92,7 @@ export interface SessionChannelDependencies {
   maxPendingPerSession?: number;
   /** 取消超时（毫秒）：cancel 后 Agent 未确认时 turn 收敛为 interrupted，默认 10s */
   cancelTimeoutMs?: number;
-  /** 权限请求超时（毫秒）：超过 expiresAt 未响应时迁移 pending → expired，默认 5min */
+  /** 权限请求超时（毫秒）：超过 expiresAt 未响应时迁移 pending → expired，默认 30s（与 acp-link 权威期限一致） */
   permissionTimeoutMs?: number;
   /** steer（session/input/*）等待 peri 回执的上限（毫秒），缺省 DEFAULT_USER_INPUT_REQUEST_TIMEOUT_MS */
   userInputQueueTimeoutMs?: number;

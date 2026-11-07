@@ -141,8 +141,8 @@ describe("permission CAS (C5)", () => {
   });
 
   // 重复 respond_permission（相同 permissionId、不同 commandId）只有第一次 CAS 生效，
-  // Agent 只收到一次 resolve，第二次幂等返回 committed 且不重发
-  test("duplicate respond_permission resolves once and agent receives a single resolve", async () => {
+  // Agent 只收到一次 resolve；第二次投影已 resolved，必须返回明确错误而不是假 committed
+  test("duplicate respond_permission resolves once and second response is rejected", async () => {
     const { connection, relayMessages } = createConnection();
     await setupTurnWithPendingPermission(harness, "p1", "t1", new Date(Date.now() + 60_000).toISOString());
 
@@ -162,8 +162,9 @@ describe("permission CAS (C5)", () => {
     expect(relayMessages).toHaveLength(1);
     expect(relayMessages[0]?.id).toBe("p1");
     expect(relayMessages[0]?.result.outcome).toEqual({ outcome: "selected", optionId: "allow" });
-    // 两次响应都返回 committed（幂等成功，不报错）
-    expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed", "accepted", "committed"]);
+    // 第一次 committed；第二次只发 accepted 后返回错误，不出现第二个 committed
+    expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed", "accepted"]);
+    expect(harness.errorFrames.map((frame) => frame.error.type)).toEqual(["ACTION.INVALID_STATE"]);
     // Session Doc 投影为 resolved（前端 filter pending 后不再显示）
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1");
     expect(getPendingPermissions(sessionDoc!).get("p1")?.get("status")).toBe("resolved");
@@ -171,8 +172,8 @@ describe("permission CAS (C5)", () => {
     expect(getPendingPermissions(sessionDoc!).get("p1")?.get("decision")).toBe("allow");
   });
 
-  // 未知 permissionId（不存在于 pendingPermissions）时 CAS 失败：不发 resolve、幂等成功
-  test("unknown permissionId does not send resolve", async () => {
+  // 未知 permissionId（不存在于 pendingPermissions）时 CAS 失败：不发 resolve、返回明确错误
+  test("unknown permissionId does not send resolve and is rejected", async () => {
     const { connection, relayMessages } = createConnection();
     await setupTurnWithPendingPermission(harness, "p1", "t1", new Date(Date.now() + 60_000).toISOString());
 
@@ -183,7 +184,8 @@ describe("permission CAS (C5)", () => {
     );
 
     expect(relayMessages).toHaveLength(0);
-    expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
+    expect(harness.acks.map((a) => a.status)).toEqual(["accepted"]);
+    expect(harness.errorFrames.map((frame) => frame.error.type)).toEqual(["ACTION.INVALID_STATE"]);
   });
 
   // deny 响应（optionId 为空）翻译为 cancelled outcome，并收敛关联工具调用为 cancelled
@@ -221,7 +223,7 @@ describe("permission CAS (C5)", () => {
     expect(getSessionInfo(sessionDoc).get("activeTurnStatus")).toBe("cancelled");
     expect(getToolCallsMap(harness.docManager.getChatYdoc("rcs-1")!).get("t1")?.get("status")).toBe("cancelled");
 
-    // 过期后响应 → CAS 失败，不再发 resolve（即使命令重发也不重发 RPC）
+    // 过期后响应 → CAS 失败，不再发 resolve，并返回明确错误
     const { relayMessages } = createConnection();
     await harness.channel.handleAction(
       connection,
@@ -229,6 +231,7 @@ describe("permission CAS (C5)", () => {
       createSinks(harness),
     );
     expect(relayMessages).toHaveLength(0);
+    expect(harness.errorFrames.map((frame) => frame.error.type)).toEqual(["ACTION.INVALID_STATE"]);
   });
 
   // 多个 pending 权限：一个 resolved 后 turn 保持 awaiting_permission，全部解决才恢复 running

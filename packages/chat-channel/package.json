@@ -31,5 +31,8 @@
     "acp-link": "workspace:*",
     "yjs": "^13.6.21",
     "ioredis": "^5.10.1"
+  },
+  "devDependencies": {
+    "@agentclientprotocol/sdk": "^1.2.0"
   }
 }

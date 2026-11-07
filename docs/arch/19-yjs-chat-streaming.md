@@ -930,7 +930,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 
 - 每连接维护有界发送队列。超过软阈值（64 KB）时合并 update 或跳过发送（客户端重连后经快照重新同步）；超过硬阈值时以可恢复错误关闭连接。（实现：`channel/broadcaster.ts` `sendToYjsWs` 的 `bufferedAmount > 64 KB` 跳过发送 + `Y.mergeUpdates` 合并；`YJS_MAX_CLIENTS` 默认 200 连接配额在 `channel/connection-registry.ts` 与 `channel/gateway.ts`。）
 - ACP 读取循环与客户端广播解耦，单个浏览器永远不能阻塞 Agent stdout/WebSocket 消费。
-- `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时默认 5min → `expired`，见 `channel/session-channel.ts`。）
+- `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时 30s → `expired`；期限由 acp-link 创建方随 `permission_request` 下发 `expiresAt`，投影只采用该值，见 `channel/session-expirations.ts`。）
 - 命令准入在异步校验前预留预算：每 `rcsSessionId` 最多 64 条等待项及 1 条执行项，payload 合计 4 MiB，单条 Action payload 为 1 MiB（按 UTF-8 计数）。取消额外保留 2 条、2 KiB，并优先于普通等待项执行；这些容量不能替代 WebSocket 入口的积压预算。
 - 未就绪连接的文本 pending 最多 64 条、1 MiB；取消额外保留 2 条、2 KiB 并优先重放。超限以 1013 关闭该连接；消费、关闭与转为 active 时同步维护字节账。二进制握手 pending 独立限制为 8 条、64 KiB；连接总量仍由 `YJS_MAX_CLIENTS` 限制。
 - 最后一个客户端断开会 abort 旧队列、拒绝未执行项并取消回执等待；重连队列等待旧执行器退场，旧 finally 不得删除新队列。仍在执行的记录不因断线或时间逐出；已退场历史与活动准入分开，按 §7.1 的数量、期限与 epoch 围栏回收。去重检查先于版本前置条件，重放只得到原结果或明确拒绝，不得重新触发旧命令。该能力不提供外部执行终态或跨控制面结果恢复。

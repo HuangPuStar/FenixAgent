@@ -3,6 +3,7 @@ import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
+import { createPermissionExpiresAt, PERMISSION_TIMEOUT_MS } from "../permission-deadline.js";
 import { normalizeClaudeSdkUsage, ProtocolAdapter } from "./protocol-adapter.js";
 import { ActiveQueryRegistry } from "./query-registry.js";
 
@@ -325,31 +326,44 @@ export function createClaudeAcpConnection(
         const title = ctxObj?.title ?? `Claude Code wants to use ${toolName}`;
         const requestId = `perm_${Date.now()}_${toolName}`;
         const permissionPromise = new Promise<boolean>((resolve, reject) => {
-          const timer = setTimeout(() => {
+          let timer: ReturnType<typeof setTimeout>;
+          // 过期/取消都必须广播终态：投影与 Agent 同时失效，不留可批准的旧卡片。
+          const settle = (approved: boolean, expired: boolean) => {
+            if (!pendingPermissions.has(requestId)) return;
+            clearTimeout(timer);
             pendingPermissions.delete(requestId);
-            resolve(true);
-          }, 30000);
+            if (expired) {
+              // 终态通知是尽力而为：发送失败仍必须拒绝工具，不能继续执行。
+              try {
+                send({ type: "permission_expired", payload: { sessionId: targetSessionId!, requestId } });
+              } catch (error) {
+                console.warn(
+                  "[claude-acp-adapter] permission expiry notify failed:",
+                  error instanceof Error ? error.name : typeof error,
+                );
+              }
+            }
+            resolve(approved);
+          };
+          timer = setTimeout(() => settle(false, true), PERMISSION_TIMEOUT_MS);
           // SDK 的 canUseTool options.signal（见 sdk.d.ts CanUseTool）：CLI 侧 interrupt
           // 时 SDK 发送 control_cancel_request 触发 abort。permissionPromise 挂起会阻塞
           // for-await 循环体，interrupt() 不直接穿透 await，不监听将残留挂起最多 30s
           // （注册表条目未释放）。abort 时立即按拒绝处理：取消中不再执行该工具。
           const signal = ctxObj?.signal;
-          const onAbort = () => {
-            clearTimeout(timer);
-            pendingPermissions.delete(requestId);
-            resolve(false);
-          };
+          const onAbort = () => settle(false, true);
+          pendingPermissions.set(requestId, { resolve, reject, timer });
           if (signal) {
             if (signal.aborted) onAbort();
             else signal.addEventListener("abort", onAbort, { once: true });
           }
-          pendingPermissions.set(requestId, { resolve, reject, timer });
         });
         send({
           type: "permission_request",
           payload: {
             sessionId: targetSessionId!,
             requestId,
+            expiresAt: createPermissionExpiresAt(),
             options: [
               { kind: "allow_always", label: "Always Allow", optionId: "allow_always" },
               { kind: "allow_once", label: "Allow Once", optionId: "allow_once" },

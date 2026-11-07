@@ -1,7 +1,7 @@
 import { translateSimpleAction } from "../protocol/translator";
 import { normalizeQuestionAnswers, type QuestionAnswer } from "../schema";
-import { bumpProjectionVersion } from "../state/chat-writer";
-import { applyPermissionResolution } from "../state/permission";
+import { bumpProjectionVersion, getPendingPermissions } from "../state/chat-writer";
+import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
 import { respondQuestion } from "../state/question";
 import { CommandCoordinator } from "./command-coordinator";
 import { normalizeSessionCommand } from "./session-command";
@@ -268,8 +268,9 @@ export class SessionChannel {
     }
 
     if (command.type === "respond_permission") {
-      // 只有 CAS 成功才发权限响应，避免重复授权。
-      if (!this.resolvePermissionViaCas(connection, command.payload)) return {};
+      // 只有 CAS 成功才发权限响应；非 pending（过期/已取消/不存在）必须明确报错，
+      // 不能返回 committed 的假成功，也不能把可能重复执行的响应再发给 Agent。
+      this.resolvePermissionViaCas(connection, command.payload);
     }
 
     if (command.type === "respond_question") {
@@ -426,21 +427,34 @@ export class SessionChannel {
 
   /**
    * 控制面复用聚合层的权限 CAS，保证并发响应只投影一次且共享版本收敛规则。
+   * 非 pending（已过期/已取消/不存在/缺 requestId）抛错：调用方不得发送 Agent
+   * 响应，更不能把未生效的点击回执成 committed。
    */
-  private resolvePermissionViaCas(connection: SessionConnection, payload: Record<string, unknown>): boolean {
+  private resolvePermissionViaCas(connection: SessionConnection, payload: Record<string, unknown>): void {
     const permissionId = typeof payload.requestId === "string" ? payload.requestId : "";
-    if (!permissionId) return false;
+    if (!permissionId) throw new CommandExecutionError("ACTION.INVALID_STATE");
     const chatDoc = this.dependencies.docManager.getChatYdoc(connection.rcsSessionId);
     const sessionDoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
-    if (!chatDoc || !sessionDoc) return false;
+    if (!chatDoc || !sessionDoc) throw new CommandExecutionError("ACTION.INVALID_STATE");
+
+    const permission = getPendingPermissions(sessionDoc).get(permissionId);
+    if (permission?.get("status") !== "pending") throw new CommandExecutionError("ACTION.INVALID_STATE");
+    // 过期事件/定时器可能因事件循环延迟晚到；点到达期限后直接按过期收敛，
+    // 避免把 Agent 已取消的请求再发一次。
+    const expiresAt = permission.get("expiresAt");
+    const deadline = typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
+    if (Number.isFinite(deadline) && deadline <= Date.now()) {
+      applyPermissionExpiration({ chat: chatDoc, session: sessionDoc }, permissionId);
+      bumpProjectionVersion(chatDoc.getMap("root"));
+      bumpProjectionVersion(sessionDoc.getMap("root"));
+      throw new CommandExecutionError("ACTION.INVALID_STATE");
+    }
 
     const decision = typeof payload.optionId === "string" && payload.optionId.length > 0 ? payload.optionId : null;
     const migrated = applyPermissionResolution({ chat: chatDoc, session: sessionDoc }, permissionId, decision);
-    if (migrated) {
-      bumpProjectionVersion(chatDoc.getMap("root"));
-      bumpProjectionVersion(sessionDoc.getMap("root"));
-    }
-    return migrated;
+    if (!migrated) throw new CommandExecutionError("ACTION.INVALID_STATE");
+    bumpProjectionVersion(chatDoc.getMap("root"));
+    bumpProjectionVersion(sessionDoc.getMap("root"));
   }
 
   // ── AskUserQuestion CAS（与权限 C5 同模式）──
