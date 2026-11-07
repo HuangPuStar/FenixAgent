@@ -6,7 +6,7 @@
 // - full commandId 由服务端 epoch 与客户端 UUID 组成，结果在有界重试窗口内跨断线保留；
 //   已提交命令重发返回原 Ack（status=duplicate），不重复调用 executeCommand。
 // - 同一 rcsSessionId 的命令严格串行执行；队列有界，超出返回 RATE_LIMITED。
-// - 已接纳命令的历史回收先轮换 epoch，避免未知外部副作用被遗忘重放。
+// - 历史结果到期后保留精确身份，容量淘汰先轮换 epoch，避免外部副作用被遗忘重放。
 //
 // 本类不承载任何宿主业务（会话守卫 / Doc 写入 / relay 发送），全部通过依赖注入，
 // 以便协议层测试 seam 用 fake 依赖实例化（Q12）。
@@ -131,7 +131,10 @@ export class CommandCoordinator {
       return Promise.resolve();
     }
     this.history.prepareAdmission();
-    if (client && epoch !== this.history.getEpoch()) {
+    if (
+      this.history.isForgotten(command.rcsSessionId, command.commandId) ||
+      (client && epoch !== this.history.getEpoch())
+    ) {
       sinks.sendError(this.toActionError(new CommandExecutionError("ACTION.OUTCOME_UNKNOWN"), command.commandId));
       return Promise.resolve();
     }

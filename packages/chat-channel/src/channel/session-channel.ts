@@ -83,7 +83,7 @@ export class SessionChannel {
     return this.coordinator.getCommandEpoch();
   }
 
-  /** 历史回收前轮换代次，连接层必须广播或关闭未收到新代次的连接。 */
+  /** 防重放证据容量淘汰前轮换代次，连接层必须广播或关闭未收到新代次的连接。 */
   onCommandEpochChanged(listener: (epoch: string) => void): () => void {
     return this.coordinator.onCommandEpochChanged(listener);
   }

@@ -65,6 +65,55 @@ function unknownHarness() {
 }
 
 describe("命令代次、历史保留与活动准入", () => {
+  // 已分配的新意图不能被其他命令的到期维护误拒，已遗忘的旧意图仍禁止重放。
+  test("expiry admits a batch allocated before maintenance without replaying forgotten commands", async () => {
+    let now = 0;
+    let executions = 0;
+    const coordinator = new CommandCoordinator({
+      now: () => now,
+      executeCommand: async () => ({ turnId: String(++executions) }),
+    });
+    const old = command(coordinator);
+    await coordinator.submitClientCommand(old, sinks());
+    const batch = Array.from({ length: 5 }, () => command(coordinator));
+    const epoch = coordinator.getCommandEpoch();
+    now = WINDOW_MS;
+    for (const input of batch) {
+      const sink = sinks();
+      await coordinator.submitClientCommand(input, sink);
+      expect(sink.errors).toEqual([]);
+      expect(sink.acks.at(-1)?.status).toBe("committed");
+    }
+    expect(coordinator.getCommandEpoch()).toBe(epoch);
+    now += 2 * 24 * 60 * 60_000;
+    const replay = sinks();
+    await coordinator.submitClientCommand(old, replay);
+    expect(replay.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
+    expect(executions).toBe(6);
+  });
+
+  // 防重放证据不能按 TTL 遗忘；容量耗尽时先换代，才能有界地释放旧身份。
+  test("forgotten command capacity rotates before dropping replay evidence", async () => {
+    let now = 0;
+    let executions = 0;
+    const coordinator = new CommandCoordinator({
+      now: () => now,
+      executeCommand: async () => ({ turnId: String(++executions) }),
+    });
+    const first = command(coordinator);
+    const epoch = coordinator.getCommandEpoch();
+    for (let index = 0; index <= 16_384; index++) {
+      await coordinator.submitClientCommand(index === 0 ? first : command(coordinator), sinks());
+      now += WINDOW_MS;
+      if (index < 16_384) expect(coordinator.getCommandEpoch()).toBe(epoch);
+    }
+    expect(coordinator.getCommandEpoch()).not.toBe(epoch);
+    const replay = sinks();
+    await coordinator.submitClientCommand(first, replay);
+    expect(replay.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
+    expect(executions).toBe(16_385);
+  });
+
   // 外部命令必须携带完整服务端代次，不能用 raw ID 或畸形后缀绕过信封校验。
   test("strict ingress rejects malformed IDs and foreign epochs", async () => {
     let executions = 0;
@@ -95,7 +144,7 @@ describe("命令代次、历史保留与活动准入", () => {
     expect(h.executions()).toBe(301);
     const oldEpoch = h.coordinator.getCommandEpoch();
     h.setNow(WINDOW_MS + 1);
-    expect(h.coordinator.getCommandEpoch()).not.toBe(oldEpoch);
+    expect(h.coordinator.getCommandEpoch()).toBe(oldEpoch);
     const current = sinks();
     await h.coordinator.submitClientCommand(command(h.coordinator, "rcs-next"), current);
     expect(current.acks.at(-1)?.status).toBe("committed");
@@ -172,6 +221,9 @@ describe("命令代次、历史保留与活动准入", () => {
     const pending = coordinator.submitClientCommand(slow, sinks());
     await started.promise;
     await coordinator.submitClientCommand(command(coordinator, "rcs-history"), sinks());
+    for (let index = 0; index < 16_383; index++) {
+      await coordinator.submitClientCommand(command(coordinator, "rcs-history"), sinks());
+    }
     now = WINDOW_MS;
     expect(coordinator.getCommandEpoch()).not.toBe(slow.commandId.split(".")[0]);
     const retry = sinks();
@@ -273,6 +325,9 @@ describe("命令代次、历史保留与活动准入", () => {
       nested.push(coordinator.submitClientCommand(command(coordinator), sinks()));
       nested.push(coordinator.submitClientCommand(old, duringPublication));
     });
+    for (let index = 0; index < 16_383; index++) {
+      await coordinator.submitClientCommand(command(coordinator), sinks());
+    }
     now = WINDOW_MS;
     const rejected = sinks();
     await coordinator.submitClientCommand(outer, rejected);
@@ -282,6 +337,6 @@ describe("命令代次、历史保留与活动准入", () => {
     const after = sinks();
     await coordinator.submitClientCommand(old, after);
     expect(after.errors[0]?.error.type).toBe("ACTION.OUTCOME_UNKNOWN");
-    expect(executions).toBe(2);
+    expect(executions).toBe(16_385);
   });
 });

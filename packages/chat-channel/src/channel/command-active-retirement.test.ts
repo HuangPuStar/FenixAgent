@@ -54,7 +54,7 @@ test("active unknown survives expiry, queue replacement and its late authoritati
   coordinator.disposeRcsSession(old.rcsSessionId);
   now = 20 * 60_000;
   const successor = input(coordinator, "new");
-  expect(successor.commandId.split(".")[0]).not.toBe(old.commandId.split(".")[0]);
+  expect(successor.commandId.split(".")[0]).toBe(old.commandId.split(".")[0]);
   const next = coordinator.submitClientCommand(successor, sinks());
   const unknown = sinks();
   await coordinator.submitClientCommand(old, unknown);
