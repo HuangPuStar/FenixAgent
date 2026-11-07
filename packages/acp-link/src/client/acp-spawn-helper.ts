@@ -4,6 +4,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { createElicitationHandler } from "../elicitation.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
+import { createPermissionExpiresAt, PERMISSION_TIMEOUT_MS } from "../permission-deadline.js";
 import { buildAgentProcessEnv } from "../spawn-env.js";
 
 /** 仅提取安全的事件 discriminator，诊断日志不得输出 event_json 内容。 */
@@ -14,6 +15,19 @@ function readPeriAgentEventType(eventJson: unknown): string {
     return typeof event.type === "string" ? event.type : "missing";
   } catch {
     return "invalid";
+  }
+}
+
+/** 超时/取消的显式终态：ChatChannel 按 requestId + sessionId 将投影迁移为 expired。 */
+function sendPermissionExpired(send: (message: unknown) => void, sessionId: string, requestId: string): void {
+  try {
+    send({ type: "permission_expired", payload: { sessionId, requestId } });
+  } catch (error) {
+    // 终态通知是尽力而为：发送失败仍必须取消 Agent，不能把清理流程一起中断。
+    console.warn(
+      "[acp-spawn-helper] permission expiry notify failed:",
+      error instanceof Error ? error.name : typeof error,
+    );
   }
 }
 
@@ -33,9 +47,6 @@ export interface SpawnResult {
    */
   resolveQuestionAnswer: (requestId: string, extra: Record<string, unknown> | undefined) => boolean;
 }
-
-/** pending 超时毫秒数：超过此时间未收到前端响应则自动取消 */
-const PERMISSION_TIMEOUT_MS = 30_000;
 
 /**
  * spawn ACP 子进程并初始化 ClientSideConnection。
@@ -60,10 +71,12 @@ export async function spawnAcpAgent(
   const output = Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
   const stream = acp.ndJsonStream(input, output);
 
-  // pending 权限请求 — requestPermission 创建，resolvePermissionOutcome 消费
+  // pending 权限请求 — requestPermission 创建，resolvePermissionOutcome 消费。
+  // 保存 sessionId 是为了超时/批量取消时能广播可关联的 permission_expired。
   const pendingPermissions = new Map<
     string,
     {
+      sessionId: string;
       resolve: (outcome: acp.RequestPermissionOutcome) => void;
       timer: ReturnType<typeof setTimeout>;
     }
@@ -81,8 +94,10 @@ export async function spawnAcpAgent(
     // 当前端 relay 全部断开时，AcpDispatcher 通过 onPermissionOutcome 回调
     // 传入此哨兵，一次性清除 spawnAcpAgent 侧的所有 pending 权限请求。
     if (requestId === "__cancel_all__") {
-      for (const [_key, pending] of pendingPermissions) {
+      for (const [pendingRequestId, pending] of pendingPermissions) {
         clearTimeout(pending.timer);
+        // relay 全部断开时也要留下终态：投影不能继续显示可批准。
+        sendPermissionExpired(send, pending.sessionId, pendingRequestId);
         pending.resolve({ outcome: "cancelled" });
       }
       pendingPermissions.clear();
@@ -128,15 +143,18 @@ export async function spawnAcpAgent(
           const timer = setTimeout(() => {
             console.log(`[acp-spawn-helper] requestPermission TIMEOUT: requestId=${requestId}`);
             pendingPermissions.delete(requestId);
+            // 先广播终态再取消 Agent：界面与 Agent 必须在同一时刻收敛。
+            sendPermissionExpired(send, sessionId, requestId);
             resolve({ outcome: "cancelled" });
           }, PERMISSION_TIMEOUT_MS);
-          pendingPermissions.set(requestId, { resolve, timer });
+          pendingPermissions.set(requestId, { sessionId, resolve, timer });
 
           send({
             type: "permission_request",
             payload: {
               sessionId,
               requestId,
+              expiresAt: createPermissionExpiresAt(),
               options: frontendOptions,
               toolCall: { toolCallId, title },
               toolName: title,

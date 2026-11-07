@@ -385,12 +385,13 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(harness.sent[0]).toMatchObject({ method: "session/load", params: { sessionId: "ses-3" } });
   });
 
-  // respond_permission 缺少 requestId 时仅确认，不可向 Agent 发送无效响应。
-  test("respond_permission 缺少 requestId 时不转发", async () => {
+  // respond_permission 缺少 requestId 时不得伪成功：返回明确错误且不向 Agent 发送。
+  test("respond_permission 缺少 requestId 时返回错误且不转发", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "respond_permission", commandId: "permission-missing" });
     expect(harness.sent).toEqual([]);
-    expect(committed(harness)).toBeDefined();
+    expect(committed(harness)).toBeUndefined();
+    expect(harness.errors.map((frame) => frame.error.type)).toEqual(["ACTION.INVALID_STATE"]);
   });
 
   // respond_question 缺少 questionId 时仅确认，不可向 Agent 发送无效控制帧。

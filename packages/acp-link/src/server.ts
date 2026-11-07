@@ -27,6 +27,7 @@ import {
 } from "./json-rpc.js";
 import { readPlatformMcpServers } from "./mcp-servers.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
+import { createPermissionExpiresAt, PERMISSION_TIMEOUT_MS } from "./permission-deadline.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import { ServerRelayRouter } from "./server-relay-router.js";
 import { buildAgentProcessEnv } from "./spawn-env.js";
@@ -119,6 +120,7 @@ export interface AcpServerHandle {
 interface PendingPermission {
   jsonRpcId: number | string;
   socket: AcpWs;
+  sessionId: string;
   resolve: (outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string }) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -145,12 +147,23 @@ interface RuntimeState {
 // Heartbeat interval for WebSocket ping/pong (30 seconds)
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+/** 超时/取消的显式终态：ChatChannel 按 requestId + sessionId 将投影迁移为 expired。 */
+function notifyPermissionExpired(socket: AcpWs, sessionId: string, requestId: string): void {
+  if (socket.readyState !== 1) return;
+  try {
+    socket.send(JSON.stringify({ type: "permission_expired", payload: { sessionId, requestId } }));
+  } catch (error) {
+    console.warn("[acp-server] permission expiry notify failed:", error instanceof Error ? error.name : typeof error);
+  }
+}
+
 function cancelPendingPermissions(clientState: RuntimeState, socket?: AcpWs): void {
   for (const [requestId, pending] of clientState.pendingPermissions) {
     if (socket && pending.socket !== socket) continue;
     clearTimeout(pending.timeout);
-    pending.resolve({ outcome: "cancelled" });
     clientState.pendingPermissions.delete(requestId);
+    notifyPermissionExpired(pending.socket, pending.sessionId, requestId);
+    pending.resolve({ outcome: "cancelled" });
   }
 }
 
@@ -894,9 +907,6 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const { port, host, command, args, cwd } = config;
   const extraEnv = config.env ?? {};
 
-  /** requestPermission 等待前端响应的超时毫秒数 */
-  const PERMISSION_TIMEOUT_MS = 30_000;
-
   // Per-instance state — no module-level globals
   const clients = new Map<AcpWs, RuntimeState>();
   const relayRouter = new ServerRelayRouter<AcpWs>((ws) => {
@@ -986,11 +996,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           }
           const timer = setTimeout(() => {
             clientState.pendingPermissions.delete(requestId);
+            // 先广播终态再取消 Agent：界面与 Agent 必须在同一时刻收敛。
+            notifyPermissionExpired(socket, sessionId, requestId);
             resolve({ outcome: "cancelled" });
           }, PERMISSION_TIMEOUT_MS);
           clientState.pendingPermissions.set(requestId, {
             jsonRpcId: requestId,
             socket,
+            sessionId,
             resolve,
             timeout: timer,
           });
@@ -1000,6 +1013,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
             payload: {
               sessionId,
               requestId,
+              expiresAt: createPermissionExpiresAt(),
               options: frontendOptions,
               toolCall: { toolCallId, title },
               toolName: title,

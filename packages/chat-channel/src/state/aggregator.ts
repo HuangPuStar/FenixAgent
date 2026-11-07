@@ -931,8 +931,10 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         case "permission_expired": {
           // C5：超时迁移（pending → expired 一次）与收敛统一走 state/permission.ts，
-          // 与超时定时器共用同一 CAS 入口
-          const permissionId = event.update.permissionId as string | undefined;
+          // 与超时定时器共用同一 CAS 入口。创建方广播的终态只带 requestId，
+          // 与 permission_requested 共用 permissionId ?? requestId 关联口径。
+          const permissionId =
+            (event.update.permissionId as string | undefined) ?? (event.update.requestId as string | undefined);
           if (typeof permissionId !== "string") {
             result = {
               applied: false,

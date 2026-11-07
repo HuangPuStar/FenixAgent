@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { InstanceManager } from "../client/instance-manager.js";
+import { PERMISSION_TIMEOUT_MS } from "../permission-deadline.js";
 import { isTerminalWebSocketCloseCode, type ServerConfig } from "../server.js";
 import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "../websocket-code.js";
 
@@ -147,10 +148,9 @@ describe("InstanceManager refresh", () => {
 });
 
 describe("Heartbeat constants", () => {
-  // 权限超时常量验证
-  test("PERMISSION_TIMEOUT_MS is 5 minutes", () => {
-    const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
-    expect(PERMISSION_TIMEOUT_MS).toBe(300_000);
+  // 权限等待期限必须与远端 spawn helper 共用同一个 30s 常量（P0-04）
+  test("PERMISSION_TIMEOUT_MS is 30 seconds", () => {
+    expect(PERMISSION_TIMEOUT_MS).toBe(30_000);
   });
 
   // 心跳间隔常量验证

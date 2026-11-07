@@ -67,6 +67,7 @@ export const TRANSPORT_TYPES = [
   "control_response",
   "permission_response",
   "permission_request",
+  "permission_expired",
   "interactive_question",
   "cancel_pending_permissions",
 ] as const;
