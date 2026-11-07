@@ -5,6 +5,7 @@ const MAX_ACTIVE_SESSIONS = 256;
 const MAX_ACTIVE_COMMANDS_PER_SESSION = 512;
 const CANCEL_RESERVE = 2;
 const MAX_HISTORY_RECORDS = 16_384;
+const MAX_FORGOTTEN_COMMANDS = 16_384;
 const HISTORY_RETENTION_MS = 10 * 60_000;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const CLIENT_COMMAND_ID = new RegExp(`^(${UUID})\\.${UUID}$`);
@@ -31,11 +32,12 @@ export function readClientCommandEpoch(commandId: string): string | undefined {
   return CLIENT_COMMAND_ID.exec(commandId)?.[1];
 }
 
-/** 有界活动准入与重放证据；删除本代已接纳记录前先使本代外部命令失效。 */
+/** 有界活动准入与重放证据；结果到期后仍保留本代命令身份，直到容量换代。 */
 export class CommandHistory {
   private epoch = randomUUID();
   private readonly active = new Map<string, Map<string, CommandRecord>>();
   private readonly history = new Map<string, CommandRecord>();
+  private readonly forgotten = new Set<string>();
   private readonly epochListeners = new Set<(epoch: string) => void>();
   private nextExpiry = Number.POSITIVE_INFINITY;
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -62,6 +64,11 @@ export class CommandHistory {
   /** 优先查询仍在执行的 exact record，旧代在途不受历史轮换影响。 */
   find(rcsSessionId: string, commandId: string): CommandRecord | undefined {
     return this.active.get(rcsSessionId)?.get(commandId) ?? this.history.get(this.key(rcsSessionId, commandId));
+  }
+
+  /** 结果已回收不代表命令从未执行，当前代次的身份不能随结果 TTL 一起遗忘。 */
+  isForgotten(rcsSessionId: string, commandId: string): boolean {
+    return this.forgotten.has(this.key(rcsSessionId, commandId));
   }
 
   /** 与外部 epoch 校验、新记录占位保持在调用方同一同步段内。 */
@@ -135,7 +142,10 @@ export class CommandHistory {
           this.nextExpiry = Math.min(this.nextExpiry, record.expiresAt);
           continue;
         }
-        if (record.epoch === this.epoch && record.admitted) this.rotateEpoch();
+        if (record.epoch === this.epoch && record.admitted) {
+          if (this.forgotten.size >= MAX_FORGOTTEN_COMMANDS) this.rotateEpoch();
+          else this.forgotten.add(key);
+        }
         this.history.delete(key);
       }
     } finally {
@@ -163,6 +173,8 @@ export class CommandHistory {
 
   private rotateEpoch(): void {
     this.epoch = randomUUID();
+    // 旧代完整 ID 已由 epoch 围栏拒绝，必须先换代再释放其精确证据。
+    this.forgotten.clear();
     for (const listener of this.epochListeners) {
       try {
         listener(this.epoch);
