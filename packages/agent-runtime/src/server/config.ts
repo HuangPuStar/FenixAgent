@@ -51,6 +51,13 @@ export interface AgentRuntimeModuleConfig {
   readonly acpActivityTimeoutSeconds: number;
   /** `/acp/ws` 服务端 keep_alive 数据帧间隔（秒）。 */
   readonly wsKeepaliveInterval: number;
+  /**
+   * Machine 断连后保留 runtime 映射的宽限期（毫秒）。
+   *
+   * 宽限期内同 epoch 重连走 inventory/reconcile，不终止在途实例；超时才执行原有清理。
+   * 默认 45 秒（大于一次 30 秒网络中断 + 首次重连）。
+   */
+  readonly machineReconnectGraceMs?: number;
   /** agent config 未绑定 `machineId` 时的兜底机器 ID；缺省表示退回本地默认节点。 */
   readonly defaultMachineId?: string;
   /** 是否禁用本地 `local-default` 节点；启用后实例必须路由到远程 machine。 */
@@ -98,6 +105,7 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   acpIdleSweepIntervalSeconds: z.number().int().positive(),
   acpActivityTimeoutSeconds: z.number().int().positive(),
   wsKeepaliveInterval: z.number().int().positive(),
+  machineReconnectGraceMs: z.number().int().min(0).optional(),
   defaultMachineId: z.string().min(1).optional(),
   disableLocalExecution: z.boolean(),
   workspaceRoot: z.string().min(1),

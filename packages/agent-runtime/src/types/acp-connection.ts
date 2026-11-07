@@ -33,6 +33,11 @@ export interface AcpConnectionEntry {
   onSessionMessage?: (sessionId: string, type: string, payload: unknown) => void;
   /** Machine 完成当前 server epoch clean-slate 后才允许 lifecycle 流量。 */
   cleanSlateConfirmed?: boolean;
+  /**
+   * 同 epoch 重连已接受的实例 uid → runtimeGeneration。
+   * 确认帧到达前只允许这些实例的 relay/session 流量，避免旧实例消息经新连接注入。
+   */
+  reconcileAccepted?: Map<string, number>;
   /** 远程 transport 实例（由 registerRemoteNode 设置），用于将消息路由到 core remote-runtime。 */
   remoteTransport?: RemoteTransport;
 }

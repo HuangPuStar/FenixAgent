@@ -104,17 +104,29 @@ export async function initCoreRuntime(): Promise<CoreRuntimeFacade> {
 /**
  * 远程 machine 注册成功后，动态注册 remote node 到 core。
  * @param acpEntry 对应的 AcpConnectionEntry，用于在消息路由时注入到 transport
+ * @param options.preserveRuntime 同 epoch 传输重连：复用 transport 与实例映射，只切换连接并重新绑定 relay
  */
 export function registerRemoteNode(
   machineId: string,
   ws: WsConnectionLike,
   acpEntry: { remoteTransport?: RemoteTransport },
   engineTypes?: string[],
+  options: { preserveRuntime?: boolean } = {},
 ): void {
   const runtime = getCoreRuntime();
-
-  // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
-  const transport = createWsRemoteTransport(ws);
+  const previousTransport = remoteTransports.get(machineId);
+  const preserved = Boolean(options.preserveRuntime && previousTransport?.rebind);
+  let transport: RemoteTransport;
+  if (preserved && previousTransport) {
+    // 在途 relay 句柄持有的是同一个 transport 对象；新建 transport 会让它们永远停在旧连接上。
+    previousTransport.rebind?.(ws);
+    transport = previousTransport;
+  } else {
+    // 事件监听器属于旧 runtime；替换 transport 前必须显式终止，避免残留观察者。
+    previousTransport?.close("remote transport replaced");
+    // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
+    transport = createWsRemoteTransport(ws);
+  }
   remoteTransports.set(machineId, transport);
 
   // 把 transport 挂到 entry 上，供 handleAcpWsMessage 路由消息
@@ -122,8 +134,9 @@ export function registerRemoteNode(
 
   const existing = runtime.getNode(machineId);
   if (existing) {
-    // node 已存在（重连场景）：更新状态为 online，清理旧实例以触发重新 launch
+    // node 已存在（重连场景）：更新状态为 online
     runtime.updateNodeStatus(machineId, "online");
+    if (preserved) return;
     // 该 machineId 下的旧 core 实例连同实例登记表、编排域活跃表一并收敛，确保下次 ensureRunning
     // 重新 launch（E-P0.1：快速重连短路场景下本分支是幽灵实例清理的唯一入口）
     getBoundAgentRuntime().cleanupMachineInstances(machineId);
@@ -146,6 +159,7 @@ export function registerRemoteNode(
  * 同时收敛该 machineId 下的所有实例记录，使后续 ensureRunning 能重新 launch。
  */
 export function unregisterRemoteNode(machineId: string, options?: { runtimeTerminated?: boolean }): void {
+  remoteTransports.get(machineId)?.close("machine disconnected");
   remoteTransports.delete(machineId);
   const runtime = getCoreRuntime();
   const existing = runtime.getNode(machineId);

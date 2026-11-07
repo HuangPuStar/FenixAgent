@@ -62,7 +62,8 @@ let relayPortStubbed = false;
 
 beforeEach(() => {
   // 内含 resetAllStubs：模块配置与 DB 替身按「每个用例重新装配」处理（WS 保活间隔沿用迁移前的 30s）。
-  initializeAgentRuntimeModuleConfig({ wsKeepaliveInterval: 30 });
+  // 本文件验证断连后的立即清理语义，宽限期置 0 以免等待重连窗口。
+  initializeAgentRuntimeModuleConfig({ wsKeepaliveInterval: 30, machineReconnectGraceMs: 0 });
   stubMachineRegistryPort({
     registerMachine: async ({ machineId }) => ({ id: machineId, isNew: true }),
     disconnectMachine: async () => {},

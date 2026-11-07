@@ -158,6 +158,16 @@ export const moduleManifest = {
     },
     {
       moduleId: "agent-runtime",
+      key: "RCS_MACHINE_RECONNECT_GRACE_MS",
+      schema: z.coerce.number().int().min(0).default(45_000),
+      defaultValue: 45_000,
+      secret: false,
+      restartRequired: true,
+      description:
+        "Machine 断连后保留 runtime 映射、等待同 server epoch 重连的宽限期（毫秒）；默认 45000。超时才执行原有 clean-slate 断连收口。",
+    },
+    {
+      moduleId: "agent-runtime",
       key: "YJS_MAX_CLIENTS",
       schema: z.coerce.number().int().positive().default(200),
       defaultValue: 200,

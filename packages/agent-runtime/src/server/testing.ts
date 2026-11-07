@@ -124,6 +124,8 @@ export function createAgentRuntimeModuleConfig(
     acpIdleSweepIntervalSeconds: 300,
     acpActivityTimeoutSeconds: 1200,
     wsKeepaliveInterval: 20,
+    // 与 manifest 默认值一致：同 epoch 重连宽限期 45s。
+    machineReconnectGraceMs: 45_000,
     disableLocalExecution: false,
     workspaceRoot: join(process.cwd(), "workspaces"),
     baseUrl: "http://stub.invalid",

@@ -53,6 +53,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       acpIdleSweepIntervalSeconds: config.acpIdleSweepIntervalSeconds,
       acpActivityTimeoutSeconds: config.acpActivityTimeoutSeconds,
       wsKeepaliveInterval: config.wsKeepaliveInterval,
+      machineReconnectGraceMs: config.machineReconnectGraceMs,
       defaultMachineId: config.defaultMachineId,
       defaultEngineType: config.defaultEngineType,
       disableLocalExecution: config.disableLocalExecution,

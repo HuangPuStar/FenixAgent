@@ -55,6 +55,28 @@ interface InstanceState {
 
 // ── InstanceManager ───────────────────────────────────────────
 
+/** 同 epoch 重连时上报给主服务的存活实例清单。 */
+export interface InstanceInventoryEntry {
+  instance_uid: string;
+  instance_id: string;
+  runtime_generation: number;
+  server_epoch: string;
+  session_id: string | null;
+  process_alive: boolean;
+}
+
+/** 主服务对账结果中可保留的实例。 */
+export interface AcceptedInstance {
+  instance_uid: string;
+  runtime_generation: number;
+}
+
+/** 主服务拒绝对账的实例及原因。 */
+export interface RejectedInstance {
+  instance_uid: string;
+  reason: string;
+}
+
 /**
  * 远程实例管理器。
  * 处理 prepare（装配环境）→ start（启动引擎）→ stop（清理）的完整生命周期。
@@ -222,6 +244,52 @@ export class InstanceManager {
   /** 读取实例对应的前端 relay sessionId */
   getSessionId(instanceId: string): string | null {
     return this.instances.get(instanceId)?.sessionId ?? null;
+  }
+
+  /**
+   * 上报本进程仍存活的实例；主服务据此判断哪些 runtime 可以在同 epoch 重连后保留。
+   * 进程已退出的条目仍上报 `process_alive=false`，由主服务拒绝并在 reconcile 时停止清理。
+   */
+  getInventory(): InstanceInventoryEntry[] {
+    return [...this.instances.values()].map((state) => ({
+      instance_uid: state.instanceId,
+      instance_id: state.instanceId,
+      runtime_generation: state.runtimeGeneration,
+      server_epoch: state.serverEpoch,
+      session_id: state.sessionId,
+      process_alive:
+        state.process !== null &&
+        state.process.exitCode === null &&
+        state.process.signalCode === null &&
+        !state.process.killed,
+    }));
+  }
+
+  /**
+   * 应用主服务对账结果：保留 accepted，严格停止其余实例（含 rejected 与被服务端遗漏的条目）。
+   * 返回可确认的实例清单，供 `reconcile_confirmed` 上报。
+   */
+  async applyReconcile(
+    accepted: readonly AcceptedInstance[],
+    rejected: readonly RejectedInstance[],
+    serverEpoch: string,
+  ): Promise<InstanceInventoryEntry[]> {
+    const acceptedKeys = new Set(accepted.map((item) => `${item.instance_uid}:${item.runtime_generation}`));
+    const rejectedReasons = new Map(rejected.map((item) => [item.instance_uid, item.reason]));
+
+    for (const [instanceId, state] of [...this.instances]) {
+      if (state.serverEpoch === serverEpoch && acceptedKeys.has(`${instanceId}:${state.runtimeGeneration}`)) continue;
+      const reason = rejectedReasons.get(instanceId) ?? "not_accepted_by_server";
+      console.warn(
+        `[instance-manager] reconcile stops instance ${instanceId} generation=${state.runtimeGeneration} reason=${reason}`,
+      );
+      await this.stop(instanceId, state.runtimeGeneration, state.serverEpoch);
+    }
+
+    return this.getInventory().filter(
+      (item) =>
+        item.server_epoch === serverEpoch && acceptedKeys.has(`${item.instance_uid}:${item.runtime_generation}`),
+    );
   }
 
   private resolveWorkspace(launchSpec: AgentLaunchSpec): string {
