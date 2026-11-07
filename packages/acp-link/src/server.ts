@@ -1135,25 +1135,35 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   // --- Agent lifecycle handlers ---
 
-  /** initialize 等待上限：超过即按当前已知能力处理，避免请求无限挂起。 */
+  /**
+   * initialize 等待上限：超过即视为初始化未完成，由调用方决定是否转发。
+   * 返回值只在「initialize 已落定」时为真；超时或握手失败均为假。
+   */
   const AGENT_INIT_WAIT_TIMEOUT_MS = 10_000;
 
   /** 能力未知不等于不支持：冷启动时 session/* 可能先于 initialize 完成到达，需等初始化落定再判能力。 */
-  async function waitForAgentCapabilities(clientState: RuntimeState): Promise<void> {
+  async function waitForAgentCapabilities(clientState: RuntimeState): Promise<boolean> {
+    if (clientState.agentCapabilities !== null) return true;
     const inFlight = connecting;
-    if (clientState.agentCapabilities !== null || inFlight === null) return;
+    if (inFlight === null) return false;
 
+    let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         inFlight,
         new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, AGENT_INIT_WAIT_TIMEOUT_MS);
+          timer = setTimeout(() => {
+            timedOut = true;
+            resolve();
+          }, AGENT_INIT_WAIT_TIMEOUT_MS);
         }),
       ]);
+      return !timedOut;
     } catch (error) {
       // 失败由 startAgent 清理连接并广播错误，这里只保证请求继续走原有错误响应。
       console.warn("wait for agent capabilities failed:", error instanceof Error ? error.message : typeof error);
+      return false;
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -1176,6 +1186,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           connected: true,
           agentInfo,
           capabilities: state.agentCapabilities,
+          agentPid: state.process.pid,
         },
       });
       return;
@@ -1196,6 +1207,16 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.connection = null;
     }
     if (stopped) return;
+    // 同一进程的死亡会从两个回调先后到达：流 EOF（connection.closed）与子进程 exit。
+    // 只广播一次 connected:false——上层按「窗口内二次死亡」判死，重复广播会让正在
+    // 重连的客户端直接被 4502 终态关闭。新进程 = 新的闭包，身份随 agentPid 一起下发。
+    let agentPid: number | undefined;
+    let disconnectAnnounced = false;
+    const announceDisconnect = () => {
+      if (disconnectAnnounced) return;
+      disconnectAnnounced = true;
+      relayRouter.broadcast({ type: "status", payload: { connected: false, agentPid } });
+    };
     try {
       console.log("spawning agent:", command, args);
 
@@ -1206,6 +1227,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       state.process = agentProcess;
+      agentPid = agentProcess.pid;
 
       // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcessByStdio 不继承 EventEmitter，需 cast 监听 exit
       (agentProcess as any).on("exit", (code: number | null) => {
@@ -1213,7 +1235,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         if (state.process === agentProcess) {
           state.process = null;
           state.connection = null;
-          relayRouter.broadcast({ type: "status", payload: { connected: false } });
+          announceDisconnect();
         }
       });
 
@@ -1270,6 +1292,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           connected: true,
           agentInfo: initResult.agentInfo,
           capabilities: state.agentCapabilities,
+          agentPid,
         },
       });
 
@@ -1277,7 +1300,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         if (state.connection !== connection) return;
         console.log("agent connection closed");
         state.connection = null;
-        relayRouter.broadcast({ type: "status", payload: { connected: false } });
+        announceDisconnect();
       });
     } catch (error) {
       // EOF 会使在途 initialize 拒绝，不能在这里抢先 SIGTERM 破坏 close 的 drain。
@@ -1303,6 +1326,25 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    // 冷启动竞态：connect 帧触发的 initialize 可能仍在途，此时 state.connection 已赋值
+    // 但 newSession 还没有可用的能力协商结果。等待初始化落定，避免频繁建会话时
+    // 在未就绪连接上创建 session 直接失败。
+    const initialized = await waitForAgentCapabilities(state);
+    if (!state.connection) {
+      console.warn("handleNewSession: agent disconnected during initialization");
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+    // initialize 超时后转发只会把「未初始化」错误伪装成会话创建失败；直接告知调用方，
+    // 让其在就绪后重试。initialize 已完成（即使能力为空）不受影响。
+    if (!initialized) {
+      console.warn("handleNewSession: agent initialization is still pending");
+      sendMsg(ws, createErrorResponse(id, -32000, "Agent initialization is not complete"));
+      return;
+    }
+    // 等待期间 socket 可能已被 close 清理：晚到请求不得再向已关闭连接发送或绑定会话。
+    if (!clients.has(ws)) return;
+
     try {
       const sessionCwd = (params.cwd as string) || cwd;
       const result = await state.connection.newSession({
@@ -1310,6 +1352,11 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         mcpServers: readPlatformMcpServers(params.mcpServers),
       });
 
+      // 创建期间连接被关闭：会话已产生但无客户端接收，绑定它会永久留在 socketSessions。
+      if (!clients.has(ws)) {
+        console.warn("handleNewSession: socket closed while creating session:", result.sessionId);
+        return;
+      }
       bindSession(ws, result.sessionId);
       state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? extractModeState(result.configOptions);

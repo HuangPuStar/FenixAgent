@@ -33,15 +33,17 @@ class FakeWs {
   ping(): void {}
 }
 
-function createAgent(autoInitialize: boolean) {
+function createAgent(autoInitialize: boolean, strictInitialize = false) {
   const stdin = new PassThrough();
   const stdout = new PassThrough();
   const requests: RpcRequest[] = [];
   const loadedSessions = new Set<string>();
   let input = "";
   let initializeId: number | string | undefined;
+  let initialized = false;
   let killCount = 0;
   const process = Object.assign(new EventEmitter(), {
+    pid: 2_000 + Math.floor(Math.random() * 1_000),
     stdin,
     stdout,
     killed: false,
@@ -72,6 +74,7 @@ function createAgent(autoInitialize: boolean) {
   };
   const initialize = () => {
     if (initializeId === undefined) throw new Error("initialize 尚未到达测试 Agent");
+    initialized = true;
     respond(initializeId, {
       protocolVersion: 1,
       agentInfo: { name: "relay-lifecycle-test", version: "1" },
@@ -101,6 +104,13 @@ function createAgent(autoInitialize: boolean) {
           if (autoInitialize) queueMicrotask(initialize);
           break;
         case "session/new": {
+          // 严格模式模拟真实 Agent：initialize 未完成前拒绝会话创建。
+          if (strictInitialize && !initialized) {
+            stdout.write(
+              `${JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32002, message: "Agent not initialized" } })}\n`,
+            );
+            break;
+          }
           const sessionId = loadedSessions.size === 0 ? "ses-lifecycle" : `ses-lifecycle-${loadedSessions.size + 1}`;
           loadedSessions.add(sessionId);
           respond(request.id, { sessionId });
@@ -141,7 +151,7 @@ function createAgent(autoInitialize: boolean) {
 const handles: Array<{ close(): Promise<void> }> = [];
 const restoreSpies: Array<() => void> = [];
 
-function createHarness(autoInitialize = true) {
+function createHarness(autoInitialize = true, strictInitialize = false) {
   let handlers: WebsocketHandlers | undefined;
   const serveSpy = spyOn(Bun, "serve").mockImplementation(((options: { websocket: WebsocketHandlers }) => {
     handlers = options.websocket;
@@ -149,7 +159,7 @@ function createHarness(autoInitialize = true) {
   }) as unknown as typeof Bun.serve);
   const agents: Array<ReturnType<typeof createAgent>> = [];
   const spawnSpy = spyOn(childProcess, "spawn").mockImplementation(() => {
-    const agent = createAgent(autoInitialize);
+    const agent = createAgent(autoInitialize, strictInitialize);
     agents.push(agent);
     return agent.process;
   });
@@ -451,6 +461,30 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     expect(harness.agents[0]?.process.exitCode).toBe(0);
   });
 
+  // 流 EOF 与子进程 exit 可能先后到达：同一进程的断连只能广播一次 connected:false，
+  // 否则上层会把正在重连的客户端误判为「窗口内二次死亡」直接以 4502 终止。
+  test("stream close and process exit broadcast a single disconnect status", async () => {
+    const harness = createHarness();
+    const ws = new FakeWs();
+    await open(harness, ws);
+    const agent = harness.agents[0];
+    if (!agent) throw new Error("agent 未启动");
+    const disconnects = () =>
+      ws.messages.filter((message) => {
+        const payload = message.payload as Record<string, unknown> | undefined;
+        return message.type === "status" && payload?.connected === false;
+      });
+
+    // 先让 ACP 流 EOF（connection.closed），再让子进程退出（exit）：旧实现会广播两次。
+    agent.process.stdout.end();
+    await waitUntil(() => disconnects().length === 1);
+    agent.process.emit("exit", 0);
+    await Bun.sleep(20);
+
+    expect(disconnects()).toHaveLength(1);
+    expect(disconnects()[0]?.payload).toMatchObject({ agentPid: agent.process.pid });
+  });
+
   // 初始化中的旧页面关闭后，新 relay 应复用同一次启动，不能丢失初始化结果或再启动进程。
   test("disconnect during initialization does not invalidate a reconnecting relay", async () => {
     const harness = createHarness(false);
@@ -527,5 +561,31 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     expect(harness.agents[0]?.killCount).toBe(0);
     await newSession(harness, healthyWs);
     await prompt(harness, healthyWs, "healthy-prompt");
+  });
+
+  // 冷启动竞态：connect 触发的 initialize 尚在途时到达 session/new，必须等初始化落定再下发，
+  // 否则真实 Agent 会以「未初始化」拒绝，表现为无法创建会话（频繁建会话时更易触发）。
+  test("session/new waits for in-flight initialize on cold start", async () => {
+    const harness = createHarness(false, true);
+    const ws = new FakeWs();
+    harness.handlers.open(ws);
+    const connect = harness.handlers.message(ws, JSON.stringify({ type: "connect" }));
+    await waitUntil(() => harness.agents[0]?.requests.some((request) => request.method === "initialize"));
+
+    const create = harness.handlers.message(
+      ws,
+      JSON.stringify({ jsonrpc: "2.0", id: "cold-start-new-session", method: "session/new", params: {} }),
+    );
+    // 先让 session/new 进入等待，再完成 initialize；未修复时这里会先收到 -32002。
+    await Bun.sleep(10);
+    expect(ws.messages.some((message) => message.id === "cold-start-new-session")).toBe(false);
+    harness.agents[0]?.initialize();
+    await connect;
+    await create;
+    await waitUntil(() => ws.messages.some((message) => message.id === "cold-start-new-session"));
+
+    expect(ws.messages.find((message) => message.id === "cold-start-new-session")).toMatchObject({
+      result: { sessionId: "ses-lifecycle" },
+    });
   });
 });
