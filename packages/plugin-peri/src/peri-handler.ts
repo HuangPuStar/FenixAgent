@@ -1,6 +1,7 @@
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
+import { trackAgentProcessLifecycle } from "acp-link/client/agent-process-lifecycle";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
 import { prepareLaunchWorkspace, prepareWorkspaceEnvironment, writePeriSettings } from "./runtime/environment-preparer";
@@ -64,13 +65,6 @@ export function createPeriHandler(
         resolveQuestionAnswer,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
-      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
-      (proc as any).on("exit", (code: number | null) => {
-        console.log(`[peri-handler] peri exited: ${instanceId}, code=${code}`);
-        state.process = null;
-        state.connection = null;
-      });
-
       state.process = proc;
       state.connection = connection;
       state.capabilities = capabilities;
@@ -94,6 +88,19 @@ export function createPeriHandler(
         // spawnAcpAgent 的 pendingQuestions，组装 content 后作为 elicitation/create 响应
         onControlResponse: (requestId, _approved, extra) => {
           resolveQuestionAnswer(requestId, extra);
+        },
+      });
+
+      // 远端进程死亡与本地一致：只广播一次失联并清空 dispatcher 状态，避免死连接被再次宣告 connected:true。
+      trackAgentProcessLifecycle({
+        state,
+        process: proc,
+        connection,
+        send,
+        instanceId,
+        engine: "peri",
+        cancelPendingInteractions: () => {
+          resolvePermissionOutcome("__cancel_all__", { outcome: "cancelled" });
         },
       });
 

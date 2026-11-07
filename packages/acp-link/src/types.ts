@@ -126,6 +126,11 @@ export interface ProxyStatusMessage {
      * 可能各触发一次 connected:false，不按进程去重会把正在重连的客户端判死。
      */
     agentPid?: number;
+    /**
+     * 失联进程所属的 runtime generation（可选）。主服务据此 fence 迟到的死亡事件：
+     * 旧代进程的 exit 不得清理已经重启的新代实体。
+     */
+    runtimeGeneration?: number;
   };
 }
 

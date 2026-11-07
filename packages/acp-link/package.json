@@ -24,6 +24,10 @@
       "import": "./src/client/acp-spawn-helper.ts",
       "types": "./src/client/acp-spawn-helper.ts"
     },
+    "./client/agent-process-lifecycle": {
+      "import": "./src/client/agent-process-lifecycle.ts",
+      "types": "./src/client/agent-process-lifecycle.ts"
+    },
     "./client/claude-acp-adapter": {
       "import": "./src/client/claude-acp-adapter.ts",
       "types": "./src/client/claude-acp-adapter.ts"

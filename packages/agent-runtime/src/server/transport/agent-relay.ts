@@ -56,6 +56,19 @@ export async function connectAgentRelay(
     handle = await facade.connectInstanceRelay({ instanceId, sessionId, requestId });
     handle.onMessage?.((message) => {
       if (message.type === "relay_closed") void reclaimCapturedRuntime();
+      // 远端子进程死亡只广播 connected:false（machine 连接仍在）：按 runtimeGeneration 作废旧代实体，
+      // 使重连时的 ensure 经 Coordinator 启动新进程，而不是复用已死的 core runtime。
+      if (message.type !== "status") return;
+      const payload = message.payload as { connected?: unknown; runtimeGeneration?: unknown } | null | undefined;
+      if (payload?.connected !== false || typeof payload.runtimeGeneration !== "number") return;
+      const generation = payload.runtimeGeneration;
+      void import("../../services/orchestration-instance")
+        .then(({ terminateRemoteDeadInstance }) => {
+          terminateRemoteDeadInstance(instanceId, generation);
+        })
+        .catch((error) => {
+          logError(`[agent-relay] dead runtime cleanup failed: instanceId=${instanceId}`, error);
+        });
     });
     if (handle.ready) await handle.ready;
     return handle;

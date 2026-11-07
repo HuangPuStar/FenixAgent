@@ -7,6 +7,7 @@ import {
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
+import { trackAgentProcessLifecycle } from "acp-link/client/agent-process-lifecycle";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
 import { prepareLaunchWorkspace } from "./runtime/environment-preparer";
@@ -73,13 +74,6 @@ export function createCcbHandler(
         resolveQuestionAnswer,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
-      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
-      (proc as any).on("exit", (code: number | null) => {
-        console.log(`[ccb-handler] ccb exited: ${instanceId}, code=${code}`);
-        state.process = null;
-        state.connection = null;
-      });
-
       // ccb 的 ACP 只支持单会话（newSession 永远返回同一个 sessionId）
       // 不伪装多会话能力，让前端按单会话模式工作
       state.process = proc;
@@ -105,6 +99,19 @@ export function createCcbHandler(
         // spawnAcpAgent 的 pendingQuestions，组装 content 后作为 elicitation/create 响应
         onControlResponse: (requestId, _approved, extra) => {
           resolveQuestionAnswer(requestId, extra);
+        },
+      });
+
+      // 与 peri/opencode 共用同一收口：exit、connection.closed、stdout EOF 只广播一次失联。
+      trackAgentProcessLifecycle({
+        state,
+        process: proc,
+        connection,
+        send,
+        instanceId,
+        engine: "ccb",
+        cancelPendingInteractions: () => {
+          resolvePermissionOutcome("__cancel_all__", { outcome: "cancelled" });
         },
       });
 
