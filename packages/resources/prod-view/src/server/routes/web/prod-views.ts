@@ -30,7 +30,7 @@ export function createWebProdViewsRoutes(deps: WebProdViewRouteDependencies) {
     {
       sessionAuth: true,
       params: IdParamsSchema,
-      response: { 200: OkResponseSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
       detail: {
         tags: ["ProdView"],
         summary: "加载 ProdView 视图数据",

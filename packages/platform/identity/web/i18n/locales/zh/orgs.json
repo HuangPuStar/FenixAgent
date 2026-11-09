@@ -150,7 +150,8 @@
     "machineUpdateSuccess": "机器已更新",
     "machineUpdateFailed": "更新机器失败",
     "machineDeleteSuccess": "机器已删除",
-    "machineDeleteFailed": "删除机器失败"
+    "machineDeleteFailed": "删除机器失败",
+    "slugAlreadyTaken": "该 Slug 已被使用，请更换后重试"
   },
   "error": {
     "operationFailed": "操作失败"

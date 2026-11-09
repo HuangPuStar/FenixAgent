@@ -53,6 +53,7 @@ import {
   type PreviewFetch,
   PreviewSourceError,
   shouldLoadPreviewAsBlob,
+  withWorkspaceFileExtension,
 } from "./preview-source";
 
 // 导入官方样式
@@ -232,15 +233,16 @@ export function FileViewerPreview({
   );
 
   const plugins = useMemo(
-    () => [
-      imagePlugin(),
-      nativePdfPlugin(),
-      officePlugin(),
-      htmlPreviewPlugin(fetchPreview),
-      // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
-      markdownMathPlugin(),
-      textPlugin(),
-    ],
+    () =>
+      [
+        imagePlugin(),
+        nativePdfPlugin(),
+        officePlugin(),
+        htmlPreviewPlugin(fetchPreview),
+        // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
+        markdownMathPlugin(),
+        textPlugin(),
+      ].map(withWorkspaceFileExtension),
     [fetchPreview],
   );
 

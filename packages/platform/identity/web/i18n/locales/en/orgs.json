@@ -150,7 +150,8 @@
     "machineUpdateSuccess": "Machine updated",
     "machineUpdateFailed": "Failed to update machine",
     "machineDeleteSuccess": "Machine deleted",
-    "machineDeleteFailed": "Failed to delete machine"
+    "machineDeleteFailed": "Failed to delete machine",
+    "slugAlreadyTaken": "This slug is already in use. Please choose another."
   },
   "error": {
     "operationFailed": "Operation failed"

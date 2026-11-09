@@ -12,6 +12,8 @@ import { type ProdViewServiceDeps, setProdViewDeps } from "../server/services/pr
 import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 import { AGENT_ID, createProdViewDbStub, type ProdViewDbStub, prodViewRow } from "./prod-view-db-stub";
 
+const VIEW_ID = "a5eb9181-f213-4f98-9394-b5268486cda9";
+const MISSING_ID = "53ed03c7-16f0-41b1-b900-3e9c506f1111";
 const ACTOR = { organizationId: "org-1", userId: "user-1" };
 
 // 守卫替身按插件名去重，且与宿主的真实守卫同源：两个工厂共用一份实例（生产同样是注入同一个守卫）。
@@ -62,38 +64,49 @@ describe("Web Config ProdView 路由", () => {
 
   // 列表返回成功信封与数据数组：前端 `unwrap()` 依赖 `{ success, data }` 形状，缺一层就会解包失败。
   test("GET /config/prod-views 返回成功信封", async () => {
-    installDbStub(createProdViewDbStub([prodViewRow({ id: "pv-1", name: "发布视图" })]));
+    installDbStub(createProdViewDbStub([prodViewRow({ id: VIEW_ID, name: "发布视图" })]));
 
     const response = await configRoutes.handle(new Request("http://localhost/config/prod-views"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: Array<{ id: string; name: string }> };
     expect(body.success).toBe(true);
-    expect(body.data.map((row) => row.id)).toEqual(["pv-1"]);
+    expect(body.data.map((row) => row.id)).toEqual([VIEW_ID]);
   });
 
   // 详情命中时返回行本体，且不得把组织等内部列裁剪掉（前端按行建模，字段缺失会静默变 undefined）。
   test("GET /config/prod-views/:id 命中时返回行", async () => {
-    installDbStub(createProdViewDbStub([prodViewRow({ id: "pv-1", organizationId: "org-1" })]));
+    installDbStub(createProdViewDbStub([prodViewRow({ id: VIEW_ID, organizationId: "org-1" })]));
 
-    const response = await configRoutes.handle(new Request("http://localhost/config/prod-views/pv-1"));
+    const response = await configRoutes.handle(new Request(`http://localhost/config/prod-views/${VIEW_ID}`));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: { id: string; organizationId: string } };
-    expect(body.data).toMatchObject({ id: "pv-1", organizationId: "org-1" });
+    expect(body.data).toMatchObject({ id: VIEW_ID, organizationId: "org-1" });
   });
 
-  // 详情未命中：**现状是 422** 而不是路由声明的 404 —— 处理器把失败信封以默认 200 状态返回，撞上
-  // `OkResponseSchema`（要求 `success: true`）后被 Elysia 的响应校验拒绝。该缺陷在迁移前既存（HEAD 的
-  // 处理器与响应声明同样如此写），修复属对外协议行为变更，不在本波范围，故此处只钉住现状避免无声漂移。
-  test("GET /config/prod-views/:id 未命中时按现状返回 422（既有缺陷）", async () => {
+  // 合法 UUID 未命中必须返回资源不存在，不能把失败信封交给成功响应校验。
+  test("GET /config/prod-views/:id 未命中时返回 404", async () => {
     installDbStub(createProdViewDbStub([]));
+    const response = await configRoutes.handle(new Request(`http://localhost/config/prod-views/${MISSING_ID}`));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
+  });
 
-    const response = await configRoutes.handle(new Request("http://localhost/config/prod-views/pv-missing"));
-
+  // 格式错误必须在持久化前拒绝；包内未装宿主错误处理器时 Elysia 返回 422。
+  test("GET /config/prod-views/:id 拒绝非 UUID", async () => {
+    installDbStub(createProdViewDbStub([]));
+    const response = await configRoutes.handle(new Request("http://localhost/config/prod-views/not-a-uuid"));
     expect(response.status).toBe(422);
-    // 客户端拿到的是 Elysia 的校验错误体，而不是 `{ success: false, error }` 信封。
-    expect(await response.json()).not.toHaveProperty("success");
+  });
+
+  // 删除后的详情查询与随机合法 UUID 一样返回 404，不能再出现响应校验错误。
+  test("删除视图后查询详情返回 404", async () => {
+    installDbStub(createProdViewDbStub([prodViewRow({ id: VIEW_ID })]));
+    expect((await sendJson(configRoutes, "DELETE", `/config/prod-views/${VIEW_ID}`)).status).toBe(200);
+    const response = await configRoutes.handle(new Request(`http://localhost/config/prod-views/${VIEW_ID}`));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });
 
   // 创建的组织与创建者必须来自认证上下文：请求体里夹带的同名值不得被采信（否则可把视图写到别人组织）。
@@ -130,10 +143,10 @@ describe("Web Config ProdView 路由", () => {
 
   // 更新命中时 200 并返回更新后的行；补丁只含本次请求给出的字段（含 name）。
   test("PUT /config/prod-views/:id 命中时返回更新后的行", async () => {
-    const stub = createProdViewDbStub([prodViewRow({ id: "pv-1", name: "旧名" })]);
+    const stub = createProdViewDbStub([prodViewRow({ id: VIEW_ID, name: "旧名" })]);
     installDbStub(stub);
 
-    const response = await sendJson(configRoutes, "PUT", "/config/prod-views/pv-1", { name: "新名" });
+    const response = await sendJson(configRoutes, "PUT", `/config/prod-views/${VIEW_ID}`, { name: "新名" });
 
     expect(response.status).toBe(200);
     expect(stub.writes.patches[0]).toMatchObject({ name: "新名" });
@@ -144,7 +157,7 @@ describe("Web Config ProdView 路由", () => {
   test("PUT /config/prod-views/:id 未命中时返回 404", async () => {
     installDbStub(createProdViewDbStub([]));
 
-    const response = await sendJson(configRoutes, "PUT", "/config/prod-views/pv-missing", { name: "新名" });
+    const response = await sendJson(configRoutes, "PUT", `/config/prod-views/${MISSING_ID}`, { name: "新名" });
 
     expect(response.status).toBe(404);
     expect((await response.json()) as { error: { code: string } }).toMatchObject({ error: { code: "NOT_FOUND" } });
@@ -152,10 +165,10 @@ describe("Web Config ProdView 路由", () => {
 
   // 删除成功返回 `{ ok: true }` 信封，并真的走到 DELETE 语句。
   test("DELETE /config/prod-views/:id 命中时返回 ok", async () => {
-    const stub = createProdViewDbStub([prodViewRow({ id: "pv-1" })]);
+    const stub = createProdViewDbStub([prodViewRow({ id: VIEW_ID })]);
     installDbStub(stub);
 
-    const response = await sendJson(configRoutes, "DELETE", "/config/prod-views/pv-1");
+    const response = await sendJson(configRoutes, "DELETE", `/config/prod-views/${VIEW_ID}`);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true, data: { ok: true } });
@@ -166,7 +179,7 @@ describe("Web Config ProdView 路由", () => {
   test("DELETE /config/prod-views/:id 未命中时返回 404", async () => {
     installDbStub(createProdViewDbStub([]));
 
-    const response = await sendJson(configRoutes, "DELETE", "/config/prod-views/pv-missing");
+    const response = await sendJson(configRoutes, "DELETE", `/config/prod-views/${MISSING_ID}`);
 
     expect(response.status).toBe(404);
   });
@@ -184,10 +197,10 @@ describe("Web ProdView 加载路由", () => {
 
   // 公开读取端点：命中且启用时返回环境与实例身份，供前端连接持久实例。
   test("GET /prod-views/:id/load 命中时返回环境与实例身份", async () => {
-    installDbStub(createProdViewDbStub([prodViewRow({ id: "pv-1", agentId: AGENT_ID, enabled: true })]));
+    installDbStub(createProdViewDbStub([prodViewRow({ id: VIEW_ID, agentId: AGENT_ID, enabled: true })]));
     installLoadDeps();
 
-    const response = await loadRoutes.handle(new Request("http://localhost/prod-views/pv-1/load"));
+    const response = await loadRoutes.handle(new Request(`http://localhost/prod-views/${VIEW_ID}/load`));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: Record<string, unknown> };
@@ -206,7 +219,7 @@ describe("Web ProdView 加载路由", () => {
     installDbStub(createProdViewDbStub([]));
     installLoadDeps();
 
-    const response = await loadRoutes.handle(new Request("http://localhost/prod-views/pv-missing/load"));
+    const response = await loadRoutes.handle(new Request(`http://localhost/prod-views/${MISSING_ID}/load`));
 
     expect(response.status).toBe(404);
     expect((await response.json()) as { error: { code: string } }).toMatchObject({ error: { code: "NOT_FOUND" } });
@@ -214,10 +227,10 @@ describe("Web ProdView 加载路由", () => {
 
   // 停用视图对访客返回 404 DISABLED：停用必须是访客侧可观测的拒绝。
   test("GET /prod-views/:id/load 视图停用时返回 404 DISABLED", async () => {
-    installDbStub(createProdViewDbStub([prodViewRow({ id: "pv-1", enabled: false })]));
+    installDbStub(createProdViewDbStub([prodViewRow({ id: VIEW_ID, enabled: false })]));
     installLoadDeps();
 
-    const response = await loadRoutes.handle(new Request("http://localhost/prod-views/pv-1/load"));
+    const response = await loadRoutes.handle(new Request(`http://localhost/prod-views/${VIEW_ID}/load`));
 
     expect(response.status).toBe(404);
     expect((await response.json()) as { error: { code: string } }).toMatchObject({ error: { code: "DISABLED" } });

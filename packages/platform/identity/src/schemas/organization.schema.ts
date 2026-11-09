@@ -85,8 +85,14 @@ const ApiKeyCreateResultSchema = z
 
 /** 创建组织 REST 请求体 */
 export const CreateOrganizationBodySchema = z.object({
-  name: z.string().describe("组织名称。"),
-  slug: z.string().describe("组织唯一标识 slug。"),
+  name: z
+    .string()
+    .refine((value) => value.trim().length > 0, "name must not be empty")
+    .describe("组织名称。"),
+  slug: z
+    .string()
+    .refine((value) => value.trim().length > 0, "slug must not be empty")
+    .describe("组织唯一标识 slug。"),
   description: z.string().optional().describe("组织描述，会写入 metadata.description。"),
 });
 

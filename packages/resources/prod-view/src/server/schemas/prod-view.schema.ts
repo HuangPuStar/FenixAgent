@@ -38,7 +38,7 @@ export const UpdateProdViewSchema = z.object({
 });
 
 /** 通用 ID 参数 — 用于路由 params */
-export const IdParamsSchema = z.object({ id: z.string().min(1) });
+export const IdParamsSchema = z.object({ id: z.string().uuid() });
 
 /** ProdView 列表查询参数 */
 export const ListProdViewQuerySchema = z.object({

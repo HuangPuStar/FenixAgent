@@ -48,14 +48,16 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
   // GET /config/prod-views/:id — 详情
   app.get(
     "/config/prod-views/:id",
-    async ({ store, params }) => {
+    async ({ store, params, status }) => {
       const actor = store.authContext!;
-      return prodViewFacade.get(actor, params.id);
+      const result = await prodViewFacade.get(actor, params.id);
+      if (!result.success) return status(404, { success: false as const, error: result.error });
+      return result;
     },
     {
       sessionAuth: true,
       params: IdParamsSchema,
-      response: { 200: OkResponseSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
       detail: { tags: ["ProdView"], summary: "获取单个 ProdView 详情" },
     },
   );

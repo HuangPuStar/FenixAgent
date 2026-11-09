@@ -226,6 +226,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "nativePdfPlugin",
     "shouldLoadPreviewAsBlob",
     "shouldRenderDocumentContent",
+    "withWorkspaceFileExtension",
   ],
   config: [
     "AdminKeyGate",

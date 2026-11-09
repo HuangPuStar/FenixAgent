@@ -63,11 +63,23 @@ export function createWebApiKeysRoutes(deps: WebIdentityRouteDependencies) {
   app.post(
     "/api-keys",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    async ({ store, body, error, request }: any) => {
+    async ({ store, body, error, request, status }: any) => {
       const b = body ?? {};
       const normalizedName = normalizeApiKeyName(b.name);
       if (!normalizedName) {
         return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name required" } });
+      }
+      let expiresIn: number | null = null;
+      if (b.expiresAt !== undefined) {
+        const expiresAt = new Date(b.expiresAt).getTime();
+        const now = Date.now();
+        if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+          return status(400, {
+            success: false,
+            error: { code: "VALIDATION_ERROR", message: "expiresAt must be a valid time later than the current time" },
+          });
+        }
+        expiresIn = Math.ceil((expiresAt - now) / 1000);
       }
       const authContext = store.authContext;
       if (!authContext) {
@@ -88,7 +100,7 @@ export function createWebApiKeysRoutes(deps: WebIdentityRouteDependencies) {
         headers: request.headers,
         name: normalizedName,
         prefix: "rcs_",
-        expiresIn: b.expiresAt ? Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / 1000) : null,
+        expiresIn,
         metadata: buildApiKeyMetadata(b.metadata, authContext),
       });
       // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
