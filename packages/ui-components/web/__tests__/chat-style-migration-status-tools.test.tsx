@@ -148,7 +148,7 @@ describe("chat 样式迁移：状态与交互面板", () => {
     expect(html).toContain("text-teal-600");
     expect(html).toContain("text-yellow-600");
 
-    // 失败任务只在 tasks 页签下渲染（默认页签是 todo），故单独渲染一次断言红色状态色。
+    // 探索失败使用中性过程状态，样式迁移不得恢复红色失败标记。
     const failedOnly = renderToStaticMarkup(
       createElement(ChatStatusPanel, {
         todos: [],
@@ -172,7 +172,8 @@ describe("chat 样式迁移：状态与交互面板", () => {
         changedFiles: [],
       }),
     );
-    expect(failedOnly).toContain("text-red-400");
+    expect(failedOnly).not.toContain("text-red-400");
+    expect(failedOnly).toContain("Ended");
     expectNoLegacyClasses(failedOnly);
 
     // 变更文件行的「新增标绿」只在 changes 页签下渲染，而该页签默认折叠（组件既有行为），

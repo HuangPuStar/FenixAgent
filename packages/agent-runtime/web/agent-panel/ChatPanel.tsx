@@ -24,6 +24,7 @@ import { type ReactNode, useCallback, useRef } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
+import { selectChatErrorNotices } from "./chat-error-presentation";
 import type { ChatPanelHostPorts } from "./chat-panel-host-ports";
 import { useChatPanelPorts } from "./chat-panel-ports";
 import { PromptRecovery } from "./PromptRecovery";
@@ -138,13 +139,15 @@ function ChatPanelView({
     authState,
     connectionState,
     classifiedError,
-    actionError,
+    actionErrors,
+    dismissActionError,
     preservedPrompt,
     retryPreservedPrompt,
     dismissPreservedPrompt,
     historyRecovery,
     historyRecoveryRetrying,
     syncDegradedBlocked,
+    legacyFallbackUsable,
     retryHistoryRecovery,
     autoReconnecting,
     terminalUiCode,
@@ -190,6 +193,16 @@ function ChatPanelView({
       disabled={syncDegradedBlocked || !sessionState.acpSessionId || connectionState !== "connected"}
     />
   );
+  const notices = selectChatErrorNotices({
+    classifiedError,
+    actionErrors: actionErrors.map((item) => item.error),
+    agentError: sessionState.agentPublicError ?? null,
+    messageErrors: sessionState.structuredMessages.flatMap((message) =>
+      message.type === "assistant_message" && message.error ? [message.error] : [],
+    ),
+    legacyFallbackUsable,
+    historyIncomplete: historyRecovery !== null,
+  });
 
   // 未选中实例 → 欢迎空状态（图标 64px 淡描边：`opacity-30` 原在宿主的 `.agent-welcome-empty svg` 上）
   if (!agentId) {
@@ -230,7 +243,7 @@ function ChatPanelView({
   }
 
   // 错误状态（容器形态复用空态骨架那一串：卡片自带底色与描边，缺的是居中与撑满）
-  if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
+  if (!autoReconnecting && (connectionState === "error" || connectionState === "disconnected") && classifiedError) {
     return (
       <>
         {promptRecoveryNotice}
@@ -267,42 +280,27 @@ function ChatPanelView({
     return (
       <TooltipProvider>
         {syncChat.connection.status === "error" &&
-          !(
-            syncChat.connection.error?.code === "PROTOCOL_VERSION_UNSUPPORTED" ||
-            syncChat.connection.error?.code === "WS_1002" ||
-            syncChat.connection.error?.code === "WS_1008"
-          ) && (
-            <PublicErrorCard
-              error={{
-                type: "SYNC_RELAY.SYNC_FAILED",
-                id: syncChat.connection.error?.code ?? "INTERNAL_ERROR",
-                // 保留服务端原始 close reason（+ wasClean/local 标记），线上不依赖 console 才能定位。
-                message: syncChat.connection.error?.message
-                  ? `${tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED")} (${syncChat.connection.error.message.slice(0, 160)})`
-                  : tUi("chat.components.publicError.SYNC_RELAY.SYNC_FAILED"),
-              }}
-              t={tUi}
-              className={INLINE_ERROR_CARD_CLASS}
-              dismissible
-            />
+          !legacyFallbackUsable &&
+          !historyRecovery &&
+          !notices.some((error) => error.type.startsWith("SYNC_RELAY.")) && (
+            <div
+              role="status"
+              className="mx-4 mt-3 rounded-md border border-border-subtle bg-surface-1 px-3 py-2 text-sm text-text-secondary"
+            >
+              {t("syncFallbackPending")}
+            </div>
           )}
-        {classifiedError && (
-          <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} dismissible />
-        )}
-        {actionError && (
-          <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} dismissible />
-        )}
+        {notices.map((error) => (
+          <PublicErrorCard
+            key={error.id}
+            error={error}
+            t={tUi}
+            className={INLINE_ERROR_CARD_CLASS}
+            dismissible
+            onDismiss={dismissActionError}
+          />
+        ))}
         {promptRecoveryNotice}
-        {sessionState.agentPublicError &&
-          sessionState.agentPublicError.id !== classifiedError?.id &&
-          sessionState.agentPublicError.id !== actionError?.error.id && (
-            <PublicErrorCard
-              error={sessionState.agentPublicError}
-              t={tUi}
-              className={INLINE_ERROR_CARD_CLASS}
-              dismissible
-            />
-          )}
         {historyRecovery && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-4">
             <div

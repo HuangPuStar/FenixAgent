@@ -61,12 +61,12 @@ export function extractLineRange(rawInput: unknown): string {
  * 1. isError=true + content[].text（ACP 标准）
  * 2. error 字段（string 或 { message }）
  * 3. content 数组中最后一个 text（Bash 等工具的 stderr）
- * 4. 兜底"未知错误"
+ * 未提供原因时返回 undefined，由展示入口给出本地化说明。
  *
  * 所有分支都经过 truncate(120) 截断，避免超长错误信息破坏 UI。
  */
-export function extractErrorMessage(rawOutput: unknown): string {
-  if (!rawOutput) return "未知错误";
+export function extractErrorMessage(rawOutput: unknown): string | undefined {
+  if (!rawOutput) return;
   const o = rawOutput as Record<string, unknown>;
 
   if (o.isError && Array.isArray(o.content)) {
@@ -85,8 +85,6 @@ export function extractErrorMessage(rawOutput: unknown): string {
       .find((c) => c.type === "text")?.text;
     if (typeof lastText === "string") return truncate(lastText, 120);
   }
-
-  return "未知错误";
 }
 
 /**

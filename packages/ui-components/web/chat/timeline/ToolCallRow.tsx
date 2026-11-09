@@ -9,9 +9,7 @@
  * - `cn` / Dialog / 类型 / 工具函数改从包内相对路径导入。
  * - i18n 命名空间改为 `uiComponents`：组件文案加 `chat.components.` 前缀，
  *   narrator 文案加 `chat.toolNarrator.` 前缀。
- * - 移除 `tool.publicError` 错误块（源实现在卡片右侧渲染「message + Type + ID」）：该块是
- *   `.tool-call-row-compact` 网格的第二列，与标题下方第二行的错误信息重复（`narrate` 的
- *   `errorDetail` 优先取 `publicError.message`），故只保留第二行；脱敏错误的 Type / ID 不再展示。
+ * - 探索失败默认只保留过程记录；用户主动展开详情后查看真实状态和原因。
  *
  * 深层样式（两处网格列定义与图标尺寸）下沉到同目录 `./ToolCallRow.css`，语义类名为
  * `.chat-tool-call-shell`（源 `.tool-call-row-compact`）、`.chat-tool-call-grid`（源 `.chat-tool-call-row`）
@@ -27,7 +25,7 @@
 
 import "./ToolCallRow.css";
 
-import { ChevronRight, CircleX, CodeXml, Loader2 } from "lucide-react";
+import { ChevronRight, CodeXml, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -38,6 +36,7 @@ import { cardKindToStyle, formatOutput, kindLabel, supportsFilePreview } from ".
 import { narrate } from "../narrators";
 import { Shimmer } from "../primitives/shimmer";
 import type { ToolCallData, ToolCardKind } from "../types";
+import { publicErrorText } from "../view/public-error-text";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
 import { ToolCallDetail } from "./ToolCallDetail";
@@ -120,7 +119,9 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
   const isError = tool.status === "error";
   const isPending = tool.status === "waiting_for_confirmation";
   const isCanceled = tool.status === "canceled" || tool.status === "rejected";
-  const RowIcon = isError ? CircleX : Icon;
+  const failureReason = tool.publicError
+    ? publicErrorText(t, tool.publicError)
+    : (result.errorDetail ?? t("chat.components.toolCallRow.failureUnavailable"));
   const hasSubEntries = (tool.subEntries?.length ?? 0) > 0;
 
   const hasParams = Boolean(
@@ -130,7 +131,7 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
   const hasDetails = hasParams && !isPending;
   // 行内详情只呈现可读结果；原始 JSON 仍由参数弹窗承载。
   const inlineDetail = useMemo(() => buildToolDetail(tool), [tool]);
-  const showInlineDetail = inlineDetail !== null && !isPending;
+  const showInlineDetail = (inlineDetail !== null || isError) && !isPending;
   // 工具 id 可能含空格等不适合作为 `aria-controls` 目标的字符，交给 React 生成稳定 id。
   const detailBodyId = useId();
   const detailToggleLabel = t(
@@ -180,11 +181,11 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
           <span
             className={cn(
               "chat-tool-call-icon shrink-0 grow-0 basis-5.5 grid h-5.5 w-5.5 place-items-center rounded-full bg-white",
-              isError ? "text-red-400" : "text-slate-500",
+              "text-slate-500",
             )}
             aria-hidden
           >
-            {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
+            {isRunning ? <Loader2 className="animate-spin" /> : <Icon />}
           </span>
 
           <span className="block min-w-0 overflow-hidden" data-slot="chat-tool-call-copy">
@@ -215,7 +216,7 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
                   {withLoadingShimmer(result.title, isRunning)}
                 </span>
               )}
-              {result.subtitle ? (
+              {!isError && result.subtitle ? (
                 // 文件链接态：meta 槽取源 `.tool-call-row-meta` 的 `flex: 0 1 auto`（`grow-0 shrink basis-auto`）
                 // 与并列的 `whitespace-nowrap`，一起由 `showFileLink` 条件挂上。
                 <span
@@ -229,15 +230,6 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
                 </span>
               ) : null}
             </span>
-            {/* 错误信息独占第二行：源实现内联在标题行内，长错误会把标题挤到看不见 */}
-            {result.errorDetail && (
-              <span
-                className="block min-w-0 overflow-hidden text-3xs font-normal text-ellipsis whitespace-nowrap text-red-400"
-                title={result.errorDetail}
-              >
-                {result.errorDetail}
-              </span>
-            )}
           </span>
 
           <span className="flex items-baseline justify-self-end gap-3">
@@ -255,17 +247,14 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
                 {result.badge.text}
               </span>
             )}
-            {/* 完成态不渲染状态词（「Done / 已完成」是默认结果的噪音）；其余状态仍需明确提示 */}
-            {!isComplete && (
+            {/* 工具终态属于探索过程，失败状态留给主动打开的详情。 */}
+            {!isComplete && !isError && (
               <span
                 className={cn(
                   "min-w-10 text-right text-3xs font-medium shrink-0",
-                  // 源 `.tool-call-row-compact.is-error .tool-call-row-status { color: #d5534f }` 未分层、压过
-                  // `text-status-error`（#ef4444），故按生效值直写。
-                  isError && "text-red-400",
                   isPending && "text-brand",
                   isCanceled && "text-text-dim",
-                  !isError && !isPending && !isCanceled && "text-text-dim",
+                  !isPending && !isCanceled && "text-text-dim",
                 )}
                 data-slot="chat-tool-call-status"
               >
@@ -312,7 +301,7 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
       </div>
 
       {/* 行内详情：diff / 命令输出 / 读取片段；收起时不挂载，避免长输出常驻 DOM。 */}
-      {inlineDetail && detailExpanded && (
+      {(inlineDetail || isError) && detailExpanded && (
         <div
           id={detailBodyId}
           className={cn(
@@ -321,7 +310,12 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
           )}
           data-slot="chat-tool-call-body"
         >
-          <ToolCallDetail detail={inlineDetail} />
+          {isError && (
+            <p className="px-3 py-2 text-xs text-text-secondary whitespace-pre-wrap">
+              {result.statusLabel} · {failureReason}
+            </p>
+          )}
+          {inlineDetail && <ToolCallDetail detail={inlineDetail} />}
         </div>
       )}
 
@@ -347,6 +341,7 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
           style={style}
           icon={Icon}
           title={result.title}
+          failureReason={isError ? failureReason : undefined}
           t={t}
         />
       )}
@@ -366,11 +361,22 @@ interface ToolCallDialogProps {
   style: { iconBg: string; iconColor: string };
   icon: React.ComponentType<{ className?: string }>;
   title: React.ReactNode;
+  failureReason?: string;
   t: (key: string) => string;
 }
 
 /** 工具调用参数弹窗：展示原始入参/出参 JSON 与可读工具名。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
-function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, title, t }: ToolCallDialogProps) {
+function ToolCallDialog({
+  open,
+  onOpenChange,
+  tool,
+  kind,
+  style,
+  icon: Icon,
+  title,
+  failureReason,
+  t,
+}: ToolCallDialogProps) {
   const isError = tool.status === "error";
   const isRunning = tool.status === "running";
   const hasOutput = !isRunning && (tool.rawOutput || tool.content);
@@ -396,6 +402,11 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
         </DialogHeader>
 
         <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+          {failureReason && (
+            <p className="text-xs text-text-secondary whitespace-pre-wrap">
+              {t("chat.toolNarrator.common.status.error")} · {failureReason}
+            </p>
+          )}
           {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
             <ToolJsonBlock
               label={t("chat.components.toolCallGroup.input")}

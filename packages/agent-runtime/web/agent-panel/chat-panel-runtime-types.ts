@@ -69,8 +69,10 @@ export interface ChatPanelRuntime {
   connectionState: ChatWsConnectionState;
   /** 最近一次服务端分类错误；责任域由错误产生边界提供，不能按 WebSocket 通道猜测。 */
   classifiedError: PublicErrorInfo | null;
-  /** 最近一次 action_error（transient banner）；不进入 connectionState 状态机。 */
-  actionError: ActionError | null;
+  /** 当前 scope 的独立操作错误；回执、主动关闭或超时分别结算，不进入连接状态机。 */
+  actionErrors: ActionError[];
+  /** 关闭对应 Error ID 的临时操作提示。 */
+  dismissActionError: (errorId: string) => void;
   /** 被拒输入在用户明确处理前保留完整内容，包括图片与附件。 */
   preservedPrompt: PreservedPrompt | null;
   retryPreservedPrompt: () => void;
@@ -84,6 +86,8 @@ export interface ChatPanelRuntime {
   historyRecoveryRetrying: boolean;
   /** 同步已回退且旧通道历史不完整：阻止发送，恢复入口由 historyRecovery 横幅提供。 */
   syncDegradedBlocked: boolean;
+  /** 当前连接的完整旧投影已可用；仅供同步错误展示决策。 */
+  legacyFallbackUsable: boolean;
   /** 重建旧 Yjs 连接，重新尝试历史同步。 */
   retryHistoryRecovery: () => void;
   /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */

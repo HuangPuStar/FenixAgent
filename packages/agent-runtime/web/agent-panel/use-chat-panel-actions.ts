@@ -19,6 +19,8 @@ interface Options {
   syncDegradedBlocked: boolean;
   returnToLatestHistory?: () => Promise<unknown>;
   showActionError: (error: ActionError) => void;
+  clearActionError: (commandId: string) => void;
+  noticeScope: string;
 }
 
 /** 管理动作身份、创建回执与被拒输入；连接重建不丢失未知结果的幂等键。 */
@@ -30,11 +32,26 @@ export function useChatPanelActions({
   syncDegradedBlocked,
   returnToLatestHistory,
   showActionError,
+  clearActionError,
+  noticeScope,
 }: Options) {
   const { t } = useTranslation(AGENT_CHAT_NS);
   const commandIds = useRef(new Map<string, { id: string; connectionScoped: boolean }>());
   const pendingCreates = useRef(new Map<string, (id: string | null) => void>());
   const pendingPrompts = useRef(new Map<string, PreservedPrompt>());
+  const noticeScopes = useRef(new Map<string, string>());
+  const noticeScopeRef = useRef(noticeScope);
+  noticeScopeRef.current = noticeScope;
+  // 结算后的命令仍可能重复到达；有界保留来源，防止旧错误在新会话被重新认领。
+  const rememberNoticeScope = useCallback((id: string) => {
+    const scopes = noticeScopes.current;
+    if (!scopes.has(id)) scopes.set(id, noticeScopeRef.current);
+    if (scopes.size > 256) {
+      const oldest = scopes.keys().next().value;
+      if (oldest !== undefined) scopes.delete(oldest);
+    }
+    return scopes.get(id);
+  }, []);
   const [preservedPrompts, setPreservedPrompts] = useState<PreservedPrompt[]>([]);
   const preservedPrompt = preservedPrompts[0] ?? null;
   const preserve = useCallback((prompt: PreservedPrompt) => {
@@ -65,12 +82,13 @@ export function useChatPanelActions({
   const handleActionAck = useCallback(
     (ack: ActionAck) => {
       if (ack.status !== "committed" && ack.status !== "duplicate") return;
+      clearActionError(ack.commandId);
       releaseCommandId(ack.commandId);
       pendingPrompts.current.delete(ack.commandId);
       setPreservedPrompts((current) => current.filter((item) => item.commandId !== ack.commandId));
       settleCreate(ack.commandId, ack.sessionId ?? null);
     },
-    [releaseCommandId, settleCreate],
+    [releaseCommandId, settleCreate, clearActionError],
   );
   const handleActionError = useCallback(
     (error: ActionError) => {
@@ -83,9 +101,9 @@ export function useChatPanelActions({
         preserve({ ...prompt, outcomeUnknown: unknown });
       }
       failCreate(error.commandId);
-      showActionError(error);
+      if (rememberNoticeScope(error.commandId) === noticeScopeRef.current) showActionError(error);
     },
-    [releaseCommandId, failCreate, showActionError, preserve],
+    [releaseCommandId, failCreate, showActionError, preserve, rememberNoticeScope],
   );
   const handleConnectionLost = useCallback(() => {
     // load/resume 用于确认本次连接的绑定；旧结果去重不能替代新连接的恢复。
@@ -111,6 +129,7 @@ export function useChatPanelActions({
       const explicitId = typeof data.commandId === "string" ? data.commandId : null;
       const id = explicitId ?? commandIds.current.get(key)?.id ?? allocateCommandId();
       if (id === null) return false;
+      rememberNoticeScope(id);
       if (!explicitId) {
         commandIds.current.set(key, {
           id,
@@ -135,7 +154,7 @@ export function useChatPanelActions({
       }
       return sent;
     },
-    [commandKey, wsRef, preserve, allocateCommandId],
+    [commandKey, wsRef, preserve, allocateCommandId, rememberNoticeScope],
   );
   const sendAction = useCallback(
     (data: Record<string, unknown>) => {

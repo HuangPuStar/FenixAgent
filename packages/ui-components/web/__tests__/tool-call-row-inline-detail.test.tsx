@@ -114,4 +114,52 @@ describe("工具行行内展开", () => {
 
     expect(host.querySelector('[data-slot="chat-tool-call-expand"]')).toBeNull();
   });
+
+  // 探索失败不干扰默认过程展示，主动展开后仍能查看真实状态与原因。
+  test("失败工具默认中性展示，展开后保留错误原因", async () => {
+    const tool: ToolCallData = {
+      id: "failed-command",
+      title: "Bash",
+      kind: "bash",
+      status: "error",
+      rawInput: { command: "test-command" },
+      rawOutput: { error: "command unavailable" },
+    };
+    await act(async () => root.render(<ToolCallRow tool={tool} />));
+    expect(host.textContent).not.toContain("command unavailable");
+    expect(host.querySelector('[data-slot="chat-tool-call-status"]')).toBeNull();
+    expect(host.querySelector(".lucide-circle-x")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-slot="chat-tool-call-expand"]')?.click());
+    expect(host.querySelector('[data-slot="chat-tool-call-body"]')?.textContent).toContain("command unavailable");
+    expect(host.querySelector('[data-slot="chat-tool-call-body"]')?.textContent).toContain("失败");
+  });
+
+  // 无输出的失败也有详情入口，避免降噪后无法查到仅由公开错误提供的原因。
+  test("仅公开错误或原因缺失的工具仍可展开详情", async () => {
+    for (const publicError of [
+      { type: "AGENT_RUNTIME.REQUEST_FAILED" as const, id: "err_test", message: "The Agent request failed." },
+      undefined,
+    ]) {
+      await act(async () =>
+        root.render(
+          <ToolCallRow
+            key={publicError?.id ?? "empty"}
+            tool={{
+              id: "failed-empty",
+              title: "Bash",
+              kind: "bash",
+              status: "error",
+              publicError,
+            }}
+          />,
+        ),
+      );
+      const toggle = host.querySelector<HTMLButtonElement>('[data-slot="chat-tool-call-expand"]');
+      expect(toggle).not.toBeNull();
+      await act(async () => toggle?.click());
+      expect(host.querySelector('[data-slot="chat-tool-call-body"]')?.textContent).toContain(
+        publicError ? "Agent 请求失败。" : "未提供失败详情",
+      );
+    }
+  });
 });

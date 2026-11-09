@@ -107,6 +107,12 @@ export function PeriTaskDetailSheet({ environmentId, sessionId, task, onClose, l
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+          {task && (
+            <div className="mb-4 text-sm text-text-secondary whitespace-pre-wrap">
+              <p>{t(`chat.components.periTask.status.${task.status}`)}</p>
+              {task.status === "failed" && <p>{task.summary ?? t("chat.components.periTask.failureUnavailable")}</p>}
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-text-muted" role="status">
               <Loader2 className="h-4 w-4 animate-spin" />
