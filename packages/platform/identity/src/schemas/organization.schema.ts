@@ -100,12 +100,18 @@ export const CreateOrganizationBodySchema = OrganizationFieldsSchema.extend({
   description: z.string().optional().describe("组织描述，会写入 metadata.description。"),
 });
 
-/** 更新组织 REST 请求体，所有待修改字段统一置于 data。 */
-export const UpdateOrganizationBodySchema = z.strictObject({
-  data: OrganizationFieldsSchema.partial()
-    .passthrough()
-    .describe("组织待更新字段；名称和 Slug 须为非空白字符串，支持 metadata 等组织属性。"),
-});
+/** 更新组织 REST 请求体，顶层字段与 data 两种输入格式互斥。 */
+export const UpdateOrganizationBodySchema = OrganizationFieldsSchema.partial()
+  .extend({
+    data: OrganizationFieldsSchema.partial()
+      .passthrough()
+      .optional()
+      .describe("透传给底层更新接口的数据；不可与顶层 name/slug 混用，名称和 Slug 须为非空白字符串。"),
+  })
+  .refine((body) => body.data === undefined || (body.name === undefined && body.slug === undefined), {
+    message: "Provide name and slug either at the top level or inside data, not both",
+    path: ["data"],
+  });
 
 /** 添加成员 REST 请求体 */
 export const AddMemberBodySchema = z.object({

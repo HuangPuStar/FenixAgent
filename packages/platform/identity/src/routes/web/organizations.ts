@@ -258,8 +258,14 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies,
   app.put(
     "/organizations/:id",
     async ({ body, params, request }) => {
+      const b = body ?? {};
+      const updateData: Record<string, unknown> = b.data ?? {};
+      if (!b.data) {
+        if (b.name) updateData.name = b.name;
+        if (b.slug) updateData.slug = b.slug;
+      }
       const org = await orgApi().updateOrganization({
-        body: { data: body.data, organizationId: params.id },
+        body: { data: updateData, organizationId: params.id },
         headers: request.headers,
       });
       return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationMutateResponse;
@@ -277,7 +283,7 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies,
       detail: {
         tags: ["Organizations"],
         summary: "更新组织",
-        description: "更新指定组织的信息；所有待修改字段置于 data，支持名称、slug、metadata 等组织属性。",
+        description: "更新指定组织的信息，支持更新名称、slug 或透传原始数据。",
       },
     },
   );
