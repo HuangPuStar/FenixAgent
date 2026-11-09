@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import * as Y from "yjs";
 import { YjsBroadcaster } from "../channel/broadcaster";
 import { ConnectionRegistry } from "../channel/connection-registry";
 import type { RelayMessage, SharedRelay } from "../channel/connection-types";
@@ -6,7 +7,7 @@ import { RelayEventHandler } from "../channel/relay-event-handler";
 import { SessionChannel, type SessionConnection } from "../channel/session-channel";
 import { failPendingSessionMutations, waitForSessionMutation } from "../channel/session-mutation";
 import type { ActionAck, ActionError } from "../channel/types";
-import { getSessionInfo } from "../state/chat-writer";
+import { getSessionInfo, getSessionsMap } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 
 interface Harness {
@@ -106,6 +107,70 @@ async function createHarness(timeoutMs = 1_000): Promise<Harness> {
 }
 
 describe("Agent 会话变更结果确认", () => {
+  // 只剩空会话时，确认删除仍应清理目标，且空列表和迟到旧列表都不能复活死条目。
+  test.each([false, true])("删除确认清理投影并保留空活动会话（标题清理失败：%s）", async (failCleanup) => {
+    const harness = await createHarness();
+    if (failCleanup) {
+      harness.manager.setSessionTitleStore({
+        async read() {
+          return {};
+        },
+        async write() {},
+        async delete() {
+          throw new Error("metadata unavailable");
+        },
+      });
+    }
+    harness.manager.processNormalizedEvent("rcs-1", {
+      type: "session_list",
+      update: {
+        sessions: [
+          { sessionId: "ses-other", title: "A" },
+          { sessionId: "ses-current", title: null },
+        ],
+      },
+      content: null,
+    });
+    const doc = harness.manager.getSessionYdoc("rcs-1")!;
+    const sessions = getSessionsMap(doc);
+    const version = doc.getMap("root").get("projectionVersion");
+    const pending = harness.send({
+      action: "delete_session",
+      commandId: "delete-last-history",
+      sessionId: "ses-other",
+    });
+    await Bun.sleep(0);
+    expect(sessions.has("ses-other")).toBe(true);
+
+    await harness.receive({ jsonrpc: "2.0", id: harness.sent[0]?.id, result: { deleted: true } });
+    await pending;
+    expect(harness.acks.at(-1)?.status).toBe("committed");
+    expect(sessions.has("ses-other")).toBe(false);
+    expect(sessions.has("ses-current")).toBe(true);
+    expect(doc.getMap("root").get("projectionVersion")).toBeGreaterThan(version as number);
+
+    await harness.receive({ jsonrpc: "2.0", id: harness.sent[1]?.id, result: { sessions: [] } });
+    await harness.receive({ jsonrpc: "2.0", id: 999, result: { sessions: [{ sessionId: "ses-other", title: "A" }] } });
+    expect(sessions.has("ses-other")).toBe(false);
+    expect(sessions.has("ses-current")).toBe(true);
+    expect(getSessionInfo(doc).get("sessionId")).toBe("ses-current");
+
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, Y.encodeStateAsUpdate(doc));
+    expect(getSessionsMap(restored).has("ses-other")).toBe(false);
+    expect(getSessionsMap(restored).has("ses-current")).toBe(true);
+    restored.destroy();
+
+    await harness.manager.openChat("rcs-other");
+    await harness.manager.openSession("user-other", "agent-other", "rcs-other");
+    harness.manager.processNormalizedEvent("rcs-other", {
+      type: "session_list",
+      update: { sessions: [{ sessionId: "ses-other", title: "Other owner" }] },
+      content: null,
+    });
+    expect(getSessionsMap(harness.manager.getSessionYdoc("rcs-other")!).has("ses-other")).toBe(true);
+  });
+
   // 重命名和删除必须等待对应 Agent 成功响应，不能把 relay 发送完成当成持久化完成。
   test.each(["delete_session"])("%s 成功响应后才提交并刷新列表", async (action) => {
     const harness = await createHarness();
@@ -165,6 +230,11 @@ describe("Agent 会话变更结果确认", () => {
   // Agent 拒绝后释放等待登记但保留命令错误，显式重试使用新身份。
   test("错误响应释放等待登记，同 ID 保留失败，新意图可重试", async () => {
     const harness = await createHarness();
+    harness.manager.processNormalizedEvent("rcs-1", {
+      type: "session_list",
+      update: { sessions: [{ sessionId: "ses-other", title: "A" }] },
+      content: null,
+    });
     const action = { action: "delete_session", commandId: "delete-failed", sessionId: "ses-other" };
     const pending = harness.send(action);
     await Bun.sleep(0);
@@ -175,6 +245,7 @@ describe("Agent 会话变更结果确认", () => {
     expect(harness.errors).toMatchObject([{ error: { type: "ACTION.AGENT_UNAVAILABLE" } }]);
     expect(harness.sent).toHaveLength(1);
     expect(harness.shared.pendingSessionMutations?.size).toBe(0);
+    expect(getSessionsMap(harness.manager.getSessionYdoc("rcs-1")!).has("ses-other")).toBe(true);
 
     await harness.send(action);
     expect(harness.errors).toHaveLength(2);

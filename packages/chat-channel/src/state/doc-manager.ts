@@ -30,6 +30,7 @@ import {
 import { DocOpenService } from "./doc-open-service";
 import { createChatDoc, createSessionDoc } from "./factory";
 import { ProjectionFences, type ReplacementAttempt } from "./projection-fence";
+import { removeSessionSummary } from "./session-list";
 import { SessionTitleState, type SessionTitleStore } from "./session-title-store";
 
 export interface DocManagerOptions {
@@ -217,8 +218,9 @@ export class DocManager {
     await this.sessionTitles.rename(doc.ydoc, rcsSessionId, sessionId, title, boundSessionId);
   }
 
-  /** Agent 确认删除后移除 Fenix 标题，防止同 ID 的后继列表继承旧名称。 */
-  async removeSessionTitle(rcsSessionId: string, sessionId: string): Promise<void> {
+  /** Agent 确认删除后移除列表投影和持久标题。 */
+  async removeSession(rcsSessionId: string, sessionId: string): Promise<void> {
+    removeSessionSummary(this.sessionDocs.get(rcsSessionId)?.ydoc, sessionId);
     await this.sessionTitles.delete(rcsSessionId, sessionId);
   }
 

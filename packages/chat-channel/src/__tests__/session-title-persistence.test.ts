@@ -176,7 +176,7 @@ describe("Fenix 持久会话标题", () => {
     const manager = await open(store, "rcs-1");
     list(manager, "rcs-1");
     await rename(manager, "rcs-1", "Saved");
-    await manager.removeSessionTitle("rcs-1", "ses-1");
+    await manager.removeSession("rcs-1", "ses-1");
     expect(await store.read("rcs-1")).toEqual({});
     const stale = await rename(manager, "rcs-1", "Stale");
     expect(stale.errors.at(-1)?.error.type).toBe("ACTION.AGENT_UNAVAILABLE");

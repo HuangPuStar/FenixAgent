@@ -4,10 +4,22 @@
 // 并全量同步到 sessions map（幂等，10s 轮询；响应中不存在的旧条目被删除，
 // agent 侧删除可自愈）。
 
+import type * as Y from "yjs";
 import type { NormalizedEvent, SessionSummaryProjection } from "../schema";
 import type { ApplyResult } from "./aggregator";
-import { getSessionRoot, syncSessionsMap } from "./chat-writer";
+import { bumpProjectionVersion, getSessionRoot, getSessionsMap, syncSessionsMap } from "./chat-writer";
 import type { DocPair } from "./permission";
+
+/** Agent 已确认删除时按 ID 清理投影，不依赖可能被空会话过滤成空的列表响应。 */
+export function removeSessionSummary(doc: Y.Doc | undefined, sessionId: string): void {
+  if (!doc) return;
+  doc.transact(() => {
+    const sessions = getSessionsMap(doc);
+    if (!sessions.has(sessionId)) return;
+    sessions.delete(sessionId);
+    bumpProjectionVersion(getSessionRoot(doc));
+  });
+}
 
 /**
  * 处理 session_list：把 agent 侧会话列表全量同步到 Session Doc sessions 投影。

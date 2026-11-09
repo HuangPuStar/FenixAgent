@@ -600,6 +600,7 @@ interface SessionSummaryProjection {
 
 - 活动 turn 以 `session.activeTurnId` / `activeTurnStatus` / `activeTurnUpdatedAt` 三个平铺键投影（无嵌套对象，物理结构与 `state/chat-writer.ts` `setActiveTurn` 一致），前端由 `turnStatus` 派生展示状态；`session.status`（`SessionDocStatus`）保留为会话级生命周期状态（如输入可用性判定），与 turn 状态正交（Turn 状态机见 §8.1）。
 - `sessions` 是 agent 级会话列表投影：`session/list` 轮询（10s）响应全量同步（幂等），响应中不存在的旧条目被删除（agent 侧删除可自愈）。
+- 空列表响应保留既有摘要，避免 Agent 重启恢复期间丢失标题；`session/delete` 成功回执直接按 ID 移除摘要和持久标题，同一 Doc 生命周期内的迟到旧列表不得恢复已删除条目。删除失败保留原投影，其他空会话和当前绑定不受影响。
 - `organizationId`、完整授权规则、密钥、内部错误、原始凭证和机器连接信息不得进入 Y.Doc。租户上下文由服务端连接绑定提供，而不是由文档字段声明。
 
 ### 5.4 Schema 演进
