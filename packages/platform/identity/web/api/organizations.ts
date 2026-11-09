@@ -60,8 +60,10 @@ export interface CreateOrgBody {
   slug: string;
 }
 
-/** 更新组织请求体（字段可选） */
-export type UpdateOrgBody = Partial<CreateOrgBody>;
+/** 更新组织请求体，data 内仅包含本次待修改的字段。 */
+export interface UpdateOrgBody {
+  data: Partial<CreateOrgBody> & { metadata?: Record<string, unknown> };
+}
 
 /** 添加成员请求体 */
 export interface AddMemberBody {
@@ -100,7 +102,7 @@ export const orgApi = {
     request<OrgInfo>("/web/organizations/:id", {
       method: "PUT",
       params: { id: orgId },
-      body: { name: body.name, slug: body.slug },
+      body,
     }),
 
   /** 删除指定组织 */
@@ -153,13 +155,5 @@ export const orgApi = {
       method: "PUT",
       params: { id: orgId, memberId },
       body: { role },
-    }),
-
-  /** 更新组织 metadata（透传给 better-auth 底层），用于设置默认引擎等 */
-  updateMetadata: (orgId: string, data: Record<string, unknown>) =>
-    request<OrgInfo>("/web/organizations/:id", {
-      method: "PUT",
-      params: { id: orgId },
-      body: { data },
     }),
 };

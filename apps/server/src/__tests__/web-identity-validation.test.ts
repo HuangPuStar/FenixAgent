@@ -93,12 +93,8 @@ describe("组织创建参数与冲突", () => {
 });
 
 describe("组织更新参数", () => {
-  // 顶层与透传 data 都不能绕过非空白约束，非法输入不得触发存储写入。
+  // data 中的组织字段不能绕过非空白约束，非法输入不得触发存储写入。
   test.each([
-    { name: "" },
-    { name: " \t " },
-    { slug: "" },
-    { slug: " \t " },
     { data: { name: "" } },
     { data: { name: " \t " } },
     { data: { slug: "" } },
@@ -118,8 +114,8 @@ describe("组织更新参数", () => {
 
   // 部分更新仍允许省略名称和 Slug，透传的其他组织属性不能被裁剪。
   test.each([
-    { name: "新名称" },
-    { slug: "new-slug" },
+    { data: { name: "新名称" } },
+    { data: { slug: "new-slug" } },
     { data: { name: "新名称", slug: "new-slug" } },
     { data: { metadata: { description: "说明" }, logo: "logo.png" } },
   ])("合法组织部分更新保留字段 %j", async (input) => {
@@ -132,16 +128,19 @@ describe("组织更新参数", () => {
     });
     const response = await requestJson("organizations/org-1", input, "PUT");
     expect(response.status).toBe(200);
-    expect(received).toEqual("data" in input ? input.data : input);
+    expect(received).toEqual(input.data);
   });
 
-  // 混用两种更新格式必须明确拒绝，不能成功响应后静默丢弃顶层字段。
+  // 顶层组织字段必须明确拒绝，不能被静默丢弃或继续接受第二套协议。
   test.each([
+    { name: "新名称" },
+    { slug: "new-slug" },
+    { name: "新名称", slug: "new-slug" },
     { name: "新名称", data: {} },
     { slug: "new-slug", data: { metadata: { description: "说明" } } },
     { name: "新名称", data: { slug: "new-slug" } },
     { name: "新名称", data: { name: "另一名称" } },
-  ])("组织更新拒绝混合字段 %j", async (input) => {
+  ])("组织更新拒绝顶层字段 %j", async (input) => {
     let called = false;
     stubAuthApi({
       updateOrganization: async () => {
@@ -152,8 +151,22 @@ describe("组织更新参数", () => {
     const response = await requestJson("organizations/org-1", input, "PUT");
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
-      error: { type: "VALIDATION_ERROR", message: expect.stringContaining("data") },
+      error: { type: "VALIDATION_ERROR" },
     });
+    expect(called).toBe(false);
+  });
+
+  // 缺失或类型错误的 data 不得被当作空更新执行。
+  test.each([{}, { data: null }, { data: "invalid" }])("组织更新要求 data 对象 %j", async (input) => {
+    let called = false;
+    stubAuthApi({
+      updateOrganization: async () => {
+        called = true;
+        return { id: "org-1", name: "组织", slug: "valid", createdAt: new Date(0) };
+      },
+    });
+    const response = await requestJson("organizations/org-1", input, "PUT");
+    expect(response.status).toBe(400);
     expect(called).toBe(false);
   });
 });

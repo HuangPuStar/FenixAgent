@@ -163,7 +163,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     },
   );
   const { run: runUpdateName, loading: updateNameLoading } = useRequest(
-    (name: string) => unwrap(orgApi.update(selectedOrgId!, { name: name.trim() })),
+    (name: string) => unwrap(orgApi.update(selectedOrgId!, { data: { name: name.trim() } })),
     {
       manual: true,
       onSuccess: () => {
@@ -308,12 +308,12 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     setSavingEngine(true);
     try {
       await unwrap(
-        orgApi.updateMetadata(selectedOrgId, {
-          name: detail.name,
-          slug: detail.slug,
-          metadata: {
-            ...(detail.metadata ?? {}),
-            defaultEngine: { machineId: defaultMachineId === "local" ? "" : defaultMachineId },
+        orgApi.update(selectedOrgId, {
+          data: {
+            metadata: {
+              ...(detail.metadata ?? {}),
+              defaultEngine: { machineId: defaultMachineId === "local" ? "" : defaultMachineId },
+            },
           },
         }),
       );

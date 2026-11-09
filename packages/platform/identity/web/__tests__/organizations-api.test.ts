@@ -34,7 +34,7 @@ describe("organization API client", () => {
     await orgApi.list();
     await orgApi.get("org/a");
     await orgApi.create({ name: "研发组", slug: "engineering" });
-    await orgApi.update("org/a", { name: "平台组" });
+    await orgApi.update("org/a", { data: { name: "平台组" } });
     await orgApi.del("org/a");
     await orgApi.setActive("org/a");
     await orgApi.listMembers("org/a");
@@ -42,12 +42,12 @@ describe("organization API client", () => {
     await orgApi.addMember("org/a", { userIds: ["user/1"], role: "member" });
     await orgApi.removeMember("org/a", "member/1");
     await orgApi.updateRole("org/a", "member/1", "admin");
-    await orgApi.updateMetadata("org/a", { defaultEngine: "claude" });
+    await orgApi.update("org/a", { data: { metadata: { defaultEngine: { machineId: "machine-1" } } } });
 
     expectRequest(0, "/web/organizations", "GET");
     expectRequest(1, "/web/organizations/org%2Fa", "GET");
     expectRequest(2, "/web/organizations", "POST", { name: "研发组", slug: "engineering" });
-    expectRequest(3, "/web/organizations/org%2Fa", "PUT", { name: "平台组" });
+    expectRequest(3, "/web/organizations/org%2Fa", "PUT", { data: { name: "平台组" } });
     expectRequest(4, "/web/organizations/org%2Fa", "DELETE");
     expectRequest(5, "/web/organizations/org%2Fa/set-active", "POST");
     expectRequest(6, "/web/organizations/org%2Fa/members", "GET");
@@ -55,6 +55,8 @@ describe("organization API client", () => {
     expectRequest(8, "/web/organizations/org%2Fa/members", "POST", { userIds: ["user/1"], role: "member" });
     expectRequest(9, "/web/organizations/org%2Fa/members/member%2F1", "DELETE");
     expectRequest(10, "/web/organizations/org%2Fa/members/member%2F1", "PUT", { role: "admin" });
-    expectRequest(11, "/web/organizations/org%2Fa", "PUT", { data: { defaultEngine: "claude" } });
+    expectRequest(11, "/web/organizations/org%2Fa", "PUT", {
+      data: { metadata: { defaultEngine: { machineId: "machine-1" } } },
+    });
   });
 });
