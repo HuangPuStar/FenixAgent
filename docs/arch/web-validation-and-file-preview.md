@@ -4,6 +4,7 @@
 
 - `POST /web/organizations` 的 `name`、`slug` 必须为非空白字符串，非法参数返回 400，错误信息包含对应字段名。
 - `PUT /web/organizations/:id` 复用相同字段约束；顶层和透传 `data` 中的 `name`、`slug` 均须非空白，省略字段不参与更新，其他透传属性保留。
+- 更新请求的顶层 `name`/`slug` 与 `data` 两种输入格式互斥，混用返回 400 且不调用底层更新接口，避免字段被静默丢弃。
 - BetterAuth 的 `ORGANIZATION_ALREADY_EXISTS`、`ORGANIZATION_SLUG_ALREADY_TAKEN` 在组织创建边界映射为 409，Web 错误码为 `ORGANIZATION_SLUG_ALREADY_TAKEN`。控制台据此展示本包的本地化提示；其他异常继续交由宿主错误处理器记录和处理。
 - `POST /web/api-keys` 的 `expiresAt` 可省略，表示永久密钥；提供时须为可解析的时间字符串或毫秒时间戳，且严格晚于服务端当前时间。时间戳 `0` 是已过期时间，不能解释为省略。非法值返回 400 `VALIDATION_ERROR`，不调用下游创建接口。
 - 有效期范围仍由 BetterAuth 插件配置决定；其明确的过短、过长错误在创建路由映射为 400 `VALIDATION_ERROR`，未知异常继续上抛，不在协议层复制插件的时长限制。

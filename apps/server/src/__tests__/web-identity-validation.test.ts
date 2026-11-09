@@ -119,6 +119,8 @@ describe("组织更新参数", () => {
   // 部分更新仍允许省略名称和 Slug，透传的其他组织属性不能被裁剪。
   test.each([
     { name: "新名称" },
+    { slug: "new-slug" },
+    { data: { name: "新名称", slug: "new-slug" } },
     { data: { metadata: { description: "说明" }, logo: "logo.png" } },
   ])("合法组织部分更新保留字段 %j", async (input) => {
     let received: unknown;
@@ -131,6 +133,28 @@ describe("组织更新参数", () => {
     const response = await requestJson("organizations/org-1", input, "PUT");
     expect(response.status).toBe(200);
     expect(received).toEqual("data" in input ? input.data : input);
+  });
+
+  // 混用两种更新格式必须明确拒绝，不能成功响应后静默丢弃顶层字段。
+  test.each([
+    { name: "新名称", data: {} },
+    { slug: "new-slug", data: { metadata: { description: "说明" } } },
+    { name: "新名称", data: { slug: "new-slug" } },
+    { name: "新名称", data: { name: "另一名称" } },
+  ])("组织更新拒绝混合字段 %j", async (input) => {
+    let called = false;
+    stubAuthApi({
+      updateOrganization: async () => {
+        called = true;
+        return { id: "org-1", name: "组织", slug: "valid", createdAt: new Date(0) };
+      },
+    });
+    const response = await requestJson("organizations/org-1", input, "PUT");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { type: "VALIDATION_ERROR", message: expect.stringContaining("data") },
+    });
+    expect(called).toBe(false);
   });
 });
 
