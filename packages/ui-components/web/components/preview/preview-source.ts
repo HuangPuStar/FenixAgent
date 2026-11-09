@@ -278,7 +278,10 @@ export async function decodePreviewText(blob: Blob): Promise<string> {
 
 /** 按 workspace 文件名恢复插件元数据，避免第三方库将 # 或 ? 误当作 URL 分隔符。 */
 export function withWorkspaceFileExtension(plugin: PreviewPlugin): PreviewPlugin {
-  const normalize = (file: PreviewFile): PreviewFile => ({ ...file, extension: getExtension(file.name) });
+  const normalize = (file: PreviewFile): PreviewFile => ({
+    ...file,
+    extension: getExtension(file.name).replace(/^\./, ""),
+  });
   return {
     ...plugin,
     match(file) {

@@ -1,7 +1,7 @@
 import { WebErrSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
 import { prodViewFacade } from "../../facades/prod-view-facade";
-import { IdParamsSchema, OkResponseSchema } from "../../schemas/prod-view.schema";
+import { BadRequestResponseSchema, IdParamsSchema, OkResponseSchema } from "../../schemas/prod-view.schema";
 import type { WebProdViewRouteDependencies } from "../dependencies";
 
 /**
@@ -30,7 +30,7 @@ export function createWebProdViewsRoutes(deps: WebProdViewRouteDependencies) {
     {
       sessionAuth: true,
       params: IdParamsSchema,
-      response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema, 404: WebErrSchema },
       detail: {
         tags: ["ProdView"],
         summary: "加载 ProdView 视图数据",

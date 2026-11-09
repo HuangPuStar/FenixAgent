@@ -165,6 +165,7 @@ class FileViewerErrorBoundary extends Component<{ children: ReactNode; fallbackT
   }
 }
 
+/** 按工作区文件类型装配预览插件，并通过宿主注入的取数能力加载、取消及重试预览。 */
 export function FileViewerPreview({
   envId,
   filePath,

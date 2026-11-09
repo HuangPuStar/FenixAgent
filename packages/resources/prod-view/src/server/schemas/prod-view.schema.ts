@@ -1,4 +1,8 @@
+import { WebErrSchema, WebValidationErrorSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
+
+/** 400 同时声明资源业务错误及宿主参数校验错误的真实响应。 */
+export const BadRequestResponseSchema = z.union([WebErrSchema, WebValidationErrorSchema]);
 
 export const ProdViewModuleConfigSchema = z
   .object({

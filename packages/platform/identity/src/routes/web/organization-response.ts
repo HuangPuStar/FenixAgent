@@ -23,6 +23,7 @@ export type BetterAuthOrganization = {
   [key: string]: unknown;
 };
 
+/** 序列化框架日期对象，并保留已经符合 Web 契约的字符串或时间戳。 */
 function toFlexibleDateTime(value: string | number | Date): string | number {
   return value instanceof Date ? value.toISOString() : value;
 }

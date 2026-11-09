@@ -1,4 +1,6 @@
+import { createLogger } from "@fenix/logger";
 import { WebErrSchema } from "@fenix/platform-sdk";
+import { APIError } from "better-auth";
 import { Elysia } from "elysia";
 import {
   ApiKeyCreateResponseSchema,
@@ -18,6 +20,8 @@ import {
   updateCallerApiKey,
 } from "../../services/caller-api-keys";
 import type { WebIdentityRouteDependencies } from "../dependencies";
+
+const logger = createLogger("identity-api-keys");
 
 /**
  * `/web/api-keys` 路由（CE 阶段 2 任务 1.2）。
@@ -96,13 +100,34 @@ export function createWebApiKeysRoutes(deps: WebIdentityRouteDependencies) {
           error: { code: "DUPLICATE_API_KEY_NAME", message: "API key name already exists" },
         });
       }
-      const result = await createCallerApiKey({
-        headers: request.headers,
-        name: normalizedName,
-        prefix: "rcs_",
-        expiresIn,
-        metadata: buildApiKeyMetadata(b.metadata, authContext),
-      });
+      let result: unknown;
+      try {
+        result = await createCallerApiKey({
+          headers: request.headers,
+          name: normalizedName,
+          prefix: "rcs_",
+          expiresIn,
+          metadata: buildApiKeyMetadata(b.metadata, authContext),
+        });
+      } catch (err) {
+        if (
+          err instanceof APIError &&
+          (err.body?.code === "EXPIRES_IN_IS_TOO_SMALL" || err.body?.code === "EXPIRES_IN_IS_TOO_LARGE")
+        ) {
+          logger.warn({ err }, "API Key expiration rejected");
+          return status(400, {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message:
+                err.body.code === "EXPIRES_IN_IS_TOO_SMALL"
+                  ? "expiresAt is too soon; choose a later expiration time"
+                  : "expiresAt is too far in the future; choose an earlier expiration time",
+            },
+          });
+        }
+        throw err;
+      }
       // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
       return { success: true as const, data: normalizeApiKeyDateValues(result) } as any;
     },

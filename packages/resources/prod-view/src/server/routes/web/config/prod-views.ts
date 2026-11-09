@@ -2,6 +2,7 @@ import { WebErrSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
 import { prodViewFacade } from "../../../facades/prod-view-facade";
 import {
+  BadRequestResponseSchema,
   CreateProdViewSchema,
   IdParamsSchema,
   ListProdViewQuerySchema,
@@ -36,7 +37,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     {
       sessionAuth: true,
       query: ListProdViewQuerySchema,
-      response: { 200: OkResponseSchema, 400: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema },
       detail: {
         tags: ["ProdView"],
         summary: "获取 ProdView 列表",
@@ -57,7 +58,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     {
       sessionAuth: true,
       params: IdParamsSchema,
-      response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema, 404: WebErrSchema },
       detail: { tags: ["ProdView"], summary: "获取单个 ProdView 详情" },
     },
   );
@@ -72,7 +73,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     {
       sessionAuth: true,
       body: CreateProdViewSchema,
-      response: { 200: OkResponseSchema, 400: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema },
       detail: { tags: ["ProdView"], summary: "创建 ProdView" },
     },
   );
@@ -90,7 +91,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
       sessionAuth: true,
       params: IdParamsSchema,
       body: UpdateProdViewSchema,
-      response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema, 404: WebErrSchema },
       detail: { tags: ["ProdView"], summary: "更新 ProdView 配置" },
     },
   );
@@ -107,7 +108,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     {
       sessionAuth: true,
       params: IdParamsSchema,
-      response: { 200: OkResponseSchema, 404: WebErrSchema },
+      response: { 200: OkResponseSchema, 400: BadRequestResponseSchema, 404: WebErrSchema },
       detail: { tags: ["ProdView"], summary: "删除 ProdView" },
     },
   );

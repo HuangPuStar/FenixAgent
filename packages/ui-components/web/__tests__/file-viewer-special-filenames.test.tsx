@@ -86,6 +86,7 @@ describe("特殊文件名预览", () => {
     "工单#123分析报告.pdf",
     "工单?123分析报告.PDF",
     "工单%23123分析报告.pdf",
+    ".pdf",
   ])("PDF %s 创建原生查看器", async (name) => {
     const host = await mount(`user/${name}`);
     const frame = host.querySelector("iframe");
@@ -99,6 +100,7 @@ describe("特殊文件名预览", () => {
     "订单20261105明细.csv",
     "订单#20261105明细.csv",
     "订单?20261105明细.csv",
+    ".csv",
   ])("CSV %s 展示表格数据", async (name) => {
     const host = await mount(`user/${name}`);
     for (let attempt = 0; attempt < 40 && !host.querySelector("table"); attempt++) {
@@ -116,6 +118,7 @@ describe("特殊文件名预览", () => {
     "测试报告025.html",
     "测试报告#025.html",
     "测试报告?025.htm",
+    ".html",
   ])("HTML %s 提供渲染和源码入口", async (name) => {
     const host = await mount(`user/${name}`, "<h1>REPORT_025</h1>");
     expect(host.querySelector("iframe")?.title).toBe(name);

@@ -41,6 +41,7 @@ export interface AgentOrganizationsPageProps {
   machineRegistry: MachineRegistryPort;
 }
 
+/** 管理当前用户可见的组织、成员与机器，机器能力由宿主注入。 */
 export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPageProps) {
   const { t } = useTranslation(NS.ORGS);
   const { org: currentOrg, refreshOrgs } = useOrg();
