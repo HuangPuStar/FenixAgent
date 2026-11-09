@@ -53,6 +53,7 @@ import {
   type PreviewFetch,
   PreviewSourceError,
   shouldLoadPreviewAsBlob,
+  withWorkspaceFileExtension,
 } from "./preview-source";
 
 // 导入官方样式
@@ -164,6 +165,7 @@ class FileViewerErrorBoundary extends Component<{ children: ReactNode; fallbackT
   }
 }
 
+/** 按工作区文件类型装配预览插件，并通过宿主注入的取数能力加载、取消及重试预览。 */
 export function FileViewerPreview({
   envId,
   filePath,
@@ -232,15 +234,16 @@ export function FileViewerPreview({
   );
 
   const plugins = useMemo(
-    () => [
-      imagePlugin(),
-      nativePdfPlugin(),
-      officePlugin(),
-      htmlPreviewPlugin(fetchPreview),
-      // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
-      markdownMathPlugin(),
-      textPlugin(),
-    ],
+    () =>
+      [
+        imagePlugin(),
+        nativePdfPlugin(),
+        officePlugin(),
+        htmlPreviewPlugin(fetchPreview),
+        // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
+        markdownMathPlugin(),
+        textPlugin(),
+      ].map(withWorkspaceFileExtension),
     [fetchPreview],
   );
 

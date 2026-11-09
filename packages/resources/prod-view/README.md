@@ -44,7 +44,6 @@
 ## 已知项
 
 - **仓库根跑包内测试曾因外部原因变红（已消解）**：W2 期间 `env -u ANTHROPIC_MODEL bun test packages/resources/prod-view` 从仓库根是 0 pass / 8 fail，报错为 machine 的陈旧入口（`Cannot find module './routes/api/workspaces' from packages/resources/machine/src/server.ts`）；2026-09-20 复核时 machine 的 `src/server.ts` 已改指 `./server/routes/**`，该命令回到 104 pass / 0 fail。当时包目录内运行残留的 2 fail / 2 error 同样经 `agent-runtime → sandbox → machine` 传导，一并消失。
-- **详情路由的 404 声明未落实（迁移前既有缺陷）**：`GET /config/prod-views/:id` 声明了 `404: WebErrSchema`，处理器却把失败信封以默认 200 状态返回，撞上 `OkResponseSchema` 后被 Elysia 的响应校验拒绝成 **422**，客户端拿到的是校验错误体而不是 `{ success: false, error }`。HEAD 版本（`git show HEAD:packages/resources/prod-view/src/server/routes/web/config/prod-views.ts`）同样如此，本次迁移按原样保留，用例 `prod-view-routes.test.ts` 钉住现状以免无声漂移；修复属对外协议行为变更，需与前端错误处理同批评估。
 - **真实守卫无覆盖**：宿主 `apps/server/src/__tests__/` 与 `apps/web/src/__tests__/` 中 `grep -rln "prod-view\|prodView"` 无命中，因此「无会话时被拒绝」「组织上下文由守卫解析」这两条合同当前没有用例覆盖。包内 `src/__tests__/guard-stubs.ts` 只能注入替身（注入真实守卫等于依赖宿主实现），替身放行是刻意的；缺口归任务 1.3 §1.5 的宿主协议聚合。
 - **无 `./server/testing` 子路径（刻意）**：本包不读模块配置、也没有需要宿主复用的夹具，唯一的测试缝 `setProdViewDeps` 只服务包内用例（用例在 `afterEach` 复位）。等宿主用例确需包内基建时再按平台契约补该子路径，避免现在造一个无人消费的出口。
 - **`ProdViewPage` 不带 `auth` prop**：分支版本为该页面新增了 `useSession` 与 `auth` 传参，属跨包（chat-channel 会话授权）契约的调整，不在本波范围，故只重放其新增内容中的本包能力；分享页的会话授权形态需与 chat-channel 一起定型。

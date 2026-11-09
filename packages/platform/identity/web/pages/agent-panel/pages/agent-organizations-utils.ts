@@ -1,3 +1,4 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
 import type { MachineView } from "./agent-organizations-types";
 
 /** Derive a stable URL slug without creating a second server-side validation contract. */
@@ -32,4 +33,10 @@ export function parseLabels(value: string): string[] {
     .split(",")
     .map((label) => label.trim())
     .filter(Boolean);
+}
+
+/** 将组织创建的 Slug 冲突转为本地化提示；其他异常保留服务端说明。 */
+export function getOrganizationCreateErrorMessage(error: unknown, t: (key: string) => string): string {
+  if (error instanceof ApiError && error.code === "ORGANIZATION_SLUG_ALREADY_TAKEN") return t("toast.slugAlreadyTaken");
+  return error instanceof Error ? error.message : t("toast.createFailed");
 }

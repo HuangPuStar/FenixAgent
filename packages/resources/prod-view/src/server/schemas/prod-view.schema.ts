@@ -1,4 +1,8 @@
+import { WebErrSchema, WebValidationErrorSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
+
+/** 400 同时声明资源业务错误及宿主参数校验错误的真实响应。 */
+export const BadRequestResponseSchema = z.union([WebErrSchema, WebValidationErrorSchema]);
 
 export const ProdViewModuleConfigSchema = z
   .object({
@@ -38,7 +42,7 @@ export const UpdateProdViewSchema = z.object({
 });
 
 /** 通用 ID 参数 — 用于路由 params */
-export const IdParamsSchema = z.object({ id: z.string().min(1) });
+export const IdParamsSchema = z.object({ id: z.string().uuid() });
 
 /** ProdView 列表查询参数 */
 export const ListProdViewQuerySchema = z.object({

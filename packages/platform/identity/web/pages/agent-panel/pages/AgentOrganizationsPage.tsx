@@ -21,7 +21,12 @@ import type {
   MachineView,
   OrganizationListItem,
 } from "./agent-organizations-types";
-import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
+import {
+  getOrganizationCreateErrorMessage,
+  nameToSlug,
+  parseLabels,
+  readDefaultMachineId,
+} from "./agent-organizations-utils";
 import { OrganizationsWorkspace } from "./agent-organizations-workspace";
 
 const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "peri" };
@@ -36,6 +41,7 @@ export interface AgentOrganizationsPageProps {
   machineRegistry: MachineRegistryPort;
 }
 
+/** 管理当前用户可见的组织、成员与机器，机器能力由宿主注入。 */
 export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPageProps) {
   const { t } = useTranslation(NS.ORGS);
   const { org: currentOrg, refreshOrgs } = useOrg();
@@ -152,7 +158,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to create organization", error);
-        toast.error(error instanceof Error ? error.message : t("toast.createFailed"));
+        toast.error(getOrganizationCreateErrorMessage(error, t));
       },
     },
   );

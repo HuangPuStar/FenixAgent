@@ -1,4 +1,6 @@
+import { createLogger } from "@fenix/logger";
 import { WebErrSchema } from "@fenix/platform-sdk";
+import { APIError } from "better-auth";
 import { Elysia } from "elysia";
 import {
   ApiKeyCreateResponseSchema,
@@ -18,6 +20,8 @@ import {
   updateCallerApiKey,
 } from "../../services/caller-api-keys";
 import type { WebIdentityRouteDependencies } from "../dependencies";
+
+const logger = createLogger("identity-api-keys");
 
 /**
  * `/web/api-keys` 路由（CE 阶段 2 任务 1.2）。
@@ -63,11 +67,23 @@ export function createWebApiKeysRoutes(deps: WebIdentityRouteDependencies) {
   app.post(
     "/api-keys",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    async ({ store, body, error, request }: any) => {
+    async ({ store, body, error, request, status }: any) => {
       const b = body ?? {};
       const normalizedName = normalizeApiKeyName(b.name);
       if (!normalizedName) {
         return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name required" } });
+      }
+      let expiresIn: number | null = null;
+      if (b.expiresAt !== undefined) {
+        const expiresAt = new Date(b.expiresAt).getTime();
+        const now = Date.now();
+        if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+          return status(400, {
+            success: false,
+            error: { code: "VALIDATION_ERROR", message: "expiresAt must be a valid time later than the current time" },
+          });
+        }
+        expiresIn = Math.ceil((expiresAt - now) / 1000);
       }
       const authContext = store.authContext;
       if (!authContext) {
@@ -84,13 +100,34 @@ export function createWebApiKeysRoutes(deps: WebIdentityRouteDependencies) {
           error: { code: "DUPLICATE_API_KEY_NAME", message: "API key name already exists" },
         });
       }
-      const result = await createCallerApiKey({
-        headers: request.headers,
-        name: normalizedName,
-        prefix: "rcs_",
-        expiresIn: b.expiresAt ? Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / 1000) : null,
-        metadata: buildApiKeyMetadata(b.metadata, authContext),
-      });
+      let result: unknown;
+      try {
+        result = await createCallerApiKey({
+          headers: request.headers,
+          name: normalizedName,
+          prefix: "rcs_",
+          expiresIn,
+          metadata: buildApiKeyMetadata(b.metadata, authContext),
+        });
+      } catch (err) {
+        if (
+          err instanceof APIError &&
+          (err.body?.code === "EXPIRES_IN_IS_TOO_SMALL" || err.body?.code === "EXPIRES_IN_IS_TOO_LARGE")
+        ) {
+          logger.warn({ err }, "API Key expiration rejected");
+          return status(400, {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message:
+                err.body.code === "EXPIRES_IN_IS_TOO_SMALL"
+                  ? "expiresAt is too soon; choose a later expiration time"
+                  : "expiresAt is too far in the future; choose an earlier expiration time",
+            },
+          });
+        }
+        throw err;
+      }
       // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
       return { success: true as const, data: normalizeApiKeyDateValues(result) } as any;
     },

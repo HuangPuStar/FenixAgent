@@ -94,8 +94,8 @@ export class SessionTitleState {
     titles.set(sessionId, title);
   }
 
+  /** 先在当前生命周期标记已删除，再清理持久标题，避免慢列表或存储失败复活条目。 */
   async delete(rcsSessionId: string, sessionId: string): Promise<void> {
-    if (!this.store) return;
     let deleted = this.deleted.get(rcsSessionId);
     if (!deleted) {
       deleted = new Set();
@@ -105,7 +105,7 @@ export class SessionTitleState {
     this.confirmed.get(rcsSessionId)?.delete(sessionId);
     this.titles.get(rcsSessionId)?.delete(sessionId);
     this.revisions.set(rcsSessionId, (this.revisions.get(rcsSessionId) ?? 0) + 1);
-    await this.store.delete(rcsSessionId, sessionId);
+    await this.store?.delete(rcsSessionId, sessionId);
   }
 
   get(rcsSessionId: string, sessionId: string): string | undefined {
@@ -140,15 +140,22 @@ export class SessionTitleState {
   project(rcsSessionId: string, event: NormalizedEvent, activeSessionId: unknown): NormalizedEvent {
     if (event.type === "session_list" && Array.isArray(event.update.sessions)) {
       const confirmed = new Set<string>();
-      const sessions = event.update.sessions.map((entry) => {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
-        const record = entry as Record<string, unknown>;
-        const sessionId = record.sessionId;
-        if (typeof sessionId !== "string") return entry;
-        confirmed.add(sessionId);
-        const title = this.get(rcsSessionId, sessionId);
-        return title === undefined ? entry : { ...record, title };
-      });
+      // 删除回执比在途旧列表更权威，不能让迟到响应复活已确认删除的会话。
+      const sessions = event.update.sessions
+        .filter((entry) => {
+          if (!entry || typeof entry !== "object") return true;
+          const sessionId = (entry as Record<string, unknown>).sessionId;
+          return typeof sessionId !== "string" || !this.deleted.get(rcsSessionId)?.has(sessionId);
+        })
+        .map((entry) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+          const record = entry as Record<string, unknown>;
+          const sessionId = record.sessionId;
+          if (typeof sessionId !== "string") return entry;
+          confirmed.add(sessionId);
+          const title = this.get(rcsSessionId, sessionId);
+          return title === undefined ? entry : { ...record, title };
+        });
       this.confirmed.set(rcsSessionId, confirmed);
       if (typeof activeSessionId === "string" && !confirmed.has(activeSessionId)) {
         const title = this.get(rcsSessionId, activeSessionId);

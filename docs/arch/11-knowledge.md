@@ -79,6 +79,8 @@ Agent 运行时
 
 Provider 是对外部索引服务的抽象。定义了统一的接口（创建知识库、添加资源、列出资源、读取资源、删除资源、搜索），目前实现了 RagFlow。新增索引服务只需实现该接口。
 
+创建知识库时，Provider 在远端调用前识别的输入错误使用 `KnowledgeProviderValidationError`，由 Facade 映射为 `400 VALIDATION_ERROR`；失败时不写入本地记录。真实上游 HTTP 或服务故障保留 `502 KNOWLEDGE_PROVIDER_ERROR`，不按上游状态码推断为本地输入错误。模型标识格式规则由 Provider adapter 维护。
+
 ### MCP 端点（Agent 查询入口）
 
 Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成。

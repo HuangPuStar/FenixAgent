@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import { createInstance } from "i18next";
+import { ORGS_NS, orgResources } from "../i18n";
 import type { MachineView } from "../pages/agent-panel/pages/agent-organizations-types";
 import {
   canOperateMachine,
+  getOrganizationCreateErrorMessage,
   nameToSlug,
   parseLabels,
   readDefaultMachineId,
@@ -41,4 +45,23 @@ describe("agent organization view utilities", () => {
   test("normalizes machine labels", () => {
     expect(parseLabels("sandbox, production, ,gpu")).toEqual(["sandbox", "production", "gpu"]);
   });
+});
+
+// 稳定的 Slug 冲突码应转成本包中文词条，其他故障保留服务端说明。
+test("组织创建冲突显示中文提示", () => {
+  const i18n = createInstance();
+  void i18n.init({
+    lng: "zh",
+    initAsync: false,
+    defaultNS: ORGS_NS,
+    resources: { zh: { [ORGS_NS]: orgResources.zh } },
+  });
+  const translate = (key: string) => i18n.t(key);
+  expect(
+    getOrganizationCreateErrorMessage(
+      new ApiError("Organization slug already taken", "ORGANIZATION_SLUG_ALREADY_TAKEN"),
+      translate,
+    ),
+  ).toMatch(/Slug.*(占用|使用)/);
+  expect(getOrganizationCreateErrorMessage(new Error("服务暂时不可用"), translate)).toBe("服务暂时不可用");
 });

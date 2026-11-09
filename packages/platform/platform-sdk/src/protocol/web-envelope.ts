@@ -27,6 +27,14 @@ export const WebErrSchema = z.object({
   }),
 });
 
+/** 宿主参数校验错误使用 type 信封；与资源路由显式返回的 code 信封分别建模。 */
+export const WebValidationErrorSchema = z.object({
+  error: z.object({
+    type: z.literal("VALIDATION_ERROR"),
+    message: z.string(),
+  }),
+});
+
 /** Web 模块通用响应（成功或失败）。 */
 export const WebResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
   z.union([WebOkSchema(dataSchema), WebErrSchema]);

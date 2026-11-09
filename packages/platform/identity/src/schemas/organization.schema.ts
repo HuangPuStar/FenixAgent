@@ -83,19 +83,35 @@ const ApiKeyCreateResultSchema = z
   })
   .passthrough();
 
+/** 创建与更新共用的组织名称、Slug 约束，保留合法字段的原始内容。 */
+const OrganizationFieldsSchema = z.object({
+  name: z
+    .string()
+    .refine((value) => value.trim().length > 0, "name must not be empty")
+    .describe("组织名称。"),
+  slug: z
+    .string()
+    .refine((value) => value.trim().length > 0, "slug must not be empty")
+    .describe("组织唯一标识 slug。"),
+});
+
 /** 创建组织 REST 请求体 */
-export const CreateOrganizationBodySchema = z.object({
-  name: z.string().describe("组织名称。"),
-  slug: z.string().describe("组织唯一标识 slug。"),
+export const CreateOrganizationBodySchema = OrganizationFieldsSchema.extend({
   description: z.string().optional().describe("组织描述，会写入 metadata.description。"),
 });
 
-/** 更新组织 REST 请求体 */
-export const UpdateOrganizationBodySchema = z.object({
-  name: z.string().optional().describe("更新后的组织名称。"),
-  slug: z.string().optional().describe("更新后的组织 slug。"),
-  data: z.record(z.string(), z.unknown()).optional().describe("透传给底层更新接口的原始数据对象。"),
-});
+/** 更新组织 REST 请求体，顶层字段与 data 两种输入格式互斥。 */
+export const UpdateOrganizationBodySchema = OrganizationFieldsSchema.partial()
+  .extend({
+    data: OrganizationFieldsSchema.partial()
+      .passthrough()
+      .optional()
+      .describe("透传给底层更新接口的数据；不可与顶层 name/slug 混用，名称和 Slug 须为非空白字符串。"),
+  })
+  .refine((body) => body.data === undefined || (body.name === undefined && body.slug === undefined), {
+    message: "Provide name and slug either at the top level or inside data, not both",
+    path: ["data"],
+  });
 
 /** 添加成员 REST 请求体 */
 export const AddMemberBodySchema = z.object({

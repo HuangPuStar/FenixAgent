@@ -22,7 +22,7 @@ export async function renameSessionAction(
   }
 }
 
-/** Agent 删除确认后移除 Fenix 标题；响应等待器始终由共享 relay 持有并在失败时取消。 */
+/** Agent 删除确认后移除列表投影和标题；响应等待器由共享 relay 持有并在失败时取消。 */
 export async function deleteSessionAction(
   docManager: DocManager,
   connection: SessionConnection,
@@ -41,7 +41,7 @@ export async function deleteSessionAction(
   }
   if (!(await mutation.completed)) throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
   try {
-    await docManager.removeSessionTitle(connection.rcsSessionId, sessionId);
+    await docManager.removeSession(connection.rcsSessionId, sessionId);
   } catch (error) {
     reportError("[SessionChannel] session title cleanup failed", error);
   }

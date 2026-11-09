@@ -1,3 +1,5 @@
+import type { PreviewFile, PreviewPlugin } from "@open-file-viewer/core";
+
 /**
  * 文件预览的「源判定」工具集（自 apps/web 的 `agent-panel/preview/utils.ts` 抽取并纯化）。
  *
@@ -272,4 +274,21 @@ export async function decodePreviewText(blob: Blob): Promise<string> {
     if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes.subarray(2));
   }
   return new TextDecoder("utf-8").decode(bytes);
+}
+
+/** 按 workspace 文件名恢复插件元数据，避免第三方库将 # 或 ? 误当作 URL 分隔符。 */
+export function withWorkspaceFileExtension(plugin: PreviewPlugin): PreviewPlugin {
+  const normalize = (file: PreviewFile): PreviewFile => ({
+    ...file,
+    extension: getExtension(file.name).replace(/^\./, ""),
+  });
+  return {
+    ...plugin,
+    match(file) {
+      return plugin.match(normalize(file));
+    },
+    render(context) {
+      return plugin.render({ ...context, file: normalize(context.file) });
+    },
+  };
 }

@@ -1,5 +1,6 @@
 import { getKnowledgeConfig } from "../../config";
 import { KnowledgeProviderHttpError } from "./http-error";
+import { KnowledgeProviderValidationError } from "./input-error";
 import type {
   ConfiguredModelInfo,
   EmbeddingModelOption,
@@ -213,7 +214,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       // RagFlow v0.26 要求 <model_name>@<provider> 格式，
       // 用户手动输入或旧数据可能不带 @provider，提前拦截给出明确提示
       if (!model.includes("@")) {
-        throw new Error(
+        throw new KnowledgeProviderValidationError(
           `嵌入模型格式错误："${model}"，RagFlow v0.26 要求 <模型名>@<实例名>@<厂商名> 三段式格式，` +
             ` 例如 text-embedding-v3@qwen@Tongyi-Qianwen。请从下拉列表选择。`,
         );

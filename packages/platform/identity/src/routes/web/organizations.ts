@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import { type ActorContext, WebErrSchema } from "@fenix/platform-sdk";
 import { APIError } from "better-auth";
 import { Elysia } from "elysia";
@@ -11,11 +12,8 @@ import {
   MemberListResponseSchema,
   MemberMutateResponseSchema,
   OrganizationDeleteResponseSchema,
-  type OrganizationDetail,
   OrganizationGetResponseSchema,
-  type OrganizationInfo,
   OrganizationListResponseSchema,
-  type OrganizationMember,
   OrganizationMutateResponseSchema,
   OrganizationVoidResponseSchema,
   SearchMemberCandidatesQuerySchema,
@@ -24,6 +22,18 @@ import {
 } from "../../schemas/organization.schema";
 import { enrichMembersWithPhoneNumbers, enrichOrganizationsWithRoles } from "../../services/web-organization-service";
 import type { WebIdentityRouteDependencies } from "../dependencies";
+import {
+  type BetterAuthMember,
+  type BetterAuthOrganization,
+  extractMembers,
+  organizationReadError,
+  serializeMember,
+  serializeOrganizationDetail,
+  serializeOrganizationInfo,
+} from "./organization-response";
+
+const logger = createLogger("identity-organizations");
+type BetterAuthMemberListResponse = BetterAuthMember[] | { members: BetterAuthMember[] };
 
 /**
  * `/web/organizations` 路由（CE 阶段 2 任务 1.2）。
@@ -34,28 +44,6 @@ import type { WebIdentityRouteDependencies } from "../dependencies";
  * （`getDatabase()` 与 `getModuleConfig("identity")`），在模块加载期固化会让导入顺序变成隐式启动依赖；
  * 迁出宿主后本模块不再能假设自己是在 `initializeApplicationInfrastructure()` 之后被导入的。
  */
-
-type BetterAuthMember = {
-  id: string;
-  userId: string;
-  role: string;
-  organizationId?: string;
-  createdAt?: string | number | Date;
-  user?: { id: string; name: string; email: string; phoneNumber?: string | null; image?: string | null };
-};
-
-type BetterAuthMemberListResponse = BetterAuthMember[] | { members: BetterAuthMember[] };
-
-type BetterAuthOrganization = {
-  id: string;
-  name: string;
-  slug: string;
-  logo?: string | null;
-  metadata?: Record<string, unknown> | null;
-  createdAt: string | number | Date;
-  members?: BetterAuthMember[];
-  [key: string]: unknown;
-};
 
 // 窄化 better-auth API 类型，仅暴露本文件使用的方法
 interface OrgApi {
@@ -95,24 +83,6 @@ function orgApi(): OrgApi {
   return getAuth().api as unknown as OrgApi;
 }
 
-/** BetterAuth 的成员拒绝是 APIError；只转换其明确的权限/隐藏资源状态，其他异常继续上抛。 */
-export function organizationReadError(err: unknown) {
-  if (!(err instanceof APIError)) return null;
-  if (err.statusCode === 403) {
-    return {
-      status: 403 as const,
-      body: { success: false as const, error: { code: "FORBIDDEN", message: "Access denied" } },
-    };
-  }
-  if (err.statusCode === 404) {
-    return {
-      status: 404 as const,
-      body: { success: false as const, error: { code: "NOT_FOUND", message: "Organization not found" } },
-    };
-  }
-  return null;
-}
-
 type AuthStore = {
   user?: { id: string } | null;
   authContext?: { organizationId?: string } | null;
@@ -127,67 +97,6 @@ type OrganizationVoidResponse = z.infer<typeof OrganizationVoidResponseSchema>;
 type MemberListResponse = z.infer<typeof MemberListResponseSchema>;
 type MemberCandidateListResponse = z.infer<typeof MemberCandidateListResponseSchema>;
 type MemberMutateResponse = z.infer<typeof MemberMutateResponseSchema>;
-
-function toFlexibleDateTime(value: string | number | Date): string | number {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function serializeMember(member: BetterAuthMember): OrganizationMember {
-  return {
-    id: member.id,
-    userId: member.userId,
-    role: member.role,
-    organizationId: member.organizationId,
-    user: member.user
-      ? {
-          id: member.user.id,
-          name: member.user.name,
-          email: member.user.email,
-          phoneNumber: member.user.phoneNumber ?? null,
-        }
-      : undefined,
-  };
-}
-
-function serializeOrganizationInfo(organization: BetterAuthOrganization & { role?: string }): OrganizationInfo {
-  return {
-    ...organization,
-    createdAt: toFlexibleDateTime(organization.createdAt),
-    role: organization.role,
-  };
-}
-
-function serializeOrganizationDetail(
-  organization: BetterAuthOrganization,
-  members: BetterAuthMember[],
-): OrganizationDetail {
-  return {
-    ...serializeOrganizationInfo(organization),
-    members: members.map(serializeMember),
-  };
-}
-
-/** 统一抽取 better-auth 返回的成员列表。 */
-function extractMembers(res: unknown): {
-  id: string;
-  userId: string;
-  role: string;
-  user?: { id: string; name: string; email: string; phoneNumber?: string | null };
-}[] {
-  if (Array.isArray(res)) return res;
-  if (res && typeof res === "object" && "members" in res)
-    return (
-      res as {
-        members: Array<{
-          id: string;
-          userId: string;
-          role: string;
-          user?: { id: string; name: string; email: string; phoneNumber?: string | null };
-        }>;
-      }
-    ).members;
-  return [];
-}
 
 /** `sessionAuth` 负责写入 actor；缺失说明路由装配或认证守卫出现了故障，不能退化为放行。 */
 function requireActor(store: AuthStore): ActorContext {
@@ -304,15 +213,28 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies,
   // POST /web/organizations → 创建组织
   app.post(
     "/organizations",
-    async ({ body, request }) => {
-      const b = body;
+    async ({ body, request, status }) => {
       const metadata: Record<string, unknown> = {};
-      if (b.description) metadata.description = b.description;
-      const org = await orgApi().createOrganization({
-        body: { name: b.name, slug: b.slug, metadata },
-        headers: request.headers,
-      });
-      return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationMutateResponse;
+      if (body.description) metadata.description = body.description;
+      try {
+        const org = await orgApi().createOrganization({
+          body: { name: body.name, slug: body.slug, metadata },
+          headers: request.headers,
+        });
+        return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationMutateResponse;
+      } catch (err) {
+        if (
+          err instanceof APIError &&
+          (err.body?.code === "ORGANIZATION_ALREADY_EXISTS" || err.body?.code === "ORGANIZATION_SLUG_ALREADY_TAKEN")
+        ) {
+          logger.warn({ err }, "Organization slug conflict");
+          return status(409, {
+            success: false as const,
+            error: { code: "ORGANIZATION_SLUG_ALREADY_TAKEN", message: "Organization slug already taken" },
+          });
+        }
+        throw err;
+      }
     },
     {
       sessionAuth: true,
@@ -321,6 +243,7 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies,
         200: OrganizationMutateResponseSchema,
         400: WebErrSchema,
         403: WebErrSchema,
+        409: WebErrSchema,
         500: WebErrSchema,
       },
       detail: {

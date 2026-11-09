@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { APIError } from "better-auth";
 import { Elysia } from "elysia";
-import { createWebOrganizationsRoutes, organizationReadError } from "../routes/web/organizations";
+import { organizationReadError } from "../routes/web/organization-response";
+import { createWebOrganizationsRoutes } from "../routes/web/organizations";
 
 describe("organization read error mapping", () => {
   // BetterAuth 对非成员抛出的 403 必须保持拒绝语义，且响应不回显其内部错误正文。
