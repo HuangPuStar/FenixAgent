@@ -72,7 +72,7 @@ export interface SpawnInstanceViaControllerOptions {
   instanceUid?: string;
   /**
    * 调用方环境变量覆盖，对齐旧路径 `{ ...platformEnv, ...extraEnv }` 的合并语义
-   * （调用方显式传入的同名变量优先）。meta-agent 用它把共享 meta env 上的
+   * （除 AGENT_CONFIG_ID / ENVIRONMENT_ID 外，调用方显式传入的同名变量优先）。meta-agent 用它把共享 meta env 上的
    * USER_META_API_KEY / USER_META_USER_ID / USER_META_ORG_ID 覆盖为当前请求者上下文。
    */
   /** coordinator 分配的 runtime generation，本地与远程共用。 */
@@ -406,8 +406,13 @@ async function buildAgentLaunchSpecForCore(
     // peri 的 langfuse tracer 经 LANGFUSE_USER_ID 写入 TraceBody.user_id（动态，按实例注入）
     LANGFUSE_USER_ID: env.userId ?? target.userId,
   };
-  // 对齐旧路径：调用方显式传入的同名环境变量优先
-  const mergedExtraEnv = { ...platformEnv, ...extraEnv };
+  // 请求者上下文允许覆盖；运行环境身份始终取服务端记录，避免站点归属被调用方改写。
+  const mergedExtraEnv = {
+    ...platformEnv,
+    ...extraEnv,
+    AGENT_CONFIG_ID: env.agentConfigId ?? "",
+    ENVIRONMENT_ID: env.id,
+  };
   const organizationId = env.organizationId ?? target.userId;
   const ownerUserId = target.userId;
 
