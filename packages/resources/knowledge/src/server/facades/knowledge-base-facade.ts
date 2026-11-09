@@ -17,6 +17,7 @@ import {
   listVisibleKnowledgeBases,
   syncRemoteState,
 } from "../services/knowledge-base-list";
+import { KnowledgeProviderValidationError } from "../services/knowledge-provider/input-error";
 import { type KnowledgeAccess, type KnowledgeBaseActor, knowledgeAccess } from "./knowledge-access";
 import {
   type KnowledgeResult,
@@ -187,6 +188,9 @@ export function createKnowledgeBaseFacade(access: KnowledgeAccess = knowledgeAcc
         }
         return knowledgeOk(result.data);
       } catch (err) {
+        if (err instanceof KnowledgeProviderValidationError) {
+          return knowledgeFail("invalid", "VALIDATION_ERROR", err.message);
+        }
         console.error(err);
         return knowledgeUpstream(messageOf(err, "知识库上游服务异常"));
       }
