@@ -239,8 +239,8 @@ if (process.env.FENIX_PERI_TASK_ROWS_TEST_CHILD !== "1") {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  // 加载、空态与重连提示都要可见；失败行展示投影里的脱敏摘要，不伪造原因。
-  test("加载、空态、重连和失败原因可见", async () => {
+  // 加载与重连状态保留，探索失败在默认列表中不再以摘要干扰用户。
+  test("加载、空态、重连可见且失败摘要默认隐藏", async () => {
     await renderRows({ tasks: [], loaded: false });
     expect(container.textContent).toContain(en.chat.components.periTask.loading);
     await renderRows({ tasks: [], loaded: true });
@@ -250,21 +250,39 @@ if (process.env.FENIX_PERI_TASK_ROWS_TEST_CHILD !== "1") {
       loaded: true,
       reconnecting: true,
     });
-    expect(container.textContent).toContain("Execution failed");
+    expect(container.textContent).not.toContain("Execution failed");
     expect(container.textContent).toContain(en.chat.components.periTask.reconnecting);
     expect(container.querySelector('[data-status="failed"]')).not.toBeNull();
     expect(container.querySelector('[data-status="running"]')).not.toBeNull();
   });
 
-  // 行改单行后失败原因不得丢：理由文本仍在行内，截断后完整文本经 title 可达。
-  test("失败原因单行展示且完整文本经 title 可达", async () => {
+  // 列表保留任务记录但不把失败伪装成成功，使用中性终态文案。
+  test("失败任务保留记录并显示中性已结束状态", async () => {
     const reason = "Execution failed: [REDACTED_SECRET]";
     await renderRows({ tasks: [task("beta", { status: "failed", summary: reason })], loaded: true });
     const row = container.querySelector('[data-status="failed"]');
     expect(row).not.toBeNull();
-    const reasonNode = Array.from(row?.querySelectorAll("span") ?? []).find((node) => node.textContent === reason);
-    expect(reasonNode).toBeDefined();
-    expect(reasonNode?.getAttribute("title")).toBe(reason);
+    expect(row?.textContent).not.toContain(reason);
+    expect(row?.textContent).not.toContain(en.chat.components.periTask.status.failed);
+    expect(row?.textContent).toContain("Ended");
+  });
+
+  // 主动详情不依赖预览成功，预览过期或读取失败时仍可查到任务投影的真实原因。
+  test.each(["unavailable", "failed"] as const)("任务预览 %s 时仍保留失败详情", async (mode) => {
+    const reason = "Execution failed: missing dependency";
+    const loadDetail: Parameters<typeof PeriTaskDetailSheet>[0]["loadDetail"] = async (_env, _session, taskId) => {
+      if (mode === "failed") throw new Error("preview unavailable");
+      return { kind: "unavailable", taskId, taskKind: "subagent", reason: "expired" };
+    };
+    await render({ tasks: [task("beta", { status: "failed", summary: reason })], loadDetail });
+    expect(container.textContent).not.toContain(reason);
+    await click("beta");
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain(reason);
+    expect(dialog?.textContent).toContain(en.chat.components.periTask.status.failed);
+    expect(dialog?.textContent).toContain(
+      mode === "failed" ? en.chat.components.periTask.detailLoadFailed : en.chat.components.periTask.detailExpired,
+    );
   });
 
   // 耗时只由真实时间戳推导：运行中继续计时，终态取结束时间，非法/缺失时间不产生假数据。

@@ -218,7 +218,7 @@
         "openFile": "Open {{name}}"
       },
       "hindsightToolCard": {
-        "failed": "Failed"
+        "ended": "Ended"
       },
       "messageBubble": {
         "actions": "Message actions",
@@ -242,6 +242,7 @@
         "unsupportedVersion": "Unsupported UI Spec version: {{version}}"
       },
       "periTask": {
+        "ended": "Ended",
         "moreAgents": "More agents",
         "showLess": "Show less",
         "empty": "No tasks yet",
@@ -335,6 +336,7 @@
       },
       "toolCallRow": {
         "collapseDetails": "Collapse details",
+        "failureUnavailable": "No failure details provided",
         "diffUnchanged": "{{count}} unchanged lines",
         "expandDetails": "Expand details",
         "noChanges": "No changes",

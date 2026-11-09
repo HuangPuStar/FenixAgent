@@ -6,7 +6,7 @@ import type { AssistantMessageEntry, ToolCallData, ToolCallEntry } from "../chat
 /**
  * 活动链折叠投影的纯函数测试。
  *
- * 覆盖折叠标题所需的三类信息：类别计数（按首次出现顺序）、失败/运行态、思考块有无；
+ * 覆盖折叠标题所需的三类信息：类别计数（按首次出现顺序）、运行态、思考块有无；
  * 以及「运行中展开、完成后折叠」所依赖的 `isActivityChainActive` 判定。
  */
 
@@ -49,14 +49,14 @@ describe("活动链摘要", () => {
     expect(summary.running).toBe(false);
   });
 
-  // 失败与运行态驱动标题的警示文案；空白思考块不算「思考过」。
-  test("统计失败工具与运行态并忽略空白思考", () => {
+  // 失败调用仍计入过程总数，运行态独立保留；空白思考块不算「思考过」。
+  test("失败工具仍参与总数且保留运行态并忽略空白思考", () => {
     const summary = summarizeActivityChain([
       thought("t1", "   "),
       group(tool("b1", "bash", "error"), tool("b2", "bash", "running")),
     ]);
 
-    expect(summary.errorCount).toBe(1);
+    expect(summary.toolCount).toBe(2);
     expect(summary.running).toBe(true);
     expect(summary.hasThought).toBe(false);
   });

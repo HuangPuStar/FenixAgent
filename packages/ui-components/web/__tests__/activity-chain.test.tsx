@@ -83,6 +83,14 @@ describe("活动链折叠", () => {
   const body = () => host.querySelector('[data-slot="chat-activity-chain-body"]');
   const label = () => host.querySelector('[data-slot="chat-activity-chain-label"]');
 
+  // 工具失败不代表整个会话失败，折叠摘要不再显示失败次数但仍保留过程入口。
+  test("失败工具的过程摘要隐藏失败次数", async () => {
+    await act(async () => root.render(<ChatView entries={entries("error")} preWindowed />));
+    expect(toggle()?.textContent).not.toMatch(/失败|failed/i);
+    await act(async () => toggle()?.click());
+    expect(host.querySelector('[data-slot="chat-tool-call-row"]')).not.toBeNull();
+  });
+
   // 折叠标题用「详细过程」前缀说明这一行是执行过程，并以两个空格与后续类别拉开距离。
   test("折叠标题带详细过程前缀", async () => {
     await act(async () => root.render(<ChatView entries={entries("complete")} preWindowed />));

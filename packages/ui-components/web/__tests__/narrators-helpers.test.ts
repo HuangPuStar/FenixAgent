@@ -132,10 +132,10 @@ describe("narrators/helpers", () => {
     });
 
     // 兜底：rawOutput 为空或无法识别结构
-    test("rawOutput 为空返回未知错误", () => {
-      expect(extractErrorMessage(undefined)).toBe("未知错误");
-      expect(extractErrorMessage(null)).toBe("未知错误");
-      expect(extractErrorMessage({})).toBe("未知错误");
+    test("rawOutput 为空时不伪造错误原因", () => {
+      expect(extractErrorMessage(undefined)).toBeUndefined();
+      expect(extractErrorMessage(null)).toBeUndefined();
+      expect(extractErrorMessage({})).toBeUndefined();
     });
 
     // 长错误信息需截断到 120 字符 + 省略号

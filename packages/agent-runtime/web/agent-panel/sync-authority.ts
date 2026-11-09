@@ -5,7 +5,7 @@
  * 同步已回退且旧通道历史不完整时阻止发送。
  *
  * 仅“有错误卡”不构成恢复：旧通道缺历史时继续发送会把新问答写进不可见的投影；
- * 完整时允许继续使用旧通道，并由错误卡提供诊断。
+ * 完整时允许继续使用旧通道；错误是否上屏由独立展示策略决定。
  */
 export function shouldBlockPromptOnIncompleteLegacy(input: {
   readonly legacyFallback: boolean;

@@ -40,13 +40,14 @@ afterEach(() => {
 });
 
 /** 渲染真实错误卡片；只替换错误身份，模拟后续收到另一条错误。 */
-function renderError(id: string, dismissible = true) {
+function renderError(id: string, dismissible = true, onDismiss?: (id: string) => void) {
   act(() => {
     root.render(
       <PublicErrorCard
         error={{ id, type: "ACTION.OUTCOME_UNKNOWN", message: "Outcome unknown" }}
         t={t}
         dismissible={dismissible}
+        onDismiss={onDismiss}
       />,
     );
   });
@@ -85,4 +86,16 @@ test("persistent error cards remain visible without dismissal controls", () => {
   act(() => jest.advanceTimersByTime(20_000));
   expect(host.textContent).toContain("err-history");
   expect(host.querySelector("button")).toBeNull();
+});
+
+// 临时提示结束后通知持有者释放对应记录；历史消息不参与临时状态清理。
+test("关闭与五秒超时分别结算对应 Error ID", () => {
+  const dismissed: string[] = [];
+  renderError("auto", true, (id) => dismissed.push(id));
+  act(() => jest.advanceTimersByTime(5_000));
+  expect(dismissed).toEqual(["auto"]);
+  renderError("manual", true, (id) => dismissed.push(id));
+  act(() => host.querySelector<HTMLButtonElement>("button")?.click());
+  act(() => jest.advanceTimersByTime(5_000));
+  expect(dismissed).toEqual(["auto", "manual"]);
 });

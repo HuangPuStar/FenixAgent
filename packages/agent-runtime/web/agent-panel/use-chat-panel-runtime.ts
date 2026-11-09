@@ -1,14 +1,10 @@
-// ChatPanel 的连接、历史同步与投影视图；动作回执由 useChatPanelActions 独立管理。
-
 import {
-  type ActionError,
   createDeterministicRcsSessionId,
   PERI_USER_INPUT_QUEUE_CAPABILITY,
-  type PublicErrorInfo,
   type TerminalWsUiCode,
 } from "@fenix/chat-channel";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatAuthState } from "../hooks/chat-auth-state";
 import {
   bindLocalCreateToScope,
@@ -35,11 +31,14 @@ import {
   resolveYjsWsCloseOutcome,
   type YjsWsState,
 } from "../yjs/yjs-ws";
+import { isLegacyFallbackUsable } from "./chat-error-presentation";
 import type { UsePeriTaskViews } from "./chat-panel-host-ports";
 import type { ChatPanelDerivedState, ChatPanelRuntime } from "./chat-panel-runtime-types";
 import { useStableSyncSessionKey } from "./stable-sync-session-key";
+import { useChatErrorNotices } from "./use-chat-error-notices";
 import { useChatHistoryRecovery } from "./use-chat-history-recovery";
 import { useChatPanelActions } from "./use-chat-panel-actions";
+import { useLegacyFallbackPresentation } from "./use-legacy-fallback-presentation";
 
 export type { ChatPanelCallbacks, ChatPanelRuntime } from "./chat-panel-runtime-types";
 export type { StableSyncSessionKeyState } from "./stable-sync-session-key";
@@ -71,10 +70,7 @@ export function useChatPanelRuntime({
 }): ChatPanelRuntime {
   const [connectionState, setConnectionState] = useState<ChatWsConnectionState>("disconnected");
   const [initialSyncKey, setInitialSyncKey] = useState<string | null>(null);
-  const [classifiedError, setClassifiedError] = useState<PublicErrorInfo | null>(null);
-  // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
-  // 避免单动作失败触发整屏错误态
-  const [actionError, setActionError] = useState<ActionError | null>(null);
+  const { proof, resetBaseline, recordBaseline } = useLegacyFallbackPresentation();
   const {
     historyRecovery,
     historyRecoveryRetrying,
@@ -100,18 +96,9 @@ export function useChatPanelRuntime({
   const localCreateEpochRef = useRef(0);
   const localCreateBindingRef = useRef<LocalCreateBinding>(NO_LOCAL_CREATE);
   const previousMergeScopeRef = useRef<string | null>(null);
-  /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
-  const showActionError = useCallback((err: ActionError) => setActionError(err), []);
-  const retryHistoryRecovery = useCallback(() => {
-    setClassifiedError(null);
-    retryRecovery();
-  }, [retryRecovery]);
-  // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
-  // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
-  // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
-  // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
+  // 与服务端使用相同的确定性实例 key，避免快照落入不同 Y.Doc 命名空间。
   const rcsSessionKey =
     agentId && userId ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined) : undefined;
   // DocHub 绑定 key（SP-B1）：两个 hook 必须绑定同一会话的同一份共享 doc。
@@ -125,12 +112,13 @@ export function useChatPanelRuntime({
   const replacementVersion = useDocHubReplacementVersion(docHubKey);
   const syncChatSearch = typeof window === "undefined" ? "" : window.location.search;
   const syncEnabled = readSyncChatSwitch(syncChatSearch);
+  const organizationId = readSyncChatOrganizationId();
   const syncChat = useSyncChatState({
     enabled: syncEnabled && authState === "ready",
     agentId,
     instanceUid: sessionId ?? null,
     rcsSessionId: rcsSessionKey ?? null,
-    organizationId: readSyncChatOrganizationId(),
+    organizationId,
     sessionKey: syncSessionKey,
     // 投影换代（load/create）必须换同步连接：服务端按旧 Doc 代次隔离 store 与历史。
     projectionVersion: replacementVersion,
@@ -138,6 +126,16 @@ export function useChatPanelRuntime({
   });
   // 投影换代由 replacementVersion 表达；acpSessionId 补全不得触发第二次 hydrate 门控。
   const mergeScope = `${docHubKey}:${replacementVersion}`;
+  const noticeScope = JSON.stringify([organizationId, mergeScope, syncSessionKey]);
+  const {
+    classifiedError,
+    actionErrors,
+    dismissActionError,
+    setClassifiedError,
+    showActionError,
+    clearActionError,
+    clearRecoveredConnectionError,
+  } = useChatErrorNotices(noticeScope);
   // 换代后快照仍是旧 Doc，必须等 useSessionState 完成 rebind；期间所有旧投影信号一律不参与门控。
   const legacyScopeReady = legacyBoundScopeKey === mergeScope;
   // 本地 create 只认领紧随其后的换代：跨 scope 后失效，避免另一标签的远端 load 被当成新建。
@@ -195,7 +193,26 @@ export function useChatPanelRuntime({
       }),
     [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession, syncTerminalError],
   );
-
+  const legacyBaselineUsable = isLegacyFallbackUsable({
+    legacyFallback: true,
+    connected: connectionState === "connected",
+    scope: JSON.stringify([organizationId, docHubKey, replacementVersion]),
+    sessionId: sessionState.acpSessionId ?? "",
+    sessionReady: sessionState.sessionStatus === "ready",
+    scopeReady: legacyScopeReady,
+    hydrating: hydration.hydrating,
+    replaying: sessionState.status === "replaying" || sessionState.replayState === "active",
+    historyIncomplete: historyRecovery !== null,
+    sendBlocked: syncDegradedBlocked,
+    proof,
+    generations: getDocHubGenerations(docHubKey),
+  });
+  const legacyFallbackUsable = syncChat.legacyFallback && legacyBaselineUsable;
+  const syncRecovered =
+    legacyBaselineUsable && syncChat.connection.status === "ready" && !syncChat.connection.hydrating;
+  useEffect(() => {
+    if (classifiedError && syncRecovered) clearRecoveredConnectionError(true);
+  }, [classifiedError, syncRecovered, clearRecoveredConnectionError]);
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
   const acpSessionIdRef = useRef(sessionState.acpSessionId);
@@ -205,7 +222,6 @@ export function useChatPanelRuntime({
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
   useYjsDebugDump(chatState, sessionState);
-
   // 待发送队列 — 同样只订阅 Session Doc（root.userInputQueue 子树），Chat Doc 的流式更新不触发重派生。
   const { state: userInputQueue } = useUserInputQueue(docHubKey);
 
@@ -226,13 +242,11 @@ export function useChatPanelRuntime({
     syncDegradedBlocked,
     returnToLatestHistory: syncChat.returnToLatestHistory,
     showActionError,
+    clearActionError,
+    noticeScope,
   });
 
-  // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
-  // `connectionState` 是**有意义的依赖**：重连会替换 `yjsWsRef.current` 指向的 socket，状态回到 connected
-  // 时本 effect 必须重跑，计时间隔才会绑到新 socket（旧 interval 会因旧 socket 已断开而自清）。因此这里
-  // 显式读取状态而不是只把状态列进依赖数组——后者会被 lint（useExhaustiveDependencies）判为多余依赖，
-  // 而删掉这个依赖会让重连后不再发送 keep_alive。
+  // 重连会替换 socket；connected 必须驱动 effect 重绑心跳，旧 interval 自行停止。
   useEffect(() => {
     if (!pageVisible || connectionState !== "connected") return;
     const ws = yjsWsRef.current;
@@ -266,7 +280,6 @@ export function useChatPanelRuntime({
     }
 
     setConnectionState("connecting");
-    setClassifiedError(null);
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
@@ -308,6 +321,7 @@ export function useChatPanelRuntime({
         if (disposed || !isCurrentConnection(connectionEpoch)) return;
         const generations = getDocHubGenerations(rcsSessionKey);
         complete(connectionEpoch, info, generations);
+        if (recordBaseline(rcsSessionKey, organizationId, info)) clearRecoveredConnectionError();
         // onopen 早于快照；快速显示实时回复前须确认本轮两个 Doc 都已交付。
         if (
           info.generation &&
@@ -346,6 +360,7 @@ export function useChatPanelRuntime({
         }
         if (!ownsConnection(connectionEpoch)) return;
         if (state === "connecting") {
+          resetBaseline();
           setInitialSyncKey(null);
           setAutoReconnecting(false);
           // 重试/自动重连开始：历史缺失保持到缺失文档真正重新交付，连接事件不构成恢复证明。
@@ -355,10 +370,8 @@ export function useChatPanelRuntime({
         } else if (state === "connected") {
           setAutoReconnecting(false);
           setConnectionState("connected");
-
-          // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
-          // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
         } else if (state === "error") {
+          setAutoReconnecting(false);
           handleConnectionLost();
           // 连接进入错误终态同样结束本次重试态；历史缺失保留，用户可再次点击重试。
           closeConnection(connectionEpoch);
@@ -413,6 +426,10 @@ export function useChatPanelRuntime({
     isCurrentConnection,
     recordIncomplete,
     complete,
+    recordBaseline,
+    resetBaseline,
+    clearRecoveredConnectionError,
+    setClassifiedError,
     historyRecoveryAttempt,
     reconnectAttempt,
   ]);
@@ -455,14 +472,16 @@ export function useChatPanelRuntime({
     authState,
     connectionState,
     classifiedError,
-    actionError,
+    actionErrors,
+    dismissActionError,
     preservedPrompt,
     retryPreservedPrompt,
     dismissPreservedPrompt,
     historyRecovery,
     historyRecoveryRetrying,
     syncDegradedBlocked,
-    retryHistoryRecovery,
+    legacyFallbackUsable,
+    retryHistoryRecovery: retryRecovery,
     autoReconnecting,
     terminalUiCode,
     rcsSessionKey,

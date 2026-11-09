@@ -46,8 +46,6 @@ export interface ActivityCategoryCount {
 export interface ActivityChainSummary {
   /** 工具调用总数。 */
   toolCount: number;
-  /** 失败工具数；用于标题的失败提示。 */
-  errorCount: number;
   /** 是否包含思考过程（无可见正文的助手消息）。 */
   hasThought: boolean;
   /** 按首次出现顺序排列的类别计数。 */
@@ -101,7 +99,6 @@ function isToolActive(status: ToolCallData["status"]): boolean {
 export function summarizeActivityChain(items: readonly ChatRenderItem[]): ActivityChainSummary {
   const counts = new Map<ActivityCategory, number>();
   let toolCount = 0;
-  let errorCount = 0;
   let hasThought = false;
   let running = false;
 
@@ -111,7 +108,6 @@ export function summarizeActivityChain(items: readonly ChatRenderItem[]): Activi
     }
     for (const tool of toolCallsOf(item)) {
       toolCount += 1;
-      if (tool.status === "error") errorCount += 1;
       running ||= isToolActive(tool.status);
       const category = KIND_TO_CATEGORY[tool.kind ?? "unknown"];
       counts.set(category, (counts.get(category) ?? 0) + 1);
@@ -120,7 +116,6 @@ export function summarizeActivityChain(items: readonly ChatRenderItem[]): Activi
 
   return {
     toolCount,
-    errorCount,
     hasThought,
     categories: [...counts].map(([category, count]) => ({ category, count })),
     running,

@@ -22,7 +22,9 @@ import { cn } from "../../lib/cn";
 import { truncate } from "../../lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { formatOutput } from "../lib/tool-call-utils";
+import { extractErrorMessage } from "../narrators/helpers";
 import type { ToolCallData } from "../types";
+import { publicErrorText } from "../view/public-error-text";
 import { ToolJsonBlock } from "./tool-json-block";
 
 // =============================================================================
@@ -39,10 +41,10 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const action = getAction(tool.title);
-  const summary = getSummary(tool);
   const isRunning = tool.status === "running";
   const isError = tool.status === "error";
-  const hasContent = tool.rawInput || (!isRunning && (tool.rawOutput || tool.content));
+  const summary = isError ? t("chat.components.hindsightToolCard.ended") : getSummary(tool);
+  const hasContent = isError || tool.rawInput || (!isRunning && (tool.rawOutput || tool.content));
 
   const openDialog = useCallback(() => {
     if (hasContent) setDialogOpen(true);
@@ -57,7 +59,6 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
           "bg-gradient-to-r from-violet-50/60 to-indigo-50/40 dark:from-violet-950/20 dark:to-indigo-950/15",
           "border border-violet-200/50 dark:border-violet-800/30",
           hasContent && "cursor-pointer hover:from-violet-50/80 dark:hover:from-violet-950/30",
-          isError && "border-status-error/40",
           isRunning && "animate-pulse",
         )}
         onClick={openDialog}
@@ -77,11 +78,6 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-3xs font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
               {action}
             </span>
-            {isError && (
-              <span className="text-3xs text-status-error font-medium">
-                {t("chat.components.hindsightToolCard.failed")}
-              </span>
-            )}
           </div>
           <div className="text-xs text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
         </div>
@@ -95,6 +91,7 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
               openDialog();
             }}
             className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-violet-400/60 hover:text-violet-500 hover:bg-violet-100/50 dark:hover:bg-violet-900/30 transition-colors mt-0.5"
+            aria-label={t("chat.components.toolCallRow.expandDetails")}
           >
             <ChevronRight size={12} />
           </button>
@@ -114,6 +111,14 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
               </DialogTitle>
             </DialogHeader>
             <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+              {isError && (
+                <p className="text-xs text-text-secondary whitespace-pre-wrap">
+                  {t("chat.toolNarrator.common.status.error")} ·{" "}
+                  {tool.publicError
+                    ? publicErrorText(t, tool.publicError)
+                    : (extractErrorMessage(tool.rawOutput) ?? t("chat.components.toolCallRow.failureUnavailable"))}
+                </p>
+              )}
               {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
                 <ToolJsonBlock label="Input" content={truncate(JSON.stringify(tool.rawInput, null, 2), 3000)} />
               )}

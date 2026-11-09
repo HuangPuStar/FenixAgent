@@ -1,4 +1,4 @@
-import { Ban, CheckCircle2, Clock3, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Circle, Clock3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -20,11 +20,10 @@ export function taskElapsedSeconds(task: PeriTaskViewProjection, now: number): n
 
 /**
  * 「子任务」区（`ChatStatusPanel` 的 tasks 页签）唯一的任务行列表实现：状态、运行高亮、
- * 失败原因（投影里的脱敏摘要）、按 `startedAt`/`completedAt` 计算的耗时；运行中每秒刷新计时，
+ * 按 `startedAt`/`completedAt` 计算的耗时；运行中每秒刷新计时，
  * 终态停止。状态只由任务自身终态事件或 turn 取消/中断收敛决定，不对正常完成做推断。
  *
- * 行内为**单行**排布：名称、状态、耗时同一行；失败原因不丢，改为单行截断并以 `title` 承载全文
- * （用户反馈：右侧状态与耗时堆两行会抬高每行高度、挤压输入区）。耗时用 `tabular-nums`，
+ * 探索失败的状态与原因由主动打开的详情承载，列表保持中性；耗时用 `tabular-nums`，
  * 避免每秒刷新时宽度抖动。
  *
  * 列表超过 `PERI_TASK_COLLAPSE_THRESHOLD` 时折叠为前 N 条 + 「更多 agent」入口（展开后显示全部）。
@@ -76,12 +75,11 @@ export function PeriTaskRows({
           task.status === "completed"
             ? CheckCircle2
             : task.status === "failed"
-              ? XCircle
+              ? Circle
               : task.status === "cancelled"
                 ? Ban
                 : Clock3;
         const elapsed = taskElapsedSeconds(task, now);
-        const failureReason = task.summary ?? t("chat.components.periTask.failureUnavailable");
         return (
           <button
             key={task.taskId}
@@ -96,26 +94,20 @@ export function PeriTaskRows({
           >
             <Icon
               aria-hidden="true"
-              className={cn(
-                "size-4 shrink-0",
-                task.status === "failed"
-                  ? "text-red-400"
-                  : task.status === "completed"
-                    ? "text-teal-600"
-                    : "text-current",
-              )}
+              className={cn("size-4 shrink-0", task.status === "completed" ? "text-teal-600" : "text-current")}
             />
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="min-w-0 truncate" title={task.title}>
                 {task.title ?? t("chat.components.periTask.unknownTitle")}
               </span>
-              {task.status === "failed" && (
-                <span className="min-w-0 truncate text-red-600" title={failureReason}>
-                  {failureReason}
-                </span>
+            </span>
+            <span className="shrink-0">
+              {t(
+                task.status === "failed"
+                  ? "chat.components.periTask.ended"
+                  : `chat.components.periTask.status.${task.status}`,
               )}
             </span>
-            <span className="shrink-0">{t(`chat.components.periTask.status.${task.status}`)}</span>
             <span className="shrink-0 text-muted-foreground tabular-nums">
               {elapsed === null
                 ? t("chat.components.periTask.timeUnavailable")

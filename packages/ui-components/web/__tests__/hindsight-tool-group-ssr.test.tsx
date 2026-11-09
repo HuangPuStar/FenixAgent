@@ -49,6 +49,21 @@ function renderGroup(entries: ToolCallEntry[]): string {
 }
 
 describe("ToolCallGroup 记忆工具分流", () => {
+  // 记忆工具也属于探索过程，失败标记与错误输出只在用户主动查看详情时出现。
+  test("失败记忆工具保留过程入口但隐藏失败标签与错误摘要", () => {
+    const html = renderGroup([
+      entry({
+        status: "error",
+        title: "hindsight_get_bank",
+        rawOutput: { output: JSON.stringify({ name: "memory backend unavailable" }) },
+      }),
+    ]);
+    expect(html).not.toContain("border-status-error");
+    expect(html).not.toContain("text-status-error");
+    expect(html).not.toContain("memory backend unavailable");
+    expect(html).not.toContain("Failed");
+    expect(html).toContain("button");
+  });
   // MCP 形态的记忆检索必须渲染为记忆卡片：带“搜索记忆”语义与相关记忆条数，且不出现网页搜索文案。
   test("MCP 形态的记忆检索渲染为记忆卡片而非网页搜索", () => {
     const html = renderGroup([entry()]);

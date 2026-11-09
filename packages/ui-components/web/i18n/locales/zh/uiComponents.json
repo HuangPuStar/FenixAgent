@@ -218,7 +218,7 @@
         "openFile": "打开 {{name}}"
       },
       "hindsightToolCard": {
-        "failed": "失败"
+        "ended": "已结束"
       },
       "messageBubble": {
         "actions": "消息操作",
@@ -242,6 +242,7 @@
         "unsupportedVersion": "不支持的 UI Spec 版本：{{version}}"
       },
       "periTask": {
+        "ended": "已结束",
         "moreAgents": "更多 agent",
         "showLess": "收起",
         "empty": "暂无任务",
@@ -335,6 +336,7 @@
       },
       "toolCallRow": {
         "collapseDetails": "收起详情",
+        "failureUnavailable": "未提供失败详情",
         "diffUnchanged": "{{count}} 行未变化",
         "expandDetails": "展开详情",
         "noChanges": "无变化",

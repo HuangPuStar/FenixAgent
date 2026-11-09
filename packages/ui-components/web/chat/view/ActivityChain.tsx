@@ -157,11 +157,6 @@ export function ActivityChain({
             </span>
           </span>
         )}
-        {summary.errorCount > 0 && (
-          <span className="shrink-0 text-red-400">
-            {t("chat.components.activityChain.failed", { count: summary.errorCount })}
-          </span>
-        )}
         {active && <span className="shrink-0 text-slate-400">{t("chat.components.activityChain.running")}</span>}
         <span className="sr-only">{toggleLabel}</span>
       </button>

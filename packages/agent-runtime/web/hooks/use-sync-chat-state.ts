@@ -173,8 +173,8 @@ export function useSyncChatState(options: UseSyncChatStateOptions): SyncChatStat
         }));
         if (legacyFallback) {
           console.warn("[sync-chat] fallback to legacy", {
-            code: connection.error?.code,
-            reason: connection.error?.message,
+            transportCode: /^[A-Z_0-9]{1,64}$/.test(connection.error?.code ?? "") ? connection.error?.code : "OTHER",
+            stage: "legacy-fallback",
           });
           fallbackScope.current = scope;
           active = false;
