@@ -7,11 +7,17 @@ export function useChatErrorNotices(scope: string) {
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const [connection, setConnection] = useState<{ scope: string; error: PublicErrorInfo | null } | null>(null);
-  const [actions, setActions] = useState<Array<{ scope: string; error: ActionError }>>([]);
+  const [actions, setActions] = useState<{
+    entries: Array<{ scope: string; error: ActionError }>;
+    dismissed: Array<{ scope: string; id: string }>;
+  }>({ entries: [], dismissed: [] });
   const lastDiagnostic = useRef<string | null>(null);
   useEffect(() => {
     setConnection((current) => (current?.scope === scope ? current : null));
-    setActions((current) => current.filter((item) => item.scope === scope));
+    setActions((current) => ({
+      entries: current.entries.filter((item) => item.scope === scope),
+      dismissed: current.dismissed.filter((item) => item.scope === scope),
+    }));
   }, [scope]);
   const setClassifiedError = useCallback((error: PublicErrorInfo | null) => {
     setConnection({ scope: scopeRef.current, error });
@@ -22,29 +28,45 @@ export function useChatErrorNotices(scope: string) {
     }
   }, []);
   const showActionError = useCallback((error: ActionError) => {
+    const scope = scopeRef.current;
     setActions((current) =>
-      current.some((item) => item.scope === scopeRef.current && item.error.error.id === error.error.id)
+      current.entries.some((item) => item.scope === scope && item.error.error.id === error.error.id) ||
+      current.dismissed.some((item) => item.scope === scope && item.id === error.error.id)
         ? current
-        : [...current, { scope: scopeRef.current, error }],
+        : { ...current, entries: [...current.entries, { scope, error }] },
     );
   }, []);
   const clearActionError = useCallback((commandId: string) => {
-    setActions((current) => current.filter((item) => item.error.commandId !== commandId));
+    setActions((current) => ({
+      ...current,
+      entries: current.entries.filter((item) => item.error.commandId !== commandId),
+    }));
   }, []);
   const dismissActionError = useCallback((errorId: string) => {
-    setActions((current) => current.filter((item) => item.error.error.id !== errorId));
+    const scope = scopeRef.current;
+    setActions((current) => ({
+      entries: current.entries.filter((item) => item.scope !== scope || item.error.error.id !== errorId),
+      // 保留近期关闭记录，避免晚到的重复帧撤销用户操作；切会话时回收。
+      dismissed: [
+        ...current.dismissed.filter((item) => item.scope !== scope || item.id !== errorId),
+        { scope, id: errorId },
+      ].slice(-256),
+    }));
   }, []);
-  const clearRecoveredConnectionError = useCallback(() => {
+  const clearRecoveredConnectionError = useCallback((primarySyncRecovered = false) => {
+    const scope = scopeRef.current;
     setConnection((current) =>
-      current?.scope === scopeRef.current &&
-      (current.error?.type === "SYNC_RELAY.CONNECTION_LOST" || current.error?.type === "SYNC_RELAY.KEEPALIVE_TIMEOUT")
+      current?.scope === scope &&
+      (current.error?.type === "SYNC_RELAY.CONNECTION_LOST" ||
+        current.error?.type === "SYNC_RELAY.KEEPALIVE_TIMEOUT" ||
+        (primarySyncRecovered && current.error?.type === "SYNC_RELAY.SYNC_FAILED"))
         ? null
         : current,
     );
   }, []);
   return {
     classifiedError: connection?.scope === scope ? connection.error : null,
-    actionErrors: actions.filter((item) => item.scope === scope).map((item) => item.error),
+    actionErrors: actions.entries.filter((item) => item.scope === scope).map((item) => item.error),
     setClassifiedError,
     showActionError,
     clearActionError,

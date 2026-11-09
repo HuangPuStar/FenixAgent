@@ -296,7 +296,7 @@ function ChatPanelView({
             error={error}
             t={tUi}
             className={INLINE_ERROR_CARD_CLASS}
-            dismissible
+            dismissible={actionErrors.some((item) => item.error.id === error.id)}
             onDismiss={dismissActionError}
           />
         ))}

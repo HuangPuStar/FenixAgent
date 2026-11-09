@@ -639,6 +639,8 @@ yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
 
 同步故障只有在当前组织、实例、会话和投影匹配，当前连接的两份 Doc 经同代 `onSyncComplete` 验证、ACP session 就绪、投影已绑定且回放/hydrate 结束、没有历史缺失或发送阻断后，才只留控制台诊断。接管未确认时显示中性状态；真实终态、认证和操作失败继续反馈。旧连接、会话切换和换代不能复用证明。`1011` 仍是同步 transport 的终态关闭，不因展示静默而增加重连或改变底层错误。
 
+顶部的连接与 Agent 故障持续显示到恢复或其权威投影清除，只有操作提示允许手动关闭或自动消失；近期关闭的 Error ID 在当前会话内去重。操作提示来源只在本标签页发送命令时建立，在途来源保留到结算，已结算来源有界保留；未知或已淘汰命令的迟到错误不得归属当前会话。`SYNC_FAILED` 只有在主同步就绪且 hydrate 结束、当前旧通道完整基线与会话也健康时才清除，单独连接成功或旧基线完成不构成恢复。
+
 ## 6. ACP 到 YJS 状态聚合
 
 **ACPChannel（`protocol/acp-channel.ts`）是唯一协议边界**：acp-link 私有帧（`agent_message_chunk` / `agent_thought_chunk` / `prompt_complete` 等）与 JSON-RPC `session/update` 帧在此边界内规范化为统一事件（Q6 主服务侧翻译，acp-link 与 Agent 部署零改动）；聚合层（`state/aggregator.ts`）只消费规范化事件，是唯一允许把 Agent 运行时数据写入 Y.Doc 的边界。它只消费**当前存活的 Instance ACP session data**，将其转换为前端可消费的稳定状态；浏览器、旧实例、已解绑 ACP session 和未通过校验的协议帧都不能直接修改 YJS。

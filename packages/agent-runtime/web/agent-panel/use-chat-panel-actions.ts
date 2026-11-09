@@ -40,17 +40,25 @@ export function useChatPanelActions({
   const pendingCreates = useRef(new Map<string, (id: string | null) => void>());
   const pendingPrompts = useRef(new Map<string, PreservedPrompt>());
   const noticeScopes = useRef(new Map<string, string>());
+  const settledNoticeScopes = useRef(new Map<string, string>());
   const noticeScopeRef = useRef(noticeScope);
   noticeScopeRef.current = noticeScope;
-  // 结算后的命令仍可能重复到达；有界保留来源，防止旧错误在新会话被重新认领。
+  // 在途来源随命令保留；仅淘汰已结算历史，避免繁忙会话丢失仍待回执的反馈。
   const rememberNoticeScope = useCallback((id: string) => {
     const scopes = noticeScopes.current;
-    if (!scopes.has(id)) scopes.set(id, noticeScopeRef.current);
-    if (scopes.size > 256) {
-      const oldest = scopes.keys().next().value;
-      if (oldest !== undefined) scopes.delete(oldest);
+    if (!scopes.has(id)) scopes.set(id, settledNoticeScopes.current.get(id) ?? noticeScopeRef.current);
+    settledNoticeScopes.current.delete(id);
+  }, []);
+  const settleNoticeScope = useCallback((id: string) => {
+    const scope = noticeScopes.current.get(id);
+    if (scope === undefined) return;
+    noticeScopes.current.delete(id);
+    const settled = settledNoticeScopes.current;
+    settled.set(id, scope);
+    if (settled.size > 256) {
+      const oldest = settled.keys().next().value;
+      if (oldest !== undefined) settled.delete(oldest);
     }
-    return scopes.get(id);
   }, []);
   const [preservedPrompts, setPreservedPrompts] = useState<PreservedPrompt[]>([]);
   const preservedPrompt = preservedPrompts[0] ?? null;
@@ -74,42 +82,52 @@ export function useChatPanelActions({
   const failCreate = useCallback(
     (id: string) => {
       if (!settleCreate(id, null)) return;
+      settleNoticeScope(id);
       localCreateEpochRef.current = 0;
       localCreateBindingRef.current = NO_LOCAL_CREATE;
     },
-    [settleCreate, localCreateEpochRef, localCreateBindingRef],
+    [settleCreate, settleNoticeScope, localCreateEpochRef, localCreateBindingRef],
   );
   const handleActionAck = useCallback(
     (ack: ActionAck) => {
       if (ack.status !== "committed" && ack.status !== "duplicate") return;
+      settleNoticeScope(ack.commandId);
       clearActionError(ack.commandId);
       releaseCommandId(ack.commandId);
       pendingPrompts.current.delete(ack.commandId);
       setPreservedPrompts((current) => current.filter((item) => item.commandId !== ack.commandId));
       settleCreate(ack.commandId, ack.sessionId ?? null);
     },
-    [releaseCommandId, settleCreate, clearActionError],
+    [releaseCommandId, settleCreate, clearActionError, settleNoticeScope],
   );
   const handleActionError = useCallback(
     (error: ActionError) => {
+      const scope = noticeScopes.current.get(error.commandId) ?? settledNoticeScopes.current.get(error.commandId);
       const unknown = error.error.type === "ACTION.OUTCOME_UNKNOWN";
       // 未知结果的键必须保留；换一个 id 自动重试会绕过服务端副作用保护。
-      if (!unknown) releaseCommandId(error.commandId);
+      if (!unknown) {
+        releaseCommandId(error.commandId);
+        settleNoticeScope(error.commandId);
+      }
       const prompt = pendingPrompts.current.get(error.commandId);
       if (prompt) {
         pendingPrompts.current.delete(error.commandId);
         preserve({ ...prompt, outcomeUnknown: unknown });
       }
       failCreate(error.commandId);
-      if (rememberNoticeScope(error.commandId) === noticeScopeRef.current) showActionError(error);
+      // 接收帧不建立来源，未知或已淘汰的旧命令不能被当前会话重新认领。
+      if (scope === noticeScopeRef.current) showActionError(error);
     },
-    [releaseCommandId, failCreate, showActionError, preserve, rememberNoticeScope],
+    [releaseCommandId, failCreate, showActionError, preserve, settleNoticeScope],
   );
   const handleConnectionLost = useCallback(() => {
     // load/resume 用于确认本次连接的绑定；旧结果去重不能替代新连接的恢复。
     // prompt/create 等副作用意图仍保留原 ID，不能随连接结束而重新执行。
     for (const [key, identity] of commandIds.current) {
-      if (identity.connectionScoped) commandIds.current.delete(key);
+      if (identity.connectionScoped) {
+        commandIds.current.delete(key);
+        settleNoticeScope(identity.id);
+      }
     }
     for (const prompt of pendingPrompts.current.values()) preserve({ ...prompt, outcomeUnknown: true });
     pendingPrompts.current.clear();
@@ -118,7 +136,7 @@ export function useChatPanelActions({
       localCreateEpochRef.current = 0;
       localCreateBindingRef.current = NO_LOCAL_CREATE;
     }
-  }, [preserve, localCreateEpochRef, localCreateBindingRef]);
+  }, [preserve, localCreateEpochRef, localCreateBindingRef, settleNoticeScope]);
   const allocateCommandId = useCallback(() => {
     const epoch = wsRef.current?.getCommandEpoch();
     return epoch ? `${epoch}.${randomUUID()}` : null;
@@ -209,8 +227,9 @@ export function useChatPanelActions({
     if (!preservedPrompt) return;
     const dismissedId = preservedPrompt.commandId;
     releaseCommandId(dismissedId);
+    settleNoticeScope(dismissedId);
     setPreservedPrompts((current) => current.filter((prompt) => prompt.commandId !== dismissedId));
-  }, [preservedPrompt, releaseCommandId]);
+  }, [preservedPrompt, releaseCommandId, settleNoticeScope]);
   const callbacks = useMemo(
     (): ChatPanelCallbacks => ({
       onSendPrompt: sendPrompt,

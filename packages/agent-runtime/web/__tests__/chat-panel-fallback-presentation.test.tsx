@@ -1,5 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { encodeYjsReplaceFrame, encodeYjsUpdateFrame } from "@fenix/chat-channel";
+import { createPublicError, encodeYjsReplaceFrame, encodeYjsUpdateFrame } from "@fenix/chat-channel";
+import { encodeSyncFrame, SYNC_PROTOCOL_VERSION } from "@fenix/chat-channel/server";
 import { act } from "react";
 import * as Y from "yjs";
 import {
@@ -14,6 +15,88 @@ import {
 } from "./helpers/chat-panel-runtime-fixture";
 
 afterEach(restoreFakeWebSocket);
+
+// 主同步恢复和当前旧基线缺一不可，避免残留卡片或在半同步时提前隐藏。
+test("同步故障只在主同步与当前基线共同恢复后清除", async () => {
+  installFakeWebSocket();
+  const storage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  runtimeGlobal.localStorage = win.localStorage;
+  win.localStorage.setItem("active_org_id", "org-recovery");
+  const h = renderRuntime();
+  const socket = legacySockets()[0]!;
+  const sync = syncSockets()[0]!;
+  const key = h.latest.current!.rcsSessionKey!;
+  const error = createPublicError("SYNC_RELAY.SYNC_FAILED");
+  const receive = (frame: Record<string, unknown>) =>
+    act(() => socket.onmessage?.({ data: JSON.stringify(frame) } as MessageEvent));
+  const generation = "gen_recovery0001";
+  try {
+    act(() => socket.open());
+    deliver(socket, key, "legacy-recovery");
+    receive({ type: "error", payload: error });
+    receive({ type: "yjs:sync-complete", docs: [`chat:${key}`, `session:${key}`], generation: "legacy-recovery" });
+    expect(h.latest.current?.classifiedError?.id).toBe(error.id);
+    act(() => {
+      sync.open();
+      sync.onmessage?.({
+        data: encodeSyncFrame({
+          type: "MANIFEST",
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          generation,
+          pointerRevision: 1,
+          referenceRevision: 1,
+          recoveryState: "ready",
+          controlDocId: `sync/control/${generation}/0/control`,
+          runtimeDocId: `sync/runtime/${generation}/0/runtime`,
+          directoryDocId: `sync/directory/${generation}/0/root`,
+        }),
+      } as MessageEvent);
+    });
+    expect(h.latest.current?.syncChat.connection.status).toBe("ready");
+    expect(h.latest.current?.classifiedError?.id).toBe(error.id);
+    for (const kind of ["control", "runtime", "directory"]) {
+      const doc = new Y.Doc();
+      const root = doc.getMap("root");
+      root.set("schemaVersion", 1);
+      root.set("kind", kind);
+      root.set("generation", generation);
+      const payload = Y.encodeStateAsUpdate(doc);
+      act(() =>
+        sync.onmessage?.({
+          data: encodeSyncFrame({
+            type: "DOC_BASE",
+            protocolVersion: SYNC_PROTOCOL_VERSION,
+            generation,
+            docId: `sync/${kind}/${generation}/0/${kind === "directory" ? "root" : kind}`,
+            transportEpoch: "tx_1",
+            subscriptionEpoch: "sub_1",
+            syncAttemptId: "att_1",
+            deliveryId: `dlv_${kind}`,
+            baseSeq: 0,
+            mode: "full",
+            payloadDigest: "sha256:test",
+            encodedLength: payload.byteLength,
+            payload: Buffer.from(payload).toString("base64"),
+          }),
+        } as MessageEvent),
+      );
+      doc.destroy();
+    }
+    await act(async () => {
+      await Bun.sleep(300);
+    });
+    expect(h.latest.current?.syncChat.connection.hydrating).toBe(false);
+    expect(h.latest.current?.classifiedError).toBeNull();
+    const unrelated = createPublicError("INTERNAL.UNCLASSIFIED");
+    receive({ type: "error", payload: unrelated });
+    expect(h.latest.current?.classifiedError?.id).toBe(unrelated.id);
+  } finally {
+    h.unmount();
+    win.localStorage.clear();
+    if (storage) Object.defineProperty(globalThis, "localStorage", storage);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
 
 /** 通过真实帧投递会话元信息与两份文档，验证展示层接线。 */
 function deliver(socket: FakeWebSocket, key: string, generation: string, replace = false) {

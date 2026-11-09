@@ -21,12 +21,20 @@ test("成功回执按 commandId 清除操作提示，切会话隐藏旧提示", 
   const key = h.latest.current!.rcsSessionKey!;
   try {
     act(() => socket.open());
-    receive({ type: "action_error", commandId: "unknown-command", error: createPublicError("ACTION.OUTCOME_UNKNOWN") });
+    act(() => h.latest.current!.callbacks.onSetMode("first-mode"));
+    const commandId = JSON.parse(
+      socket.sent.findLast((raw) => typeof raw === "string" && raw.includes("set_session_mode")) as string,
+    ).commandId;
+    receive({ type: "action_error", commandId, error: createPublicError("ACTION.OUTCOME_UNKNOWN") });
     receive({ type: "action_ack", commandId: "other-command", status: "committed" });
-    expect(h.latest.current?.actionErrors[0]?.commandId).toBe("unknown-command");
-    receive({ type: "action_ack", commandId: "unknown-command", status: "duplicate" });
+    expect(h.latest.current?.actionErrors[0]?.commandId).toBe(commandId);
+    receive({ type: "action_ack", commandId, status: "duplicate" });
     expect(h.latest.current?.actionErrors).toEqual([]);
-    receive({ type: "action_error", commandId: "old-session-command", error: createPublicError("ACTION.FAILED") });
+    act(() => h.latest.current!.callbacks.onSetMode("old-mode"));
+    const oldId = JSON.parse(
+      socket.sent.findLast((raw) => typeof raw === "string" && raw.includes("set_session_mode")) as string,
+    ).commandId;
+    receive({ type: "action_error", commandId: oldId, error: createPublicError("ACTION.FAILED") });
     for (const prefix of ["chat", "session"]) {
       const doc = new Y.Doc();
       if (prefix === "session") doc.getMap("root").set("session", new Y.Map([["sessionId", "ses-next"]]));

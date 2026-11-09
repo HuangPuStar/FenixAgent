@@ -1,5 +1,3 @@
-// ChatPanel 的连接、历史同步与投影视图；动作回执由 useChatPanelActions 独立管理。
-
 import {
   createDeterministicRcsSessionId,
   PERI_USER_INPUT_QUEUE_CAPABILITY,
@@ -98,7 +96,6 @@ export function useChatPanelRuntime({
   const localCreateEpochRef = useRef(0);
   const localCreateBindingRef = useRef<LocalCreateBinding>(NO_LOCAL_CREATE);
   const previousMergeScopeRef = useRef<string | null>(null);
-  // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 authState 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
   // 与服务端使用相同的确定性实例 key，避免快照落入不同 Y.Doc 命名空间。
@@ -196,8 +193,8 @@ export function useChatPanelRuntime({
       }),
     [legacySessionState, hydration, syncEnabled, syncChat.legacyFallback, noReplaySession, syncTerminalError],
   );
-  const legacyFallbackUsable = isLegacyFallbackUsable({
-    legacyFallback: syncChat.legacyFallback,
+  const legacyBaselineUsable = isLegacyFallbackUsable({
+    legacyFallback: true,
     connected: connectionState === "connected",
     scope: JSON.stringify([organizationId, docHubKey, replacementVersion]),
     sessionId: sessionState.acpSessionId ?? "",
@@ -210,7 +207,12 @@ export function useChatPanelRuntime({
     proof,
     generations: getDocHubGenerations(docHubKey),
   });
-
+  const legacyFallbackUsable = syncChat.legacyFallback && legacyBaselineUsable;
+  const syncRecovered =
+    legacyBaselineUsable && syncChat.connection.status === "ready" && !syncChat.connection.hydrating;
+  useEffect(() => {
+    if (classifiedError && syncRecovered) clearRecoveredConnectionError(true);
+  }, [classifiedError, syncRecovered, clearRecoveredConnectionError]);
   // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
   // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
   const acpSessionIdRef = useRef(sessionState.acpSessionId);
@@ -220,7 +222,6 @@ export function useChatPanelRuntime({
   // 订阅能力由宿主注入（投影 owner 是资源包），调用方式与包内 hook 一致：顶层、无条件、传本包派生的 key。
   const { state: periTaskState } = usePeriTaskViews(docHubKey);
   useYjsDebugDump(chatState, sessionState);
-
   // 待发送队列 — 同样只订阅 Session Doc（root.userInputQueue 子树），Chat Doc 的流式更新不触发重派生。
   const { state: userInputQueue } = useUserInputQueue(docHubKey);
 
@@ -369,9 +370,6 @@ export function useChatPanelRuntime({
         } else if (state === "connected") {
           setAutoReconnecting(false);
           setConnectionState("connected");
-
-          // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
-          // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
         } else if (state === "error") {
           setAutoReconnecting(false);
           handleConnectionLost();
