@@ -187,7 +187,7 @@ test("开发、构建和静态托管使用 apps 入口", () => {
   expect(staticPlugin).not.toContain('resolve(__dirname, "../../../web/dist")');
   expect(dockerfile).toContain("COPY apps/web ./apps/web");
   expect(dockerfile).toContain("bun build apps/server/src/entry.ts");
-  expect(dockerfile).toContain("--splitting --packages=external");
+  expect(dockerfile).toContain("--splitting");
   expect(readRepoFile("apps/server/src/entry.ts")).toContain('await import("./main")');
   expect(dockerfile).toContain("/app/apps/web/dist ./apps/web/dist");
   expect(dockerfile).toContain("ENV RCS_APPLICATION_ROOT=/app");
@@ -320,6 +320,8 @@ test("Docker server bundle 的所有外置依赖都能从交付目录解析", as
       const bundlePath = join(bundleDir, bundle);
       for (const dependency of scanner.scanImports(await Bun.file(bundlePath).text())) {
         if (isBuiltin(dependency.path)) continue;
+        // Redis 的 digest 辅助函数按需加载原生可选 peer，当前业务不调用该能力。
+        if (dependency.kind === "dynamic-import" && dependency.path === "@node-rs/xxhash") continue;
         try {
           Bun.resolveSync(dependency.path, bundleDir);
         } catch {
@@ -328,6 +330,57 @@ test("Docker server bundle 的所有外置依赖都能从交付目录解析", as
       }
     }
     expect(missing).toEqual([]);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+// 容器的 production 环境不得改变历史内联产物在未配置认证变量时的缺省行为。
+test("Docker bundle 保留缺省认证配置与 HTTP Cookie 行为", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "fenix-auth-bundle-"));
+  try {
+    const buildInstruction = readDockerStageInstructions(readRepoFile("Dockerfile"), "build").find((instruction) =>
+      /^RUN\s+bun\s+build\s+apps\/server\/src\/entry\.ts(?:\s|$)/.test(instruction),
+    );
+    if (!buildInstruction) throw new Error("Docker server build instruction not found");
+    const args = parseDockerShellWords(buildInstruction.slice(4).replace(/\$\{GIT_COMMIT_SHA\}/g, "test-build"));
+    args[2] = "apps/server/src/__tests__/fixtures/auth-bundle-defaults-probe.ts";
+    args[args.indexOf("--outdir") + 1] = fixtureRoot;
+    await symlink(resolve(repoRoot, "node_modules"), join(fixtureRoot, "node_modules"), "dir");
+    const env = { ...process.env };
+    for (const name of ["NODE_ENV", "BETTER_AUTH_SECRET", "AUTH_SECRET", "BETTER_AUTH_URL", "AUTH_URL", "BUN_TEST"])
+      delete env[name];
+    const build = Bun.spawn([process.execPath, ...args.slice(1)], {
+      cwd: repoRoot,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [buildExitCode, buildOut, buildErr] = await Promise.all([
+      build.exited,
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
+    ]);
+    expect({ exitCode: buildExitCode, output: buildExitCode === 0 ? "" : buildOut + buildErr }).toEqual({
+      exitCode: 0,
+      output: "",
+    });
+    const child = Bun.spawn([process.execPath, join(fixtureRoot, "index.js")], {
+      cwd: fixtureRoot,
+      env: { ...env, NODE_ENV: "production" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect({ exitCode, error: exitCode === 0 ? "" : stderr }).toEqual({ exitCode: 0, error: "" });
+    expect(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")).toMatchObject({
+      name: "better-auth.session_token",
+      attributes: { secure: false, httpOnly: true, sameSite: "lax" },
+    });
   } finally {
     await rm(fixtureRoot, { force: true, recursive: true });
   }

@@ -33,8 +33,8 @@ COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
 RUN bun run build:machine-runtime
-# TS paths 别名会绕过 --packages=external；显式外置 workspace，保留各包局部依赖的解析位置。
-RUN bun build apps/server/src/entry.ts --target=bun --splitting --packages=external --external '@fenix/*' --sourcemap=external --outdir dist --entry-naming index.js \
+# 业务依赖保持内联以保留既有默认行为；仅外置自动观测必须 hook 的日志器与数据库驱动。
+RUN bun build apps/server/src/entry.ts --target=bun --splitting --external '@fenix/logger' --external '@fenix/logger/*' --external pg --external ioredis --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
@@ -128,7 +128,7 @@ RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
-# 外置依赖保留社区 hook 可见的原始模块；workspace 链接与宿主入口使用同一份安装结果。
+# 为观测 hook 保留 logger、PG 与 Redis 的原始模块及 workspace 解析上下文。
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/apps/server ./apps/server
