@@ -4,9 +4,9 @@ WORKDIR /build
 COPY package.json bun.lock ./
 COPY packages ./packages
 RUN bun install --frozen-lockfile
-# bundle 为独立 JS（含 acp-link 与 workspace 引擎依赖），运行时只需 bun
+# 安全上传包含 C 文件资源，必须按目录输出并完整交付。
 RUN bun build packages/acp-runtime-cli/src/bin.ts --target=bun \
-    --outfile /tmp/acp-runtime/dist/bin.js
+    --outdir /tmp/acp-runtime/dist --entry-naming acp-runtime.js
 
 # ── CCB Sandbox 运行时 (Node.js) ────────────────────────
 FROM node:22-bookworm-slim
@@ -27,7 +27,7 @@ RUN printf 'registry=%s\n' \
 
 # bun 运行时：本地构建的 bundle 使用 Bun.serve，需以 bun 执行
 COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
-COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-runtime.js
+COPY --from=acp-runtime-build /tmp/acp-runtime/dist/ /usr/local/bin/
 
 # 安装 Claude Code (CCB)
 RUN npm install -g claude-code-best@2.8.1
