@@ -6,6 +6,15 @@ export type RemoteNodeTransportSlot = {
   remoteTransport?: RemoteTransport;
 };
 
+/** 远端节点注册模式。 */
+export interface RegisterRemoteNodeOptions {
+  /**
+   * 同 server epoch 的传输重连：复用现有 transport 与 runtime 映射，只把连接切换给新 WS。
+   * 缺省（clean-slate / 首次注册）仍按旧语义收敛该机器上的旧实例。
+   */
+  preserveRuntime?: boolean;
+}
+
 /**
  * 宿主提供的 Core runtime 能力。
  *
@@ -18,6 +27,7 @@ export interface CoreRuntimePort {
     ws: WsConnectionLike,
     entry: RemoteNodeTransportSlot,
     engineTypes?: string[],
+    options?: RegisterRemoteNodeOptions,
   ): void;
   unregisterRemoteNode(machineId: string): void;
 }

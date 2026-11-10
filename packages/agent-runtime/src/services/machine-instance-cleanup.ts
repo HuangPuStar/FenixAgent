@@ -74,3 +74,29 @@ export function convergeMachineInstances(machineId: string, options: { runtimeTe
 
   return removed;
 }
+
+/**
+ * 同 server epoch 重连的对账收敛：只删除机器未再上报（或无法归属）的 runtime。
+ *
+ * 与 {@link convergeMachineInstances} 的区别是保留策略由调用方给出；被删实例的事实来源是
+ * 「机器存活清单里没有它」，因此按 `handleRuntimeDeath` 直接置 stopped，而不是进入 unknown
+ * 等待 clean-slate 复检。
+ */
+export function reconcileMachineInstances(machineId: string, keepInstanceUids: ReadonlySet<string>): string[] {
+  const runtime = getBoundCoreRuntime();
+  const removedInstanceIds: string[] = [];
+
+  for (const instance of runtime.listInstances()) {
+    if (instance.nodeId !== machineId || keepInstanceUids.has(instance.instanceId)) continue;
+    if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
+      agentInstanceRuntimeCoordinator.handleRuntimeDeath(instance.instanceId, instance.runtimeGeneration);
+    }
+    runtime.deleteInstance(instance.instanceId);
+    globalInstanceRegistry.unregisterAndDeleteCounter(instance.instanceId);
+    removedInstanceIds.push(instance.instanceId);
+    log(`[machine-instance-cleanup] Reconcile removed instance ${instance.instanceId} on machine ${machineId}`);
+  }
+
+  removeOrchestrationInstancesForMachine(machineId, keepInstanceUids);
+  return removedInstanceIds;
+}

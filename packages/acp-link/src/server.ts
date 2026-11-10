@@ -9,7 +9,13 @@ import { createPeriHandler } from "@fenix/peri";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { forwardUserInputQueueRequest } from "./acp-dispatcher.js";
 import { cancelAllFileOps, cancelFileOp, handleFileOp } from "./client/file-operations.js";
-import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
+import {
+  type AcceptedInstance,
+  type AgentType,
+  type EngineHandler,
+  InstanceManager,
+  type RejectedInstance,
+} from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import { extractModelState, extractModeState } from "./config-options-utils.js";
@@ -219,6 +225,36 @@ export function buildRegisterMessage(config: ServerConfig): object {
 // Client mode: connects to RCS registry as WebSocket client
 // ---------------------------------------------------------------------------
 
+/** 解析主服务对账结果中的 accepted 列表；结构不合法时返回 null（按协议错误关闭）。 */
+function parseAcceptedInstances(raw: unknown): AcceptedInstance[] | null {
+  if (!Array.isArray(raw)) return null;
+  const accepted: AcceptedInstance[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    if (typeof record.instance_uid !== "string" || typeof record.runtime_generation !== "number") return null;
+    accepted.push({ instance_uid: record.instance_uid, runtime_generation: record.runtime_generation });
+  }
+  return accepted;
+}
+
+/** 解析 rejected 列表；缺失字段的条目按协议错误处理。 */
+function parseRejectedInstances(raw: unknown): RejectedInstance[] | null {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return null;
+  const rejected: RejectedInstance[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    if (typeof record.instance_uid !== "string") return null;
+    rejected.push({
+      instance_uid: record.instance_uid,
+      reason: typeof record.reason === "string" ? record.reason : "rejected",
+    });
+  }
+  return rejected;
+}
+
 export function createAcpClient(config: ServerConfig): AcpServerHandle {
   if (!config.rcsUrl) {
     throw new Error("rcsUrl is required for client mode");
@@ -319,47 +355,83 @@ export function createAcpClient(config: ServerConfig): AcpServerHandle {
     if (manualClose) return;
     const connectionStartedAt = Date.now();
     let registered = false;
-    ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    ws = socket;
 
     ws.onopen = () => {
+      if (ws !== socket) return;
       reconnectAttempt = 0;
-      ws!.send(JSON.stringify(buildRegisterMessage(config)));
-
-      // 重连后：为所有存活的子进程发送 session_resumed
-      for (const sessionId of sessionMgr.getAliveSessionIds()) {
-        ws!.send(
-          JSON.stringify({
-            type: "session_resumed",
-            session_id: sessionId,
-          }),
-        );
+      const registerMessage: Record<string, unknown> = { ...buildRegisterMessage(config) };
+      if (serverEpoch !== null) {
+        // 携带上次看到的 epoch 与存活清单：主服务据此区分同 epoch 传输重连与 runtime replacement。
+        registerMessage.server_epoch = serverEpoch;
+        registerMessage.instances = instanceMgr.getInventory();
       }
+      socket.send(JSON.stringify(registerMessage));
     };
 
     ws.onmessage = async (event) => {
+      // 旧连接被新 owner 接管后不得再影响当前状态（双投递/迟到确认防护）。
+      if (ws !== socket) return;
       try {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
           case "registered": {
-            if (
-              msg.protocol_version !== MACHINE_PROTOCOL_VERSION ||
-              typeof msg.server_epoch !== "string" ||
-              msg.clean_slate_required !== true
-            ) {
-              ws?.close(4406, "incompatible machine protocol");
+            const registeredEpoch = msg.server_epoch;
+            if (msg.protocol_version !== MACHINE_PROTOCOL_VERSION || typeof registeredEpoch !== "string") {
+              socket.close(4406, "incompatible machine protocol");
               break;
             }
-            serverEpoch = msg.server_epoch;
-            await instanceMgr.cleanSlate();
-            ws!.send(
-              JSON.stringify({
-                type: "clean_slate_confirmed",
-                protocol_version: MACHINE_PROTOCOL_VERSION,
-                server_epoch: serverEpoch,
-              }),
-            );
+            if (msg.clean_slate_required === true) {
+              serverEpoch = registeredEpoch;
+              await instanceMgr.cleanSlate();
+              if (ws !== socket) break;
+              socket.send(
+                JSON.stringify({
+                  type: "clean_slate_confirmed",
+                  protocol_version: MACHINE_PROTOCOL_VERSION,
+                  server_epoch: serverEpoch,
+                }),
+              );
+            } else if (msg.clean_slate_required === false) {
+              // 同 epoch 重连：只保留主服务确认归属的实例，其余严格停止；不重发任何 prompt。
+              if (serverEpoch === null || registeredEpoch !== serverEpoch) {
+                socket.close(4406, "reconcile requires the same server epoch");
+                break;
+              }
+              const reconcile = msg.reconcile as Record<string, unknown> | undefined;
+              const accepted = parseAcceptedInstances(reconcile?.accepted_instances);
+              const rejected = parseRejectedInstances(reconcile?.rejected_instances);
+              if (!accepted || !rejected) {
+                socket.close(4406, "invalid reconcile payload");
+                break;
+              }
+              let confirmed: Awaited<ReturnType<InstanceManager["applyReconcile"]>>;
+              try {
+                confirmed = await instanceMgr.applyReconcile(accepted, rejected, registeredEpoch);
+              } catch (err) {
+                console.error("[acp-client] reconcile failed:", err);
+                socket.close(1011, "reconcile failed");
+                break;
+              }
+              if (ws !== socket) break;
+              socket.send(
+                JSON.stringify({
+                  type: "reconcile_confirmed",
+                  protocol_version: MACHINE_PROTOCOL_VERSION,
+                  server_epoch: serverEpoch,
+                  instances: confirmed,
+                }),
+              );
+            } else {
+              socket.close(4406, "incompatible machine protocol");
+              break;
+            }
             registered = true;
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
+            if (heartbeatTimer) {
+              clearInterval(heartbeatTimer);
+            }
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: "heartbeat" }));
@@ -502,6 +574,18 @@ export function createAcpClient(config: ServerConfig): AcpServerHandle {
             };
             reconnectFileWs = reconnectFileWsNow;
             connectFileWs();
+
+            // 注册完成后才允许恢复旧 session 观察；提前发送会在 clean-slate/对账确认前被 4406 关闭。
+            for (const sessionId of sessionMgr.getAliveSessionIds()) {
+              if (ws === socket && socket.readyState === 1) {
+                socket.send(
+                  JSON.stringify({
+                    type: "session_resumed",
+                    session_id: sessionId,
+                  }),
+                );
+              }
+            }
             break;
           }
           case "session_start": {
@@ -791,6 +875,8 @@ export function createAcpClient(config: ServerConfig): AcpServerHandle {
     };
 
     ws.onclose = (event) => {
+      // 旧连接已被新 owner 接管：它的事件不得清理当前连接的心跳/file-ws 或触发重连。
+      if (ws !== socket) return;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
@@ -840,6 +926,7 @@ export function createAcpClient(config: ServerConfig): AcpServerHandle {
     };
 
     ws.onerror = () => {
+      if (ws !== socket) return;
       const lifetimeMs = Date.now() - connectionStartedAt;
       console.warn(
         `[acp-client] main-ws error machineId=${config.machineId} registered=${registered} lifetimeMs=${lifetimeMs}; awaiting close event for code/reason`,
