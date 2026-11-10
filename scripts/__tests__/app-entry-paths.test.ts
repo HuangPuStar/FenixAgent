@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveCtrlStaticAssetsDirectory } from "../../apps/server/src/plugins/static";
@@ -218,6 +219,56 @@ test("Docker 生产交付路径使用 apps workspace", () => {
   ).toBe(true);
   expect(runtimeInstructions).toContain("COPY --from=build /app/apps/web/dist ./apps/web/dist");
   expect(findLegacyRootCopySources(dockerfile)).toEqual([]);
+});
+
+// workspace 源码被别名内联后，其局部依赖会移到 dist 解析；真实构建必须保留可解析的依赖图。
+test("Docker server bundle 的所有外置依赖都能从交付目录解析", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "fenix-server-bundle-"));
+
+  try {
+    const buildInstruction = readDockerStageInstructions(readRepoFile("Dockerfile"), "build").find((instruction) =>
+      /^RUN\s+bun\s+build\s+apps\/server\/src\/entry\.ts(?:\s|$)/.test(instruction),
+    );
+    if (!buildInstruction) throw new Error("Docker server build instruction not found");
+
+    const args = parseDockerShellWords(buildInstruction.slice(4).replace(/\$\{GIT_COMMIT_SHA\}/g, "test-build"));
+    const outdirIndex = args.indexOf("--outdir");
+    expect(outdirIndex).toBeGreaterThan(-1);
+    const bundleDir = join(fixtureRoot, "dist");
+    args[outdirIndex + 1] = bundleDir;
+    await symlink(resolve(repoRoot, "node_modules"), join(fixtureRoot, "node_modules"), "dir");
+
+    const child = Bun.spawn([process.execPath, ...args.slice(1)], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect({ exitCode, output: exitCode === 0 ? "" : stdout + stderr }).toEqual({ exitCode: 0, output: "" });
+
+    const scanner = new Bun.Transpiler({ loader: "js" });
+    const missing: { bundle: string; dependency: string }[] = [];
+    const bundleFiles = Array.from(new Bun.Glob("*.js").scanSync(bundleDir));
+    expect(bundleFiles).toContain("index.js");
+    for (const bundle of bundleFiles) {
+      const bundlePath = join(bundleDir, bundle);
+      for (const dependency of scanner.scanImports(await Bun.file(bundlePath).text())) {
+        if (isBuiltin(dependency.path)) continue;
+        try {
+          Bun.resolveSync(dependency.path, bundleDir);
+        } catch {
+          missing.push({ bundle, dependency: dependency.path });
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
 });
 
 // 源码模式必须从模块位置推导应用根，不能受调用进程的工作目录影响。
