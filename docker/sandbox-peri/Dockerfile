@@ -34,7 +34,8 @@ COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=acp-runtime-build /tmp/acp-runtime/dist/ /usr/local/bin/
 
 # 与根 Dockerfile 保持同一官方安装方式；该镜像独立构建，不能复用控制面镜像层，故保留此处安装。
-RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+RUN export PERI_INSTALL_DIR=/opt/.peri-binary PERI_INSTALL_VERSION=agent-v4.6.5 \
+    && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
 ENV PATH="/opt/.peri-binary:$PATH"
 
 RUN mkdir -p /app/workspaces
