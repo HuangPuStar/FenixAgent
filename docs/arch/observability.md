@@ -4,7 +4,7 @@
 
 1. `apps/server/src/telemetry/` 是唯一服务端 SDK 装配入口；业务包仅调用 `@opentelemetry/api`，不持有 exporter、OO URL 或 Provider。
 2. 应用只用 OTLP/HTTP Protobuf 连接 Collector；OO 组织、凭据、流路由只在 Collector 出口出现。Langfuse/Peri-Fuse 继续负责模型与工具明细。
-3. `entry.ts` 初始化 SDK 后动态导入 `main.ts`。生产 Bun 构建启用 `--splitting --packages=external` 并显式外置 `@fenix/logger` 及其子路径，运行镜像携带同一份依赖与 workspace，不能将入口改回直接加载 main。
+3. `entry.ts` 初始化 SDK 后动态导入 `main.ts`。生产 Bun 构建启用 `--splitting`，业务依赖保持内联；仅外置社区 hook 所需的 `@fenix/logger`（含子路径）、`pg` 与 `ioredis`，运行镜像携带同一份依赖与 workspace。禁止全量 `--packages=external` 或外置 `@fenix/*`，避免依赖从构建期默认值切换为读取运行环境，改变认证等既有默认行为；不能将入口改回直接加载 main。
 4. Bun 的 ESM import 不采用 Node require hook 返回值。初始化入口经社区插件加载 PG/pg-pool/ioredis/Pino 后写回同一模块缓存，不复制插件协议或自建遥测传输。
 
 ## 2. 生命周期与资源

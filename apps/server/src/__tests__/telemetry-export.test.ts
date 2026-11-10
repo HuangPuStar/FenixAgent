@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-// 源码和生产同形的外置依赖 bundle 都要实际导出三信号，日志只能一次且不能泄漏内容。
+// 生产同形的内联 bundle 必须保留三信号与驱动 hook，日志只能一次且不能泄漏内容。
 test("Bun 源码与 bundle 使用同一 SDK 导出三信号", async () => {
   const root = new URL("../../../../", import.meta.url).pathname;
   const output = await mkdtemp(join(root, ".tmp-telemetry-"));
@@ -15,11 +15,14 @@ test("Bun 源码与 bundle 使用同一 SDK 导出三信号", async () => {
         fixture,
         "--target=bun",
         "--splitting",
-        "--packages=external",
         "--external",
         "@fenix/logger",
         "--external",
         "@fenix/logger/*",
+        "--external",
+        "pg",
+        "--external",
+        "ioredis",
         "--outdir",
         output,
       ],
