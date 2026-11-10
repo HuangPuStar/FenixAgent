@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -219,6 +219,68 @@ test("Docker 生产交付路径使用 apps workspace", () => {
   ).toBe(true);
   expect(runtimeInstructions).toContain("COPY --from=build /app/apps/web/dist ./apps/web/dist");
   expect(findLegacyRootCopySources(dockerfile)).toEqual([]);
+});
+
+// 沙盒运行时包含文件资源，真实构建和跨 stage 复制必须交付完整产物，且 CMD 入口可独立运行。
+test.each(["peri", "ccb", "opencode", "dsh"])("sandbox-%s 完整交付 runtime bundle 与资源", async (variant) => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "fenix-sandbox-bundle-"));
+  try {
+    const dockerfile = readRepoFile(`docker/sandbox-${variant}/Dockerfile`);
+    const buildInstruction = readDockerStageInstructions(dockerfile, "acp-runtime-build").find((instruction) =>
+      instruction.startsWith("RUN bun build "),
+    );
+    if (!buildInstruction) throw new Error("Sandbox runtime build instruction not found");
+    const bundleDir = join(fixtureRoot, "bundle");
+    const args = parseDockerShellWords(buildInstruction.slice(4).replaceAll("/tmp/acp-runtime/dist", bundleDir));
+    const build = Bun.spawn([process.execPath, ...args.slice(1)], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [buildExitCode, buildOut, buildErr] = await Promise.all([
+      build.exited,
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
+    ]);
+    expect({ exitCode: buildExitCode, output: buildExitCode === 0 ? "" : buildOut + buildErr }).toEqual({
+      exitCode: 0,
+      output: "",
+    });
+
+    const instructions = readDockerInstructions(dockerfile);
+    const copy = instructions.find((instruction) => instruction.startsWith("COPY --from=acp-runtime-build "));
+    if (!copy) throw new Error("Sandbox runtime COPY instruction not found");
+    const [, , source, destination] = parseDockerShellWords(copy);
+    if (!source || !destination) throw new Error("Invalid sandbox runtime COPY instruction");
+    const imageRoot = join(fixtureRoot, "image");
+    const deliveredDir = resolve(imageRoot, `.${destination}`);
+    await mkdir(resolve(deliveredDir, ".."), { recursive: true });
+    await cp(source.replace("/tmp/acp-runtime/dist", bundleDir), deliveredDir, { recursive: true });
+    const outputs = await readdir(bundleDir);
+    expect(outputs.some((name) => name.endsWith(".c"))).toBe(true);
+    expect(await readdir(deliveredDir)).toEqual(outputs);
+
+    const cmd = instructions.find((instruction) => instruction.startsWith("CMD "));
+    if (!cmd) throw new Error("Sandbox runtime CMD instruction not found");
+    const [runtime, entrypoint] = JSON.parse(cmd.slice(4)) as string[];
+    expect(runtime).toBe("bun");
+    expect(entrypoint).toBe("/usr/local/bin/acp-runtime.js");
+    if (!entrypoint) throw new Error("Sandbox runtime entrypoint not found");
+    const child = Bun.spawn([process.execPath, resolve(imageRoot, `.${entrypoint}`)], {
+      cwd: fixtureRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect({ exitCode, stderr }).toEqual({ exitCode: 1, stderr: "" });
+    expect(stdout).toContain("用法: acp-runtime <agent-command> [agent-args...]");
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
 });
 
 // workspace 源码被别名内联后，其局部依赖会移到 dist 解析；真实构建必须保留可解析的依赖图。
