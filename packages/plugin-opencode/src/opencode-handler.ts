@@ -2,6 +2,7 @@ import { buildOpencodeRuntimeConfig, installSkills, writeOpencodeConfig } from "
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
+import { trackAgentProcessLifecycle } from "acp-link/client/agent-process-lifecycle";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
 import { prepareLaunchWorkspace } from "./runtime/environment-preparer";
@@ -55,13 +56,6 @@ export function createOpencodeHandler(
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
       const connection = adaptOpencodeConnection(rawConnection);
 
-      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
-      (proc as any).on("exit", (code: number | null) => {
-        console.log(`[opencode-handler] opencode exited: ${instanceId}, code=${code}`);
-        state.process = null;
-        state.connection = null;
-      });
-
       state.process = proc;
       state.connection = connection;
       state.capabilities = capabilities;
@@ -84,6 +78,19 @@ export function createOpencodeHandler(
         send,
         workspace: state.workspace,
         onPermissionOutcome: resolvePermissionOutcome,
+      });
+
+      // 与 peri/ccb 共用同一收口：exit、connection.closed、stdout EOF 只广播一次失联。
+      trackAgentProcessLifecycle({
+        state,
+        process: proc,
+        connection,
+        send,
+        instanceId,
+        engine: "opencode",
+        cancelPendingInteractions: () => {
+          resolvePermissionOutcome("__cancel_all__", { outcome: "cancelled" });
+        },
       });
 
       console.log(`[opencode-handler] started: ${instanceId}`);

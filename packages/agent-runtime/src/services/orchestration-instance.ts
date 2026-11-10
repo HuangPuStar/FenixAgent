@@ -8,6 +8,7 @@ import { log, error as logError, requestAls } from "@fenix/logger";
 import type { Instance } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { SERVER_EPOCH } from "@fenix/remote-runtime";
 import { getAgentRuntimeConfig } from "../server/config";
 import { environmentRepo } from "../server/repositories/environment";
 import { getAgentConfigLookupPort } from "../server/services/agent-config-lookup-port";
@@ -384,6 +385,40 @@ export async function terminateLocalDeadInstance(
     // 校验或清理过程中的任何异常都不得向上传播（fire-and-forget），
     // 由 idle monitor 兜底回收，避免死亡信号处理本身造成新的失败
     logError(`[local-relay-death] cleanup failed for ${instanceId}:`, err);
+  }
+}
+
+/**
+ * 远端 Agent 子进程死亡（machine 主连接仍存活）后的运行实体回收。
+ *
+ * 不走 `stopInstanceViaController`：那会关闭 relay 并回收内存 Y.Doc，而子进程死亡只需要
+ * 让下一次 ensure 经 Coordinator 启动新一代。因此这里同步删除 core 记录与活跃表条目，
+ * 保留实时文档由重连后的新实例继续写入；迟到的旧代死亡事件按 runtimeGeneration fence 忽略。
+ */
+export function terminateRemoteDeadInstance(instanceId: string, runtimeGeneration: number): void {
+  try {
+    const runtime = getCoreRuntime();
+    const snapshot = runtime.getInstance(instanceId);
+    if (!snapshot) return;
+    // local-default 的死亡由 relay_closed 路径处理（terminateLocalDeadInstance），不在此重复回收。
+    if (snapshot.nodeId === LOCAL_DEFAULT_NODE_ID) return;
+    if (snapshot.status !== "running" && snapshot.status !== "error") return;
+    if (snapshot.runtimeGeneration !== runtimeGeneration || snapshot.serverEpoch !== SERVER_EPOCH) return;
+
+    const controller = _deps.getOrchestrationController();
+    if (controller.listInstances().some((instance) => instance.instanceId === instanceId)) {
+      // 同步移出活跃表并归还节点引用；停止帧发往已死进程是幂等的，失败不影响收敛。
+      controller.stopInstance(instanceId).catch((err) => {
+        logError(`[remote-relay-death] orchestration stop failed for ${instanceId}:`, err);
+      });
+    }
+    runtime.deleteInstance(instanceId);
+    globalInstanceRegistry.unregister(instanceId);
+    agentInstanceRuntimeCoordinator.handleRuntimeDeath(instanceId, runtimeGeneration);
+    log(`[remote-relay-death] reclaimed dead remote instance ${instanceId} generation=${runtimeGeneration}`);
+  } catch (err) {
+    // 死亡信号处理本身不得制造新失败；最坏情况下由 idle 回收兜底。
+    logError(`[remote-relay-death] cleanup failed for ${instanceId}:`, err);
   }
 }
 
