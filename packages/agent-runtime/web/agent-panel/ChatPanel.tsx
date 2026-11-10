@@ -74,7 +74,17 @@ const EMPTY_STATE_SHELL_CLASS = "flex h-full flex-col items-center justify-cente
  * 且三处都要写；② 图标与标题整体降一档，整屏欢迎态变得像一条内联提示，而同一面板的错误分支用的是
  * 「占满面板」的 `PublicErrorCard`，两者会并排成两种版式。故此处按「克制」取舍：骨架留本地、不迁移版式。
  */
-function PanelEmptyState({ icon, title, description }: { icon?: ReactNode; title: string; description?: string }) {
+function PanelEmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon?: ReactNode;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className={EMPTY_STATE_SHELL_CLASS}>
       {icon}
@@ -82,6 +92,7 @@ function PanelEmptyState({ icon, title, description }: { icon?: ReactNode; title
           色取 `text-text-secondary`（#64748b）：`text-secondary` 是面色档（#f1f5f9），浅色下与白底同色。 */}
       <p className="text-16 font-semibold text-text-secondary">{title}</p>
       {description && <p className="text-13">{description}</p>}
+      {action}
     </div>
   );
 }
@@ -150,6 +161,8 @@ function ChatPanelView({
     legacyFallbackUsable,
     retryHistoryRecovery,
     autoReconnecting,
+    reconnectExhausted,
+    retryConnection,
     terminalUiCode,
     rcsSessionKey,
     historyScopeKey,
@@ -388,13 +401,33 @@ function ChatPanelView({
     );
   }
 
-  // 断开仅表示连接生命周期；状态机可自行重连，不生成业务错误或恢复操作。
+  // 断开仅表示连接生命周期：自动重试仍在进行时展示轻提示；重试耗尽后必须给出明确停止说明
+  // 与可点击的重连入口，不能再声称「正在自动重连」。终态码的专用空态已在上方分支返回。
   return (
     <>
       {promptRecoveryNotice}
       <PanelEmptyState
-        title={autoReconnecting ? t("reconnecting") : t("agentDisconnected")}
-        description={autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}
+        title={
+          autoReconnecting ? t("reconnecting") : reconnectExhausted ? t("reconnectExhausted") : t("agentDisconnected")
+        }
+        description={
+          autoReconnecting
+            ? t("reconnectingDesc")
+            : reconnectExhausted
+              ? t("reconnectExhaustedDesc")
+              : t("agentOfflineDesc")
+        }
+        action={
+          autoReconnecting ? undefined : (
+            <button
+              type="button"
+              className="rounded-md border border-border-subtle px-3 py-1 text-13 font-medium text-text-primary hover:bg-surface-2"
+              onClick={retryConnection}
+            >
+              {t("reconnectNow")}
+            </button>
+          )
+        }
       />
     </>
   );

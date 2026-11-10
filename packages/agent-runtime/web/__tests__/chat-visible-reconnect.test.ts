@@ -50,6 +50,16 @@ describe("shouldAutoReconnectOnVisible", () => {
     expect(shouldAutoReconnectOnVisible(false, true, "error", "environment_unavailable")).toBe(false);
   });
 
+  // instance_stopped（4002）是用户主动停止：自动重启会覆盖用户意图，只保留显式重连
+  test("does not fire when instance was explicitly stopped", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "instance_stopped")).toBe(false);
+  });
+
+  // unauthorized（4003）是权限拒绝：自动重试只会重复使用无效凭据
+  test("does not fire when access was denied", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "unauthorized")).toBe(false);
+  });
+
   // max_sessions_reached 是配置上限但实例可能随后被释放：切回前台应自动重连一次尝试恢复
   test("fires when max sessions reached so a released instance can be recovered", () => {
     expect(shouldAutoReconnectOnVisible(false, true, "error", "max_sessions_reached")).toBe(true);
