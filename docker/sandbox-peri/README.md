@@ -142,8 +142,8 @@ docker compose -f docker/sandbox-peri/docker-compose.yml up -d
 ```
 
 - 工作区与 peri 全局目录都在宿主 `./data/` 与 `../../workspaces`，重建容器不影响数据。
-- peri CLI 由官方 `install.sh` 安装（当前不带版本参数，取默认分支产物）：自建时必须
-  `--build-arg CACHE_BUST=…` 或 `--no-cache`，否则会静默复用旧层（见上「镜像构建与发布」）；
+- peri CLI 由官方 `install.sh` 安装，通过 `PERI_INSTALL_VERSION=agent-v4.6.5` 固定版本；更新 CLI 时修改
+  Dockerfile 中的版本标签，刷新 hindsight 插件时传入 `--build-arg CACHE_BUST=…`（见上「镜像构建与发布」）；
   自建会占用发布 tag 的本地镜像，需要回到发布版本时 `docker compose … pull` 覆盖回来。
 - 升级后按「验证」一节回归：节点上线、模型下发、会话可用。
 
