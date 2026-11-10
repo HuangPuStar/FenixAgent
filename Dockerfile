@@ -33,7 +33,8 @@ COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
 RUN bun run build:machine-runtime
-RUN bun build apps/server/src/entry.ts --target=bun --splitting --packages=external --external '@fenix/logger' --external '@fenix/logger/*' --sourcemap=external --outdir dist --entry-naming index.js \
+# TS paths 别名会绕过 --packages=external；显式外置 workspace，保留各包局部依赖的解析位置。
+RUN bun build apps/server/src/entry.ts --target=bun --splitting --packages=external --external '@fenix/*' --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
