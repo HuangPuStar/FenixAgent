@@ -2,13 +2,15 @@
 
 聊天中输出 `<agent-sites>` 标签，渲染为内嵌站点预览卡片。卡片下方展示可点击的「查看站点」按钮，上方展示站点 iframe 实时预览。
 
+仅在已获取本次任务相关站点的真实 `remoteAppId` 时输出。能力咨询或创建中止等无可关联站点的情况不输出卡片，不使用占位 ID。
+
 ## 格式
 
 ```
 <agent-sites agent-site-id="app-91a0621c"/>
 ```
 
-- `agent-site-id` 填建站 API 返回的 `remoteAppId`（形如 `app-xxxx`），卡片渲染为 iframe 预览 + 下方「查看站点」按钮
+- `agent-site-id` 填创建或详情 API 返回的 `remoteAppId`（形如 `app-xxxx`），卡片渲染为 iframe 预览 + 下方「查看站点」按钮
 
 ## 规则
 
@@ -16,7 +18,7 @@
 
 - **单独一行**，前后不加任何文字
 - **放在回复最末尾**，自成一段
-- `agent-site-id` 填建站 API 返回的 `remoteAppId`（形如 `app-xxxx`），不是 RCS 内部 UUID
+- `agent-site-id` 填创建或详情 API 返回的 `remoteAppId`（形如 `app-xxxx`），不是 RCS 内部 UUID
 
 ### 禁止
 

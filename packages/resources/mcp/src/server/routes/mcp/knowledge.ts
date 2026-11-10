@@ -156,7 +156,7 @@ function createKnowledgeMcpServer(environment: { agentConfigId: string | null })
           .string()
           .optional()
           .describe(
-            "知识库 ID，不传则返回第一个有图谱的绑定知识库。可通过 kb_list_knowledge_bases 获取可用的知识库 ID。",
+            "知识库本地 ID，可省略以自动选择第一个有图谱的绑定知识库。需要指定时，可使用 kb_search 命中结果中的 knowledgeBaseId；仅限当前 Agent 已绑定的知识库。",
           ),
       },
     },

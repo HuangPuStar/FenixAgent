@@ -204,6 +204,8 @@ sequenceDiagram
 
 ### 4.2 LaunchSpec 内容与边界
 
+运行时桥接从服务端 Environment 记录向 `launchSpec.env` 注入 `AGENT_CONFIG_ID`（绑定的 Agent 配置 ID）与 `ENVIRONMENT_ID`（Environment ID），本地启动、远端启动与环境刷新共用该入口。这两个身份键不接受 `extraEnv` 覆盖；未绑定 Agent 配置的最小启动路径将 `AGENT_CONFIG_ID` 置为空字符串，消费方应在依赖配置身份的操作前明确校验。引擎继续通过现有配置物化与子进程环境传递这两个键，无需额外继承宿主环境变量。
+
 `LaunchSpec` 是启动 Agent 实例所需的全部静态信息聚合视图，构建后不可变：
 
 | 内容 | 说明 |

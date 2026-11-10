@@ -4,6 +4,10 @@ Agent Sites 是一个轻量级建站平台，每个 App = 独立 PocketBase 后�
 
 ## 前置
 
+创建和修改站点前校验 `AGENT_CONFIG_ID` 与 `ENVIRONMENT_ID` 非空；缺失时停止并报告配置问题，不猜测身份或省略创建者。创建与分权自检的可执行示例以 `agent-sites-build` skill 为准。
+
+以下 shell 示例使用 Bash 参数数组保存鉴权 headers，执行时用 `"${AUTH[@]}"` 展开，不使用嵌套引号字符串。
+
 以下环境变量由系统自动注入（同其他 RCS API）：
 
 - `$USER_META_BASE_URL` — RCS API 地址
@@ -12,7 +16,7 @@ Agent Sites 是一个轻量级建站平台，每个 App = 独立 PocketBase 后�
 
 ```bash
 BASE="$USER_META_BASE_URL/web/agent-sites"
-AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: application/json'"
+AUTH=(-H "Authorization: Bearer $USER_META_API_KEY" -H "Content-Type: application/json")
 ```
 
 ## Quick Start
@@ -24,21 +28,25 @@ AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: applicatio
 自动在 agent-sites 平台创建远程 App + 申请 platform token + 写入 RCS DB。
 
 ```bash
-RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d "{\"name\":\"my-app\",\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
-APP_ID=$(echo "$RESP" | jq -r '.data.id')
-REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
+: "${AGENT_CONFIG_ID:?缺少当前 Agent 配置 ID}" "${ENVIRONMENT_ID:?缺少当前环境 ID}"
+RESP=$(jq -n --arg agentConfigId "$AGENT_CONFIG_ID" \
+  '{name:"my-app",visibility:"private",agentConfigId:$agentConfigId}' | \
+  curl --fail-with-body -sS -X POST "$BASE/apps" \
+    -H "Authorization: Bearer $USER_META_API_KEY" \
+    -H "Content-Type: application/json" --data-binary @-) || exit 1
+APP_ID=$(printf '%s' "$RESP" | jq -er 'select(.success == true) | .data.id | strings | select(length > 0)') || exit 1
+REMOTE_APP_ID=$(printf '%s' "$RESP" | jq -er 'select(.success == true) | .data.remoteAppId | strings | select(length > 0)') || exit 1
 echo "APP_ID=$APP_ID"
 echo "REMOTE_APP_ID=$REMOTE_APP_ID"   # 形如 app-abcd1234
 ```
 
 - `name` 只允许 `[a-z0-9-]`、长度 1..32；中文/大写/空格/下划线会被 400 拒绝
 - `visibility`：`private`（仅创建者）/ `org`（组织内）/ `authenticated`（已登录）/ `public`（公开）。默认 `private`。**agent 硬性规则：用户未明确要求公开/组织可见时，必须传 `"private"`，不得省略 visibility 字段，不得擅自改为 public。**
-- `type`：`pocketbase`（默认，经典模式）/ `custom`（自定义应用）。custom 类型可选 `"enable_pb": true` 同时启动托管的 PocketBase 实例（详见 Custom App 章节）
-- **`agentConfigId`**（string，可选）：创建此 site 的 agent config id。**agent 创建时一律从 `$AGENT_CONFIG_ID` 环境变量读取并传入**，用于后续分权校验。不传则 `createdByAgentConfigId` 为 `null`，表示无创建者——所有绑定 agent 均可自由操作文件（但缺少溯源能力）。
+- `type`：`pocketbase`（默认，经典模式）/ `custom`（自定义应用）。当前 RCS 创建接口不支持 `enable_pb`，custom 不提供托管 PocketBase
+- **`agentConfigId`**（string，可选）：创建此 site 的 agent config id。**agent 创建时一律从 `$AGENT_CONFIG_ID` 环境变量读取并传入**，用于后续分权校验。不传则 `createdByAgentConfigId` 为 `null`，表示未记录创建者且缺少溯源能力；仍受平台授权约束。
 - RCS 后端自持 platform token，不暴露给用户
 
-> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdByAgentConfigId`（创建此 site 的 agent config UUID，可能为 `null` 表示创建者已删除，此时所有绑定 agent 均可操作）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
+> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdByAgentConfigId`（创建此 site 的 agent config UUID，可能为 `null` 表示未记录创建者或创建者已删除；仍须遵守平台授权）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
 
 ### 2. 配后端 collection
 
@@ -47,7 +55,7 @@ echo "REMOTE_APP_ID=$REMOTE_APP_ID"   # 形如 app-abcd1234
 ```bash
 L2="$BASE/apps/$APP_ID/api"
 
-curl -s -X POST $L2/collections $AUTH \
+curl -s -X POST $L2/collections "${AUTH[@]}" \
   -d '{
     "name":"messages","type":"base",
     "fields":[
@@ -69,10 +77,12 @@ curl -s -X POST $L2/collections $AUTH \
 
 ### 3. 上传前端文件
 
+平台不提供已部署文件的枚举接口。上传后按本地文件清单，带平台鉴权访问已知文件 URL，并检查状态码和内容。3xx 登录跳转或登录页不算验证通过。
+
 **单文件上传**（PUT，≤ 1 MiB）：
 
 ```bash
-curl -s -X PUT $BASE/apps/$APP_ID/files/index.html $AUTH \
+curl -s -X PUT $BASE/apps/$APP_ID/files/index.html "${AUTH[@]}" \
   --data-binary @index.html | jq '.data.path'
 ```
 
@@ -80,7 +90,7 @@ curl -s -X PUT $BASE/apps/$APP_ID/files/index.html $AUTH \
 
 ```bash
 tar czf site.tar.gz -C ./dist .
-curl -s -X POST $BASE/apps/$APP_ID/files/bundle $AUTH \
+curl -s -X POST $BASE/apps/$APP_ID/files/bundle "${AUTH[@]}" \
   --data-binary @site.tar.gz | jq '.data.total_files'
 ```
 
@@ -188,7 +198,7 @@ PUT 同路径直接覆盖（幂等）。编辑一律用 Read/Edit/Write 工具�
 查看当前线上内容：
 
 ```bash
-curl -s $USER_META_BASE_URL/$REMOTE_APP_ID/index.html
+curl --fail-with-body -sS "$USER_META_BASE_URL/$REMOTE_APP_ID/index.html" -H "Authorization: Bearer $USER_META_API_KEY"
 ```
 
 ## App 管理
@@ -196,17 +206,17 @@ curl -s $USER_META_BASE_URL/$REMOTE_APP_ID/index.html
 ### 查看列表
 
 ```bash
-curl -s $BASE/apps $AUTH | jq '.data[] | { id, name, remoteAppId, visibility }'
+curl -s $BASE/apps "${AUTH[@]}" | jq '.data[] | { id, name, remoteAppId, visibility }'
 ```
 
 ### 查看详情
 
 ```bash
 # 按 RCS 内部 UUID
-curl -s $BASE/apps/$APP_ID $AUTH | jq '.data'
+curl -s $BASE/apps/$APP_ID "${AUTH[@]}" | jq '.data'
 
 # 按 remoteAppId（app-xxxxxxxx）
-curl -s $BASE/apps/by-remote/$REMOTE_APP_ID $AUTH | jq '.data'
+curl -s $BASE/apps/by-remote/$REMOTE_APP_ID "${AUTH[@]}" | jq '.data'
 ```
 
 ### 更新 App（PATCH）
@@ -214,7 +224,7 @@ curl -s $BASE/apps/by-remote/$REMOTE_APP_ID $AUTH | jq '.data'
 可改 `name` / `description` / `visibility`。owner/admin 才有权限。
 
 ```bash
-curl -s -X PATCH $BASE/apps/$APP_ID $AUTH \
+curl -s -X PATCH $BASE/apps/$APP_ID "${AUTH[@]}" \
   -d '{"description":"新描述","visibility":"org"}' | jq '.data'
 ```
 
@@ -223,7 +233,7 @@ curl -s -X PATCH $BASE/apps/$APP_ID $AUTH \
 吊销旧 token + 申请新 token + 更新 DB。owner/admin 才有权限。
 
 ```bash
-curl -s -X POST $BASE/apps/$APP_ID/rotate-token $AUTH
+curl -s -X POST $BASE/apps/$APP_ID/rotate-token "${AUTH[@]}"
 ```
 
 > 重签后旧 platform token 立即失效。RCS 后端自持 token，agent 无需关心，但如果业务前端直接用了 token（不推荐），需要重新获取。
@@ -233,7 +243,7 @@ curl -s -X POST $BASE/apps/$APP_ID/rotate-token $AUTH
 真删：停远端 PB + 删数据 + 删前端 + 吊销所有 token + RCS DB 硬删 row，不可恢复。owner/admin 才有权限。
 
 ```bash
-curl -s -X DELETE $BASE/apps/$APP_ID $AUTH
+curl -s -X DELETE $BASE/apps/$APP_ID "${AUTH[@]}"
 ```
 
 > ⚠️ **L2 PB 透传不受 visibility 限制**：上面所有 L1 App 管理 API（PATCH/DELETE/rotate-token/upload）都要求 owner/admin 权限，但 **L2 PB 透传 `/apps/:id/api/*` 任何 org 成员可调**——只要在同一个组织内，普通成员也能用 platform token（superuser 权限）操作 private app 的 PocketBase 数据。`visibility` 只控制**业务前端访问**（浏览器 GET 站点），与 L2 API 调用无关。如果 app 内有敏感数据，注意组织内成员的访问边界。
@@ -246,18 +256,18 @@ agent 通过 L2 API 操作 PocketBase records（后端自动注入 platform toke
 L2="$BASE/apps/$APP_ID/api/collections/messages/records"
 
 # 查列表（PB 原生格式：.items 数组、.totalItems 总数）
-curl -s $L2 $AUTH | jq '.items'
+curl -s $L2 "${AUTH[@]}" | jq '.items'
 
 # 新增
-curl -s -X POST $L2 $AUTH \
+curl -s -X POST $L2 "${AUTH[@]}" \
   -d '{"author":"bot","body":"自动初始化数据"}'
 
 # 修改（PATCH 指定 record id）
-curl -s -X PATCH $L2/$RECORD_ID $AUTH \
+curl -s -X PATCH $L2/$RECORD_ID "${AUTH[@]}" \
   -d '{"body":"改过的内容"}'
 
 # 删除（返回 204，无 body）
-curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $L2/$RECORD_ID $AUTH
+curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $L2/$RECORD_ID "${AUTH[@]}"
 ```
 
 > L2 透传的是 PB 原生响应（envelope），取值用 `jq '.id'` / `jq '.items'`，不是平台壳的 `jq '.data.xxx'`。
@@ -266,8 +276,8 @@ curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $L2/$RECORD_ID $AUTH
 
 | 要做什么 | 用什么 |
 |----------|--------|
-| 创建/列表/删除 App、上传文件 | `$AUTH`（RCS API Key）→ RCS 后端用 master key |
-| 创建/修改后端 collection、records | `$AUTH`（RCS API Key）→ RCS 后端注入 platform token |
+| 创建/列表/删除 App、上传文件 | `AUTH` 参数数组（RCS API Key）→ RCS 后端用 master key |
+| 创建/修改后端 collection、records | `AUTH` 参数数组（RCS API Key）→ RCS 后端注入 platform token |
 | 业务前端公开访问后端 | 不带凭证，交给 collection 的 rules |
 
 **agent 永远不需要直接接触 `AGENT_SITES_MASTER_KEY` 或 platform token**——这些由 RCS 后端管理。
@@ -306,10 +316,14 @@ input.addEventListener('keydown', e => {
 ### 1. 创建 custom app
 
 ```bash
-RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d "{\"name\":\"my-deno-app\",\"type\":\"custom\",\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
-APP_ID=$(echo "$RESP" | jq -r '.data.id')
-REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
+: "${AGENT_CONFIG_ID:?缺少当前 Agent 配置 ID}" "${ENVIRONMENT_ID:?缺少当前环境 ID}"
+RESP=$(jq -n --arg agentConfigId "$AGENT_CONFIG_ID" \
+  '{name:"my-deno-app",type:"custom",visibility:"private",agentConfigId:$agentConfigId}' | \
+  curl --fail-with-body -sS -X POST "$BASE/apps" \
+    -H "Authorization: Bearer $USER_META_API_KEY" \
+    -H "Content-Type: application/json" --data-binary @-) || exit 1
+APP_ID=$(printf '%s' "$RESP" | jq -er 'select(.success == true) | .data.id | strings | select(length > 0)') || exit 1
+REMOTE_APP_ID=$(printf '%s' "$RESP" | jq -er 'select(.success == true) | .data.remoteAppId | strings | select(length > 0)') || exit 1
 ```
 
 注意：
@@ -323,11 +337,6 @@ REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
 ```bash
 # 无 PocketBase（默认）
 deno run --allow-net --allow-env=PORT \
-  --allow-read=<codeDir> --allow-read=<runtimeDir> \
-  --allow-write=<runtimeDir> main.ts
-
-# 有 PocketBase（enable_pb: true 时额外透传 PB 相关变量）
-deno run --allow-net --allow-env=PORT,PB_URL,PB_SUPERUSER_EMAIL,PB_SUPERUSER_PASSWORD \
   --allow-read=<codeDir> --allow-read=<runtimeDir> \
   --allow-write=<runtimeDir> main.ts
 ```
@@ -375,7 +384,7 @@ tar czf app.tar.gz -C ./your-app-dir .
 部署：
 
 ```bash
-RESP=$(curl -s -X POST $BASE/apps/$APP_ID/deploy $AUTH \
+RESP=$(curl -s -X POST $BASE/apps/$APP_ID/deploy "${AUTH[@]}" \
   --data-binary @app.tar.gz)
 echo "$RESP" | jq '.data'
 # {
@@ -396,10 +405,10 @@ echo "$RESP" | jq '.data'
 
 ```bash
 # 前端
-curl -s $USER_META_BASE_URL/$REMOTE_APP_ID/
+curl --fail-with-body -sS "$USER_META_BASE_URL/$REMOTE_APP_ID/" -H "Authorization: Bearer $USER_META_API_KEY"
 
 # 后端 API
-curl -s $USER_META_BASE_URL/$REMOTE_APP_ID/api/hello
+curl --fail-with-body -sS "$USER_META_BASE_URL/$REMOTE_APP_ID/api/hello" -H "Authorization: Bearer $USER_META_API_KEY"
 ```
 
 业务前端访问走 RCS proxy，按 visibility 校验（与 pocketbase app 一致）。
@@ -442,80 +451,9 @@ try {
 
 `/web/agent-sites/apps/:id/api/*` 是 PocketBase 透传接口，**对 custom 类型返 400** `"Custom 类型 app {remoteAppId} 不支持 PocketBase API"`。custom app 的"后端 API"就是它自己 main.ts 里的路由，通过业务前端访问 `/{remoteAppId}/*` 调用。
 
-### 8. 启用 PocketBase 后端（custom + enable_pb）
-
-创建 custom app 时传 `"enable_pb": true`，平台会额外 spawn 一个 PocketBase 实例，并通过环境变量注入连接信息。**这不同于 L2 PB 透传**——custom 进程内用 PB SDK 直连 `127.0.0.1` 的 PB 实例。
-
-#### 8a. 创建
-
-```bash
-RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d "{\"name\":\"my-app\",\"type\":\"custom\",\"enable_pb\":true,\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
-APP_ID=$(echo "$RESP" | jq -r '.data.id')
-REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
-```
-
-响应会额外包含 `enablePb: true` 和 `pbPort` 字段。
-
-#### 8b. 环境变量
-
-部署时平台向 custom 进程注入三个额外环境变量：
-
-| 变量 | 值 | 用途 |
-|------|---|------|
-| `PB_URL` | `http://127.0.0.1:{pbPort}` | PB SDK 连接地址 |
-| `PB_SUPERUSER_EMAIL` | `admin@{remoteAppId}.local` | superuser 邮箱 |
-| `PB_SUPERUSER_PASSWORD` | `{uuid}` | superuser 密码 |
-
-#### 8c. main.ts 示例
-
-```typescript
-import PocketBase from "npm:pocketbase";
-
-const port = parseInt(Deno.env.get("PORT") || "8080");
-const pbUrl = Deno.env.get("PB_URL");
-
-let pb: PocketBase | undefined;
-if (pbUrl) {
-  pb = new PocketBase(pbUrl);
-  await pb.collection("_superusers").authWithPassword(
-    Deno.env.get("PB_SUPERUSER_EMAIL")!,
-    Deno.env.get("PB_SUPERUSER_PASSWORD")!,
-  );
-
-  // 首次部署时初始化 collection（幂等）
-  try {
-    await pb.collections.create({
-      name: "posts", type: "base",
-      fields: [
-        { name: "title", type: "text", required: true },
-        { name: "body", type: "text", required: true },
-      ],
-      listRule: "", viewRule: "", createRule: "", updateRule: null, deleteRule: null,
-    });
-  } catch (_) { /* 已存在 */ }
-}
-
-Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
-  const url = new URL(req.url);
-  if (url.pathname.endsWith("/api/posts") && req.method === "GET") {
-    return Response.json(await pb!.collection("posts").getFullList());
-  }
-  // ... 前端 HTML 用相对路径 fetch("./api/posts")
-});
-```
-
-**关键约定**：
-- PB SDK 用 `npm:pocketbase`（Deno 原生支持 npm specifier）
-- PB 只监听 127.0.0.1，外部不可达。custom 进程以 superuser 身份直连
-- superuser 密码只在子进程环境变量中出现，不出 HTTP 响应
-- 前端 API 调用走 custom 进程中转（不走 platform token）。前端 `fetch("./api/posts")` → custom 进程 → PB SDK
-- 数据目录隔离：PB 数据在 `data/{remoteAppId}/pb_data/`，custom 运行时在 `data/{remoteAppId}/runtime/`
-- **re-deploy 不重建 PB**：重新部署只更新 custom Deno 代码 + 双槽位切换，PB 实例和数据保留不动
-
 ## 站点卡片
 
-建站或部署完成后，在聊天回复末尾**单独一行**输出 `<agent-sites>` 标签。该标签渲染为全宽度可点击卡片（左侧站点名称 + 右侧 "查看站点" 按钮），用户点击后右侧面板自动切到 Sites 视图并加载该站点。
+已获取本次任务相关站点的真实 `remoteAppId` 时，在聊天回复末尾**单独一行**输出 `<agent-sites>` 标签。没有可关联站点时（如仅咨询平台能力或创建中止）省略卡片，不使用占位 ID。该标签渲染为全宽度可点击卡片（左侧站点名称 + 右侧 "查看站点" 按钮），用户点击后右侧面板自动切到 Sites 视图并加载该站点。
 
 ### 格式
 
@@ -529,7 +467,7 @@ Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
 - **不放代码块**——\` 和 ``` 都不行，否则渲染为纯文本
 - **不放列表**——前面不要加 `-`、`*`、`1.`、`>`
 - **不放缩进**——必须从行首开始
-- `agent-site-id` 填建站 API 返回的 **`remoteAppId`**（形如 `app-xxxx`），不是 RCS 内部 UUID
+- `agent-site-id` 填创建或详情 API 返回的 **`remoteAppId`**（形如 `app-xxxx`），不是 RCS 内部 UUID
 
 ### 正确示例
 
@@ -551,24 +489,37 @@ Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
 
 ## 开发/业务智能体分权
 
+这是 Agent 操作约束，不替代服务端的用户、组织和资源授权。HTTP 失败、无效 JSON、身份变量缺失或创建者字段缺失时停止写入；只接受成功详情中的显式 string/null。
+
 Agent Sites 的**文件/配置修改**只能由**创建该 site 的智能体**（开发智能体）执行。其他绑定的智能体（业务智能体）可以操作 PocketBase 数据（L2 API），但无权修改 site 文件。
 
 ### 分权自检
 
 在执行任何 L1 写入操作（创建 site 除外）之前，必须先执行自检：
 
-1. **获取 site 详情**：`GET /web/agent-sites/apps/$APP_ID`
+1. **获取 site 详情**：`GET /web/agent-sites/apps/$APP_ID`，保存响应中的 `remoteAppId` 到 `REMOTE_APP_ID`，供后续验证和卡片使用
 2. **对比 agent config id**：
 
 ```bash
-CREATOR=$(echo "$SITE_RESP" | jq -r '.data.createdByAgentConfigId')
+: "${AGENT_CONFIG_ID:?缺少当前 Agent 配置 ID}" "${ENVIRONMENT_ID:?缺少当前环境 ID}"
+SITE_RESP=$(curl --fail-with-body -sS "$BASE/apps/$APP_ID" \
+  -H "Authorization: Bearer $USER_META_API_KEY") || exit 1
+REMOTE_APP_ID=$(printf '%s' "$SITE_RESP" | jq -er 'select(.success == true) | .data.remoteAppId | strings | select(length > 0)') || exit 1
+CREATOR=$(printf '%s' "$SITE_RESP" | jq -er '
+  if .success == true and (.data | type == "object" and has("createdByAgentConfigId")) then
+    .data.createdByAgentConfigId |
+    if . == null then "null"
+    elif type == "string" and length > 0 then .
+    else error("无效的创建者字段") end
+  else error("站点详情不完整或请求失败") end') || exit 1
+
 if [ "$CREATOR" != "null" ] && [ "$CREATOR" != "$AGENT_CONFIG_ID" ]; then
   echo "此 site 由其他智能体创建，我无权修改网站文件。请在右侧 Sites 面板点击「溯源」按钮回到创建者智能体操作。"
   exit 1
 fi
 ```
 
-3. **如果 `createdByAgentConfigId` 为 null**（创建者已删除）：所有绑定的智能体均可自由操作。
+3. **如果 `createdByAgentConfigId` 为 null**（未记录或已删除）：自检不限制 Agent 身份，平台授权仍然生效。
 
 ### 不受限制的操作
 
