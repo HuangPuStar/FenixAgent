@@ -300,7 +300,7 @@ export interface ResourceRegistration<TTable = unknown, TColumn = unknown> {
 
 `ColumnResourceScopeStore` 以这组绑定建立 `resourceType → (表, 归属列)` 索引，未知 `resourceType` 直接报错而不是静默返回空。
 
-Model 是 Provider 的二级资源，不注册独立 `ResourceDefinition` 或 `ResourceScopeStore`，也不保存独立 owner/visibility。Model 列表和详情必须关联 Provider，并在数据库分页、排序和计数前将 Provider 的授权约束下推；Model 的引用、CRUD 与运行解析按操作复用所属 Provider 的 read/use/update/delete 权限。
+Model 是 Provider 的二级资源，不注册独立 `ResourceDefinition` 或 `ResourceScopeStore`，也不保存独立 owner/visibility。Model 列表和详情必须关联 Provider，并在数据库分页、排序和计数前将 Provider 的授权约束下推；读取和绑定引用复用 Provider 的 `read`，模型增改复用 `update`，删除模型同样要求 Provider 的 `update`（修改其子资源集合）。Provider 不声明独立 `use` 动作，运行解析经已获授权的 Agent 配置引用读取。
 
 ```ts
 class AgentConfigService {

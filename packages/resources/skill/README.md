@@ -4,7 +4,7 @@ Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）的唯一
 
 ## 定位与 owner
 
-- **资源本体**：`src/server/access/skill-resource.ts` 注册 `SKILL_RESOURCE_TYPE = "skill"`——归属列在主表（`organization_id` / `user_id` / `visibility`），创建期归属由 `AccessControlModule.resolveInitialScope` 解析后与 INSERT 同批写入，不需要 side-table。member 默认只有 `read` / `use`，创建、修改、删除与公开受众设置归 owner / admin，`public` 只放大读范围。
+- **资源本体**：`src/server/access/skill-resource.ts` 注册 `SKILL_RESOURCE_TYPE = "skill"`——归属列在主表（`organization_id` / `user_id` / `visibility`），创建期归属由 `AccessControlModule.resolveInitialScope` 解析后与 INSERT 同批写入，不需要 side-table。member 默认只有 `read` / `use`，创建、修改、删除与公开受众设置归 owner / admin；`public` 授予 `read` / `use`，允许跨组织查看并绑定到 Agent。
 - **装配角色**：`resources` 类别、`dependsOn: []` 的叶子模块——本包不 import 兄弟资源包与平台实现，授权与身份实现由宿主经 `createSkillServerModule(deps)` 注入；依赖本包的模块各自声明 skill。`fenix.module.ts` 的 `create` 惰性指向 `src/module.ts` 的 `createSkillModule()`。
 - **应用编排**：`SkillFacade`（`src/server/facades/skill-facade.ts`）是用户请求路径的唯一应用入口（route → Facade → `SkillService` → repository）：授权判断、`ResourceAccessDeniedError` → 403 映射，以及「文件系统内容 + 资源行」两次写入的补偿顺序。`SkillService` 只承载领域规则、不接收 actor。
 - **系统托管路径**：`SkillSystemApi`（`src/server/services/skill-system.ts`）显式绕过授权谓词（builtin 同步、孤儿清理、公开受众设置），方法名与仓储的 `*Unscoped` 前缀一致，调用点在评审中一眼可见；它复用同一套文档写入，因此系统路径与用户路径遵循同一条「文件与行不许各说一套」的不变量。
