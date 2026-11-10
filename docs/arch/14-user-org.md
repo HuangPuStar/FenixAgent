@@ -98,7 +98,7 @@ graph TD
 
 ### 跨组织资源分享
 
-部分配置类资源支持设为全系统公开，任何组织都可以引用。公开后的资源不允许其他组织修改。当前支持 provider / skill / mcp_server / agent_config 四种类型：前三者仅授予 `read`；`agent_config` 额外授予 `read` + `use`——共享语义是「其他组织能看到并运行」。
+部分配置类资源支持设为全系统公开，公开即允许其他组织使用，但不允许修改。当前支持 provider / skill / mcp_server / agent_config 四种类型：skill 与 mcp_server 授予 `read` + `use`，允许跨组织查看并绑定到 Agent；agent_config 同样授予 `read` + `use`，允许跨组织查看并运行。Provider 不声明独立 `use` 动作，其 `read` 权限允许绑定并使用下属 Model，保存时由 Provider Facade 校验。
 
 运行一个共享 Agent 时，它引用的资源按两类处理：
 

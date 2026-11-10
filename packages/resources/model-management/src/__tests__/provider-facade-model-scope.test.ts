@@ -139,6 +139,41 @@ function buildFacade(
 }
 
 describe("ProviderFacade 的 Model 子表授权边界", () => {
+  // 公开 Provider 的模型允许跨组织绑定，不能因为没有独立 use 动作而被拒绝。
+  test("requireModelForBinding 允许绑定其他组织公开 Provider 的模型", async () => {
+    const sharedProvider = providerRow({
+      organizationId: "org-shared",
+      visibility: "public",
+      scope: { organizationId: "org-shared", visibility: "public" },
+    });
+    const { facade, serviceFindInputs } = buildFacade({
+      findByIdRow: sharedProvider,
+      modelsRepo: {
+        findRowUnscoped: async () => modelRow({ organizationId: "org-shared" }),
+      },
+    });
+
+    await expect(facade.requireModelForBinding(actor, "model-1")).resolves.toBeUndefined();
+    expect(serviceFindInputs).toEqual([
+      {
+        resourceId: "provider-1",
+        access: { resourceType: "provider", action: "read", provider: "test" },
+      },
+    ]);
+  });
+
+  // 模型存在不能绕过父资源可见性，私有 Provider 对跨组织用户仍不可引用。
+  test("requireModelForBinding 拒绝不可见 Provider 的模型", async () => {
+    const { facade } = buildFacade({
+      findByIdRow: undefined,
+      modelsRepo: {
+        findRowUnscoped: async () => modelRow({ organizationId: "org-hidden" }),
+      },
+    });
+
+    await expect(facade.requireModelForBinding(actor, "model-1")).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   // 同名 Provider 不参与 UUID 探测定位；探测仍需 update 授权。
   test("getForProbe 使用 ID 且拒绝只读资源", async () => {
     const { facade, serviceFindInputs } = buildFacade({

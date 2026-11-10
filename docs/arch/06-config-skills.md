@@ -45,3 +45,5 @@ spawn 时 LaunchSpecBuilder 将绑定关系转换为 `SkillConfig[]`：从文件
 ## 跨组织共享
 
 控制台管理、探测与下载通过数据库 ID 定位并由 Facade 校验访问权限；名称不承担管理接口的资源键职责。运行时的领域引用保持既有约定。完整 REST 路径见 [配置系统](./06-config.md#控制台资源接口)。
+
+公开 Skill 向所有已认证用户授予 `read` 与 `use`，允许跨组织查看、下载并绑定到 Agent。Agent 保存绑定时校验 Skill Facade 返回的 `use` 动作；修改、删除和公开受众设置仍受归属组织的管理权限约束。

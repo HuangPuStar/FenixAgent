@@ -9,7 +9,7 @@ import type { PgColumn } from "drizzle-orm/pg-core";
  * `AccessControlModule.resolveInitialScope` 解析后与 INSERT 同批写入，不需要 side-table 初始化。
  *
  * 动作收敛（决策 D1）：member 只拿到 `read` / `use`，创建、修改、删除与公开受众设置属于 owner
- * 与 admin；`public` 只放大读范围，不提升写权限。
+ * 与 admin；`public` 授予 `read` / `use`，使其他组织可查看并绑定到 Agent，不提升写权限。
  *
  * 与 MCP Server 的注册同形是刻意的：受控资源的语义只有一份（归属模式 + 动作上限 + 成员默认动作 +
  * 公开默认动作），资源包只声明这份语义与列，授权判断与 SQL 由注入的 `AccessControlModule` 产出。
@@ -25,7 +25,7 @@ export const skillResource = {
     ownershipMode: "organization",
     actions: ["read", "create", "update", "delete", "use"],
     memberDefaultActions: ["read", "use"],
-    publicDefaultActions: ["read"],
+    publicDefaultActions: ["read", "use"],
   },
   storage: {
     resourceType: SKILL_RESOURCE_TYPE,

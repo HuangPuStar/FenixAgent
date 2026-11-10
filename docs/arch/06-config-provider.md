@@ -40,3 +40,5 @@ AgentConfig 通过 `modelId` 引用一个 Model。spawn 时 LaunchSpecBuilder �
 ## 跨组织共享
 
 控制台管理、探测与下载通过数据库 ID 定位并由 Facade 校验访问权限；名称不承担管理接口的资源键职责。运行时的领域引用保持既有约定。完整 REST 路径见 [配置系统](./06-config.md#控制台资源接口)。
+
+公开 Provider 的 `read` 权限允许其他组织在 Agent 中选择并使用其模型；Model 继承 Provider 的授权，不注册独立 `use` 动作。保存绑定由 `ProviderFacade.requireModelForBinding` 校验模型存在且所属 Provider 可读；运行时按已保存的模型 ID 解析配置。配置修改、模型增删和连通性探测仍需所属组织的管理权限。
