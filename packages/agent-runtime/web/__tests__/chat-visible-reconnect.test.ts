@@ -1,6 +1,6 @@
 // 用例随实现归位（台账 D1）：被测模块原在 `apps/web/src/pages/agent-panel/chat-visible-reconnect.ts`。
 import { describe, expect, test } from "bun:test";
-import { shouldAutoReconnectOnVisible } from "../hooks/chat-visible-reconnect";
+import { shouldAutoReconnectOnVisible, shouldProbeStuckConnectionOnResume } from "../hooks/chat-visible-reconnect";
 
 describe("shouldAutoReconnectOnVisible", () => {
   // 首次挂载且初始可见时不重复连接
@@ -58,5 +58,23 @@ describe("shouldAutoReconnectOnVisible", () => {
   // 停留在可见状态（连续 render）不重复触发
   test("does not fire repeatedly while visible", () => {
     expect(shouldAutoReconnectOnVisible(true, true, "error", null)).toBe(false);
+  });
+});
+
+describe("shouldProbeStuckConnectionOnResume", () => {
+  // 物理 socket 已 OPEN 但命令握手未完成时，恢复前台需要重建一次传输来探测链路
+  test("probes when the connection is stuck in connecting", () => {
+    expect(shouldProbeStuckConnectionOnResume("connecting")).toBe(true);
+  });
+
+  // 已连接时恢复前台不得打断在途回复
+  test("does not probe a healthy connected session", () => {
+    expect(shouldProbeStuckConnectionOnResume("connected")).toBe(false);
+  });
+
+  // 已断开或错误态各有退避重连与手动恢复入口，恢复前台不额外重建
+  test("does not probe disconnected or error states", () => {
+    expect(shouldProbeStuckConnectionOnResume("disconnected")).toBe(false);
+    expect(shouldProbeStuckConnectionOnResume("error")).toBe(false);
   });
 });

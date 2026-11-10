@@ -13,7 +13,7 @@ import {
   NO_LOCAL_CREATE,
   resolveNoReplaySession,
 } from "../hooks/chat-replay-signal";
-import type { ChatWsConnectionState } from "../hooks/chat-visible-reconnect";
+import { type ChatWsConnectionState, shouldProbeStuckConnectionOnResume } from "../hooks/chat-visible-reconnect";
 import { applyChatHydration, useChatHydration } from "../hooks/use-chat-hydration";
 import { useChatState } from "../hooks/use-chat-state";
 import { useDocHubReplacementVersion } from "../hooks/use-doc-hub-replacement";
@@ -260,6 +260,28 @@ export function useChatPanelRuntime({
     }, 30_000);
     return () => clearInterval(interval);
   }, [pageVisible, connectionState]);
+
+  // 卡在 connecting 的连接（物理 OPEN、命令握手未完成）不产生 close，退避重连也不会启动。
+  // 页面回到前台或网络恢复时重建一次传输来探测链路；同一段 connecting 内只探测一次，
+  // 避免重复事件制造重连风暴，也不重发任何结果未知的 prompt。
+  useEffect(() => {
+    if (!shouldProbeStuckConnectionOnResume(connectionState)) return;
+    let probed = false;
+    const probe = () => {
+      if (probed) return;
+      probed = true;
+      setReconnectAttempt((attempt) => attempt + 1);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") probe();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("online", probe);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("online", probe);
+    };
+  }, [connectionState]);
 
   // 创建 YjsWs 连接
   // biome-ignore lint/correctness/useExhaustiveDependencies: 两种重试计数分别由 enter 和历史同步重试驱动，强制重建失效连接。

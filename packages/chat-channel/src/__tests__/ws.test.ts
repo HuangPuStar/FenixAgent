@@ -7,7 +7,13 @@ import {
   MAX_YJS_SYNC_PAYLOAD_BYTES,
   YJS_UPDATE_FRAME_TYPE,
 } from "../protocol/update-frame";
-import { createYjsWsClient, SEND_BACKPRESSURE_THRESHOLD_BYTES } from "../transport/ws";
+import {
+  COMMAND_HANDSHAKE_TIMEOUT_REASON,
+  createYjsWsClient,
+  DEADLINE_CLOSE_CODE,
+  INBOUND_LIVENESS_TIMEOUT_REASON,
+  SEND_BACKPRESSURE_THRESHOLD_BYTES,
+} from "../transport/ws";
 
 type ScheduledTimer = {
   callback: () => void;
@@ -25,6 +31,8 @@ class FakeWebSocket {
   /** 未写入内核缓冲的排队字节数；真实浏览器始终提供，测试按需赋值以触发发送背压。 */
   bufferedAmount = 0;
   closeCalls = 0;
+  lastCloseCode: number | undefined;
+  lastCloseReason: string | undefined;
   sent: string[] = [];
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: (() => void) | null = null;
@@ -35,10 +43,18 @@ class FakeWebSocket {
     FakeWebSocket.instances.push(this);
   }
 
-  close(): void {
+  close(code = 1000, reason = "client_disconnect"): void {
     this.closeCalls += 1;
+    this.lastCloseCode = code;
+    this.lastCloseReason = reason;
     this.readyState = FakeWebSocket.CLOSED;
-    this.onclose?.({ code: 1000, reason: "client_disconnect" } as CloseEvent);
+    this.onclose?.({ code, reason } as CloseEvent);
+  }
+
+  /** 只完成物理 open，不交付命令代次；用于复现握手悬挂。 */
+  openPhysical(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.onopen?.();
   }
 
   open(): void {
@@ -110,10 +126,23 @@ function restoreGlobal(
   }
 }
 
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
+
 function runNextTimer(): void {
-  const timer = timers.shift();
-  if (!timer) throw new Error("预期存在重连定时器");
-  if (!timer.cleared) timer.callback();
+  const index = timers.findIndex((timer) => !timer.cleared);
+  if (index === -1) return;
+  const [timer] = timers.splice(index, 1);
+  timer?.callback();
+}
+
+/** 仍在等待触发的定时器（连接 deadline 与重连定时器共用同一个假时钟）。 */
+function pendingTimers(): ScheduledTimer[] {
+  return timers.filter((timer) => !timer.cleared);
+}
+
+/** 只取重连定时器：连接 deadline 定时器与重连定时器延迟不同，不能按索引区分。 */
+function pendingReconnectTimers(): ScheduledTimer[] {
+  return pendingTimers().filter((timer) => RECONNECT_DELAYS.includes(timer.delay ?? -1));
 }
 
 function createClient(onConnectionState?: (state: "connecting" | "connected" | "disconnected" | "error") => void) {
@@ -142,15 +171,15 @@ describe("createYjsWsClient", () => {
     client.connect();
 
     FakeWebSocket.instances[0]?.closeFromServer();
-    expect(timers[0]?.delay).toBe(1000);
+    expect(pendingReconnectTimers()[0]?.delay).toBe(1000);
 
     runNextTimer();
     FakeWebSocket.instances[1]?.closeFromServer();
-    expect(timers[0]?.delay).toBe(2000);
+    expect(pendingReconnectTimers()[0]?.delay).toBe(2000);
 
     runNextTimer();
     FakeWebSocket.instances[2]?.closeFromServer();
-    expect(timers[0]?.delay).toBe(4000);
+    expect(pendingReconnectTimers()[0]?.delay).toBe(4000);
   });
 
   // 网关余额不足等持续故障可能表现为“连接成功后立刻再次断开”；自动恢复必须有上限，
@@ -165,14 +194,14 @@ describe("createYjsWsClient", () => {
       FakeWebSocket.instances[attempt]?.open();
       FakeWebSocket.instances[attempt]?.closeFromServer(1011, "relay handle closed");
       if (attempt < 5) {
-        reconnectDelays.push(timers[0]?.delay);
+        reconnectDelays.push(pendingReconnectTimers()[0]?.delay);
         runNextTimer();
       }
     }
 
     expect(FakeWebSocket.instances).toHaveLength(6);
     expect(reconnectDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
-    expect(timers).toHaveLength(0);
+    expect(pendingReconnectTimers()).toHaveLength(0);
     expect(states.at(-1)).toBe("error");
   });
 
@@ -187,7 +216,7 @@ describe("createYjsWsClient", () => {
     currentTime = 30_000;
     FakeWebSocket.instances[1]?.closeFromServer();
 
-    expect(timers[0]?.delay).toBe(1000);
+    expect(pendingReconnectTimers()[0]?.delay).toBe(1000);
   });
 
   // 面板或调用方销毁客户端后，已排队的重连不得再创建新的连接。
@@ -214,7 +243,7 @@ describe("createYjsWsClient", () => {
     client.disconnect();
 
     expect(states).toEqual(["connecting", "connected", "disconnected"]);
-    expect(timers).toHaveLength(0);
+    expect(pendingTimers()).toHaveLength(0);
   });
 
   // 已销毁客户端收到迟到 close 时，不得重复断开通知或排队重连。
@@ -229,7 +258,7 @@ describe("createYjsWsClient", () => {
     socket?.closeFromServer();
 
     expect(states).toEqual(["connecting", "connected", "disconnected"]);
-    expect(timers).toHaveLength(0);
+    expect(pendingTimers()).toHaveLength(0);
   });
 
   // 旧连接迟到关闭时，不能覆盖新连接状态或为旧连接额外排队重连。
@@ -246,7 +275,7 @@ describe("createYjsWsClient", () => {
     oldSocket?.closeFromServer();
 
     expect(states).toEqual(["connecting", "disconnected", "connecting", "connected"]);
-    expect(timers).toHaveLength(0);
+    expect(pendingReconnectTimers()).toHaveLength(0);
   });
 
   // 服务端 error 帧仅在完整且匹配受控注册表时透明转发。
@@ -548,7 +577,7 @@ describe("createYjsWsClient", () => {
     expect(client.send({ type: "keep_alive" })).toBe(false);
     expect(socket?.sent).toHaveLength(0);
     expect(socket?.closeCalls).toBe(0);
-    expect(timers).toHaveLength(0);
+    expect(pendingReconnectTimers()).toHaveLength(0);
     expect(states).toEqual(["connecting", "connected"]);
   });
 
@@ -556,6 +585,110 @@ describe("createYjsWsClient", () => {
   test("未连接时发送返回 false", () => {
     const client = createClient();
     expect(client.send({ type: "keep_alive" })).toBe(false);
+  });
+});
+
+describe("createYjsWsClient 连接 deadline", () => {
+  beforeEach(() => {
+    installFakes();
+  });
+
+  afterEach(() => {
+    Date.now = originalDateNow;
+    restoreGlobal("WebSocket", originalWebSocket);
+    restoreGlobal("setTimeout", originalSetTimeout);
+    restoreGlobal("clearTimeout", originalClearTimeout);
+  });
+
+  function createDeadlineClient(
+    onConnectionState?: (state: "connecting" | "connected" | "disconnected" | "error") => void,
+  ) {
+    return createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onConnectionState,
+      deadlines: { handshakeMs: 5_000, livenessMs: 20_000 },
+    });
+  }
+
+  // 物理 open 后迟迟拿不到命令代次时，必须在握手上限内主动断开并交给既有退避重连，
+  // 否则界面会无限停在 connecting。
+  test("握手超时会以非终态码断开并安排重连", () => {
+    const states: string[] = [];
+    const client = createDeadlineClient((state) => states.push(state));
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.openPhysical();
+    expect(states).toEqual(["connecting"]);
+
+    currentTime = 5_000;
+    runNextTimer();
+
+    expect(socket?.lastCloseCode).toBe(DEADLINE_CLOSE_CODE);
+    expect(socket?.lastCloseReason).toBe(COMMAND_HANDSHAKE_TIMEOUT_REASON);
+    expect(states).toEqual(["connecting", "disconnected"]);
+    expect(pendingReconnectTimers()[0]?.delay).toBe(1000);
+
+    runNextTimer();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  // socket 保持 OPEN 但握手后不再有任何下行时，存活期限必须识别半开并重建，
+  // 不能继续把连接当作 connected。
+  test("握手后长期无入站会以存活超时断开并重连", () => {
+    const states: string[] = [];
+    const client = createDeadlineClient((state) => states.push(state));
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.open();
+    expect(states.at(-1)).toBe("connected");
+
+    currentTime = 20_000;
+    runNextTimer();
+
+    expect(socket?.lastCloseCode).toBe(DEADLINE_CLOSE_CODE);
+    expect(socket?.lastCloseReason).toBe(INBOUND_LIVENESS_TIMEOUT_REASON);
+    expect(states.at(-1)).toBe("disconnected");
+    expect(pendingReconnectTimers()[0]?.delay).toBe(1000);
+  });
+
+  // 服务端 keep_alive 是健康信号：只要入站帧持续到达，长时间工具执行没有业务输出
+  // 也不得被存活期限误杀。
+  test("持续收到 keep_alive 时保持连接", () => {
+    const client = createDeadlineClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.open();
+
+    currentTime = 15_000;
+    socket?.receiveFromServer({ type: "keep_alive" });
+    currentTime = 20_000;
+    runNextTimer();
+    expect(socket?.closeCalls).toBe(0);
+
+    currentTime = 25_000;
+    socket?.receiveFromServer({ type: "keep_alive" });
+    currentTime = 35_000;
+    runNextTimer();
+
+    expect(socket?.closeCalls).toBe(0);
+    expect(client.isConnected()).toBe(true);
+    expect(pendingReconnectTimers()).toHaveLength(0);
+  });
+
+  // 终态关闭码仍由策略表裁决：deadline 定时器必须随关闭清理，不得额外触发重连。
+  test("终态关闭码不自动重连", () => {
+    const client = createDeadlineClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.open();
+
+    currentTime = 30_000;
+    socket?.closeFromServer(4001, "instance_idle_reclaimed");
+
+    expect(pendingTimers()).toHaveLength(0);
+    expect(pendingReconnectTimers()).toHaveLength(0);
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });
 
