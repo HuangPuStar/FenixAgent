@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh">
+  <meta charset="UTF-8" />
+  <title>Trace panel scroll regression</title>
+  <!-- 启动 bun run dev:web 后，打开 /ctrl/src/__tests__/trace-panel-scroll.browser.html（短列表加 ?short）。 -->
+  <main style="display: flex; flex-direction: column; overflow: hidden; width: 900px; height: 400px">
+    <header style="height: 40px; flex-shrink: 0">Trace</header>
+    <div id="root" style="display: contents"></div>
+  </main>
+  <pre id="result" role="status">Running…</pre>
+  <script type="module">
+    import { TRACE_NS, TracePanel, traceResources } from "@fenix/resource-trace/web";
+    import { createInstance } from "i18next";
+    import { createElement } from "react";
+    import { createRoot } from "react-dom/client";
+    import { I18nextProvider, initReactI18next } from "react-i18next";
+    import "../index.css";
+
+    const short = new URLSearchParams(location.search).has("short");
+    const runs = Array.from({ length: short ? 1 : 40 }, (_, index) => ({
+      id: `run-${index}`, name: `Run ${index}`, timestamp: new Date(1760000000000 + index * 1000).toISOString(),
+      sessionId: "session", userId: "user", version: null, release: null, environment: "default",
+      bookmarked: false, tags: [],
+    }));
+    const observations = Array.from({ length: short ? 1 : 80 }, (_, index) => ({
+      id: `step-${index}`, name: `Step ${index}`, type: "GENERATION", parentObservationId: null,
+      startTime: new Date(1760000000000 + index * 1000).toISOString(),
+      endTime: new Date(1760000000500 + index * 1000).toISOString(),
+      input: Array.from({ length: 80 }, (_, line) => `Input line ${line}`),
+    }));
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
+      if (!url.pathname.startsWith("/web/agents/scroll-test/")) return originalFetch(input, init);
+      const detailId = url.pathname.match(/\/observations\/(step-\d+)$/)?.[1];
+      const traceId = url.pathname.match(/\/traces\/(run-\d+)/)?.[1];
+      const data = detailId
+        ? { data: { ...observations.find((item) => item.id === detailId), traceId } }
+        : url.pathname.endsWith("/observations")
+          ? { data: observations.map((item) => ({ ...item, traceId })), cursor: null }
+          : { configured: true, acpSessionId: "session", traces: runs, page: 1, totalItems: runs.length };
+      return Response.json({ success: true, data });
+    };
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    async function waitFor(read) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const result = read();
+        if (result) return result;
+        await new Promise(requestAnimationFrame);
+      }
+      throw new Error("Timed out waiting for panel state");
+    }
+    function scrollContainer(node) {
+      for (let parent = node.parentElement; parent && parent.tagName !== "MAIN"; parent = parent.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(parent).overflowY)) return parent;
+      }
+      throw new Error(`No vertical scroll container for ${node.textContent}`);
+    }
+    function checkBottom(container, last, label) {
+      assert(container.clientHeight > 0 && container.scrollHeight > container.clientHeight, `${label}: must overflow`);
+      container.scrollTop = container.scrollHeight;
+      assert(container.scrollTop > 0, `${label}: cannot scroll down`);
+      const item = last.getBoundingClientRect();
+      const viewport = container.getBoundingClientRect();
+      assert(item.top >= viewport.top - 1 && item.bottom <= viewport.bottom + 1, `${label}: last item is clipped`);
+    }
+
+    try {
+      const i18n = createInstance();
+      await i18n.use(initReactI18next).init({
+        lng: "zh", fallbackLng: "en", ns: [TRACE_NS],
+        resources: { zh: { [TRACE_NS]: traceResources.zh }, en: { [TRACE_NS]: traceResources.en } },
+      });
+      createRoot(document.getElementById("root")).render(createElement(I18nextProvider, { i18n },
+        createElement(TracePanel, { environmentId: "scroll-test", sessionId: "instance" })));
+      const lastStep = await waitFor(() => document.querySelector(`button[title="Step ${observations.length - 1}"]`));
+      const aside = document.querySelector("aside");
+      const lastRun = aside.querySelector("li:last-child button");
+      const graph = scrollContainer(lastStep);
+      const host = document.querySelector("main");
+
+      // 长列表必须在各自区域内滚到底，不能靠撑大面板或滚动整页看到末项。
+      if (!short) {
+        for (const [width, height] of [[900, 400], [356, 280]]) {
+          host.style.width = `${width}px`;
+          host.style.height = `${height}px`;
+          await new Promise(requestAnimationFrame);
+          checkBottom(aside, lastRun, "Runs");
+          const leftTop = aside.scrollTop;
+          checkBottom(graph, lastStep, "Steps");
+          assert(aside.scrollTop === leftTop, "Scrolling steps moved the run list");
+          assert(graph.getBoundingClientRect().bottom <= host.getBoundingClientRect().bottom + 1, "Panel grew beyond host");
+          if (width === 356) {
+            graph.scrollLeft = graph.scrollWidth;
+            assert(graph.scrollLeft > 0, "Narrow panel cannot scroll horizontally");
+            graph.scrollLeft = 0;
+          }
+          graph.scrollTop = 0;
+          aside.scrollTop = 0;
+          assert(graph.scrollTop === 0 && aside.scrollTop === 0, "Cannot scroll back up");
+        }
+        checkBottom(aside, lastRun, "Runs");
+        lastRun.click();
+        await waitFor(() => lastRun.getAttribute("aria-current") === "true");
+        await waitFor(() => document.querySelector('button[title="Step 79"]'));
+        checkBottom(graph, lastStep, "Steps");
+      } else {
+        assert(aside.scrollHeight === aside.clientHeight, "Short run list unexpectedly overflows");
+        assert(graph.scrollHeight === graph.clientHeight, "Short graph unexpectedly overflows");
+      }
+      // 滚动到最后一个 step 后仍可打开详情，详情自身的长内容也应可达。
+      lastStep.click();
+      const input = await waitFor(() => [...document.querySelectorAll('[role="tabpanel"] span')].find((node) => node.textContent.includes("Input line 79")));
+      const detail = scrollContainer(input);
+      detail.scrollTop = detail.scrollHeight;
+      assert(detail.scrollTop > 0, "Long observation detail cannot scroll");
+      document.documentElement.dataset.result = "pass";
+      document.getElementById("result").textContent = `PASS: ${short ? "short lists" : "long lists at 900px and 356px"}, independent scrolling, last step detail`;
+    } catch (error) {
+      document.documentElement.dataset.result = "fail";
+      document.getElementById("result").textContent = `FAIL: ${error.message}`;
+      console.error(error);
+    }
+  </script>
+</html>

@@ -36,7 +36,7 @@ export interface TracePanelProps {
 }
 
 /** run 列表宽：够放时间 + 序号，再宽就是浪费聊天区宽度。 */
-const RUN_LIST_WIDTH_CLASS = "w-52 shrink-0 border-e border-border-subtle overflow-y-auto";
+const RUN_LIST_WIDTH_CLASS = "min-h-0 w-52 shrink-0 overflow-y-auto overscroll-contain border-e border-border-subtle";
 
 export function TracePanel({ environmentId, sessionId, className }: TracePanelProps) {
   const { t } = useTranslation(TRACE_NS);
@@ -74,7 +74,9 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
   const detail = useObservationDetail(scope, activeTraceId, selectedObservationId);
 
   function frame(content: ReactNode) {
-    return <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col", className)}>{content}</div>;
+    return (
+      <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}>{content}</div>
+    );
   }
 
   /**
@@ -139,7 +141,7 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
     if (runs.length === 0) return <EmptyState title={t("list.empty")} className={EMPTY_STATE_FILL_CLASS} />;
 
     return (
-      <div className="flex h-full min-h-0 min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-1">
         <aside className={RUN_LIST_WIDTH_CLASS} aria-label={t("list.heading")}>
           <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1.5">
             <span className="text-3xs font-medium text-text-muted">
@@ -220,7 +222,7 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
         onSelect={(id) =>
           setSelection(id !== null && activeTraceId !== null ? { traceId: activeTraceId, observationId: id } : null)
         }
-        className="flex-1"
+        className="min-h-0 flex-1 overflow-auto overscroll-contain"
       />
     );
   }
