@@ -1,4 +1,5 @@
 import type * as Y from "yjs";
+import { summarizeContentDisplayText } from "../protocol/acp-channel";
 import { type NormalizedEvent, type NormalizedEventType, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
 import type { DocManager } from "../state";
 import { CALLBACK_ENTRY_PREFIX } from "../state/chat-writer";
@@ -54,10 +55,13 @@ const SYNC_TURN_BOUND_EVENTS: ReadonlySet<NormalizedEventType> = new Set([
   "turn_interrupted",
 ]);
 
-/** 提取 user_message 文本（与聚合层 extractText 同口径：content 优先，回落 update 顶层） */
+/**
+ * 提取 user_message 展示文本（与用户条目同一摘要口径：文本拼接 + 图片占位）。
+ * 图片块回显若归一化为空会绕过下面的回显去重，复制出重复用户气泡。
+ */
 function extractUserMessageText(event: NormalizedEvent): string {
-  const contentText = event.content?.text;
-  if (typeof contentText === "string") return contentText;
+  const summarized = summarizeContentDisplayText(event.content) || summarizeContentDisplayText(event.update.content);
+  if (summarized) return summarized;
   const updateText = event.update.text;
   return typeof updateText === "string" ? updateText : "";
 }

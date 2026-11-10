@@ -1,3 +1,4 @@
+import { summarizeContentParts } from "../protocol/acp-channel";
 import { translateSimpleAction } from "../protocol/translator";
 import { normalizeQuestionAnswers, type QuestionAnswer } from "../schema";
 import { bumpProjectionVersion } from "../state/chat-writer";
@@ -258,7 +259,7 @@ export class SessionChannel {
         this.dependencies.reportLog?.(`[SessionChannel] prompt target conflict: rcsSessionId=${command.rcsSessionId}`);
         throw new CommandExecutionError("ACTION.VERSION_CONFLICT");
       }
-      turnId = await this.writePromptText(connection, command.payload.content);
+      turnId = await this.writePromptMessage(connection, command.payload.content);
       assertCurrent();
       // 同一 relay 可承载多个 ACP 会话，出站目标必须来自本频道已确认绑定。
       command.payload = {
@@ -407,15 +408,18 @@ export class SessionChannel {
   }
 
   /** send_prompt：把用户消息写入 Chat Doc（服务端单写，前端不乐观写入）并返回 turnId */
-  private async writePromptText(connection: SessionConnection, content: unknown): Promise<string | undefined> {
-    const text = extractPromptText(content);
-    if (!text) return;
+  private async writePromptMessage(connection: SessionConnection, content: unknown): Promise<string | undefined> {
+    // turn 是助手增量与终态的唯一可写上下文，必须与「是否有可显示文本」解耦：
+    // 纯图片/空内容同样先建立 turn，否则回复会被聚合层按无活动 turn 丢弃。
+    // 展示片段只用于本地投影；发送给 Agent 的 content 保持原样（不注入虚假文字）。
+    const parts = summarizeContentParts(content);
+    const text = parts.join("\n");
     try {
       await this.dependencies.docManager.openSession(connection.userId, connection.agentId, connection.rcsSessionId);
     } catch (err) {
       this.dependencies.reportError("[SessionChannel] Failed to ensure session doc for user message:", err);
     }
-    const turnId = await this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
+    const turnId = await this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text, parts);
     // 用户消息只由后端写入：turnId 来自 registerUserMessage 的可信绑定，Agent 回显不进入新协议入口。
     // 同步连接可能属于另一个 socket，必须经会话级入口扇出，而不是查询发起动作的连接。
     if (turnId) this.dependencies.publishUserMessage?.(connection.rcsSessionId, turnId, text);
@@ -479,15 +483,4 @@ export class SessionChannel {
 /** 服务端 Command → 旧协议 action 形状（translateSimpleAction 的输入） */
 function toLegacyAction(command: Command): Record<string, unknown> {
   return { action: command.type, ...command.payload };
-}
-
-/** 从 ACP content blocks 提取纯文本（供用户消息投影） */
-function extractPromptText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-
-  return content
-    .filter((block): block is Record<string, unknown> => typeof block === "object" && block !== null)
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text)
-    .join("\n");
 }

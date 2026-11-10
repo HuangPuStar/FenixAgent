@@ -23,6 +23,7 @@ import {
   BATCHABLE_EVENT_TYPES,
   DEFAULT_BATCH_WINDOW_MS,
   hasUserMessageTextInDoc,
+  normalizeUserText,
   notifyPermissionRequested,
   preserveAgentProjection,
   scheduleUserMessageWrite,
@@ -60,9 +61,17 @@ export type QuestionRequestedHandler = (
   question: { questionId: string; expiresAt: string },
 ) => void;
 
+/** 每会话保留的用户消息回显片段上限：只需覆盖迟到回显，超出按写入顺序淘汰。 */
+const MAX_PROMPT_ECHO_FRAGMENTS = 256;
+
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
+  /**
+   * 用户消息的展示片段（文本块 / 图片占位）：引擎按内容块回显，含图片占位的整条
+   * 展示文本不会等于任何单个回显块，回显去重仍须按片段命中。
+   */
+  private readonly promptEchoFragments = new Map<string, Set<string>>();
   /**
    * 每个 rcsSessionId 的投影生命周期栅栏：close 与 replace 使用独立 epoch，
    * 并登记在途换代供 open 安装前等待（语义见 projection-fence.ts）。
@@ -194,6 +203,7 @@ export class DocManager {
 
   /** 关闭并销毁 Chat Doc */
   closeChat(rcsSessionId: string): Promise<void> {
+    this.promptEchoFragments.delete(rcsSessionId);
     return this.openService.closeChat(rcsSessionId);
   }
 
@@ -309,6 +319,8 @@ export class DocManager {
       this.sessionDocs.set(rcsSessionId, session);
       // 提交后再次递增：覆盖在换代等待窗口内才完成加载、且尚未安装的 open。
       this.fences.commitReplacement(attempt);
+      // 时间线随投影换代清空，旧回显片段不得继续吞掉新会话的回显。
+      this.promptEchoFragments.delete(rcsSessionId);
 
       try {
         await Promise.all([oldChat?.destroy(), oldSession?.destroy()]);
@@ -343,7 +355,11 @@ export class DocManager {
   /** 文档中是否已存在同文本的 user entry（实时回显 / 重复回放的去重判定，规则见投影工具）。 */
   hasUserMessageText(rcsSessionId: string, text: string): boolean {
     const doc = this.chatDocs.get(rcsSessionId);
-    return doc !== undefined && hasUserMessageTextInDoc(doc.ydoc, text);
+    if (doc !== undefined && hasUserMessageTextInDoc(doc.ydoc, text)) return true;
+    // 引擎按内容块回显：图片占位使整条展示文本与单块不相等，片段命中同样视为回显。
+    const target = normalizeUserText(text);
+    if (!target) return false;
+    return this.promptEchoFragments.get(rcsSessionId)?.has(target) ?? false;
   }
 
   // ── 用户消息注册 ──
@@ -352,8 +368,11 @@ export class DocManager {
    * 注册用户消息：生成新 turn 并投递 user_message 规范化事件。
    * turnId 每次调用生成新值（恢复执行必须创建显式新 turn，不得复用已终结 turn）；
    * resolve 时消息已写入（或确认代次过期而丢弃），调用方可安全转发 prompt。
+   *
+   * echoParts 是用户消息的展示片段（文本块 / 图片占位）：引擎按块回显时用片段做
+   * 回显去重；单片段无需登记（整条展示文本即该片段）。
    */
-  async registerUserMessage(rcsSessionId: string, content: string): Promise<string> {
+  async registerUserMessage(rcsSessionId: string, content: string, echoParts?: readonly string[]): Promise<string> {
     const turnId = `turn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const event: NormalizedEvent = {
       type: "user_message",
@@ -370,7 +389,25 @@ export class DocManager {
       onDropped: () => this.onLog?.(`[DocManager] user message dropped: projection is stale for ${rcsSessionId}`),
       onError: (error) => this.onError?.("[DocManager] user message write failed", error),
     });
+    if (echoParts && echoParts.length > 1) this.rememberPromptEchoParts(rcsSessionId, echoParts);
     return turnId;
+  }
+
+  /** 记录回显片段：只保留归一化后的非空片段，超上限时按插入顺序淘汰最旧项。 */
+  private rememberPromptEchoParts(rcsSessionId: string, parts: readonly string[]): void {
+    let fragments = this.promptEchoFragments.get(rcsSessionId);
+    if (!fragments) {
+      fragments = new Set<string>();
+      this.promptEchoFragments.set(rcsSessionId, fragments);
+    }
+    for (const part of parts) {
+      const normalized = normalizeUserText(part);
+      if (normalized) fragments.add(normalized);
+    }
+    for (const fragment of fragments) {
+      if (fragments.size <= MAX_PROMPT_ECHO_FRAGMENTS) break;
+      fragments.delete(fragment);
+    }
   }
 
   // ── 规范化事件微批次合并 ──
@@ -494,7 +531,8 @@ export class DocManager {
   }
 
   /** 关闭所有 Doc 并清理内部状态 */
-  closeAll(): Promise<void> {
-    return this.openService.closeAll();
+  async closeAll(): Promise<void> {
+    await this.openService.closeAll();
+    this.promptEchoFragments.clear();
   }
 }
