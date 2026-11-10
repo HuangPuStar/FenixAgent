@@ -39,62 +39,120 @@ export function resetRegistryHeartbeatDeps(): void {
 }
 
 type HeartbeatEntry = {
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | null;
   intervalMs: number;
+  /** 本代计时器的绝对截止时间；刷新时同步前移，旧回调据此判断自己是否已过期。 */
+  deadline: number;
+  /** 单调代次：每次心跳刷新递增，旧 timeout 回调只认自己那一代。 */
+  generation: number;
+  /** 创建该计时器的连接身份（machine wsId）；旧连接的心跳与停止不得作用于新连接。 */
+  connectionId: string | null;
   onTimeout: () => void;
 };
 
 const heartbeatMap = new Map<string, HeartbeatEntry>();
 
-export function startHeartbeat(machineId: string, heartbeatIntervalMs: number, onTimeout: () => void): void {
-  if (heartbeatMap.has(machineId)) {
-    stopHeartbeat(machineId);
-  }
+/** map 身份与代次双检：刷新、重注册或 stop 之后，旧回调不得再代表当前连接。 */
+function isCurrentGeneration(machineId: string, entry: HeartbeatEntry, generation: number): boolean {
+  return heartbeatMap.get(machineId) === entry && entry.generation === generation;
+}
 
-  const timeoutMs = heartbeatIntervalMs * 3;
-
-  const timer = setTimeout(async () => {
-    log(`[registry-heartbeat] Timeout: id=${machineId}, ${timeoutMs}ms no heartbeat`);
-    try {
-      await deps.markHeartbeatTimeout(machineId);
-    } catch (err) {
-      logError("[registry-heartbeat] markTimeout:", err);
-    }
-    heartbeatMap.delete(machineId);
-    onTimeout();
+/** 同步推进截止时间并重设定时器；调用方必须已持有当前 entry。 */
+function armTimer(machineId: string, entry: HeartbeatEntry): void {
+  const generation = entry.generation;
+  const timeoutMs = entry.intervalMs * 3;
+  const deadline = Date.now() + timeoutMs;
+  entry.deadline = deadline;
+  entry.timer = setTimeout(() => {
+    void handleHeartbeatTimeout(machineId, entry, generation, deadline).catch((err) => {
+      logError("[registry-heartbeat] timeout callback:", err);
+    });
   }, timeoutMs);
-
-  heartbeatMap.set(machineId, { timer, intervalMs: heartbeatIntervalMs, onTimeout });
 }
 
-export async function handleHeartbeat(machineId: string): Promise<void> {
-  await deps.updateHeartbeat(machineId);
-  // 事件时刻由调用方给出（端口不自己取时）：与 `registry.ts` 的注册通知同一口径，投影写入的时间戳因此
-  // 可被用例断言，而不是藏在接收方内部。
-  await getMachineLifecyclePort()?.notifyMachineHeartbeat(machineId, new Date());
+async function handleHeartbeatTimeout(
+  machineId: string,
+  entry: HeartbeatEntry,
+  generation: number,
+  deadline: number,
+): Promise<void> {
+  if (!isCurrentGeneration(machineId, entry, generation)) return;
+  log(`[registry-heartbeat] Timeout: id=${machineId}, ${entry.intervalMs * 3}ms no heartbeat`);
 
-  const entry = heartbeatMap.get(machineId);
-  if (entry) {
-    clearTimeout(entry.timer);
-    entry.timer = setTimeout(async () => {
-      log(`[registry-heartbeat] Timeout: id=${machineId}, ${entry.intervalMs * 3}ms no heartbeat`);
-      try {
-        await deps.markHeartbeatTimeout(machineId);
-      } catch (err) {
-        logError("[registry-heartbeat] markTimeout:", err);
-      }
-      heartbeatMap.delete(machineId);
-      entry.onTimeout();
-    }, entry.intervalMs * 3);
+  try {
+    // 条件写入：落库期间已经持久化的新心跳优先，旧回调不得把它改写成离线。
+    await deps.markHeartbeatTimeout(machineId, new Date(deadline));
+  } catch (err) {
+    logError("[registry-heartbeat] markTimeout:", err);
   }
+
+  // 落库与事件投影都可能很慢；这期间收到的新心跳、重注册或 stop 必须让本次判定作废。
+  if (!isCurrentGeneration(machineId, entry, generation)) return;
+  if (Date.now() < deadline) return;
+
+  heartbeatMap.delete(machineId);
+  entry.onTimeout();
 }
 
-export function stopHeartbeat(machineId: string): void {
+export function startHeartbeat(
+  machineId: string,
+  heartbeatIntervalMs: number,
+  onTimeout: () => void,
+  connectionId?: string | null,
+): void {
+  // 重新注册视为新连接接管：旧计时器与旧回调代次立即失效。
+  stopHeartbeat(machineId);
+
+  const entry: HeartbeatEntry = {
+    timer: null,
+    intervalMs: heartbeatIntervalMs,
+    deadline: 0,
+    generation: 1,
+    connectionId: connectionId ?? null,
+    onTimeout,
+  };
+  armTimer(machineId, entry);
+  heartbeatMap.set(machineId, entry);
+}
+
+export async function handleHeartbeat(machineId: string, connectionId?: string | null): Promise<void> {
   const entry = heartbeatMap.get(machineId);
   if (entry) {
-    clearTimeout(entry.timer);
-    heartbeatMap.delete(machineId);
+    if (connectionId != null && entry.connectionId != null && entry.connectionId !== connectionId) {
+      // 旧连接的心跳不能延长当前连接的存活期限。
+      log(`[registry-heartbeat] Ignoring heartbeat from stale connection: id=${machineId}`);
+      return;
+    }
+    // 网络存活是同步事实：先刷新内存期限，再处理可能失败的持久化与生命周期投影。
+    if (entry.timer !== null) clearTimeout(entry.timer);
+    entry.generation += 1;
+    armTimer(machineId, entry);
   }
+
+  // 两个投影彼此独立：一个慢或失败不能阻塞另一个，更不能影响上面已完成的网络存活刷新。
+  const projectionNames = ["updateHeartbeat", "notifyMachineHeartbeat"] as const;
+  const projections = await Promise.allSettled([
+    deps.updateHeartbeat(machineId),
+    // 事件时刻由调用方给出（端口不自己取时）：与 `registry.ts` 的注册通知同一口径，投影写入的时间戳因此
+    // 可被用例断言，而不是藏在接收方内部。
+    Promise.resolve(getMachineLifecyclePort()?.notifyMachineHeartbeat(machineId, new Date())),
+  ]);
+  projections.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logError(`[registry-heartbeat] ${projectionNames[index]}:`, result.reason);
+    }
+  });
+}
+
+export function stopHeartbeat(machineId: string, connectionId?: string | null): void {
+  const entry = heartbeatMap.get(machineId);
+  if (!entry) return;
+  if (connectionId != null && entry.connectionId != null && entry.connectionId !== connectionId) {
+    // 旧连接关闭时不得清掉新连接刚注册的计时器。
+    return;
+  }
+  if (entry.timer !== null) clearTimeout(entry.timer);
+  heartbeatMap.delete(machineId);
 }
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;

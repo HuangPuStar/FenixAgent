@@ -68,7 +68,7 @@ describe("registry 心跳生命周期", () => {
     heartbeat.startHeartbeat("machine-timeout", 2, onTimeout);
     await wait(30);
 
-    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-timeout");
+    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-timeout", expect.any(Date));
     expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 
@@ -83,7 +83,7 @@ describe("registry 心跳生命周期", () => {
     heartbeat.startHeartbeat("machine-timeout-error", 2, onTimeout);
     await wait(30);
 
-    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-timeout-error");
+    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-timeout-error", expect.any(Date));
     expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 
@@ -106,7 +106,7 @@ describe("registry 心跳生命周期", () => {
     expect(onTimeout).not.toHaveBeenCalled();
 
     await wait(40);
-    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-refresh");
+    expect(markHeartbeatTimeout).toHaveBeenCalledWith("machine-refresh", expect.any(Date));
     expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 

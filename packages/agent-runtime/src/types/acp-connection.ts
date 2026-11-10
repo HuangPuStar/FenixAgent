@@ -20,6 +20,8 @@ export interface AcpConnectionEntry {
   ws: WsConnection;
   openTime: number;
   lastClientActivity: number;
+  /** 最近一次合法 heartbeat 的接收时刻；仅 machine 连接使用，供超时断连前复核。 */
+  lastHeartbeatAt?: number;
   capabilities: Record<string, unknown> | null;
   /** 标记此连接为 machine 注册连接（非 ACP agent 连接）。 */
   isMachine: boolean;
