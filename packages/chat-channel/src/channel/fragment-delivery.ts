@@ -5,6 +5,7 @@ import {
   YJS_FRAGMENT_DATA_BYTES,
 } from "../protocol/update-frame";
 import { YJS_TRANSFER_TIMEOUT_MS } from "../transport/update-fragments";
+import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON } from "../transport/ws-close-codes";
 import type { WsConnection } from "./connection-types";
 
 /** 分片的最终投递结果；排入发送任务不代表已交付。 */
@@ -126,7 +127,7 @@ export class YjsFragmentSender {
     let offset = 0;
     let finished = false;
     let pumpTimer: ReturnType<typeof setTimeout>;
-    const deadlineTimer = setTimeout(() => finish("backpressure"), YJS_TRANSFER_TIMEOUT_MS);
+    const deadlineTimer = setTimeout(() => fail("backpressure"), YJS_TRANSFER_TIMEOUT_MS);
     const finish = (result: FragmentDeliveryResult) => {
       if (finished) return;
       finished = true;
@@ -135,6 +136,11 @@ export class YjsFragmentSender {
       active.delete(docName);
       if (active.size === 0) this.transfers.delete(ws);
       resolve(result);
+    };
+    // 有片段交付后只能通过新连接恢复；直接另起 update 会撞上接收端尚未过期的组装。
+    const fail = (result: FragmentDeliveryResult) => {
+      if (offset > 0 && ws.readyState === 1) ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+      finish(result);
     };
     active.set(docName, { bytes: payload.length, completion, finish });
     const pump = () => {
@@ -156,12 +162,12 @@ export class YjsFragmentSender {
           chunk: payload.subarray(offset, offset + YJS_FRAGMENT_DATA_BYTES),
         });
       } catch {
-        return finish("encode_failed");
+        return fail("encode_failed");
       }
       try {
         ws.send(frame);
       } catch {
-        return finish("backpressure");
+        return fail("backpressure");
       }
       this.onFrame(docName, frame.length);
       if (finished) return;

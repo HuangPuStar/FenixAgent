@@ -199,13 +199,15 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   let pendingSyncComplete: YjsSyncComplete | null = null;
   const fragments = new YjsFragmentReceiver(failSync);
 
+  /** 清理失败传输并用浏览器允许的关闭码触发既有退避重连。 */
   function failSync() {
     failedSync = true;
     pendingSyncComplete = null;
     fragments.reset();
-    ws?.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+    ws?.close(1000, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
   }
 
+  /** 完成证明须等待同代在途追赶应用完毕。 */
   function flushSyncComplete() {
     const info = pendingSyncComplete;
     if (!info || info.docs.some((name) => fragments.hasPending(name, info.generation))) return;
@@ -227,6 +229,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     }, delay);
   }
 
+  /** 新 socket 重新握手并隔离旧连接的迟到事件。 */
   function connect() {
     if (destroyed) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;

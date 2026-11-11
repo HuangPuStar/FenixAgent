@@ -1,5 +1,3 @@
-// 广播按 rcsSessionId 隔离；慢连接经有界快照追赶恢复，大载荷分片保留背压。
-
 import * as Y from "yjs";
 import {
   encodeYjsReplaceFrame,
@@ -8,6 +6,7 @@ import {
   MAX_YJS_TRANSFER_BYTES,
 } from "../protocol/update-frame";
 import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON } from "../transport/ws-close-codes";
+import { BroadcastRecovery } from "./broadcast-recovery";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { WsConnection } from "./connection-types";
 import {
@@ -21,8 +20,6 @@ export type { LegacyFrameDelivery, LegacyFrameRejection } from "./fragment-deliv
 
 /** WebSocket 发送背压阈值（CLAUDE.md YJS 不变量 9：修改时必须保留限流语义） */
 const WS_SEND_THRESHOLD = 64 * 1024;
-/** lagging 连接持续超过该时长后 close(1013)，交给客户端重连走全量同步 */
-const LAGGING_CLOSE_TIMEOUT_MS = 30_000;
 /** 帧打点聚合窗口：每秒输出一次各 docName 前缀的帧数与字节数 */
 const FRAME_METRICS_WINDOW_MS = 1_000;
 
@@ -30,12 +27,6 @@ const FRAME_METRICS_WINDOW_MS = 1_000;
 export interface YjsBroadcasterOptions {
   /** 诊断日志；消息只允许包含标识前缀、尺寸与耗时，禁止会话内容 */
   reportLog?: (message: string) => void;
-}
-
-/** 单个 lagging 连接的追赶状态：起始时间 + 被丢帧涉及的 doc 集合 */
-interface LaggingState {
-  since: number;
-  docNames: Set<string>;
 }
 
 /** 负责 Y.Doc 更新的批处理、路由与 WebSocket 发送。 */
@@ -50,9 +41,7 @@ export class YjsBroadcaster {
   private pendingDocNames = new Set<string>();
   private flushScheduled = false;
   private readonly reportLog: ((message: string) => void) | undefined;
-  /** lagging 连接登记（SP-A7）：以 ws 对象身份为键；连接关闭后在 reconcile 时惰性清理 */
-  private readonly laggingConnections = new Map<WsConnection, LaggingState>();
-  /** SP-0 帧打点：无 reportLog 时不采集（避免无消费方的计数开销） */
+  private readonly recovery: BroadcastRecovery;
   private readonly frameStats: Map<string, { count: number; bytes: number }> | null;
   private frameStatsWindowStart = Date.now();
 
@@ -62,6 +51,13 @@ export class YjsBroadcaster {
   ) {
     this.reportLog = options.reportLog;
     this.frameStats = this.reportLog ? new Map() : null;
+    this.recovery = new BroadcastRecovery({
+      document: (name) => this.registeredDocs.get(name),
+      deliver: (ws, name, generation, update) => this.deliverPayload(ws, "update", name, generation, update),
+      pending: (ws, name) => this.fragments.hasPending(ws, name) || this.fragments.hasWaiter(ws, name),
+      buffered: (ws) => this.bufferedAmountOf(ws),
+      reportLog: this.reportLog,
+    });
   }
 
   /** 控制帧触发静默文档追赶；同步结果允许至多 4 KiB 排在数据之后，避免丢掉完成证明。 */
@@ -139,6 +135,7 @@ export class YjsBroadcaster {
 
   /** 权威换代；小 replace 可强制发送，大 replace 保留逐片背压。 */
   broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string, force = false): void {
+    this.recovery.forgetDocument(docName);
     this.broadcastPayload("replace", docName, generation, Y.encodeStateAsUpdate(ydoc), force);
   }
 
@@ -156,14 +153,10 @@ export class YjsBroadcaster {
     this.registeredDocs.delete(docName);
     this.updateBuffers.delete(docName);
     this.pendingDocNames.delete(docName);
-    // Doc 已注销（relay 释放 / 实例回收）后无法再构造追赶快照，剔除对应登记；
-    // 无剩余待追赶 doc 的条目直接移除（该连接已无丢失内容可恢复）。
-    for (const [ws, state] of this.laggingConnections) {
-      state.docNames.delete(docName);
-      if (state.docNames.size === 0) this.laggingConnections.delete(ws);
-    }
+    this.recovery.forgetDocument(docName);
   }
 
+  /** 注册当前代文档的批量广播，替换时先撤销旧监听与在途传输。 */
   registerYjsDocListener(ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
     const existing = this.registeredDocs.get(docName);
     if (existing?.ydoc === ydoc) return;
@@ -193,6 +186,7 @@ export class YjsBroadcaster {
     queueMicrotask(() => this.flushBroadcastsNow());
   }
 
+  /** 同一事件循环内合并文档更新，再按会话隔离发送。 */
   private flushBroadcastsNow(): void {
     this.flushScheduled = false;
     this.reconcileLagging();
@@ -227,7 +221,7 @@ export class YjsBroadcaster {
   /** 关闭连接时立即撤销分片，避免发送任务继续持有大载荷。 */
   cancelConnection(ws: WsConnection): void {
     this.fragments.cancelConnection(ws);
-    this.laggingConnections.delete(ws);
+    this.recovery.forgetConnection(ws);
     this.fragmentPeers.delete(ws);
   }
 
@@ -236,6 +230,7 @@ export class YjsBroadcaster {
     this.fragmentPeers.add(ws);
   }
 
+  /** 普通帧与分片共用预算和交付语义；排队不构成同步成功。 */
   private deliverPayload(
     ws: WsConnection,
     kind: "update" | "replace",
@@ -275,6 +270,7 @@ export class YjsBroadcaster {
       : REJECTED(payload.length, "backpressure");
   }
 
+  /** 握手优先等待在途基线，并为整条等待链保留总时限。 */
   private waitForPending(
     ws: WsConnection,
     docName: string,
@@ -313,6 +309,7 @@ export class YjsBroadcaster {
     };
   }
 
+  /** 小帧共享编码，大更新按连接能力分片，确定性超限不进入无限追赶。 */
   private broadcastPayload(
     kind: "update" | "replace",
     docName: string,
@@ -329,10 +326,11 @@ export class YjsBroadcaster {
     }
     const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
       if (entry.syncOnly) return;
+      if (kind !== "replace" && this.recovery.retryBlocked(entry.ws, docName)) return;
       if (kind === "replace") this.fragments.cancelDocument(entry.ws, docName);
       const delivery = this.deliverPayload(entry.ws, kind, docName, generation, payload);
       const settle = (result: LegacyFrameDelivery) => {
-        if (!result.ok && entry.ws.readyState === 1) this.markLagging(entry.ws, docName);
+        this.recovery.rejected(entry.ws, docName, generation, result);
       };
       if (delivery.completion) void delivery.completion.then(settle);
       else settle(delivery);
@@ -350,6 +348,7 @@ export class YjsBroadcaster {
     // 同一会话可能同时存在旧标签页，因此按连接而非按会话整体裁剪。
     const send = (entry: { ws: WsConnection; syncOnly?: boolean }) => {
       if (entry.syncOnly) return;
+      if (!replace && this.recovery.retryBlocked(entry.ws, docName)) return;
       if (replace) this.fragments.cancelDocument(entry.ws, docName);
       if (!force) {
         this.sendFrameWithBackpressure(entry.ws, docName, frame);
@@ -372,7 +371,7 @@ export class YjsBroadcaster {
   /** 拥塞与在途基线期间登记追赶，单连接异常不阻塞其他连接。 */
   private sendFrameWithBackpressure(ws: WsConnection, docName: string, frame: Uint8Array): boolean {
     if (ws.readyState !== 1) {
-      this.laggingConnections.delete(ws);
+      this.recovery.forgetConnection(ws);
       return false;
     }
     if (this.fragments.hasPending(ws, docName) || this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) {
@@ -389,73 +388,12 @@ export class YjsBroadcaster {
   }
 
   private markLagging(ws: WsConnection, docName: string): void {
-    const existing = this.laggingConnections.get(ws);
-    if (existing) {
-      existing.docNames.add(docName);
-      return;
-    }
-    this.laggingConnections.set(ws, { since: Date.now(), docNames: new Set([docName]) });
-    this.reportLog?.(`[YJS-BROADCAST] connection lagging: prefix=${docPrefix(docName)} threshold=${WS_SEND_THRESHOLD}`);
+    this.recovery.mark(ws, docName);
   }
 
   /** 排水后定向补齐丢帧文档；30s 时限从首次丢帧计，避免慢连接无限占用资源。 */
-  private reconcileLagging(now = Date.now()): void {
-    if (this.laggingConnections.size === 0) return;
-    for (const [ws, state] of this.laggingConnections) {
-      if (ws.readyState !== 1) {
-        this.laggingConnections.delete(ws);
-        continue;
-      }
-      if (now - state.since > LAGGING_CLOSE_TIMEOUT_MS) {
-        this.laggingConnections.delete(ws);
-        this.reportLog?.(
-          `[YJS-BROADCAST] closing slow consumer: prefix=${[...state.docNames].map(docPrefix).join(",")} ` +
-            `laggedMs=${now - state.since}`,
-        );
-        try {
-          ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
-        } catch {
-          // 连接关闭失败不阻塞其他连接的追赶
-        }
-        continue;
-      }
-      if (this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) continue;
-      const pending = [...state.docNames];
-      while (pending.length > 0) {
-        if (this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) break;
-        const docName = pending.shift();
-        if (docName === undefined) break;
-        if (this.fragments.hasPending(ws, docName) || this.fragments.hasWaiter(ws, docName)) {
-          pending.push(docName);
-          break;
-        }
-        const registered = this.registeredDocs.get(docName);
-        if (!registered) continue; // Doc 已注销，无内容可追赶
-        let update: Uint8Array;
-        try {
-          update = Y.encodeStateAsUpdate(registered.ydoc);
-        } catch (error) {
-          this.reportLog?.(
-            `[YJS-BROADCAST] dropped unencodable resync: prefix=${docPrefix(docName)} ` +
-              `error=${error instanceof Error ? error.name : "unknown"}`,
-          );
-          continue;
-        }
-        const delivery = this.deliverPayload(ws, "update", docName, registered.generation, update);
-        if (delivery.completion) {
-          void delivery.completion.then((result) => {
-            if (!result.ok && ws.readyState === 1) this.markLagging(ws, docName);
-          });
-        } else if (!delivery.ok) pending.push(docName);
-        if (!delivery.ok && !delivery.completion) break;
-      }
-      if (pending.length === 0) {
-        this.laggingConnections.delete(ws);
-        this.reportLog?.("[YJS-BROADCAST] lagging connection resynced with targeted snapshots");
-      } else {
-        state.docNames = new Set(pending);
-      }
-    }
+  private reconcileLagging(): void {
+    this.recovery.reconcile();
   }
 
   /** 按文档前缀聚合帧计量，不记录完整标识或会话内容。 */

@@ -28,6 +28,13 @@ interface InitialProjection {
   readonly sessionDoc: SessionDoc;
 }
 
+/** Chat 与 Session 必须仍共同属于本轮 generation，缺失任意投影也不构成证明。 */
+function projectionMatches(getCurrent: (() => InitialProjection | null) | undefined, generation: string): boolean {
+  if (!getCurrent) return true;
+  const current = getCurrent();
+  return current?.chatDoc.generation === generation && current.sessionDoc.generation === generation;
+}
+
 function recordDelivery(pending: PendingInitialSync, docName: string, delivery: LegacyFrameDelivery): void {
   if (delivery.completion) {
     if (pending.delivering.has(docName)) return;
@@ -114,6 +121,7 @@ export async function synchronizeInitialDocs(
   return { ok: false, failedDocNames: [] };
 }
 
+/** 单轮差量握手；分片有界等待后按当前成对投影生成交付证明。 */
 async function synchronizeInitialAttempt(
   pendingSyncs: Map<string, PendingInitialSync>,
   broadcaster: YjsBroadcaster,
@@ -160,12 +168,17 @@ async function synchronizeInitialAttempt(
   // 500ms 只限制 state-vector 握手；分片已经开始时等待其有界投递，不能另发全量快照。
   await Promise.all(pending.delivering.values());
   if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return { ok: false, failedDocNames: docNames };
-  if (currentProjection && currentProjection()?.chatDoc.generation !== pending.generation) {
+  if (!projectionMatches(currentProjection, pending.generation)) {
     pendingSyncs.delete(wsId);
     return { ok: false, failedDocNames: [], superseded: true };
   }
   const complete = () => {
     if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return false;
+    if (!projectionMatches(currentProjection, pending.generation)) {
+      pendingSyncs.delete(wsId);
+      ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+      return false;
+    }
     // 显式成功标记：普通 update 夹杂实时广播，客户端不能据此判断缺失历史已恢复。
     const sent = broadcaster.sendToYjsWs(
       ws,

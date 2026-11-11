@@ -33,6 +33,106 @@ function incompleteFrames(ws: ReturnType<typeof createWs>): Array<Record<string,
 }
 
 describe("旧 Chat Doc 初始同步", () => {
+  // Session 先换代或任一投影消失时，旧 Chat 不能单独证明成对历史已恢复。
+  test.each(["session-changed", "missing"] as const)("当前投影 %s 时不报告旧代同步完成", async (condition) => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const pair = docs();
+    const pending = new Map<string, PendingInitialSync>();
+    const result = synchronizeInitialDocs(
+      pending,
+      broadcaster,
+      ws,
+      "ws-half",
+      RCS_SESSION_ID,
+      pair.chatDoc,
+      pair.sessionDoc,
+      () =>
+        condition === "missing"
+          ? null
+          : {
+              chatDoc: pair.chatDoc,
+              sessionDoc: { ...pair.sessionDoc, generation: "gen-new" },
+            },
+    );
+    for (const [name, doc] of [
+      [CHAT_DOC_NAME, pair.chatDoc],
+      [SESSION_DOC_NAME, pair.sessionDoc],
+    ] as const)
+      noteInitialSyncDelivery(
+        pending,
+        "ws-half",
+        name,
+        GENERATION,
+        broadcaster.sendDiff(ws, doc.ydoc, name, GENERATION, new Uint8Array()),
+      );
+    try {
+      expect((await result).ok).toBe(false);
+      expect(
+        textFrames(ws)
+          .map((frame) => JSON.parse(frame))
+          .some((frame) => frame.type === "yjs:sync-complete"),
+      ).toBe(false);
+      expect(pending.size).toBe(0);
+    } finally {
+      pair.chatDoc.ydoc.destroy();
+      pair.sessionDoc.ydoc.destroy();
+    }
+  });
+
+  // 迟到差量收口时也要重新校验成对投影，不能复用失败通知发出前的代次检查。
+  test("迟到恢复期间 Session 已换代时拒绝旧完成证明", async () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const pair = docs();
+    const pending = new Map<string, PendingInitialSync>();
+    let changed = false;
+    const result = synchronizeInitialDocs(
+      pending,
+      broadcaster,
+      ws,
+      "ws-late",
+      RCS_SESSION_ID,
+      pair.chatDoc,
+      pair.sessionDoc,
+      () => ({
+        chatDoc: pair.chatDoc,
+        sessionDoc: changed ? { ...pair.sessionDoc, generation: "gen-new" } : pair.sessionDoc,
+      }),
+    );
+    ws.bufferedAmount = 65537;
+    const failed = broadcaster.sendSnapshot(ws, pair.chatDoc.ydoc, CHAT_DOC_NAME, GENERATION);
+    ws.bufferedAmount = 0;
+    noteInitialSyncDelivery(pending, "ws-late", CHAT_DOC_NAME, GENERATION, failed);
+    noteInitialSyncDelivery(
+      pending,
+      "ws-late",
+      SESSION_DOC_NAME,
+      GENERATION,
+      broadcaster.sendSnapshot(ws, pair.sessionDoc.ydoc, SESSION_DOC_NAME, GENERATION),
+    );
+    try {
+      expect((await result).ok).toBe(false);
+      changed = true;
+      noteInitialSyncDelivery(
+        pending,
+        "ws-late",
+        CHAT_DOC_NAME,
+        GENERATION,
+        broadcaster.sendSnapshot(ws, pair.chatDoc.ydoc, CHAT_DOC_NAME, GENERATION),
+      );
+      expect(
+        textFrames(ws)
+          .map((frame) => JSON.parse(frame))
+          .some((frame) => frame.type === "yjs:sync-complete"),
+      ).toBe(false);
+      expect(pending.size).toBe(0);
+    } finally {
+      pair.chatDoc.ydoc.destroy();
+      pair.sessionDoc.ydoc.destroy();
+    }
+  });
+
   // 初始大快照中途被其他标签页换代时，只能证明新代完成，不能留下旧代缺失横幅。
   test("分片中途换代后重新握手当前投影，不报告旧代失败", async () => {
     const broadcaster = new YjsBroadcaster(new ConnectionRegistry());

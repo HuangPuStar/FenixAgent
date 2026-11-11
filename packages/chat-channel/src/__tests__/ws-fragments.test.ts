@@ -10,6 +10,7 @@ class Socket {
   static current: Socket;
   readyState = 1;
   onmessage: ((event: MessageEvent) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
   closes: number[] = [];
   sent: string[] = [];
   constructor() {
@@ -18,9 +19,12 @@ class Socket {
   send(data: string) {
     this.sent.push(data);
   }
-  close(code = 1000) {
+  close(code = 1000, reason = "") {
+    if (code !== 1000 && (!Number.isInteger(code) || code < 3000 || code > 4999))
+      throw new DOMException("Invalid browser WebSocket close code", "InvalidAccessError");
     this.closes.push(code);
     this.readyState = 3;
+    this.onclose?.({ code, reason } as CloseEvent);
   }
   receive(data: unknown) {
     this.onmessage?.({ data } as MessageEvent);
@@ -71,7 +75,7 @@ test("缺片及损坏的分片不能解除历史恢复门禁", () => {
     socket.receive(corrupt ? frame.subarray(0, frame.length - 1) : frame);
     socket.receive(JSON.stringify({ type: "yjs:sync-complete", docs: ["chat:rcs-one"], generation: "gen-one" }));
     expect(completed).toHaveLength(0);
-    expect(socket.closes).toEqual(corrupt ? [1013] : []);
+    expect(socket.closes).toEqual(corrupt ? [1000] : []);
     client?.disconnect();
   }
 });
@@ -84,6 +88,36 @@ test("同步握手先声明分片支持再发送 state vector", () => {
   );
   expect(JSON.parse(socket.sent[0] ?? "{}")).toEqual({ type: "yjs:fragment-support", version: 1 });
   expect(socket.sent).toHaveLength(2);
+});
+
+// 浏览器会拒绝客户端发送 1013；超时必须真正关闭并启动已有的退避重连。
+test("浏览器分片超时后使用合法关闭码并重新建连", () => {
+  const timers: Array<{ callback: () => void; delay: number; cleared: boolean }> = [];
+  Object.defineProperty(globalThis, "setTimeout", {
+    configurable: true,
+    value: (callback: () => void, delay: number) => {
+      const timer = { callback, delay, cleared: false };
+      timers.push(timer);
+      return timer;
+    },
+  });
+  Object.defineProperty(globalThis, "clearTimeout", {
+    configurable: true,
+    value: (timer: (typeof timers)[number]) => {
+      timer.cleared = true;
+    },
+  });
+  const { socket, completed } = connect();
+  socket.receive(firstFragment());
+  const deadline = timers.find((timer) => timer.delay === 30_000);
+  expect(deadline).toBeDefined();
+  expect(() => deadline!.callback()).not.toThrow();
+  expect(socket.closes).toEqual([1000]);
+  expect(completed).toHaveLength(0);
+  const reconnect = timers.find((timer) => timer.delay === 1000 && !timer.cleared);
+  expect(reconnect).toBeDefined();
+  reconnect!.callback();
+  expect(Socket.current).not.toBe(socket);
 });
 
 // 收发两端使用固定总时限，超时后归还预算且不再保留载荷。
