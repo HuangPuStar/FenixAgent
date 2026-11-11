@@ -7,12 +7,20 @@ const TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 export const YJS_UPDATE_FRAME_TYPE = 0x01;
 export const YJS_STATE_VECTOR_FRAME_TYPE = 0x02;
 export const YJS_REPLACE_FRAME_TYPE = 0x03;
+export const YJS_FRAGMENT_FRAME_TYPE = 0x04;
 export const YJS_V2_MAGIC = 0xa7;
 export const YJS_V2_MAGIC_SECOND = 0x59;
 export const YJS_FRAME_VERSION = 0x02;
 export const MAX_YJS_SYNC_PAYLOAD_BYTES = 8 * 1024 * 1024;
+/** 大更新的分片载荷预算（含分片头），独立于普通帧上限。 */
+export const MAX_YJS_FRAGMENT_PAYLOAD_BYTES = 2 * 1024 * 1024;
 export const MAX_YJS_FRAME_BYTES = 9 * 1024 * 1024;
 export const MAX_YJS_IDENTIFIER_BYTES = 1024;
+/** 单连接累计在途载荷预算，与单帧限制分开，避免长历史被单帧限制拒绝。 */
+export const MAX_YJS_TRANSFER_BYTES = 64 * 1024 * 1024;
+/** 分片头：原帧类型、36 字节 UUID、偏移和总长度。 */
+const FRAGMENT_HEADER_BYTES = 45;
+export const YJS_FRAGMENT_DATA_BYTES = MAX_YJS_FRAGMENT_PAYLOAD_BYTES - FRAGMENT_HEADER_BYTES;
 
 export interface LegacyYjsUpdateFrame {
   type: "legacy-update";
@@ -38,7 +46,23 @@ export interface YjsReplaceFrame {
   generation: string;
   update: Uint8Array;
 }
-export type YjsSyncFrame = LegacyYjsUpdateFrame | YjsUpdateFrame | YjsStateVectorFrame | YjsReplaceFrame;
+/** 同一传输的普通字节片段；只有完整重组后才可交给 Yjs。 */
+export interface YjsFragmentFrame {
+  type: "fragment";
+  docName: string;
+  generation: string;
+  kind: "update" | "replace";
+  transferId: string;
+  offset: number;
+  totalBytes: number;
+  chunk: Uint8Array;
+}
+export type YjsSyncFrame =
+  | LegacyYjsUpdateFrame
+  | YjsUpdateFrame
+  | YjsStateVectorFrame
+  | YjsReplaceFrame
+  | YjsFragmentFrame;
 
 function encodePart(value: string, label: string): Uint8Array {
   const bytes = TEXT_ENCODER.encode(value);
@@ -95,6 +119,33 @@ export function encodeYjsReplaceFrame(docName: string, generation: string, updat
   return encodeGenerationFrame(YJS_REPLACE_FRAME_TYPE, docName, generation, update);
 }
 
+/** 编码一个有界分片，元数据同时用于接收端的预算与连续性校验。 */
+export function encodeYjsFragmentFrame(frame: Omit<YjsFragmentFrame, "type">): Uint8Array {
+  if (!validFragment(frame)) throw new Error("Invalid Yjs fragment");
+  const payload = new Uint8Array(FRAGMENT_HEADER_BYTES + frame.chunk.length);
+  payload[0] = frame.kind === "replace" ? YJS_REPLACE_FRAME_TYPE : YJS_UPDATE_FRAME_TYPE;
+  payload.set(TEXT_ENCODER.encode(frame.transferId), 1);
+  const view = new DataView(payload.buffer);
+  view.setUint32(37, frame.offset);
+  view.setUint32(41, frame.totalBytes);
+  payload.set(frame.chunk, FRAGMENT_HEADER_BYTES);
+  return encodeGenerationFrame(YJS_FRAGMENT_FRAME_TYPE, frame.docName, frame.generation, payload);
+}
+
+function validFragment(frame: Omit<YjsFragmentFrame, "type">): boolean {
+  return (
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(frame.transferId) &&
+    Number.isInteger(frame.totalBytes) &&
+    frame.totalBytes > MAX_YJS_SYNC_PAYLOAD_BYTES &&
+    frame.totalBytes <= MAX_YJS_TRANSFER_BYTES &&
+    Number.isInteger(frame.offset) &&
+    frame.offset >= 0 &&
+    frame.offset % YJS_FRAGMENT_DATA_BYTES === 0 &&
+    frame.chunk.length === Math.min(YJS_FRAGMENT_DATA_BYTES, frame.totalBytes - frame.offset) &&
+    frame.chunk.length > 0
+  );
+}
+
 function decodeText(bytes: Uint8Array): string | null {
   try {
     return TEXT_DECODER.decode(bytes);
@@ -106,7 +157,12 @@ function decodeText(bytes: Uint8Array): string | null {
 export function decodeYjsSyncFrame(data: Uint8Array): YjsSyncFrame | null {
   if (data.length > MAX_YJS_FRAME_BYTES || data.length < 3) return null;
   const type: number = Number(data[0]);
-  if (type !== YJS_UPDATE_FRAME_TYPE && type !== YJS_STATE_VECTOR_FRAME_TYPE && type !== YJS_REPLACE_FRAME_TYPE)
+  if (
+    type !== YJS_UPDATE_FRAME_TYPE &&
+    type !== YJS_STATE_VECTOR_FRAME_TYPE &&
+    type !== YJS_REPLACE_FRAME_TYPE &&
+    type !== YJS_FRAGMENT_FRAME_TYPE
+  )
     return null;
   const hasV2Header =
     data.length >= 8 && data[1] === YJS_V2_MAGIC && data[2] === YJS_V2_MAGIC_SECOND && data[3] === YJS_FRAME_VERSION;
@@ -131,6 +187,23 @@ export function decodeYjsSyncFrame(data: Uint8Array): YjsSyncFrame | null {
   const generation = decodeText(data.subarray(generationOffset + 2, payloadOffset));
   if (!generation || data.length - payloadOffset > MAX_YJS_SYNC_PAYLOAD_BYTES) return null;
   const payload = data.subarray(payloadOffset);
+  if (type === YJS_FRAGMENT_FRAME_TYPE) {
+    if (payload.length < FRAGMENT_HEADER_BYTES) return null;
+    const originalType = payload[0];
+    if (originalType !== YJS_UPDATE_FRAME_TYPE && originalType !== YJS_REPLACE_FRAME_TYPE) return null;
+    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    const fragment: YjsFragmentFrame = {
+      type: "fragment",
+      docName,
+      generation,
+      kind: originalType === YJS_REPLACE_FRAME_TYPE ? "replace" : "update",
+      transferId: decodeText(payload.subarray(1, 37)) ?? "",
+      offset: view.getUint32(37),
+      totalBytes: view.getUint32(41),
+      chunk: payload.subarray(FRAGMENT_HEADER_BYTES),
+    };
+    return validFragment(fragment) ? fragment : null;
+  }
   if (data[0] === YJS_STATE_VECTOR_FRAME_TYPE)
     return { type: "state-vector", docName, generation, stateVector: payload };
   if (data[0] === YJS_REPLACE_FRAME_TYPE) return { type: "replace", docName, generation, update: payload };

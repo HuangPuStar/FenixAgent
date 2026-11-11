@@ -221,11 +221,21 @@ classDiagram
 
 路由入站队列以连接共享的 `ws.data` 为身份；Elysia 为每次 `open`、`message`、`close` 创建新的 WS 包装对象，不能用包装对象作为跨回调索引。连接关闭从同一身份释放缓存和预算。
 
-Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
+Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload。普通 payload 上限由 `MAX_YJS_SYNC_PAYLOAD_BYTES` 定义，为 8 MiB；超过后通过同一认证 WebSocket 分片，每片载荷由 `MAX_YJS_FRAGMENT_PAYLOAD_BYTES` 独立限制为 2 MiB（含分片头），不因超过普通帧上限拒绝恢复；单 frame 的外层防御上限为 9 MiB。
 
-旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。
+客户端收到 `yjs:sync-request` 后，先声明 `yjs:fragment-support`（version 1），再回传 state vector；服务端在 `relayReady` 前处理能力声明。未声明能力的旧标签页保持明确的超限失败，不能因忽略未知分片而误收成功证明。`fragment` 帧携带原 update/replace 类型、docName、generation、传输 UUID、总长度和连续偏移，接收端收齐后一次应用完整 Yjs update，禁止逐片调用 Yjs。发送与接收每连接累计在途载荷最多 64 MiB，单次传输最长 30 秒；发送逐片执行 64 KiB 背压检查并让出事件循环，连接关闭、文档注销与权威换代释放旧传输。
+
+旧通道的全量快照与 state-vector 差量必须返回投递结果：分片在途只表示等待，全部分片交接 socket 后才能完成初始同步。500ms 仅限制 state-vector 握手，不打断已开始的有界分片传输；同文档已有在途基线时，握手等其结束后重新计算差量。在途 replace 期间的新增量登记定向追赶，避免被后到基线覆盖；初始同步中途换代须对当前成对投影重新握手，最多重启两次，频繁换代关闭连接交给有界重连。超出累计预算或投递失败时，服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端展示缺失状态并提供重试；该消息不改变新协议 DOC_BASE 流程。
 
 每轮同步至多一次缺失通知和一次完成通知，各自限制为 4 KiB，允许排在已交付差量之后而不受普通控制帧的 64 KiB 背压跳帧影响，避免差量填充缓冲后丢掉自己的结果通知。成功交接完成通知后才消费恢复记录；发送异常则以 1013 关闭连接交由重连恢复。普通控制帧与文档数据继续执行既有背压限制。
+
+失败恢复须区分容量与传输故障：当前快照确定超限时暂停自动追赶，保留共享动作连接和缺失基线记录；首次超限及后续文档变化合并为每文档每秒至多一次容量重查，所有连接共享快照编码，末次变化也须检查。仍超限则休眠，缩小至预算内则补发完整基线。分片已有片段交付后发生发送失败或超时，服务端须先以 1013 关闭连接，再由新连接重建接收状态，不能在半成品组装上直接另起 update。换代 replace 无论大小或是否强制发送，未交付都须关闭连接，不能以 update 追赶代替权威换代。浏览器主动因非法分片或接收超时关闭时使用允许的 1000，沿用既有原因与有界重连策略。初始及迟到恢复的完成证明均须重新校验当前 Chat、Session 同属本轮 generation，任一缺失或不匹配都不能报告成功。
+
+同一连接、同一文档的在途同步请求复用一个等待任务、完成回调和总时限；重复 state-vector 不得累积保留。等待任务持有的状态向量与分片载荷共用 64 MiB 连接预算，超预算走既有慢连接重连路径；文档注销、换代和连接关闭须立即取消等待任务及其计时器。
+
+连接登记到能力声明之间仍可收到同会话广播；声明支持分片时须将已记录的容量阻塞升级到 64 MiB 并重新检查，不能在首次分片同步成功后仍以旧 8 MiB 上限截断增量。完整基线交付期间的后续变化仍须补齐，不得直接删除恢复记录。
+
+定向 state-vector 差量和 500 ms 超时快照的最终失败均登记缺失基线：`too_large` 沿用容量重查，背压等传输失败沿用完整快照追赶；分片在途和等待旧基线尚不算失败。首次大文档同步与失败恢复共用固定同步边界：基线派发后立即占用同文档的优先等待槽，基线交付后编码一次当前差量，该差量也实际交付后才证明本轮完整。向量计入既有 64 MiB 预算，基线与差量共享 30 秒总期限；差量编码后的实时变化继续后台广播，不能无限延长本轮。固定差量复用发送泵等待末片排水，小差量使用普通 update 帧，大差量继续分片，不把正常缓冲排水误判为失败；无变化不额外发帧，纯删除仍须交付 delete set。该边界的容量或传输失败须保留恢复观察者，不能因第一轮基线成功就提前结算；等待任务按连接和文档合并，重复请求共用完成 Promise，后到的初始同步请求可为既有等待任务补充恢复通知。完整交付后按连接、文档、generation 和恢复请求身份通知初始同步，补齐双文档证明并发送 `yjs:sync-complete`。文档换代、注销和连接关闭会撤销观察者；普通实时增量不能单独解除“不完整”状态。
 
 **新协议可传输不变量**：任何已提交 Doc 的 canonical snapshot 都必须能由空客户端用一帧 `DOC_BASE` 完整重建。存储、实时轮换、历史构建、目录与运行态统一引用 `MAX_DOC_SNAPSHOT_BYTES`（288KiB 数据帧上限扣除最大头与 base64 封装后的 218,100B），启用期由容量 profile 校验；禁止单层调高硬限。历史逻辑对象超过单记录预算时在导入入口拆成自描述 `object_part` 记录，物理记录仍逐条满足上限，逻辑对象按 part 元数据重组。投递分 planned / socket 已交接 / 已应用三态：未交接的回执只结清额度，不得推进基线顺序；被放弃的基线必须回滚 attempt 或换新 attempt 重发。
 
@@ -628,7 +638,7 @@ yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
 
 ### 5.6 WebSocket generation 帧与前端换代
 
-`protocol/update-frame.ts` 定义三类 generation-aware 二进制帧：`update`、`state-vector`、`replace`。新协议使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。
+`protocol/update-frame.ts` 定义 generation-aware 二进制帧：`update`、`state-vector`、`replace` 和经能力协商的 `fragment`。该帧格式使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。分片严格验证总量、偏移、传输身份和代次，异常或超时关闭连接重新握手；尚有同代分片未收齐时暂存 `yjs:sync-complete`，重组并应用后再向上交付，避免将后台追赶误判成初始同步缺片。
 
 前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。首次连接没有本地代次时只做初始装载，不递增 replacement version；半帧暂存期间任何 update 都不落地。
 

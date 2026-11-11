@@ -1,9 +1,10 @@
 // packages/chat-channel/src/channel/gateway-sync.test.ts
-// 旧 Chat Doc 初始同步的投递结果：超过单帧上限时必须返回失败、通知客户端缺失文档，
+// 旧 Chat Doc 初始同步的投递结果：超过累计预算时必须返回失败、通知客户端缺失文档，
 // 不能把“没有发出任何数据”记成握手完成。
 
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { MAX_YJS_SYNC_PAYLOAD_BYTES, MAX_YJS_TRANSFER_BYTES } from "../protocol/update-frame";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
 import { createWs, textFrames } from "./connection-test-helpers";
@@ -32,13 +33,185 @@ function incompleteFrames(ws: ReturnType<typeof createWs>): Array<Record<string,
 }
 
 describe("旧 Chat Doc 初始同步", () => {
-  // 9MiB 聊天快照 + 正常 Session Doc：差量请求已尝试但未送达，结果必须失败并告知缺失文档。
+  // Session 先换代或任一投影消失时，旧 Chat 不能单独证明成对历史已恢复。
+  test.each(["session-changed", "missing"] as const)("当前投影 %s 时不报告旧代同步完成", async (condition) => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const pair = docs();
+    const pending = new Map<string, PendingInitialSync>();
+    const result = synchronizeInitialDocs(
+      pending,
+      broadcaster,
+      ws,
+      "ws-half",
+      RCS_SESSION_ID,
+      pair.chatDoc,
+      pair.sessionDoc,
+      () =>
+        condition === "missing"
+          ? null
+          : {
+              chatDoc: pair.chatDoc,
+              sessionDoc: { ...pair.sessionDoc, generation: "gen-new" },
+            },
+    );
+    for (const [name, doc] of [
+      [CHAT_DOC_NAME, pair.chatDoc],
+      [SESSION_DOC_NAME, pair.sessionDoc],
+    ] as const)
+      noteInitialSyncDelivery(
+        pending,
+        "ws-half",
+        name,
+        GENERATION,
+        broadcaster.sendDiff(ws, doc.ydoc, name, GENERATION, new Uint8Array()),
+      );
+    try {
+      expect((await result).ok).toBe(false);
+      expect(
+        textFrames(ws)
+          .map((frame) => JSON.parse(frame))
+          .some((frame) => frame.type === "yjs:sync-complete"),
+      ).toBe(false);
+      expect(pending.size).toBe(0);
+    } finally {
+      pair.chatDoc.ydoc.destroy();
+      pair.sessionDoc.ydoc.destroy();
+    }
+  });
+
+  // 迟到差量收口时也要重新校验成对投影，不能复用失败通知发出前的代次检查。
+  test("迟到恢复期间 Session 已换代时拒绝旧完成证明", async () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const pair = docs();
+    const pending = new Map<string, PendingInitialSync>();
+    let changed = false;
+    const result = synchronizeInitialDocs(
+      pending,
+      broadcaster,
+      ws,
+      "ws-late",
+      RCS_SESSION_ID,
+      pair.chatDoc,
+      pair.sessionDoc,
+      () => ({
+        chatDoc: pair.chatDoc,
+        sessionDoc: changed ? { ...pair.sessionDoc, generation: "gen-new" } : pair.sessionDoc,
+      }),
+    );
+    ws.bufferedAmount = 65537;
+    const failed = broadcaster.sendSnapshot(ws, pair.chatDoc.ydoc, CHAT_DOC_NAME, GENERATION);
+    ws.bufferedAmount = 0;
+    noteInitialSyncDelivery(pending, "ws-late", CHAT_DOC_NAME, GENERATION, failed);
+    noteInitialSyncDelivery(
+      pending,
+      "ws-late",
+      SESSION_DOC_NAME,
+      GENERATION,
+      broadcaster.sendSnapshot(ws, pair.sessionDoc.ydoc, SESSION_DOC_NAME, GENERATION),
+    );
+    try {
+      expect((await result).ok).toBe(false);
+      changed = true;
+      noteInitialSyncDelivery(
+        pending,
+        "ws-late",
+        CHAT_DOC_NAME,
+        GENERATION,
+        broadcaster.sendSnapshot(ws, pair.chatDoc.ydoc, CHAT_DOC_NAME, GENERATION),
+      );
+      expect(
+        textFrames(ws)
+          .map((frame) => JSON.parse(frame))
+          .some((frame) => frame.type === "yjs:sync-complete"),
+      ).toBe(false);
+      expect(pending.size).toBe(0);
+    } finally {
+      pair.chatDoc.ydoc.destroy();
+      pair.sessionDoc.ydoc.destroy();
+    }
+  });
+
+  // 初始大快照中途被其他标签页换代时，只能证明新代完成，不能留下旧代缺失横幅。
+  test("分片中途换代后重新握手当前投影，不报告旧代失败", async () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    broadcaster.enableFragmentSupport(ws);
+    let current = docs("x".repeat(MAX_YJS_SYNC_PAYLOAD_BYTES + 1024));
+    const old = current;
+    const pending = new Map<string, PendingInitialSync>();
+    broadcaster.registerYjsDocListener(current.chatDoc.ydoc, CHAT_DOC_NAME, GENERATION);
+    broadcaster.registerYjsDocListener(current.sessionDoc.ydoc, SESSION_DOC_NAME, GENERATION);
+    const send = ws.send.bind(ws);
+    let replaced = false;
+    ws.send = (frame) => {
+      send(frame);
+      if (typeof frame === "string" && JSON.parse(frame).type === "yjs:sync-request") {
+        queueMicrotask(() => {
+          for (const [name, doc] of [
+            [CHAT_DOC_NAME, current.chatDoc],
+            [SESSION_DOC_NAME, current.sessionDoc],
+          ] as const) {
+            noteInitialSyncDelivery(
+              pending,
+              "ws-switch",
+              name,
+              doc.generation,
+              broadcaster.sendDiff(ws, doc.ydoc, name, doc.generation, new Uint8Array()),
+            );
+          }
+        });
+        return;
+      }
+      if (!(frame instanceof Uint8Array) || replaced) return;
+      replaced = true;
+      queueMicrotask(() => {
+        current = docs("y".repeat(MAX_YJS_SYNC_PAYLOAD_BYTES + 2048));
+        current.chatDoc.generation = "generation-new";
+        current.sessionDoc.generation = "generation-new";
+        broadcaster.registerYjsDocListener(current.chatDoc.ydoc, CHAT_DOC_NAME, "generation-new");
+        broadcaster.registerYjsDocListener(current.sessionDoc.ydoc, SESSION_DOC_NAME, "generation-new");
+        broadcaster.broadcastReplacement(current.chatDoc.ydoc, CHAT_DOC_NAME, "generation-new", true);
+        broadcaster.broadcastReplacement(current.sessionDoc.ydoc, SESSION_DOC_NAME, "generation-new", true);
+      });
+    };
+    try {
+      const result = await synchronizeInitialDocs(
+        pending,
+        broadcaster,
+        ws,
+        "ws-switch",
+        RCS_SESSION_ID,
+        old.chatDoc,
+        old.sessionDoc,
+        () => current,
+      );
+      expect(result.ok).toBe(true);
+      expect(incompleteFrames(ws)).toEqual([]);
+      expect(
+        textFrames(ws)
+          .map((frame) => JSON.parse(frame))
+          .filter((frame) => frame.type === "yjs:sync-complete"),
+      ).toEqual([{ type: "yjs:sync-complete", docs: [CHAT_DOC_NAME, SESSION_DOC_NAME], generation: "generation-new" }]);
+    } finally {
+      broadcaster.cancelConnection(ws);
+      broadcaster.unregisterYjsDocListener(CHAT_DOC_NAME);
+      broadcaster.unregisterYjsDocListener(SESSION_DOC_NAME);
+      for (const pair of [old, current]) {
+        pair.chatDoc.ydoc.destroy();
+        pair.sessionDoc.ydoc.destroy();
+      }
+    }
+  });
+
+  // 超过累计传输预算的快照仍须明确报告缺失，不能因支持分片而无界接收。
   test("超限文档未送达时返回失败并发送缺失状态", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const ws = createWs();
     const { chatDoc, sessionDoc } = docs();
-    chatDoc.ydoc.getText("big").insert(0, "x".repeat(9 * 1024 * 1024));
+    chatDoc.ydoc.getText("big").insert(0, "x".repeat(MAX_YJS_TRANSFER_BYTES + 1));
     const pending = new Map<string, PendingInitialSync>();
 
     const resultPromise = synchronizeInitialDocs(pending, broadcaster, ws, "ws-1", RCS_SESSION_ID, chatDoc, sessionDoc);
@@ -91,13 +264,13 @@ describe("旧 Chat Doc 初始同步", () => {
     ).toEqual([{ type: "yjs:sync-complete", docs: [CHAT_DOC_NAME, SESSION_DOC_NAME], generation: GENERATION }]);
   });
 
-  // 客户端未在 500ms 内回 state-vector 时的全量兜底：超限快照同样必须返回失败。
+  // 握手超时后的全量兜底同样受累计传输预算约束。
   test("超时兜底的全量快照超限时返回失败", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const ws = createWs();
     const { chatDoc, sessionDoc } = docs();
-    chatDoc.ydoc.getText("big").insert(0, "x".repeat(9 * 1024 * 1024));
+    chatDoc.ydoc.getText("big").insert(0, "x".repeat(MAX_YJS_TRANSFER_BYTES + 1));
 
     const result = await synchronizeInitialDocs(
       new Map<string, PendingInitialSync>(),

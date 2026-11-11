@@ -1,11 +1,17 @@
 // packages/chat-channel/src/channel/gateway-message-isolation.test.ts
 // 入站消息隔离与 legacy 超限帧回归：单个连接的处理失败不得变成未处理拒绝带走进程；
-// 超过 8MiB 的 legacy 全量 diff 只丢帧并留诊断，不能关闭与新同步协议共用的 socket。
+// 超过累计传输预算时只拒绝该更新，不能关闭与新同步协议共用的 socket。
 
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { encodeYjsStateVectorFrame } from "../protocol/update-frame";
+import {
+  decodeYjsSyncFrame,
+  encodeYjsStateVectorFrame,
+  MAX_YJS_SYNC_PAYLOAD_BYTES,
+  MAX_YJS_TRANSFER_BYTES,
+} from "../protocol/update-frame";
 import { decodeSyncFrame, encodeSyncFrame, SYNC_PROTOCOL_VERSION } from "../sync/protocol/frames";
+import { YjsFragmentReceiver } from "../transport/update-fragments";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
 import { createClient, createGateway, createRelayEvents, createWs } from "./connection-test-helpers";
@@ -18,14 +24,67 @@ function stateVectorFrame(): Uint8Array {
 }
 
 describe("Gateway 单连接消息隔离", () => {
-  // 9MiB legacy Chat Doc 的全量 diff 超过 8MiB 上限：只丢该帧并记录大小，连接保持打开（新同步协议仍可用）。
+  // Elysia 每条消息创建新包装对象，能力声明与发送任务必须绑定已登记的同一连接。
+  test("跨消息包装对象仍能协商并完整发送分片", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const doc = new Y.Doc();
+    const historySize = MAX_YJS_SYNC_PAYLOAD_BYTES + 1024;
+    doc.getText("history").insert(0, "x".repeat(historySize));
+    const gateway = createGateway(
+      registry,
+      broadcaster,
+      createRelayEvents(registry, broadcaster, []),
+      {},
+      { getChat: () => ({ ydoc: doc, generation: GENERATION }) },
+    );
+    const ws = createWs();
+    registry.addClient("ws-wrappers", createClient({ ws, rcsSessionId: RCS_SESSION_ID, relayReady: false }));
+    const wrapper = () => ({ readyState: 1, send: ws.send.bind(ws), close: ws.close.bind(ws) });
+    const receiver = new YjsFragmentReceiver(() => {});
+    const restored = new Y.Doc();
+    try {
+      await gateway.handleMessage(
+        wrapper(),
+        "ws-wrappers",
+        JSON.stringify({ type: "yjs:fragment-support", version: 1 }),
+      );
+      await gateway.handleMessage(wrapper(), "ws-wrappers", stateVectorFrame());
+      const deadline = performance.now() + 500;
+      let cursor = 0;
+      let applied = false;
+      while (!applied && performance.now() < deadline) {
+        for (const data of ws.messages.slice(cursor)) {
+          if (!(data instanceof Uint8Array)) continue;
+          const decoded = decodeYjsSyncFrame(data);
+          if (decoded?.type !== "fragment") continue;
+          const complete = receiver.accept(decoded);
+          if (complete) {
+            Y.applyUpdate(restored, complete.update);
+            applied = true;
+          }
+        }
+        cursor = ws.messages.length;
+        if (!applied) await Bun.sleep(2);
+      }
+      expect(applied).toBe(true);
+      expect(restored.getText("history").length).toBe(historySize);
+    } finally {
+      gateway.handleClose("ws-wrappers");
+      receiver.reset();
+      doc.destroy();
+      restored.destroy();
+    }
+  });
+
+  // 超过累计预算时保留明确诊断与当前连接，新协议仍可继续握手。
   test("超限 legacy diff 丢帧但进程与连接存活", async () => {
     const registry = new ConnectionRegistry();
     const logs: string[] = [];
     const broadcaster = new YjsBroadcaster(registry, { reportLog: (message) => logs.push(message) });
     const relayEvents = createRelayEvents(registry, broadcaster, []);
     const big = new Y.Doc();
-    big.getText("big").insert(0, "x".repeat(9 * 1024 * 1024));
+    big.getText("big").insert(0, "x".repeat(MAX_YJS_TRANSFER_BYTES + 1));
     const gateway = createGateway(
       registry,
       broadcaster,

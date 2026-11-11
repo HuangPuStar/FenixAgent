@@ -3,10 +3,11 @@
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
 import type { ActionAck, ActionError } from "../channel/types";
-import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
+import { decodeYjsSyncFrame, encodeYjsStateVectorFrame, YJS_FRAGMENT_FRAME_TYPE } from "../protocol/update-frame";
 import { isPublicError, type PublicError } from "../public-error";
 import type { YjsHistoryIncomplete } from "../types";
-import { WS_CLOSE_CODE_POLICY } from "./ws-close-codes";
+import { YjsFragmentReceiver } from "./update-fragments";
+import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON, WS_CLOSE_CODE_POLICY } from "./ws-close-codes";
 
 /**
  * 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。
@@ -194,6 +195,25 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   let connectedAt: number | null = null;
   let destroyed = false;
   let commandEpoch: string | null = null;
+  let failedSync = false;
+  let pendingSyncComplete: YjsSyncComplete | null = null;
+  const fragments = new YjsFragmentReceiver(failSync);
+
+  /** 清理失败传输并用浏览器允许的关闭码触发既有退避重连。 */
+  function failSync() {
+    failedSync = true;
+    pendingSyncComplete = null;
+    fragments.reset();
+    ws?.close(1000, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+  }
+
+  /** 完成证明须等待同代在途追赶应用完毕。 */
+  function flushSyncComplete() {
+    const info = pendingSyncComplete;
+    if (!info || info.docs.some((name) => fragments.hasPending(name, info.generation))) return;
+    pendingSyncComplete = null;
+    onSyncComplete?.(info);
+  }
 
   function setState(state: YjsWsState) {
     onConnectionState?.(state);
@@ -209,11 +229,15 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     }, delay);
   }
 
+  /** 新 socket 重新握手并隔离旧连接的迟到事件。 */
   function connect() {
     if (destroyed) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
     commandEpoch = null;
+    failedSync = false;
+    pendingSyncComplete = null;
+    fragments.reset();
     connectedAt = null;
     setState("connecting");
     const socket = new WebSocket(url);
@@ -233,21 +257,37 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     };
 
     socket.onmessage = (event: MessageEvent) => {
-      if (destroyed || ws !== socket) return;
+      if (destroyed || failedSync || ws !== socket) return;
       const data = event.data;
       // 二进制 yjs:update 帧（SP-A4）：零拷贝解析，替代历史 base64+JSON 逐字节解码慢路径
       if (typeof data !== "string") {
         const bytes = toFrameBytes(data);
         if (bytes) {
-          const frame = decodeYjsSyncFrame(bytes);
+          let frame = decodeYjsSyncFrame(bytes);
+          if (!frame && bytes[0] === YJS_FRAGMENT_FRAME_TYPE) {
+            failSync();
+            return;
+          }
           if (!frame || frame.type === "state-vector") return;
+          if (frame.type === "fragment") {
+            try {
+              frame = fragments.accept(frame);
+            } catch {
+              failSync();
+              return;
+            }
+            if (!frame) return;
+          }
           if (frame.type === "legacy-update") {
             if (!generations.has(frame.docName)) onYjsUpdate(frame.docName, frame.update);
             return;
           }
           if (frame.type === "replace") {
+            fragments.cancel(frame.docName);
+            if (pendingSyncComplete?.generation !== frame.generation) pendingSyncComplete = null;
             generations.set(frame.docName, frame.generation);
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
+            flushSyncComplete();
             return;
           }
           const current = generations.get(frame.docName) ?? localGenerations().get(frame.docName);
@@ -259,11 +299,13 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
             requestedGenerations.delete(frame.docName);
             generations.set(frame.docName, frame.generation);
             onYjsReplace?.(frame.docName, frame.generation, frame.update);
+            flushSyncComplete();
             return;
           }
           if (current !== undefined && current !== frame.generation) return;
           generations.set(frame.docName, frame.generation);
           onYjsUpdate(frame.docName, frame.update, frame.generation);
+          flushSyncComplete();
         }
         return;
       }
@@ -286,6 +328,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           return;
         }
         if (msg.type === "yjs:sync-request" && Array.isArray(msg.docs)) {
+          pendingSyncComplete = null;
+          socket.send(JSON.stringify({ type: "yjs:fragment-support", version: 1 }));
           const local = new Map((getYjsStateVectors?.() ?? []).map((vector) => [vector.docName, vector]));
           for (const requested of msg.docs) {
             if (!requested || typeof requested !== "object") continue;
@@ -317,7 +361,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         }
         if (msg.type === "yjs:sync-complete") {
           const info = readSyncComplete(msg);
-          if (info !== null) onSyncComplete?.(info);
+          // 后台追赶可能已开始下一次传输；等其收齐再交付证明，不把合法追赶当成缺片。
+          if (info !== null) {
+            pendingSyncComplete = info;
+            flushSyncComplete();
+          }
           return;
         }
         if (msg.type === "action_ack") {
@@ -340,6 +388,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     socket.onclose = (event: CloseEvent) => {
       if (destroyed || ws !== socket) return;
       ws = null;
+      fragments.reset();
+      pendingSyncComplete = null;
       commandEpoch = null;
       const close = { code: event.code, reason: event.reason };
       onClose?.(close);
@@ -372,6 +422,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
   function disconnect() {
     destroyed = true;
+    fragments.reset();
     commandEpoch = null;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
