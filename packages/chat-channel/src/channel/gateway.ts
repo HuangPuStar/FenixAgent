@@ -350,6 +350,11 @@ export class Gateway {
         shared.rcsSessionId,
         chatDoc,
         sessionDoc,
+        () => {
+          const chatDoc = this.dependencies.docManager.getChat(shared.rcsSessionId);
+          const sessionDoc = this.dependencies.docManager.getSession(shared.rcsSessionId);
+          return chatDoc && sessionDoc ? { chatDoc, sessionDoc } : null;
+        },
       );
       // 保留未交付历史的诊断，不能把空白投影误判为没有历史。
       if (!initialSync.ok) {
@@ -410,6 +415,7 @@ export class Gateway {
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);
     if (!entry) return;
+    this.dependencies.broadcaster.cancelConnection(entry.ws);
     try {
       entry.syncConnection?.dispose();
     } catch (error) {

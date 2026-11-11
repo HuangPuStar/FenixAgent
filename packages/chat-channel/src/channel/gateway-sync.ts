@@ -1,3 +1,4 @@
+import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON } from "../transport/ws-close-codes";
 import type { ChatDoc, SessionDoc, YjsHistoryIncomplete } from "../types";
 import type { LegacyFrameDelivery, YjsBroadcaster } from "./broadcaster";
 import type { WsConnection } from "./connection-types";
@@ -10,6 +11,7 @@ export interface PendingInitialSync {
   received: Set<string>;
   /** 服务端明确无法交付的文档；与 received 一起收敛等待，但不等于同步成功。 */
   failed: Map<string, LegacyFrameDelivery>;
+  delivering: Map<string, Promise<void>>;
   resolve: () => void;
   recover?: () => void;
 }
@@ -17,9 +19,28 @@ export interface PendingInitialSync {
 export interface InitialDocSyncResult {
   readonly ok: boolean;
   readonly failedDocNames: readonly string[];
+  readonly superseded?: boolean;
+}
+
+/** 当前代次的成对投影；只读获取，不能用旧快照恢复已经换代的会话。 */
+interface InitialProjection {
+  readonly chatDoc: ChatDoc;
+  readonly sessionDoc: SessionDoc;
 }
 
 function recordDelivery(pending: PendingInitialSync, docName: string, delivery: LegacyFrameDelivery): void {
+  if (delivery.completion) {
+    if (pending.delivering.has(docName)) return;
+    const task = delivery.completion.then((result) => {
+      pending.delivering.delete(docName);
+      recordDelivery(pending, docName, result);
+      settlePending(pending);
+      if (pending.received.size === pending.expected.size && pending.failed.size === 0) pending.recover?.();
+    });
+    pending.delivering.set(docName, task);
+    return;
+  }
+  if (pending.delivering.has(docName)) return;
   if (delivery.ok) {
     pending.received.add(docName);
     pending.failed.delete(docName);
@@ -61,6 +82,7 @@ function incompletePayload(failed: ReadonlyMap<string, LegacyFrameDelivery>, gen
   };
 }
 
+/** 初始同步被换代打断时最多重启两次；频繁换代交由有界重连重新绑定。 */
 export async function synchronizeInitialDocs(
   pendingSyncs: Map<string, PendingInitialSync>,
   broadcaster: YjsBroadcaster,
@@ -69,6 +91,38 @@ export async function synchronizeInitialDocs(
   rcsSessionId: string,
   chatDoc: ChatDoc,
   sessionDoc: SessionDoc,
+  currentProjection?: () => InitialProjection | null,
+): Promise<InitialDocSyncResult> {
+  let projection = { chatDoc, sessionDoc };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await synchronizeInitialAttempt(
+      pendingSyncs,
+      broadcaster,
+      ws,
+      wsId,
+      rcsSessionId,
+      projection.chatDoc,
+      projection.sessionDoc,
+      currentProjection,
+    );
+    if (!result.superseded) return result;
+    const next = currentProjection?.();
+    if (!next || next.chatDoc.generation !== next.sessionDoc.generation) break;
+    projection = next;
+  }
+  ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+  return { ok: false, failedDocNames: [] };
+}
+
+async function synchronizeInitialAttempt(
+  pendingSyncs: Map<string, PendingInitialSync>,
+  broadcaster: YjsBroadcaster,
+  ws: WsConnection,
+  wsId: string,
+  rcsSessionId: string,
+  chatDoc: ChatDoc,
+  sessionDoc: SessionDoc,
+  currentProjection?: () => InitialProjection | null,
 ): Promise<InitialDocSyncResult> {
   const docNames = [`chat:${rcsSessionId}`, `session:${rcsSessionId}`];
   let pending!: PendingInitialSync;
@@ -83,6 +137,7 @@ export async function synchronizeInitialDocs(
       expected: new Set(docNames),
       received: new Set(),
       failed: new Map(),
+      delivering: new Map(),
       resolve: () => {
         clearTimeout(timer);
         resolve();
@@ -98,9 +153,16 @@ export async function synchronizeInitialDocs(
   if (syncTimedOut) {
     for (const [index, doc] of [chatDoc, sessionDoc].entries()) {
       const docName = docNames[index];
-      if (pending.received.has(docName)) continue;
+      if (pending.received.has(docName) || pending.delivering.has(docName)) continue;
       recordDelivery(pending, docName, broadcaster.sendSnapshot(ws, doc.ydoc, docName, doc.generation));
     }
+  }
+  // 500ms 只限制 state-vector 握手；分片已经开始时等待其有界投递，不能另发全量快照。
+  await Promise.all(pending.delivering.values());
+  if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return { ok: false, failedDocNames: docNames };
+  if (currentProjection && currentProjection()?.chatDoc.generation !== pending.generation) {
+    pendingSyncs.delete(wsId);
+    return { ok: false, failedDocNames: [], superseded: true };
   }
   const complete = () => {
     if (ws.readyState !== 1 || pendingSyncs.get(wsId) !== pending) return false;

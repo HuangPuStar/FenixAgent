@@ -52,8 +52,26 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
           ? deps.docManager.getChat(entry.rcsSessionId)
           : deps.docManager.getSession(entry.rcsSessionId);
       if (!doc || doc.generation !== frame.generation) return;
-      const delivery = deps.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
+      const delivery = deps.broadcaster.sendDiff(
+        entry.ws,
+        doc.ydoc,
+        frame.docName,
+        frame.generation,
+        frame.stateVector,
+      );
       noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, frame.generation, delivery);
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(data);
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    } catch {
+      return;
+    }
+    // 能力声明属于初始同步握手，必须在 relayReady 前处理。
+    if (entry && !entry.syncOnly && parsed.type === "yjs:fragment-support" && parsed.version === 1) {
+      deps.broadcaster.enableFragmentSupport(entry.ws);
       return;
     }
     if (!entry?.relayReady) {
@@ -61,12 +79,6 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
         deps.registry.discardPending(wsId);
         ws.close(1013, "pending message budget exceeded");
       }
-      return;
-    }
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(data);
-    } catch {
       return;
     }
     if (parsed.type === "ping") {

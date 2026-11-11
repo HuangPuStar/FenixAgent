@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { encodeYjsUpdateFrame, YJS_UPDATE_FRAME_TYPE } from "../protocol/update-frame";
+import { encodeYjsUpdateFrame, MAX_YJS_TRANSFER_BYTES, YJS_UPDATE_FRAME_TYPE } from "../protocol/update-frame";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
 import { createWs, decodeUpdateFrames, type MockWs } from "./connection-test-helpers";
@@ -124,12 +124,12 @@ describe("YjsBroadcaster 二进制帧（SP-A4）", () => {
     expect(restored.getMap("chat").get("title")).toBe("current generation");
   });
 
-  // 超过单帧上限的快照/差量必须返回拒绝（含原因与尺寸），调用方不得把未送达当作同步完成。
+  // 超过累计预算的快照/差量必须拒绝，分片不能绕过连接内存限制。
   test("reports oversized snapshot and diff instead of silently dropping them", () => {
     const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
     const ws = createWs();
     const doc = new Y.Doc();
-    doc.getText("big").insert(0, "x".repeat(9 * 1024 * 1024));
+    doc.getText("big").insert(0, "x".repeat(MAX_YJS_TRANSFER_BYTES + 1));
 
     const snapshot = broadcaster.sendSnapshot(ws, doc, "chat:rcs-1", "gen-big");
     expect(snapshot.ok).toBe(false);

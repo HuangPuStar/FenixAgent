@@ -221,9 +221,11 @@ classDiagram
 
 路由入站队列以连接共享的 `ws.data` 为身份；Elysia 为每次 `open`、`message`、`close` 创建新的 WS 包装对象，不能用包装对象作为跨回调索引。连接关闭从同一身份释放缓存和预算。
 
-Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
+Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload。普通 payload 上限由 `MAX_YJS_SYNC_PAYLOAD_BYTES` 定义，为 8 MiB；超过后通过同一认证 WebSocket 分片，每片载荷由 `MAX_YJS_FRAGMENT_PAYLOAD_BYTES` 独立限制为 2 MiB（含分片头），不因超过普通帧上限拒绝恢复；单 frame 的外层防御上限为 9 MiB。
 
-旧通道的全量快照与 state-vector 差量必须返回投递结果：超限或背压导致未写入 socket 时不得记为同步完成。服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端必须展示缺失状态并提供重试；该消息只描述未恢复的旧文档，不改变新协议 DOC_BASE 流程。
+客户端收到 `yjs:sync-request` 后，先声明 `yjs:fragment-support`（version 1），再回传 state vector；服务端在 `relayReady` 前处理能力声明。未声明能力的旧标签页保持明确的超限失败，不能因忽略未知分片而误收成功证明。`fragment` 帧携带原 update/replace 类型、docName、generation、传输 UUID、总长度和连续偏移，接收端收齐后一次应用完整 Yjs update，禁止逐片调用 Yjs。发送与接收每连接累计在途载荷最多 64 MiB，单次传输最长 30 秒；发送逐片执行 64 KiB 背压检查并让出事件循环，连接关闭、文档注销与权威换代释放旧传输。
+
+旧通道的全量快照与 state-vector 差量必须返回投递结果：分片在途只表示等待，全部分片交接 socket 后才能完成初始同步。500ms 仅限制 state-vector 握手，不打断已开始的有界分片传输；同文档已有在途基线时，握手等其结束后重新计算差量。在途 replace 期间的新增量登记定向追赶，避免被后到基线覆盖；初始同步中途换代须对当前成对投影重新握手，最多重启两次，频繁换代关闭连接交给有界重连。超出累计预算或投递失败时，服务端经 `yjs:history-incomplete` 告知缺失 docName、原因与尺寸，客户端展示缺失状态并提供重试；该消息不改变新协议 DOC_BASE 流程。
 
 每轮同步至多一次缺失通知和一次完成通知，各自限制为 4 KiB，允许排在已交付差量之后而不受普通控制帧的 64 KiB 背压跳帧影响，避免差量填充缓冲后丢掉自己的结果通知。成功交接完成通知后才消费恢复记录；发送异常则以 1013 关闭连接交由重连恢复。普通控制帧与文档数据继续执行既有背压限制。
 
@@ -628,7 +630,7 @@ yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
 
 ### 5.6 WebSocket generation 帧与前端换代
 
-`protocol/update-frame.ts` 定义三类 generation-aware 二进制帧：`update`、`state-vector`、`replace`。新协议使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。
+`protocol/update-frame.ts` 定义 generation-aware 二进制帧：`update`、`state-vector`、`replace` 和经能力协商的 `fragment`。该帧格式使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。分片严格验证总量、偏移、传输身份和代次，异常或超时关闭连接重新握手；尚有同代分片未收齐时暂存 `yjs:sync-complete`，重组并应用后再向上交付，避免将后台追赶误判成初始同步缺片。
 
 前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。首次连接没有本地代次时只做初始装载，不递增 replacement version；半帧暂存期间任何 update 都不落地。
 

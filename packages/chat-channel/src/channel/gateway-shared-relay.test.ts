@@ -202,34 +202,30 @@ describe("Gateway shared relay", () => {
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);
     const snapshotStarted = deferred<void>();
-    const snapshot = deferred<{ ydoc: Y.Doc }>();
+    const snapshot = deferred<void>();
     const sent: unknown[] = [];
     let openChatCalls = 0;
-    const lifecycle = createGateway(
-      registry,
-      broadcaster,
-      relayEvents,
-      {
-        connectAgentRelay: async () =>
-          ({
-            state: "open",
-            send(message: unknown) {
-              sent.push(message);
-            },
-            close() {},
-          }) as never,
-      },
-      {
-        openChat: async () => {
-          openChatCalls += 1;
-          if (openChatCalls === 2) {
-            snapshotStarted.resolve();
-            return snapshot.promise;
-          }
-          return { ydoc: new Y.Doc() };
-        },
-      },
-    );
+    const docManager = new DocManager();
+    const openChat = docManager.openChat.bind(docManager);
+    docManager.openChat = async (...args) => {
+      openChatCalls += 1;
+      if (openChatCalls === 2) {
+        snapshotStarted.resolve();
+        await snapshot.promise;
+      }
+      return openChat(...args);
+    };
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, {
+      docManager,
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          send(message: unknown) {
+            sent.push(message);
+          },
+          close() {},
+        }) as never,
+    });
     const ws = createWs();
     const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", {
       instanceUid: "instance-1",
@@ -239,7 +235,7 @@ describe("Gateway shared relay", () => {
 
     await lifecycle.handleMessage(ws, "ws-1", JSON.stringify({ action: "cancel" }));
     expect(sent).toEqual([]);
-    snapshot.resolve({ ydoc: new Y.Doc() });
+    snapshot.resolve();
     await opening;
 
     expect(sent).toContainEqual(expect.objectContaining({ method: "session/cancel" }));

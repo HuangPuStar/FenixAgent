@@ -205,10 +205,12 @@ export function createGateway(
   overrides: Partial<GatewayDependencies> = {},
   docManagerOverrides: Record<string, unknown> = {},
 ): Gateway {
-  const mockDocManager = {
-    getChat: () => undefined,
-    openChat: async () => ({ ydoc: new Y.Doc() }),
-    openSession: async () => ({ ydoc: new Y.Doc() }),
+  const memoryDocs = new DocManager();
+  const mockDocManager: DocManager = {
+    getChat: memoryDocs.getChat.bind(memoryDocs),
+    getSession: memoryDocs.getSession.bind(memoryDocs),
+    openChat: async (rcsSessionId: string) => mockDocManager.getChat(rcsSessionId) ?? memoryDocs.openChat(rcsSessionId),
+    openSession: memoryDocs.openSession.bind(memoryDocs),
     getSessionYdoc: () => undefined,
     hasTimelineContent: () => false,
     ...docManagerOverrides,
