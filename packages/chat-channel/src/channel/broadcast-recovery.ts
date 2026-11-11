@@ -114,6 +114,16 @@ export class BroadcastRecovery {
     this.reconcileSnapshots(new Map());
   }
 
+  /** 固定差量已覆盖此前丢失的更新，后续变化须重新登记，不能延长本轮同步边界。 */
+  covered(ws: WsConnection, name: string): void {
+    const state = this.connections.get(ws);
+    if (!state) return;
+    state.active.delete(name);
+    state.blocked.delete(name);
+    if (![...this.connections.values()].some((entry) => entry.blocked.has(name))) this.clearCapacityCheck(name);
+    this.forgetIfIdle(ws, state);
+  }
+
   /** 一轮排水中所有连接共享同一文档快照，避免按连接重复分配大载荷。 */
   private reconcileSnapshots(snapshots: Map<string, RecoverySnapshot | null>): void {
     for (const [ws, state] of this.connections) {
@@ -144,7 +154,8 @@ export class BroadcastRecovery {
           state.recovered.delete(name);
           continue;
         }
-        const delivery = this.options.deliver(ws, name, snapshot.generation, snapshot.update);
+        const { generation } = snapshot;
+        const delivery = this.options.deliver(ws, name, generation, snapshot.update);
         if (delivery.reason === "too_large") {
           this.block(ws, name, delivery.limitBytes);
           continue;
@@ -152,14 +163,14 @@ export class BroadcastRecovery {
         if (delivery.completion) {
           const observer = state.recovered.get(name);
           void delivery.completion.then((result) => {
-            if (result.ok) this.notifyRecovered(ws, name, snapshot.generation, result, observer);
-            else this.rejected(ws, name, snapshot.generation, result);
+            if (result.ok) this.notifyRecovered(ws, name, generation, result, observer);
+            else this.rejected(ws, name, generation, result);
           });
         } else if (!delivery.ok) {
           pending.push(name);
           break;
         } else {
-          this.notifyRecovered(ws, name, snapshot.generation, delivery, state.recovered.get(name));
+          this.notifyRecovered(ws, name, generation, delivery, state.recovered.get(name));
         }
       }
       state.active = new Set(pending);

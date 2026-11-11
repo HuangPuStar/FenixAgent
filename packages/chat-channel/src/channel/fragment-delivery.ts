@@ -1,5 +1,7 @@
 import {
   encodeYjsFragmentFrame,
+  encodeYjsReplaceFrame,
+  encodeYjsUpdateFrame,
   MAX_YJS_SYNC_PAYLOAD_BYTES,
   MAX_YJS_TRANSFER_BYTES,
   YJS_FRAGMENT_DATA_BYTES,
@@ -125,7 +127,7 @@ export class YjsFragmentSender {
     return completion;
   }
 
-  /** 同一文档最多一个在途大更新，后续增量由既有快照追赶收敛。 */
+  /** 同文档共用发送槽；小更新等待排水后单帧发送，大更新按协议分片。 */
   send(
     ws: WsConnection,
     docName: string,
@@ -169,16 +171,21 @@ export class YjsFragmentSender {
         return;
       }
       let frame: Uint8Array;
+      const singleFrame = payload.length <= MAX_YJS_SYNC_PAYLOAD_BYTES;
       try {
-        frame = encodeYjsFragmentFrame({
-          docName,
-          generation,
-          kind,
-          transferId,
-          offset,
-          totalBytes: payload.length,
-          chunk: payload.subarray(offset, offset + YJS_FRAGMENT_DATA_BYTES),
-        });
+        frame = singleFrame
+          ? kind === "replace"
+            ? encodeYjsReplaceFrame(docName, generation, payload)
+            : encodeYjsUpdateFrame(docName, generation, payload)
+          : encodeYjsFragmentFrame({
+              docName,
+              generation,
+              kind,
+              transferId,
+              offset,
+              totalBytes: payload.length,
+              chunk: payload.subarray(offset, offset + YJS_FRAGMENT_DATA_BYTES),
+            });
       } catch {
         return fail("encode_failed");
       }
@@ -189,7 +196,7 @@ export class YjsFragmentSender {
       }
       this.onFrame(docName, frame.length);
       if (finished) return;
-      offset += Math.min(YJS_FRAGMENT_DATA_BYTES, payload.length - offset);
+      offset += Math.min(singleFrame ? payload.length : YJS_FRAGMENT_DATA_BYTES, payload.length - offset);
       if (offset === payload.length) return finish("delivered");
       pumpTimer = setTimeout(pump, 0);
     };

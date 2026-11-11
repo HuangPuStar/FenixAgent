@@ -15,6 +15,7 @@ import {
   rejectedLegacyFrame as REJECTED,
   YjsFragmentSender,
 } from "./fragment-delivery";
+import { TargetedDelivery } from "./targeted-delivery";
 
 export type { LegacyFrameDelivery, LegacyFrameRejection } from "./fragment-delivery";
 
@@ -42,6 +43,7 @@ export class YjsBroadcaster {
   private flushScheduled = false;
   private readonly reportLog: ((message: string) => void) | undefined;
   private readonly recovery: BroadcastRecovery;
+  private readonly targeted: TargetedDelivery;
   private readonly frameStats: Map<string, { count: number; bytes: number }> | null;
   private frameStatsWindowStart = Date.now();
 
@@ -53,10 +55,24 @@ export class YjsBroadcaster {
     this.frameStats = this.reportLog ? new Map() : null;
     this.recovery = new BroadcastRecovery({
       document: (name) => this.registeredDocs.get(name),
-      deliver: (ws, name, generation, update) => this.deliverPayload(ws, "update", name, generation, update),
+      deliver: (ws, name, generation, update) => {
+        const doc = this.registeredDocs.get(name);
+        return doc
+          ? this.targeted.send(ws, doc.ydoc, name, generation, update)
+          : REJECTED(update.length, "backpressure");
+      },
       pending: (ws, name) => this.fragments.hasPending(ws, name) || this.fragments.hasWaiter(ws, name),
       buffered: (ws) => this.bufferedAmountOf(ws),
       reportLog: this.reportLog,
+    });
+    this.targeted = new TargetedDelivery({
+      deliver: (ws, name, generation, update) => this.deliverPayload(ws, "update", name, generation, update),
+      followup: (ws, name, generation, update) => this.deliverPayload(ws, "update", name, generation, update, true),
+      wait: (ws, name, retry, bytes) => this.waitForPending(ws, name, retry, bytes),
+      generation: (name) => this.registeredDocs.get(name)?.generation,
+      covered: (ws, name) => this.recovery.covered(ws, name),
+      rejected: (ws, name, generation, result, recovered) =>
+        this.recovery.rejected(ws, name, generation, result, recovered),
     });
   }
 
@@ -106,7 +122,7 @@ export class YjsBroadcaster {
     }
   }
 
-  /** 定向快照；分片以 completion 证明交付，容量失败后的完整恢复另由 onRecovered 通知。 */
+  /** 定向快照；分片以 completion 证明交付，失败后的完整恢复另由 onRecovered 通知。 */
   sendSnapshot(
     ws: WsConnection,
     ydoc: Y.Doc,
@@ -117,12 +133,12 @@ export class YjsBroadcaster {
     const waiting = this.waitForPending(ws, docName, () =>
       this.sendSnapshot(ws, ydoc, docName, generation, onRecovered),
     );
-    if (waiting) return waiting;
+    if (waiting) return this.targeted.observe(ws, docName, generation, waiting, onRecovered);
     const payload = Y.encodeStateAsUpdate(ydoc);
-    return this.sendTargeted(ws, docName, generation, payload, onRecovered);
+    return this.targeted.send(ws, ydoc, docName, generation, payload, onRecovered);
   }
 
-  /** 定向差量；空向量表示无当前代状态，容量失败后的完整恢复另由 onRecovered 通知。 */
+  /** 定向差量；空向量表示无当前代状态，失败后的完整恢复另由 onRecovered 通知。 */
   sendDiff(
     ws: WsConnection,
     ydoc: Y.Doc,
@@ -143,9 +159,10 @@ export class YjsBroadcaster {
       },
       stateVector.byteLength,
     );
-    if (waiting) return waiting;
+    if (waiting) return this.targeted.observe(ws, docName, generation, waiting, onRecovered);
     const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
-    return this.sendTargeted(ws, docName, generation, update, onRecovered);
+    const baseline = update.length > MAX_YJS_SYNC_PAYLOAD_BYTES ? Y.encodeStateVector(ydoc) : undefined;
+    return this.targeted.send(ws, ydoc, docName, generation, update, onRecovered, baseline);
   }
 
   /** 权威换代；小 replace 可强制发送，大 replace 保留逐片背压。 */
@@ -246,19 +263,6 @@ export class YjsBroadcaster {
     this.recovery.increaseBudget(ws, MAX_YJS_TRANSFER_BYTES);
   }
 
-  /** 定向超限也须保留缺失基线，恢复后才能收口初始同步；其他投递结果沿用原语义。 */
-  private sendTargeted(
-    ws: WsConnection,
-    name: string,
-    generation: string,
-    payload: Uint8Array,
-    onRecovered?: (delivery: LegacyFrameDelivery) => void,
-  ): LegacyFrameDelivery {
-    const delivery = this.deliverPayload(ws, "update", name, generation, payload);
-    if (delivery.reason === "too_large") this.recovery.rejected(ws, name, generation, delivery, onRecovered);
-    return delivery;
-  }
-
   /** 普通帧与分片共用预算和交付语义；排队不构成同步成功。 */
   private deliverPayload(
     ws: WsConnection,
@@ -266,6 +270,7 @@ export class YjsBroadcaster {
     docName: string,
     generation: string,
     payload: Uint8Array,
+    deferred = false,
   ): LegacyFrameDelivery {
     if (this.fragments.hasPending(ws, docName)) {
       this.recovery.mark(ws, docName);
@@ -277,7 +282,7 @@ export class YjsBroadcaster {
       );
       return { ...REJECTED(payload.length, "too_large"), limitBytes: MAX_YJS_TRANSFER_BYTES };
     }
-    if (payload.length > MAX_YJS_SYNC_PAYLOAD_BYTES) {
+    if (payload.length > MAX_YJS_SYNC_PAYLOAD_BYTES || deferred) {
       if (!this.fragmentPeers.has(ws)) return REJECTED(payload.length, "too_large");
       return {
         ok: false,

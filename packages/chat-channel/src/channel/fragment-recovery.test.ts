@@ -225,7 +225,7 @@ test("持续实时更新期间等待在途 replace 的同步仍能完成", async
   }
 });
 
-// 完成证明到达时可有同代后台追赶，须等其应用再回调，不能误判失败并关闭连接。
+// 双文档同步须先补齐基线后的固定差量，再发送完成证明，避免持续回复反复重发全量。
 test("初始双大文档同步期间的后台追赶不会关闭连接或丢失完成证明", async () => {
   const key = "rcs-background";
   const generation = "generation-background";
@@ -323,7 +323,7 @@ test("初始双大文档同步期间的后台追赶不会关闭连接或丢失�
     const deadline = performance.now() + 1_000;
     while (!completed && closes.length === 0 && performance.now() < deadline) await Bun.sleep(2);
     expect(result.ok).toBe(true);
-    expect(proofDuringCatchup).toBe(true);
+    expect(proofDuringCatchup).toBe(false);
     expect(completed).toBe(true);
     expect(completeIncludesLive).toBe(true);
     expect(restoredChat.getText("history").length).toBe(chatSize);
