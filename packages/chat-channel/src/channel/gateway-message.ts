@@ -52,12 +52,14 @@ export function createGatewayMessageHandler(deps: GatewayMessageHandlerDeps): Ga
           ? deps.docManager.getChat(entry.rcsSessionId)
           : deps.docManager.getSession(entry.rcsSessionId);
       if (!doc || doc.generation !== frame.generation) return;
+      const { docName, generation } = frame;
       const delivery = deps.broadcaster.sendDiff(
         entry.ws,
         doc.ydoc,
         frame.docName,
         frame.generation,
         frame.stateVector,
+        (recovered) => noteInitialSyncDelivery(deps.pendingInitialSync, wsId, docName, generation, recovered),
       );
       noteInitialSyncDelivery(deps.pendingInitialSync, wsId, frame.docName, frame.generation, delivery);
       return;

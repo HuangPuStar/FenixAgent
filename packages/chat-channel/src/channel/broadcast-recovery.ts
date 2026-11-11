@@ -7,6 +7,12 @@ interface RecoveryState {
   since: number;
   active: Set<string>;
   blocked: Map<string, number>;
+  recovered: Map<string, RecoveryObserver>;
+}
+
+interface RecoveryObserver {
+  generation: string;
+  notify: (delivery: LegacyFrameDelivery) => void;
 }
 
 interface RecoverySnapshot {
@@ -65,10 +71,17 @@ export class BroadcastRecovery {
   }
 
   /** 广播热路径不编码恢复快照；所有连接共用一次延后容量检查。 */
-  rejected(ws: WsConnection, name: string, generation: string, result: LegacyFrameDelivery): void {
+  rejected(
+    ws: WsConnection,
+    name: string,
+    generation: string,
+    result: LegacyFrameDelivery,
+    onRecovered?: (delivery: LegacyFrameDelivery) => void,
+  ): void {
     if (result.ok || ws.readyState !== 1) return;
     const doc = this.options.document(name);
     if (!doc || doc.generation !== generation) return;
+    if (onRecovered) this.state(ws).recovered.set(name, { generation, notify: onRecovered });
     if (result.reason === "too_large") {
       this.block(ws, name, result.limitBytes);
       this.retryBlocked(ws, name);
@@ -91,7 +104,8 @@ export class BroadcastRecovery {
     for (const [ws, state] of this.connections) {
       state.active.delete(name);
       state.blocked.delete(name);
-      if (state.active.size === 0 && state.blocked.size === 0) this.connections.delete(ws);
+      state.recovered.delete(name);
+      this.forgetIfIdle(ws, state);
     }
   }
 
@@ -126,22 +140,30 @@ export class BroadcastRecovery {
         }
         if (!snapshots.has(name)) snapshots.set(name, this.snapshot(name));
         const snapshot = snapshots.get(name);
-        if (!snapshot) continue;
+        if (!snapshot) {
+          state.recovered.delete(name);
+          continue;
+        }
         const delivery = this.options.deliver(ws, name, snapshot.generation, snapshot.update);
         if (delivery.reason === "too_large") {
           this.block(ws, name, delivery.limitBytes);
           continue;
         }
         if (delivery.completion) {
-          void delivery.completion.then((result) => this.rejected(ws, name, snapshot.generation, result));
+          const observer = state.recovered.get(name);
+          void delivery.completion.then((result) => {
+            if (result.ok) this.notifyRecovered(ws, name, snapshot.generation, result, observer);
+            else this.rejected(ws, name, snapshot.generation, result);
+          });
         } else if (!delivery.ok) {
           pending.push(name);
           break;
+        } else {
+          this.notifyRecovered(ws, name, snapshot.generation, delivery, state.recovered.get(name));
         }
       }
       state.active = new Set(pending);
-      if (state.active.size === 0 && state.blocked.size === 0) {
-        this.connections.delete(ws);
+      if (this.forgetIfIdle(ws, state)) {
         this.options.reportLog?.("[YJS-BROADCAST] lagging connection recovery dispatched");
       }
     }
@@ -159,11 +181,48 @@ export class BroadcastRecovery {
   private state(ws: WsConnection): RecoveryState {
     let state = this.connections.get(ws);
     if (!state) {
-      state = { since: Date.now(), active: new Set(), blocked: new Map() };
+      state = { since: Date.now(), active: new Set(), blocked: new Map(), recovered: new Map() };
       this.connections.set(ws, state);
       this.options.reportLog?.("[YJS-BROADCAST] connection lagging: threshold=65536");
     }
     return state;
+  }
+
+  /** 完整交付后才结算初始同步；延后回调避免发送完成证明时重入当前排水循环。 */
+  private notifyRecovered(
+    ws: WsConnection,
+    name: string,
+    generation: string,
+    delivery: LegacyFrameDelivery,
+    observer: RecoveryObserver | undefined,
+  ): void {
+    if (!observer) return;
+    queueMicrotask(() => {
+      const state = this.connections.get(ws);
+      if (state?.recovered.get(name) !== observer) return;
+      state.recovered.delete(name);
+      this.forgetIfIdle(ws, state);
+      if (ws.readyState !== 1 || observer.generation !== generation) return;
+      if (this.options.document(name)?.generation !== generation) return;
+      try {
+        observer.notify(delivery);
+      } catch (error) {
+        this.reportFailure("notification", error);
+        this.forgetConnection(ws);
+        try {
+          ws.close(1011, "recovery notification failed");
+        } catch (closeError) {
+          this.reportFailure("close", closeError);
+        }
+      }
+    });
+  }
+
+  /** 在途恢复的完成回调仍占有状态，不能在仅派发分片时提前遗忘。 */
+  private forgetIfIdle(ws: WsConnection, state: RecoveryState): boolean {
+    if (state.active.size || state.blocked.size || state.recovered.size) return false;
+    if (this.connections.get(ws) === state) this.connections.delete(ws);
+    return true;
   }
 
   /** 每次恢复读取当前投影，编码异常保留诊断且隔离到该文档。 */

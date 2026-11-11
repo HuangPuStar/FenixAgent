@@ -63,7 +63,7 @@ export class YjsBroadcaster {
   /** 控制帧触发静默文档追赶；同步结果允许至多 4 KiB 排在数据之后，避免丢掉完成证明。 */
   sendToYjsWs(ws: WsConnection, data: unknown, initialSyncStatus = false): boolean {
     if (ws.readyState !== 1) return false;
-    this.reconcileLagging();
+    this.recovery.reconcile();
     if (!initialSyncStatus && this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) return false;
     try {
       const frame = JSON.stringify(data);
@@ -106,26 +106,30 @@ export class YjsBroadcaster {
     }
   }
 
-  /** 定向快照；分片时须等待 completion 才能证明交付。 */
+  /** 定向快照；分片以 completion 证明交付，容量失败后的完整恢复另由 onRecovered 通知。 */
   sendSnapshot(
     ws: WsConnection,
     ydoc: Y.Doc,
     docName: string,
     generation = this.generationOf(ydoc),
+    onRecovered?: (delivery: LegacyFrameDelivery) => void,
   ): LegacyFrameDelivery {
-    const waiting = this.waitForPending(ws, docName, () => this.sendSnapshot(ws, ydoc, docName, generation));
+    const waiting = this.waitForPending(ws, docName, () =>
+      this.sendSnapshot(ws, ydoc, docName, generation, onRecovered),
+    );
     if (waiting) return waiting;
     const payload = Y.encodeStateAsUpdate(ydoc);
-    return this.deliverPayload(ws, "update", docName, generation, payload);
+    return this.sendTargeted(ws, docName, generation, payload, onRecovered);
   }
 
-  /** 定向差量；空 state vector 表示无当前代状态，不能直接交给 lib0 解码。 */
+  /** 定向差量；空向量表示无当前代状态，容量失败后的完整恢复另由 onRecovered 通知。 */
   sendDiff(
     ws: WsConnection,
     ydoc: Y.Doc,
     docName: string,
     generation: string,
     stateVector: Uint8Array,
+    onRecovered?: (delivery: LegacyFrameDelivery) => void,
   ): LegacyFrameDelivery {
     let deferredVector: Uint8Array | undefined = stateVector;
     const waiting = this.waitForPending(
@@ -135,13 +139,13 @@ export class YjsBroadcaster {
         const vector = deferredVector!;
         // 归还 waiter 预算后不再由闭包持有旧向量，后续传输只保留新编码的差量。
         deferredVector = undefined;
-        return this.sendDiff(ws, ydoc, docName, generation, vector);
+        return this.sendDiff(ws, ydoc, docName, generation, vector, onRecovered);
       },
       stateVector.byteLength,
     );
     if (waiting) return waiting;
     const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
-    return this.deliverPayload(ws, "update", docName, generation, update);
+    return this.sendTargeted(ws, docName, generation, update, onRecovered);
   }
 
   /** 权威换代；小 replace 可强制发送，大 replace 保留逐片背压。 */
@@ -200,7 +204,7 @@ export class YjsBroadcaster {
   /** 同一事件循环内合并文档更新，再按会话隔离发送。 */
   private flushBroadcastsNow(): void {
     this.flushScheduled = false;
-    this.reconcileLagging();
+    this.recovery.reconcile();
     const updateBuffers = this.updateBuffers;
     const pendingDocNames = this.pendingDocNames;
     this.updateBuffers = new Map();
@@ -242,6 +246,19 @@ export class YjsBroadcaster {
     this.recovery.increaseBudget(ws, MAX_YJS_TRANSFER_BYTES);
   }
 
+  /** 定向超限也须保留缺失基线，恢复后才能收口初始同步；其他投递结果沿用原语义。 */
+  private sendTargeted(
+    ws: WsConnection,
+    name: string,
+    generation: string,
+    payload: Uint8Array,
+    onRecovered?: (delivery: LegacyFrameDelivery) => void,
+  ): LegacyFrameDelivery {
+    const delivery = this.deliverPayload(ws, "update", name, generation, payload);
+    if (delivery.reason === "too_large") this.recovery.rejected(ws, name, generation, delivery, onRecovered);
+    return delivery;
+  }
+
   /** 普通帧与分片共用预算和交付语义；排队不构成同步成功。 */
   private deliverPayload(
     ws: WsConnection,
@@ -251,7 +268,7 @@ export class YjsBroadcaster {
     payload: Uint8Array,
   ): LegacyFrameDelivery {
     if (this.fragments.hasPending(ws, docName)) {
-      this.markLagging(ws, docName);
+      this.recovery.mark(ws, docName);
       return REJECTED(payload.length, "backpressure");
     }
     if (payload.length > MAX_YJS_TRANSFER_BYTES) {
@@ -268,7 +285,7 @@ export class YjsBroadcaster {
         limitBytes: MAX_YJS_TRANSFER_BYTES,
         reason: null,
         completion: this.fragments.send(ws, docName, generation, kind, payload).then((result) => {
-          this.reconcileLagging();
+          this.recovery.reconcile();
           const final = result === "delivered" ? DELIVERED(payload.length) : REJECTED(payload.length, result);
           return { ...final, limitBytes: MAX_YJS_TRANSFER_BYTES };
         }),
@@ -409,7 +426,7 @@ export class YjsBroadcaster {
       return false;
     }
     if (this.fragments.hasPending(ws, docName) || this.bufferedAmountOf(ws) > WS_SEND_THRESHOLD) {
-      this.markLagging(ws, docName);
+      this.recovery.mark(ws, docName);
       return false;
     }
     try {
@@ -419,15 +436,6 @@ export class YjsBroadcaster {
       // 单连接失败不阻塞
       return false;
     }
-  }
-
-  private markLagging(ws: WsConnection, docName: string): void {
-    this.recovery.mark(ws, docName);
-  }
-
-  /** 排水后定向补齐丢帧文档；30s 时限从首次丢帧计，避免慢连接无限占用资源。 */
-  private reconcileLagging(): void {
-    this.recovery.reconcile();
   }
 
   /** 按文档前缀聚合帧计量，不记录完整标识或会话内容。 */

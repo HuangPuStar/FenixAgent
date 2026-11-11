@@ -162,7 +162,14 @@ async function synchronizeInitialAttempt(
     for (const [index, doc] of [chatDoc, sessionDoc].entries()) {
       const docName = docNames[index];
       if (pending.received.has(docName) || pending.delivering.has(docName)) continue;
-      recordDelivery(pending, docName, broadcaster.sendSnapshot(ws, doc.ydoc, docName, doc.generation));
+      const generation = doc.generation;
+      recordDelivery(
+        pending,
+        docName,
+        broadcaster.sendSnapshot(ws, doc.ydoc, docName, generation, (recovered) =>
+          noteInitialSyncDelivery(pendingSyncs, wsId, docName, generation, recovered),
+        ),
+      );
     }
   }
   // 500ms 只限制 state-vector 握手；分片已经开始时等待其有界投递，不能另发全量快照。
