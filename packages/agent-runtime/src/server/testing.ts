@@ -29,6 +29,7 @@ import { bindAgentRuntime, createAgentRuntime, resetAgentRuntimeForTest } from "
 import type { AgentRuntimeModuleConfig } from "./config";
 import { getAgentRuntimeConfig } from "./config";
 import { resetEnvironmentRepoStubForTest, setEnvironmentRepoStub } from "./repositories/environment";
+import { setAgentConcurrencyLimitsReaderForTest } from "./services/agent-concurrency-policy-state";
 import {
   type AgentLaunchSpecPort,
   bindAgentLaunchSpecPort,
@@ -119,6 +120,7 @@ export {
 export function createAgentRuntimeModuleConfig(
   overrides: Partial<AgentRuntimeModuleConfig> = {},
 ): AgentRuntimeModuleConfig {
+  setAgentConcurrencyLimitsReaderForTest(getAgentRuntimeConfig);
   return {
     acpIdleTimeoutSeconds: 300,
     acpIdleSweepIntervalSeconds: 300,
@@ -408,5 +410,10 @@ registerStubResetter(resetEnvironmentRepoStubForTest);
 registerStubResetter(resetCoreRuntimeFacadeStub);
 registerStubResetter(resetMachineRegistryPortStub);
 
+export { AgentConcurrencyPolicyFacade } from "../facades/agent-concurrency-policy-facade";
 export { hasActiveAgentExecutions, releaseAgentExecutions } from "../services/agent-execution-admission";
 export { releaseAgentSessionTurns } from "../services/agent-session-admission";
+export { AgentConcurrencyPolicyService } from "./services/agent-concurrency-policy";
+export { setAgentConcurrencyLimitsReaderForTest } from "./services/agent-concurrency-policy-state";
+
+registerStubResetter(() => setAgentConcurrencyLimitsReaderForTest(getAgentRuntimeConfig));

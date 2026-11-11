@@ -24,3 +24,10 @@ export { AGENT_CHAT_NS } from "./namespace";
 export const agentChatResources = { en, zh } as const;
 
 export type AgentChatResources = typeof agentChatResources;
+
+export { AGENT_CONCURRENCY_NS } from "./namespace";
+
+import concurrencyEn from "./locales/en/agentConcurrency.json";
+import concurrencyZh from "./locales/zh/agentConcurrency.json";
+/** 系统并发管理页文案。 */
+export const agentConcurrencyResources = { en: concurrencyEn, zh: concurrencyZh } as const;

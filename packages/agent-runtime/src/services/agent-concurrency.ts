@@ -1,6 +1,6 @@
 import type { CoreRuntimeFacade, RuntimeInstanceStatus } from "@fenix/core";
 import { AppError } from "@fenix/platform-sdk";
-import { getAgentRuntimeConfig } from "../server/config";
+import { getAgentConcurrencyLimits } from "../server/services/agent-concurrency-policy-state";
 import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-runtime-port";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/instance";
 import { globalInstanceRegistry, type InstanceRegistry } from "./instance-registry";
@@ -168,7 +168,7 @@ export function assertAgentConcurrencyAvailable(
   registry: Pick<InstanceRegistry, "get"> = _deps.registry,
 ): void {
   // 配置在调用时读取（与基础设施装配顺序解耦）；实例上限与执行配额分别治理。
-  const { agentMaxConcurrency: totalLimit, userAgentMaxConcurrency: userLimit } = getAgentRuntimeConfig();
+  const { agentMaxConcurrency: totalLimit, userAgentMaxConcurrency: userLimit } = getAgentConcurrencyLimits(userId);
   if (totalLimit && getActiveAgentCount(runtime) >= totalLimit) {
     throw new AppError("已达到 Agent 总并发上限", "AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }

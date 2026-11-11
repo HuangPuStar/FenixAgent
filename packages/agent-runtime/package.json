@@ -71,6 +71,18 @@
     "./web/i18n": {
       "types": "./web/i18n/index.ts",
       "default": "./web/i18n/index.ts"
+    },
+    "./web/pages/admin/AgentConcurrencyPage": {
+      "types": "./web/pages/admin/AgentConcurrencyPage.tsx",
+      "default": "./web/pages/admin/AgentConcurrencyPage.tsx"
+    },
+    "./web/contribution": {
+      "types": "./web/contribution.ts",
+      "default": "./web/contribution.ts"
+    },
+    "./web/api/agent-concurrency": {
+      "types": "./web/api/agent-concurrency.ts",
+      "default": "./web/api/agent-concurrency.ts"
     }
   },
   "scripts": {

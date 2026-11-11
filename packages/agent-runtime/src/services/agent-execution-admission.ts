@@ -1,5 +1,5 @@
 import { AppError } from "@fenix/platform-sdk";
-import { getAgentRuntimeConfig } from "../server/config";
+import { getAgentConcurrencyLimits } from "../server/services/agent-concurrency-policy-state";
 import type { InstanceSpawnSource } from "../types/instance";
 import { globalInstanceRegistry } from "./instance-registry";
 
@@ -29,7 +29,7 @@ export function acquireAgentExecution(input: {
   signal?: AbortSignal;
 }): AgentExecutionLease {
   input.signal?.throwIfAborted();
-  const limit = getAgentRuntimeConfig().scheduledAgentMaxConcurrency;
+  const limit = getAgentConcurrencyLimits(input.userId).scheduledAgentMaxConcurrency;
   if (input.source === "scheduled" && limit !== undefined) {
     let active = 0;
     for (const execution of executions) if (execution.source === "scheduled") active++;

@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -151,3 +152,31 @@ export const chatSpace = pgTable(
 
 export type ChatSpace = typeof chatSpace.$inferSelect;
 export type NewChatSpace = typeof chatSpace.$inferInsert;
+
+/** 系统默认与指定用户的动态并发覆盖；空值保留部署环境继承。 */
+export const agentConcurrencyPolicy = pgTable(
+  "agent_concurrency_policy",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    agentMaxConcurrency: integer("agent_max_concurrency"),
+    userAgentMaxConcurrency: integer("user_agent_max_concurrency"),
+    scheduledAgentMaxConcurrency: integer("scheduled_agent_max_concurrency"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    globalUnique: uniqueIndex("idx_agent_concurrency_policy_global")
+      .on(sql`(true)`)
+      .where(sql`${table.userId} is null`),
+    userUnique: uniqueIndex("idx_agent_concurrency_policy_user").on(table.userId),
+    positive: check(
+      "agent_concurrency_policy_positive",
+      sql`(${table.agentMaxConcurrency} is null or ${table.agentMaxConcurrency} > 0) and (${table.userAgentMaxConcurrency} is null or ${table.userAgentMaxConcurrency} > 0) and (${table.scheduledAgentMaxConcurrency} is null or ${table.scheduledAgentMaxConcurrency} > 0)`,
+    ),
+    userScope: check(
+      "agent_concurrency_policy_user_scope",
+      sql`${table.userId} is null or (${table.agentMaxConcurrency} is null and ${table.scheduledAgentMaxConcurrency} is null and ${table.userAgentMaxConcurrency} is not null)`,
+    ),
+  }),
+);

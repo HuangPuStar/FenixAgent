@@ -133,6 +133,7 @@ export default defineConfig({
           items: [
             { text: "Agent Config", link: "/arch/04-agent-config" },
             { text: "AgentController", link: "/arch/20-orchestration-management" },
+            { text: "Agent 并发策略", link: "/arch/agent-concurrency-policy" },
             { text: "Chat 前端界面", link: "/arch/05-chat" },
             { text: "Agent 输出可视化（四条路径定位）", link: "/arch/27-agent-output-visualization" },
             { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },

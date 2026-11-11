@@ -1,6 +1,7 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { createAcpRoutes } from "../routes/acp";
+import { createAgentConcurrencyPolicyRoutes } from "../routes/api/agent-concurrency-policy";
 import { createApiInstanceRoutes } from "../routes/api/instances";
 import { createOpenaiChatRoutes } from "../routes/api/openai-chat";
 import type {
@@ -78,4 +79,9 @@ export function createAgentRuntimeAcpAppRoutes(host: ServerRouteHost) {
     authenticateRequest: host.authenticateRequest as AcpRouteDependencies["authenticateRequest"],
   };
   return createAcpRoutes(deps);
+}
+
+/** `/api/system/agent-concurrency` 系统密钥管理面（挂 api 聚合槽）。 */
+export function createAgentRuntimeConcurrencyPolicyRoutes(host: ServerRouteHost) {
+  return createAgentConcurrencyPolicyRoutes({ systemApiGuardPlugin: host.systemApiGuardPlugin as AnyElysia });
 }

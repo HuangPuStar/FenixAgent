@@ -303,8 +303,8 @@ stateDiagram-v2
 
 | 层级 | 机制 | 状态 |
 |---|---|---|
-| 用户级 / 平台级实例容量 | `agent-concurrency.ts` 的 `beginSpawnReservation`，pending 计入实例数 | `RCS_USER_AGENT_MAX_CONCURRENCY` / `RCS_AGENT_MAX_CONCURRENCY` |
-| scheduled 执行并发 | `agent-execution-admission.ts` 每次执行独立准入，实例复用仍分别计数 | `RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`；未确认执行终止时保留额度 |
+| 用户级 / 平台级实例容量 | `agent-concurrency.ts` 的 `beginSpawnReservation`，pending 计入实例数 | [动态并发策略](./agent-concurrency-policy.md) → `RCS_USER_AGENT_MAX_CONCURRENCY` / `RCS_AGENT_MAX_CONCURRENCY` |
+| scheduled 执行并发 | `agent-execution-admission.ts` 每次执行独立准入，实例复用仍分别计数 | 动态 scheduled 策略 → `RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`；未确认执行终止时保留额度 |
 | Machine 容量 | `machine.maxSessions` 数据模型 | 仅保留容量元数据，当前未执行准入；未来实现时必须使用 Machine 专属 reservation / 错误码 |
 
 Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentController` 只维护实例生命周期，禁止按 Environment 对内存实例表重新计数限流；业务并发治理统一由宿主 reservation 管理，以避免重复闸门和 TOCTOU 语义分裂。

@@ -1,4 +1,5 @@
 import { beforeEach, expect, test } from "bun:test";
+import { agentConcurrencyPolicy } from "@fenix/agent-runtime/db";
 import type { ModuleContribution, ModuleManifest } from "@fenix/platform-sdk";
 import { initializeTestApplicationInfrastructure } from "@fenix/platform-sdk/testing";
 import { Elysia } from "elysia";
@@ -175,6 +176,15 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
   // channel 模块在装配期校验 LangBot 配置完整性；真实宿主总会声明这份配置，测试基础设施缺省是空表，
   // 这里补上「未启用 LangBot」的形态，否则装配会被误判为配置缺失。
   initializeTestApplicationInfrastructure({
+    // 空策略表表示继承部署值；仍经过真实启动查询，不能跳过持久策略加载。
+    database: {
+      select: () => ({
+        from: async (table: unknown) => {
+          if (table !== agentConcurrencyPolicy) throw new Error("Unexpected assembly database read");
+          return [];
+        },
+      }),
+    },
     moduleConfigs: {
       channel: {
         langbotBaseUrl: undefined,
@@ -481,6 +491,12 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/system/organizations/:id/members",
     "POST /api/system/api-keys",
     // agent-runtime
+    "GET /api/system/agent-concurrency",
+    "PATCH /api/system/agent-concurrency",
+    "GET /api/system/agent-concurrency/users",
+    "GET /api/system/agent-concurrency/users/:userId",
+    "PUT /api/system/agent-concurrency/users/:userId",
+    "DELETE /api/system/agent-concurrency/users/:userId",
     "POST /api/v1/agents/:id/instances/connect",
     "GET /api/v1/agents/:id/instances",
     "GET /api/v1/instances/:id",
