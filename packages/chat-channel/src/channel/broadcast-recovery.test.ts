@@ -60,7 +60,7 @@ describe("超限广播恢复", () => {
   });
 
   // 聚合更新超限但当前投影已收缩时，仍应从可发送的快照恢复，而非永久丢弃。
-  test("超限广播对应的当前投影较小时仍可追赶", () => {
+  test("超限广播对应的当前投影较小时仍可追赶", async () => {
     installFakeClock();
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
@@ -73,6 +73,7 @@ describe("超限广播恢复", () => {
     broadcaster.registerYjsDocListener(current, "chat:rcs-compacted", "gen-current");
     try {
       broadcaster.broadcastSnapshot(oversized, "chat:rcs-compacted", "gen-current");
+      await Bun.sleep(1_050);
       broadcaster.sendToYjsWs(ws, { type: "keep_alive" });
       expect(decodeUpdateFrames(ws)).toHaveLength(1);
       expect(ws.closed).toEqual([]);
@@ -103,6 +104,7 @@ describe("超限广播恢复", () => {
         source.getMap("data").set("title", "recovered");
       });
       await flushMicrotasks();
+      await Bun.sleep(1_050);
       broadcaster.sendToYjsWs(ws, { type: "keep_alive" });
       for (const frame of decodeUpdateFrames(ws)) Y.applyUpdate(restored, frame.update);
       expect(restored.getMap("data").get("title")).toBe("recovered");

@@ -127,7 +127,18 @@ export class YjsBroadcaster {
     generation: string,
     stateVector: Uint8Array,
   ): LegacyFrameDelivery {
-    const waiting = this.waitForPending(ws, docName, () => this.sendDiff(ws, ydoc, docName, generation, stateVector));
+    let deferredVector: Uint8Array | undefined = stateVector;
+    const waiting = this.waitForPending(
+      ws,
+      docName,
+      () => {
+        const vector = deferredVector!;
+        // 归还 waiter 预算后不再由闭包持有旧向量，后续传输只保留新编码的差量。
+        deferredVector = undefined;
+        return this.sendDiff(ws, ydoc, docName, generation, vector);
+      },
+      stateVector.byteLength,
+    );
     if (waiting) return waiting;
     const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
     return this.deliverPayload(ws, "update", docName, generation, update);
@@ -228,6 +239,7 @@ export class YjsBroadcaster {
   /** 握手明确支持后才发送分片，旧标签页不能忽略新帧后误收成功通知。 */
   enableFragmentSupport(ws: WsConnection): void {
     this.fragmentPeers.add(ws);
+    this.recovery.increaseBudget(ws, MAX_YJS_TRANSFER_BYTES);
   }
 
   /** 普通帧与分片共用预算和交付语义；排队不构成同步成功。 */
@@ -275,30 +287,31 @@ export class YjsBroadcaster {
     ws: WsConnection,
     docName: string,
     retry: () => LegacyFrameDelivery,
+    retainedBytes = 0,
   ): LegacyFrameDelivery | null {
-    const completion = this.fragments
-      .afterPending(
-        ws,
-        docName,
-        (result) => {
-          if (result !== "delivered" || ws.readyState !== 1) return REJECTED(0, "backpressure");
-          const delivery = retry();
-          return delivery.completion ?? delivery;
-        },
-        () => {
-          ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
-          this.cancelConnection(ws);
-          return REJECTED(0, "backpressure");
-        },
-      )
-      ?.catch((error: unknown) => {
+    const completion = this.fragments.afterPending(
+      ws,
+      docName,
+      (result) => {
+        if (result !== "delivered" || ws.readyState !== 1) return REJECTED(0, "backpressure");
+        const delivery = retry();
+        return delivery.completion ?? delivery;
+      },
+      () => {
+        ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+        this.cancelConnection(ws);
+        return REJECTED(0, "backpressure");
+      },
+      (error: unknown) => {
         this.reportLog?.(
           `[YJS-BROADCAST] deferred sync failed: prefix=${docPrefix(docName)} error=${error instanceof Error ? error.name : "unknown"}`,
         );
         ws.close(1011, "deferred sync failed");
         this.cancelConnection(ws);
         return REJECTED(0, "encode_failed");
-      });
+      },
+      retainedBytes,
+    );
     if (!completion) return null;
     return {
       ok: false,
@@ -330,6 +343,12 @@ export class YjsBroadcaster {
       if (kind === "replace") this.fragments.cancelDocument(entry.ws, docName);
       const delivery = this.deliverPayload(entry.ws, kind, docName, generation, payload);
       const settle = (result: LegacyFrameDelivery) => {
+        if (kind === "replace" && !result.ok) {
+          const current = this.registeredDocs.get(docName);
+          if (current && current.generation !== generation) return;
+          this.closeFailedReplacement(entry.ws);
+          return;
+        }
         this.recovery.rejected(entry.ws, docName, generation, result);
       };
       if (delivery.completion) void delivery.completion.then(settle);
@@ -351,12 +370,14 @@ export class YjsBroadcaster {
       if (!replace && this.recovery.retryBlocked(entry.ws, docName)) return;
       if (replace) this.fragments.cancelDocument(entry.ws, docName);
       if (!force) {
-        this.sendFrameWithBackpressure(entry.ws, docName, frame);
+        const sent = this.sendFrameWithBackpressure(entry.ws, docName, frame);
+        if (replace && !sent) this.closeFailedReplacement(entry.ws);
         return;
       }
       try {
         if (entry.ws.readyState === 1) entry.ws.send(frame);
       } catch {
+        if (replace) this.closeFailedReplacement(entry.ws);
         // 单连接失败不阻塞其他连接；连接自身事件会收敛关闭。
       }
     };
@@ -366,6 +387,19 @@ export class YjsBroadcaster {
       return;
     }
     this.registry.forEachClient(send);
+  }
+
+  /** 换代信号不可丢失；失败后用新连接清理接收端旧组装并重新绑定当前投影。 */
+  private closeFailedReplacement(ws: WsConnection): void {
+    if (ws.readyState !== 1) return;
+    try {
+      ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
+    } catch (error) {
+      this.reportLog?.(
+        `[YJS-BROADCAST] replacement close failed: error=${error instanceof Error ? error.name : "unknown"}`,
+      );
+    }
+    this.cancelConnection(ws);
   }
 
   /** 拥塞与在途基线期间登记追赶，单连接异常不阻塞其他连接。 */
