@@ -45,7 +45,10 @@ export class TargetedDelivery {
     baseline?: Uint8Array,
   ): LegacyFrameDelivery {
     const delivery = this.options.deliver(ws, name, generation, payload);
-    if (!delivery.completion) return this.observe(ws, name, generation, delivery, onRecovered);
+    if (!delivery.completion) {
+      if (delivery.ok && this.options.generation(name) === generation) this.options.covered(ws, name);
+      return this.observe(ws, name, generation, delivery, onRecovered);
+    }
     let vector: Uint8Array | undefined = baseline ?? Y.encodeStateVectorFromUpdate(payload);
     const waiting = this.options.wait(
       ws,
