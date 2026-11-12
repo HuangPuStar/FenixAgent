@@ -13,7 +13,7 @@
 
 import { error as logError } from "@fenix/logger";
 import { registerMachineEnvironment } from "../services/file-machine-events";
-import { runFileOpWithRetry } from "./file-op-retry";
+import { runFileOpWithRetry, waitForFileWsConnection } from "./file-op-retry";
 import type { FileWsConnectionEntry, WsConnection } from "./ws-types";
 
 const DEFAULT_FILE_OP_TIMEOUT_MS = 60_000;
@@ -167,6 +167,8 @@ export interface FileOpResult {
 
 /** sendFileOpAndWait 可选参数（§7.2 / P2-18）：幂等键 + 审计字段，全部可选（向后兼容） */
 export interface FileOpOptions {
+  /** 仅 tree 使用的服务端单调时钟截止值；连接等待与既有重试共享，不进入机器协议帧。 */
+  connectionWaitDeadline?: number;
   /** 领域幂等键：写操作必带、读可省；重试/迁移重发复用同值（机器端 10 分钟内按 (machine, env, op_id) 去重缓存为外部依赖） */
   opId?: string;
   /** 审计字段（P2-18）：发起写操作的用户/调用方标识，帧字段 actor_id */
@@ -279,6 +281,13 @@ export function sendFileOpAndWait(
   return runFileOpWithRetry({
     machineId,
     operation,
-    attempt: () => sendFileOpOnce(machineId, operation, params, timeoutMs, options),
+    attempt: () => {
+      const send = () => sendFileOpOnce(machineId, operation, params, timeoutMs, options);
+      if (operation !== "tree" || options?.connectionWaitDeadline === undefined) return send();
+      return waitForFileWsConnection(
+        () => machineFileWsIndex.get(machineId)?.ws.readyState === 1,
+        options.connectionWaitDeadline,
+      ).then(send);
+    },
   });
 }

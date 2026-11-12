@@ -6,6 +6,7 @@ import { getMachineConfig } from "../config";
 import { getMachineDatabase } from "../db";
 import { getEnvironmentById } from "../environment-port";
 import { getMachineSandboxRoutePort, type SandboxRouteResult } from "../sandbox-route-port";
+import { waitForFileWsConnection } from "../transport/file-op-retry";
 import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE, REMOTE_UPLOAD_MAX_BYTES } from "./file-types";
 
@@ -50,11 +51,11 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
  * - machineId 已配置但不存在于 DB machine 表 → 422 config_error（配置错误，
  *   message 提示去管理面检查；RCS_DEFAULT_MACHINE_ID 兜底机器由宿主的启动引导经本包的
  *   `ensureDefaultMachine` 自动补齐，存在性校验会通过）
- * - machineId 存在但 file-ws 未连接 → 503 file_service_unavailable（明确拒绝
+ * - machineId 存在但 file-ws 未连接 → 等待可选的取树截止值后返回 503 file_service_unavailable（明确拒绝
  *   本地回退，避免"配置了远程机器，用户以为文件在远程，实际落在本地"的分裂场景）
  * - 连接正常 → 返回 machineId
  */
-export async function getRemoteMachineId(envId: string): Promise<string | null> {
+export async function getRemoteMachineId(envId: string, connectionWaitDeadline?: number): Promise<string | null> {
   const env = await getEnvironmentById(envId);
   if (!env) return null;
   // 执行节点按配置 ID 读、不按环境组织收窄：显式机器/显式池是 Agent 的依赖，跨组织共享时文件请求必须
@@ -94,8 +95,8 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
     throw new AppError(`远程机器配置不存在 (machine: ${machineId})，请到管理面检查机器配置`, "config_error", 422);
   }
 
-  // 配了 machine 但 file-ws 未连 → 主动报错，不透传回退
-  if (!isFileWsConnected(machineId)) {
+  // 取树允许短暂换链；预算耗尽后仍拒绝本地回退，避免远程文件落到本地。
+  if (!(await waitForFileWsConnection(() => isFileWsConnected(machineId), connectionWaitDeadline))) {
     throw new AppError(
       `远程机器文件服务不可用 (machine: ${machineId})，请检查远程机器是否在线`,
       "file_service_unavailable",
@@ -328,13 +329,17 @@ export async function remoteMkdir(
   return result.data as { path: string };
 }
 
-/** 递归列出远程 workspace 下所有路径（含修改时间和遍历错误） */
+/** 递归列出远程 workspace 下所有路径；连接等待与发送重试共用可选的单调时钟截止值。 */
 export async function remoteTree(
   machineId: string,
   envId: string,
+  connectionWaitDeadline?: number,
 ): Promise<{ paths: string[]; mtimes?: Record<string, number>; errors?: { path: string; message: string }[] }> {
+  await waitForFileWsConnection(() => isFileWsConnected(machineId), connectionWaitDeadline);
   assertFileWsAvailable(machineId);
-  const result = await sendFileOpAndWait(machineId, "tree", { environmentId: envId });
+  const result = await sendFileOpAndWait(machineId, "tree", { environmentId: envId }, undefined, {
+    connectionWaitDeadline,
+  });
   if (result.status === "error") throw new Error(result.error as string);
   return result.data as {
     paths: string[];
