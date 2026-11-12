@@ -39,6 +39,8 @@ import type { FileEntry } from "./workspace-fs";
 
 const logger = createLogger("agent-file-service");
 
+const TREE_CONNECTION_WAIT_MS = 2_000;
+
 // ── 路径校验（W6：实现委托 file-path-validator 纯函数，本地/远程同构）───
 /** 统一前置校验（§2.4）：拒绝绝对路径 / `..` 段 / NUL 与控制字符。保持既有
  * 签名（路由层契约）：远程路径在发送 file_op 前同样经过本校验（D5），避免只
@@ -143,10 +145,14 @@ export interface AgentFileService {
 
 class AgentFileServiceImpl implements AgentFileService {
   constructor(private scope: AgentFileScope) {}
-  private async run<T>(op: (backend: BackEnd) => Promise<T>, validate?: () => void): Promise<T> {
+  private async run<T>(
+    op: (backend: BackEnd) => Promise<T>,
+    validate?: () => void,
+    connectionWaitDeadline?: number,
+  ): Promise<T> {
     try {
       validate?.();
-      const backend = await resolveExecutionBackend(this.scope.environmentId);
+      const backend = await resolveExecutionBackend(this.scope.environmentId, connectionWaitDeadline);
       return await op(backend);
     } catch (err) {
       throw mapFileError(err);
@@ -156,8 +162,13 @@ class AgentFileServiceImpl implements AgentFileService {
     return { ...options, actorId: this.scope.actorId, source: this.scope.source };
   }
   async tree(path?: string): Promise<TreeResult> {
+    const connectionWaitDeadline = performance.now() + TREE_CONNECTION_WAIT_MS;
     const validate = () => (path ? assertSafePath(path) : undefined);
-    return this.run((b) => b.tree(this.scope.environmentId, path), validate);
+    return this.run(
+      (b) => b.tree(this.scope.environmentId, path, connectionWaitDeadline),
+      validate,
+      connectionWaitDeadline,
+    );
   }
   async list(path: string): Promise<FileEntry[]> {
     const validate = () => assertSafePath(path);

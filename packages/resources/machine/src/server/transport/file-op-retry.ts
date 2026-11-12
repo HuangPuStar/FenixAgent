@@ -25,6 +25,18 @@ const CIRCUIT_FAILURE_THRESHOLD = 3;
 /** 熔断持续时间：30s 内快速失败（上层兜底映射 503），到期自动关闭允许下一次请求试探 */
 const CIRCUIT_OPEN_MS = 30_000;
 
+const FILE_CONNECTION_POLL_MS = 100;
+
+/** 等待文件通道就绪；截止值使用 performance.now()，调用链共享预算而不因重试续期。 */
+export async function waitForFileWsConnection(isConnected: () => boolean, deadline?: number): Promise<boolean> {
+  while (!isConnected()) {
+    const remaining = deadline === undefined ? 0 : deadline - performance.now();
+    if (remaining <= 0) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(FILE_CONNECTION_POLL_MS, remaining)));
+  }
+  return true;
+}
+
 /** 不可自动重试操作：写操作，以及可能长时间占用 CPU/I/O 的 ZIP 快照。 */
 const NON_RETRYABLE_OPERATIONS = new Set(["write", "mkdir", "delete", "rename", "upload", "zip"]);
 

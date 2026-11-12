@@ -152,7 +152,7 @@ function assertVersionMatch(
 export interface BackEnd {
   /** 能力上限显式声明（§2.4 能力不对称条款）；W8b 实施检查 */
   readonly uploadMaxBytes: number;
-  tree(envId: string, path?: string): Promise<TreeResult>;
+  tree(envId: string, path?: string, connectionWaitDeadline?: number): Promise<TreeResult>;
   list(envId: string, path: string): Promise<FileEntry[]>;
   read(envId: string, path: string, mode: ReadMode): Promise<ReadResult>;
   write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult>;
@@ -406,8 +406,8 @@ class RemoteBackend implements BackEnd {
     assertVersionMatch(ifMatch, path, r.size, r.modifiedAt);
   }
 
-  async tree(envId: string): Promise<TreeResult> {
-    const result = await remoteTree(this.machineId, envId);
+  async tree(envId: string, _path?: string, connectionWaitDeadline?: number): Promise<TreeResult> {
+    const result = await remoteTree(this.machineId, envId, connectionWaitDeadline);
     const paths = result.paths.filter((path) => !shouldHidePath(path));
     const mtimes = result.mtimes
       ? Object.fromEntries(Object.entries(result.mtimes).filter(([path]) => !shouldHidePath(path)))
@@ -494,7 +494,7 @@ class RemoteBackend implements BackEnd {
 /** BackEnd 路由决策（§3 回退链）：agentConfig.machineId → RCS_DEFAULT_MACHINE_ID
  *  → null 本地。配了 machine 但 file-ws 未连接时 getRemoteMachineId 抛 503，
  *  拒绝静默回退。决策不缓存，每次操作实时判定（连接状态会变）。 */
-export async function resolveExecutionBackend(envId: string): Promise<BackEnd> {
-  const machineId = await getRemoteMachineId(envId);
+export async function resolveExecutionBackend(envId: string, connectionWaitDeadline?: number): Promise<BackEnd> {
+  const machineId = await getRemoteMachineId(envId, connectionWaitDeadline);
   return machineId ? new RemoteBackend(machineId) : new LocalBackend();
 }

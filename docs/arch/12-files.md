@@ -198,6 +198,8 @@ interface AgentFileService {
 
 **machineId 回退链**（`getRemoteMachineId`，现收敛为路由决策子模块）：`agentConfig.machineId` → `RCS_DEFAULT_MACHINE_ID` → `null`（本地）。决策不缓存，每次请求实时判定；file-ws 连接状态以 `isFileWsConnected(machineId)` 为准。**拒绝静默回退**：配置了远程 Machine 但 file-ws 未连接时 → `503 file_service_unavailable`，避免"文件在远程、实际落在本地"的分裂场景。
 
+**取树的短暂断连等待**：`AgentFileService.tree()` 在解析远程后端、发送文件操作及既有的一次断连重试中，共享一个基于单调时钟的 2 秒连接就绪截止值。file-ws 未就绪时每 100ms 检查内存连接状态（最后一次等待不超过剩余预算），恢复即继续，同一次 HTTP 请求可直接返回 200；预算耗尽仍返回 `503 file_service_unavailable`，不回退本地、不返回空树。健康连接不增加轮询延迟；该策略不等待或重试权限、配置、背压或机器端执行错误，不影响其他文件操作，也不改变目录扫描的操作超时和机器端最多执行两次的读重试预算。截止值仅在服务端内部传递，不进入 file_op 帧；前端不增加固定延迟。
+
 **配置语义警告（Agent 作者视角修订）**：
 
 - **`RCS_DEFAULT_MACHINE_ID` 是部署级全局兜底，故障半径 = 整个平台**：多机器组织中，未显式配置 machineId 的 agentConfig 全部静默落到默认机器。多机器组织必须为每个 agentConfig 显式配置 `machineId`；留空 = 本地仅适用于单机部署。§3"拒绝静默回退"只覆盖"配了 machineId 但未连接"，**不覆盖"未配置但被全局默认值劫持"**——部署文档必须明示。
