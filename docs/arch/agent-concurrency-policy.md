@@ -13,9 +13,10 @@
 系统密钥守卫保护以下接口：
 
 - `GET/PATCH /api/system/agent-concurrency`
+- `GET /api/system/agent-concurrency/user-candidates?keyword=`：经身份目录搜索，最多返回 50 位候选，仅包含 `id/name/email`，不接受浏览器传入的组织权限上下文。
 - `GET /api/system/agent-concurrency/users`：仅显式覆盖列表
 - `GET/PUT/DELETE /api/system/agent-concurrency/users/:userId`
 
-PUT 请求为 `{userAgentMaxConcurrency: number | null}`。成功返回 `{success:true,data}`；设置投影包含 `override`、`value` 和 `source`（`environment/global/user`），`value:null` 表示不限。用户不存在返回 404。管理页 `/admin/agent-concurrency` 复用 AdminKeyGate，提供平台及用户覆盖、实际值／来源、恢复继承与删除，不读取实例列表。
+PUT 请求为 `{userAgentMaxConcurrency: number | null}`。成功返回 `{success:true,data}`；设置投影包含 `override`、`value`、`defaultValue` 和 `source`（`environment/global/user`），`value:null` 表示不限。`defaultValue` 表示清除当前覆盖后的上限（平台为部署默认，用户为平台／部署继承），用于恢复前预览。用户不存在返回 404。管理页 `/admin/agent-concurrency` 复用 AdminKeyGate，按行展示当前限制与默认／自定义状态，按行 PATCH、确认后恢复默认；用户通过姓名或邮箱搜索选择，在弹窗内配置，恢复平台默认会移除用户配置。不读取实例列表。写响应先更新页面，后续刷新失败保留已提交结果；后台刷新不重置编辑草稿。
 
 策略与 reservation 均为进程内治理，管理更新不跨副本广播；当前部署沿用单进程语义，多副本部署需另行设计统一同步与分布式额度。发布先执行 Drizzle DDL，回滚应用前保留策略表即可；删除覆盖可恢复部署配置。服务记录加载和已提交策略变化，错误由上层统一记录，日志不含系统密钥。

@@ -14,6 +14,7 @@ export const ConcurrencyPatchSchema = z
 export const ConcurrencySettingSchema = z.object({
   override: ConcurrencyLimitSchema,
   value: ConcurrencyLimitSchema,
+  defaultValue: ConcurrencyLimitSchema,
   source: z.enum(["environment", "global", "user"]),
 });
 /** 管理端三项设置。 */

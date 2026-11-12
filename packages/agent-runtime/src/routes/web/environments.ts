@@ -58,6 +58,8 @@ const APP_ERROR_MESSAGE: Readonly<Record<string, string>> = {
   // 共享被收回（Agent 转为私有、成员关系或公开受众变化）时的稳定文案：这不是服务故障，而是权限结论。
   AGENT_ACCESS_DENIED: "You do not have permission to use this agent. Ask its owner to share it with you.",
   AGENT_NOT_FOUND: "Agent not found",
+  AGENT_CONCURRENCY_LIMIT_REACHED: "The platform active Agent instance limit has been reached.",
+  USER_AGENT_CONCURRENCY_LIMIT_REACHED: "The active Agent instance limit for the current user has been reached.",
 };
 
 /** 未登记文案的 `AppError`：4xx 用通用可读文案，5xx 用通用故障文案（都不含内部细节）。 */

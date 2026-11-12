@@ -521,6 +521,27 @@ describe("round44 Web 环境路由", () => {
     expect(body.error.message.length).toBeGreaterThan(0);
   });
 
+  // 并发拒绝需保留具体原因和 429，不能退化为无从处理的通用文案。
+  test("进入环境返回具体的并发限制原因", async () => {
+    for (const [code, reason] of [
+      ["AGENT_CONCURRENCY_LIMIT_REACHED", "platform"],
+      ["USER_AGENT_CONCURRENCY_LIMIT_REACHED", "user"],
+    ]) {
+      stubRuntime({
+        ensureInstance: async () => {
+          throw new AppError("internal-agent-config-id", code, 429);
+        },
+      });
+      const response = await json(`/environments/${environmentId}/enter`, "POST");
+      const body = await response.json();
+      expect(response.status).toBe(429);
+      expect(body.error.code).toBe(code);
+      expect(body.error.message.toLowerCase()).toContain(reason);
+      expect(body.error.message).not.toContain("Request could not be completed");
+      expect(body.error.message).not.toContain("internal-agent-config-id");
+    }
+  });
+
   // 无法识别的内部异常仍落 500 + CONFIG_WRITE_ERROR，但对外必须是通用文案：原始 message 可能携带
   // 内部路径 / 标识，只能在服务端日志里保留。
   test("进入环境时未知内部错误不外泄原始 message", async () => {

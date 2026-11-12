@@ -45,7 +45,12 @@ describe("dynamic concurrency policy", () => {
   test("inherits env and restores inheritance after clearing overrides", async () => {
     const { service } = fixture();
     await service.initialize();
-    expect(service.describe("u1").userAgentMaxConcurrency).toEqual({ override: null, value: 3, source: "environment" });
+    expect(service.describe("u1").userAgentMaxConcurrency).toEqual({
+      override: null,
+      value: 3,
+      defaultValue: 3,
+      source: "environment",
+    });
     await service.patchGlobal({ userAgentMaxConcurrency: 7, agentMaxConcurrency: 30 });
     expect(service.limits("u1")).toEqual({
       agentMaxConcurrency: 30,
@@ -53,7 +58,12 @@ describe("dynamic concurrency policy", () => {
       scheduledAgentMaxConcurrency: 5,
     });
     await service.putUser("u1", 2);
-    expect(service.describe("u1").userAgentMaxConcurrency).toEqual({ override: 2, value: 2, source: "user" });
+    expect(service.describe("u1").userAgentMaxConcurrency).toEqual({
+      override: 2,
+      value: 2,
+      defaultValue: 7,
+      source: "user",
+    });
     await service.deleteUser("u1");
     expect(service.describe("u1").userAgentMaxConcurrency.source).toBe("global");
     await service.patchGlobal({ userAgentMaxConcurrency: null });

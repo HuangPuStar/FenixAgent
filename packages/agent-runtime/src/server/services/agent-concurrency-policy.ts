@@ -28,6 +28,8 @@ export interface ConcurrencyPolicyRepository {
 export interface ConcurrencySetting {
   readonly override: number | null;
   readonly value: number | null;
+  /** 清除当前覆盖后生效的上限。 */
+  readonly defaultValue: number | null;
   readonly source: "environment" | "global" | "user";
 }
 /** 三项并发设置的管理投影。 */
@@ -104,6 +106,7 @@ export class AgentConcurrencyPolicyService {
       const override = userId ? (user ?? null) : state.global[key];
       return {
         override,
+        defaultValue: (userId ? state.global[key] : null) ?? env[key] ?? null,
         value: user ?? state.global[key] ?? env[key] ?? null,
         source: user !== undefined ? "user" : state.global[key] !== null ? "global" : "environment",
       };

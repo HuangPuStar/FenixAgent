@@ -95,9 +95,14 @@ const concurrencyDynamicKeys = [
   "agentMaxConcurrency",
   "userAgentMaxConcurrency",
   "scheduledAgentMaxConcurrency",
-  "sources.environment",
-  "sources.global",
-  "sources.user",
+  "hints.agentMaxConcurrency",
+  "hints.userAgentMaxConcurrency",
+  "hints.scheduledAgentMaxConcurrency",
+  "default",
+  "custom",
+  "resetTitle",
+  "resetUserTitle",
+  "editUserTitle",
 ];
 
 for (const [namespace, resources] of Object.entries(dictionaries)) {
@@ -139,7 +144,7 @@ for (const [namespace, resources] of Object.entries(dictionaries)) {
       expect(literalKeys.size).toBeGreaterThanOrEqual(12);
     });
 
-    // 反向保留 Chat 死词检查；并发页只豁免明确列出的六个动态消费键。
+    // 反向保留 Chat 死词检查；并发页只豁免维度、状态与弹窗标题的动态消费键。
     test("字典中的每个键都有消费点", () => {
       expect([...en.keys()].filter((key) => !literalKeys.has(key) && !dynamicKeys.includes(key))).toEqual([]);
     });
@@ -154,8 +159,8 @@ for (const [namespace, resources] of Object.entries(dictionaries)) {
 }
 
 describe("并发字典动态消费与 namespace 隔离", () => {
-  // 维度及来源都是动态 t 调用，必须逐项验证两种语言具备对应键。
-  test("三个并发维度及三种来源都有 en / zh 文案", () => {
+  // 维度、状态及弹窗标题使用动态 t 调用，必须逐项验证两种语言具备对应键。
+  test("并发维度、状态及弹窗标题都有 en / zh 文案", () => {
     for (const locale of [agentConcurrencyResources.en, agentConcurrencyResources.zh]) {
       const flat = flatten(locale);
       for (const key of concurrencyDynamicKeys) expect(flat.has(key)).toBe(true);

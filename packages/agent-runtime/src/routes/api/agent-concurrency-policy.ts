@@ -54,6 +54,24 @@ export function createAgentConcurrencyPolicyRoutes(
       response: { 200: globalResponse, ...errors },
       detail: { tags: ["System"], summary: "Update global Agent concurrency overrides" },
     })
+    .get(
+      "/user-candidates",
+      async ({ query }) => ({ success: true as const, data: await facade.searchUsers(query.keyword ?? "") }),
+      {
+        systemApiKeyAuth: true,
+        headers,
+        params: empty.optional(),
+        query: z.object({ keyword: z.string().max(200).optional() }),
+        response: {
+          200: z.object({
+            success: z.literal(true),
+            data: z.array(z.object({ id: z.string(), name: z.string(), email: z.string() })),
+          }),
+          ...errors,
+        },
+        detail: { tags: ["System"], summary: "Search user candidates for concurrency configuration" },
+      },
+    )
     .get("/users", async () => ({ success: true as const, data: await facade.listUsers() }), {
       systemApiKeyAuth: true,
       headers,

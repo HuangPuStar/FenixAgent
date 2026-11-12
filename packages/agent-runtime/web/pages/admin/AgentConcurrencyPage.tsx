@@ -1,38 +1,30 @@
 import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Card } from "@fenix/ui-components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useRequest } from "ahooks";
+import { Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  agentConcurrencyApi,
-  type ConcurrencyPatch,
-  type ConcurrencyPolicyView,
-  type UserConcurrencyPolicy,
-} from "../../api/agent-concurrency";
+import { agentConcurrencyApi, type UserConcurrencyPolicy } from "../../api/agent-concurrency";
 import { AGENT_CONCURRENCY_NS } from "../../i18n/namespace";
+import { ConcurrencyUserDialog } from "./concurrency-user-dialog";
 
 const dimensions = ["agentMaxConcurrency", "userAgentMaxConcurrency", "scheduledAgentMaxConcurrency"] as const;
-type Draft = Record<keyof ConcurrencyPolicyView, string>;
-const blank: Draft = { agentMaxConcurrency: "", userAgentMaxConcurrency: "", scheduledAgentMaxConcurrency: "" };
-function draftOf(policy: ConcurrencyPolicyView): Draft {
-  return {
-    agentMaxConcurrency: policy.agentMaxConcurrency.override?.toString() ?? "",
-    userAgentMaxConcurrency: policy.userAgentMaxConcurrency.override?.toString() ?? "",
-    scheduledAgentMaxConcurrency: policy.scheduledAgentMaxConcurrency.override?.toString() ?? "",
-  };
-}
-function parseLimit(value: string): number | null {
-  if (!value.trim()) return null;
-  const result = Number(value);
-  if (!Number.isInteger(result) || result < 1 || result > 2147483647) throw new Error("invalidLimit");
-  return result;
-}
+type Dimension = (typeof dimensions)[number];
+type ResetTarget = { key: Dimension } | { user: UserConcurrencyPolicy };
 
-/** 系统密钥保护的动态并发管理页，不读取或展示临时实例。 */
+/** 系统密钥保护的并发管理入口。 */
 export function AgentConcurrencyPage() {
   const { t } = useTranslation(AGENT_CONCURRENCY_NS);
   const gate = useAdminKeyGate(t("loginError"));
@@ -53,10 +45,10 @@ export function AgentConcurrencyPage() {
 
 function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const { t } = useTranslation(AGENT_CONCURRENCY_NS);
-  const [draft, setDraft] = useState<Draft>(blank);
-  const [userId, setUserId] = useState("");
-  const [userLimit, setUserLimit] = useState("");
-  const [selected, setSelected] = useState<UserConcurrencyPolicy>();
+  const [editing, setEditing] = useState<Dimension>();
+  const [draft, setDraft] = useState("");
+  const [userDialog, setUserDialog] = useState<{ user?: UserConcurrencyPolicy }>();
+  const [reset, setReset] = useState<ResetTarget>();
   const [feedback, setFeedback] = useState("");
   const [mutationError, setMutationError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,24 +60,24 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
       const [policy, users] = await Promise.all([agentConcurrencyApi.getGlobal(), agentConcurrencyApi.listUsers()]);
       return { policy, users };
     },
-    { onSuccess: ({ policy }) => setDraft(draftOf(policy)), onError: handleError },
+    { onError: handleError },
   );
   const disabled = busy || query.loading;
-  const run = async (operation: () => Promise<void>, saved = true) => {
+  const valueLabel = (value: number | null) => (value === null ? t("unlimited") : t("limitValue", { count: value }));
+  const run = async (operation: () => Promise<void>) => {
+    if (disabled) return;
     setBusy(true);
     setFeedback("");
     setMutationError("");
     try {
       await operation();
-      if (saved) {
-        setFeedback(t("saved"));
-        try {
-          await query.refreshAsync();
-        } catch (error) {
-          if (!(error instanceof Error)) throw error;
-          // useRequest 保留刷新错误供页面展示，已提交的写入仍显示成功。
-          handleError(error);
-        }
+      setFeedback(t("saved"));
+      try {
+        await query.refreshAsync();
+      } catch (error) {
+        // 写响应已提交；刷新失败仍保留提交结果与用户尚未提交的草稿。
+        if (!(error instanceof Error)) throw error;
+        handleError(error);
       }
     } catch (error) {
       if (!(error instanceof Error)) throw error;
@@ -95,199 +87,306 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
       setBusy(false);
     }
   };
-  const saveGlobal = (reset = false) =>
-    run(async () => {
-      const patch: ConcurrencyPatch = {};
-      for (const key of dimensions) patch[key] = reset ? null : parseLimit(draft[key]);
-      const committed = await agentConcurrencyApi.patchGlobal(patch);
-      // 写响应是已提交状态；后续刷新失败不能把用户重新带回旧覆盖。
-      query.mutate((current) => ({ policy: committed, users: current?.users ?? [] }));
-      setDraft(draftOf(committed));
-      setSelected(undefined);
-    });
+  const patch = async (key: Dimension, value: number | null) => {
+    const policy = await agentConcurrencyApi.patchGlobal({ [key]: value });
+    query.mutate((current) => ({ policy, users: current?.users ?? [] }));
+    setEditing(undefined);
+    setReset(undefined);
+  };
   const policy = query.data?.policy;
+  const resetSetting =
+    reset && policy
+      ? "key" in reset
+        ? policy[reset.key]
+        : { ...reset.user.policy.userAgentMaxConcurrency, defaultValue: policy.userAgentMaxConcurrency.value }
+      : undefined;
   return (
-    <main className="mx-auto max-w-4xl space-y-6 p-6" aria-busy={disabled}>
-      <header className="flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8" aria-busy={disabled}>
+      <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("description")}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
         </div>
-        <Button
-          variant="outline"
-          disabled={disabled}
-          onClick={() => {
-            setSelected(undefined);
-            query.refresh();
-          }}
-        >
-          {t("retry")}
+        <Button variant="outline" disabled={disabled} onClick={() => query.refresh()}>
+          <RefreshCw className={query.loading ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+          {t("refresh")}
         </Button>
       </header>
-      {query.loading && <p role="status">{t("loading")}</p>}
+      {query.loading && !policy && <p role="status">{t("loading")}</p>}
       {query.error && (
-        <p role="alert">{query.data ? t("refreshFailed", { message: query.error.message }) : query.error.message}</p>
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
+          <span>{query.data ? t("refreshFailed", { message: query.error.message }) : query.error.message}</span>
+          <Button variant="outline" disabled={disabled} onClick={() => query.refresh()}>
+            {t("retry")}
+          </Button>
+        </div>
       )}
-      {mutationError && <p role="alert">{mutationError}</p>}
-      {feedback && <p role="status">{feedback}</p>}
+      {mutationError && !reset && !userDialog && (
+        <p role="alert" className="text-sm text-destructive">
+          {mutationError}
+        </p>
+      )}
+      {feedback && (
+        <p role="status" className="text-sm text-primary">
+          {feedback}
+        </p>
+      )}
       {policy && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("global")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveGlobal();
-                }}
-              >
-                {dimensions.map((key) => (
-                  <div key={key} className="grid gap-2 sm:grid-cols-2">
-                    <label htmlFor={`concurrency-${key}`}>
-                      {t(key)}
+          <Card className="gap-0 overflow-hidden py-0 shadow-none">
+            <div className="p-6">
+              <h2 className="font-semibold">{t("global")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t("globalHelp")}</p>
+            </div>
+            <div className="hidden grid-cols-3 border-y bg-muted/30 px-6 py-3 text-xs text-muted-foreground sm:grid">
+              <span>{t("limitItem")}</span>
+              <span>{t("effective")}</span>
+              <span className="text-right">{t("actions")}</span>
+            </div>
+            {dimensions.map((key) => (
+              <div key={key} className="grid gap-4 border-b px-6 py-6 last:border-b-0 sm:grid-cols-3 sm:items-center">
+                <div>
+                  <h3 className="text-sm font-medium">{t(key)}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{t(`hints.${key}`)}</p>
+                </div>
+                <div id={`effective-${key}`} className="flex flex-wrap items-center gap-3">
+                  <span className="text-2xl font-semibold tabular-nums">{valueLabel(policy[key].value)}</span>
+                  <span
+                    className={
+                      policy[key].source === "environment"
+                        ? "rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+                        : "rounded bg-primary/10 px-2 py-1 text-xs text-primary"
+                    }
+                  >
+                    {t(policy[key].source === "environment" ? "default" : "custom")}
+                  </span>
+                </div>
+                <div className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={disabled || editing === key}
+                    aria-label={t("editLimit", { name: t(key) })}
+                    onClick={() => {
+                      setEditing(key);
+                      setDraft(policy[key].value?.toString() ?? "");
+                    }}
+                  >
+                    {t("edit")}
+                  </Button>
+                  {policy[key].override !== null && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      disabled={disabled}
+                      onClick={() => {
+                        setMutationError("");
+                        setReset({ key });
+                      }}
+                    >
+                      {t("reset")}
+                    </Button>
+                  )}
+                </div>
+                {editing === key && (
+                  <form
+                    className="flex flex-wrap items-end gap-3 border-t border-dashed pt-4 sm:col-span-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void run(async () => {
+                        const value = Number(draft);
+                        if (!draft.trim() || !Number.isInteger(value) || value < 1 || value > 2147483647)
+                          throw new Error("invalidLimit");
+                        await patch(key, value);
+                      });
+                    }}
+                  >
+                    <label htmlFor="concurrency-limit" className="min-w-40 flex-1 text-sm">
+                      {t("newLimit")}
                       <Input
-                        id={`concurrency-${key}`}
-                        aria-describedby={`effective-${key}`}
+                        id="concurrency-limit"
+                        className="mt-2"
                         type="number"
                         min={1}
                         max={2147483647}
                         step={1}
-                        value={draft[key]}
-                        placeholder={t("inherit")}
+                        required
+                        value={draft}
                         disabled={disabled}
-                        onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                        onChange={(event) => setDraft(event.target.value)}
                       />
                     </label>
-                    <p className="self-end text-sm" id={`effective-${key}`}>
-                      {t("effective")}: {policy[key].value ?? t("unlimited")} · {t(`sources.${policy[key].source}`)}
+                    <p className="flex-1 text-xs text-muted-foreground">
+                      {t("defaultHint", { value: valueLabel(policy[key].defaultValue) })}
                     </p>
-                  </div>
-                ))}
-                <p className="text-sm text-muted-foreground">{t("inheritHelp")}</p>
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={disabled}>
-                    {t("save")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={disabled}
-                    onClick={() => {
-                      void saveGlobal(true);
-                    }}
-                  >
-                    {t("reset")}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
+                    <Button type="button" variant="outline" disabled={busy} onClick={() => setEditing(undefined)}>
+                      {t("cancel")}
+                    </Button>
+                    <Button type="submit" disabled={disabled}>
+                      {t("save")}
+                    </Button>
+                  </form>
+                )}
+              </div>
+            ))}
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("users")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <form
-                className="space-y-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void run(async () => {
-                    const user = await agentConcurrencyApi.putUser(userId.trim(), parseLimit(userLimit));
-                    setSelected(user);
-                  });
+          <Card className="gap-0 overflow-hidden py-0 shadow-none">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-6">
+              <div>
+                <h2 className="font-semibold">
+                  {t("users")}
+                  <span className="ml-2 rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+                    {query.data?.users.length}
+                  </span>
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t("usersHelp")}</p>
+              </div>
+              <Button
+                disabled={disabled}
+                onClick={() => {
+                  setMutationError("");
+                  setUserDialog({});
                 }}
               >
-                <label htmlFor="concurrency-user-id">
-                  {t("userId")}
-                  <Input
-                    id="concurrency-user-id"
-                    required
-                    value={userId}
-                    disabled={disabled}
-                    onChange={(event) => {
-                      setUserId(event.target.value);
-                      setSelected(undefined);
-                      setUserLimit("");
-                    }}
-                  />
-                </label>
-                <label htmlFor="concurrency-user-limit">
-                  {t("userLimit")}
-                  <Input
-                    id="concurrency-user-limit"
-                    type="number"
-                    min={1}
-                    max={2147483647}
-                    step={1}
-                    value={userLimit}
-                    placeholder={t("inherit")}
-                    disabled={disabled}
-                    onChange={(event) => setUserLimit(event.target.value)}
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={disabled || !userId.trim()}
-                    onClick={() => {
-                      void run(async () => {
-                        const user = await agentConcurrencyApi.getUser(userId.trim());
-                        setSelected(user);
-                        setUserLimit(user.policy.userAgentMaxConcurrency.override?.toString() ?? "");
-                      }, false);
-                    }}
-                  >
-                    {t("loadUser")}
-                  </Button>
-                  <Button type="submit" disabled={disabled || !userId.trim()}>
-                    {t("saveUser")}
-                  </Button>
+                <Plus className="size-4" aria-hidden="true" />
+                {t("addUser")}
+              </Button>
+            </div>
+            <div className="hidden grid-cols-3 border-y bg-muted/30 px-6 py-3 text-xs text-muted-foreground sm:grid">
+              <span>{t("user")}</span>
+              <span>{t("userLimit")}</span>
+              <span className="text-right">{t("actions")}</span>
+            </div>
+            {!query.data?.users.length ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">{t("empty")}</p>
+            ) : (
+              query.data.users.map((user) => (
+                <div
+                  key={user.userId}
+                  className="grid gap-4 border-b px-6 py-5 last:border-b-0 sm:grid-cols-3 sm:items-center"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm text-primary"
+                    >
+                      {user.name.slice(0, 1)}
+                    </span>
+                    <span className="break-words text-sm font-medium">{user.name}</span>
+                  </div>
+                  <span className="text-lg font-semibold tabular-nums">
+                    {valueLabel(user.policy.userAgentMaxConcurrency.value)}
+                  </span>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={disabled}
+                      aria-label={t("editUser", { name: user.name })}
+                      onClick={() => {
+                        setMutationError("");
+                        setUserDialog({ user });
+                      }}
+                    >
+                      {t("edit")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      disabled={disabled}
+                      aria-label={t("resetUserLabel", { name: user.name })}
+                      onClick={() => {
+                        setMutationError("");
+                        setReset({ user });
+                      }}
+                    >
+                      {t("resetUser")}
+                    </Button>
+                  </div>
                 </div>
-                {selected && (
-                  <p>
-                    {selected.name} · {t("effective")}:{" "}
-                    {selected.policy.userAgentMaxConcurrency.value ?? t("unlimited")} ·{" "}
-                    {t(`sources.${selected.policy.userAgentMaxConcurrency.source}`)}
-                  </p>
-                )}
-              </form>
-              {query.data?.users.length === 0 ? (
-                <p>{t("empty")}</p>
-              ) : (
-                <ul className="space-y-2">
-                  {query.data?.users.map((user) => (
-                    <li key={user.userId} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-                      <span>
-                        {user.name} ({user.userId}) · {t("effective")}:{" "}
-                        {user.policy.userAgentMaxConcurrency.value ?? t("unlimited")} ·{" "}
-                        {t(`sources.${user.policy.userAgentMaxConcurrency.source}`)}
-                      </span>
-                      <Button
-                        variant="outline"
-                        disabled={disabled}
-                        aria-label={t("deleteUser", { name: user.name })}
-                        onClick={() => {
-                          void run(async () => {
-                            const inherited = await agentConcurrencyApi.deleteUser(user.userId);
-                            if (selected?.userId === user.userId) {
-                              setSelected(inherited);
-                              setUserLimit("");
-                            }
-                          });
-                        }}
-                      >
-                        {t("delete")}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
+              ))
+            )}
+            <p className="border-t bg-muted/20 px-6 py-4 text-xs text-muted-foreground">
+              {t("userDefault", { value: valueLabel(policy.userAgentMaxConcurrency.value) })}
+            </p>
           </Card>
+          {userDialog && (
+            <ConcurrencyUserDialog
+              initialUser={userDialog.user}
+              users={query.data?.users ?? []}
+              defaultValue={policy.userAgentMaxConcurrency.value}
+              busy={busy}
+              error={mutationError}
+              onClose={() => setUserDialog(undefined)}
+              onAuthFailure={handleError}
+              onSave={(id, value) =>
+                run(async () => {
+                  const committed = await agentConcurrencyApi.putUser(id, value);
+                  query.mutate((current) =>
+                    current
+                      ? { ...current, users: [...current.users.filter((user) => user.userId !== id), committed] }
+                      : current,
+                  );
+                  setUserDialog(undefined);
+                })
+              }
+            />
+          )}
+          <Dialog
+            open={!!reset}
+            onOpenChange={(open) => {
+              if (!open && !busy) setReset(undefined);
+            }}
+          >
+            <DialogContent showCloseButton={!busy}>
+              <DialogHeader>
+                <DialogTitle>{t(reset && "user" in reset ? "resetUserTitle" : "resetTitle")}</DialogTitle>
+                <DialogDescription>
+                  {reset && "user" in reset ? t("resetUserHelp", { name: reset.user.name }) : t("resetHelp")}
+                </DialogDescription>
+              </DialogHeader>
+              {resetSetting && (
+                <div className="flex flex-wrap items-center gap-4 rounded-lg bg-muted/40 p-5 text-xl font-semibold tabular-nums">
+                  <span>{valueLabel(resetSetting.value)}</span>
+                  <span aria-hidden="true" className="text-muted-foreground">
+                    →
+                  </span>
+                  <span>{valueLabel(resetSetting.defaultValue)}</span>
+                </div>
+              )}
+              {mutationError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {mutationError}
+                </p>
+              )}
+              <DialogFooter>
+                <Button variant="outline" disabled={busy} onClick={() => setReset(undefined)}>
+                  {t("cancel")}
+                </Button>
+                <Button
+                  disabled={disabled}
+                  onClick={() =>
+                    void run(async () => {
+                      if (!reset) return;
+                      if ("key" in reset) await patch(reset.key, null);
+                      else {
+                        const id = reset.user.userId;
+                        await agentConcurrencyApi.deleteUser(id);
+                        query.mutate((current) =>
+                          current ? { ...current, users: current.users.filter((user) => user.userId !== id) } : current,
+                        );
+                        setReset(undefined);
+                      }
+                    })
+                  }
+                >
+                  {t("confirmReset")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </main>

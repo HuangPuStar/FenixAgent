@@ -7,8 +7,17 @@ import { agentConcurrencyPolicyService } from "../server/services/agent-concurre
 export class AgentConcurrencyPolicyFacade {
   constructor(
     private readonly service: AgentConcurrencyPolicyService,
-    private readonly directory: () => Pick<IdentityDirectory, "getUser" | "listUserDisplayInfo"> = getIdentityDirectory,
+    private readonly directory: () => Pick<
+      IdentityDirectory,
+      "getUser" | "listUserDisplayInfo" | "searchUsers"
+    > = getIdentityDirectory,
   ) {}
+
+  /** 系统管理候选仅返回编辑所需的身份字段。 */
+  async searchUsers(keyword: string) {
+    const users = await this.directory().searchUsers({ keyword, limit: 50 });
+    return users.map(({ id, name, email }) => ({ id, name, email }));
+  }
 
   /** 平台三项设置。 */
   getGlobal() {

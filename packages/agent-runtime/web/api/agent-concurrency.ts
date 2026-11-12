@@ -5,6 +5,7 @@ import { getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 export interface ConcurrencySetting {
   override: number | null;
   value: number | null;
+  defaultValue: number | null;
   source: "environment" | "global" | "user";
 }
 /** 平台三项并发设置。 */
@@ -12,6 +13,12 @@ export interface ConcurrencyPolicyView {
   agentMaxConcurrency: ConcurrencySetting;
   userAgentMaxConcurrency: ConcurrencySetting;
   scheduledAgentMaxConcurrency: ConcurrencySetting;
+}
+/** 搜索候选的最小身份投影。 */
+export interface ConcurrencyUserCandidate {
+  id: string;
+  name: string;
+  email: string;
 }
 /** 用户覆盖列表及详情契约。 */
 export interface UserConcurrencyPolicy {
@@ -26,6 +33,8 @@ const auth = () => ({ bearerToken: getAdminKey() ?? undefined });
 
 /** 系统密钥并发策略 client；全部使用标准 request/unwrap 错误语义。 */
 export const agentConcurrencyApi = {
+  searchUsers: (keyword: string) =>
+    unwrap(request<ConcurrencyUserCandidate[]>(`${base}/user-candidates`, { ...auth(), query: { keyword } })),
   getGlobal: () => unwrap(request<ConcurrencyPolicyView>(base, auth())),
   patchGlobal: (body: ConcurrencyPatch) =>
     unwrap(request<ConcurrencyPolicyView>(base, { ...auth(), method: "PATCH", body })),

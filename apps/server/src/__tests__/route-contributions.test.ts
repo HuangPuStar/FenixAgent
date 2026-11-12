@@ -493,6 +493,7 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // agent-runtime
     "GET /api/system/agent-concurrency",
     "PATCH /api/system/agent-concurrency",
+    "GET /api/system/agent-concurrency/user-candidates",
     "GET /api/system/agent-concurrency/users",
     "GET /api/system/agent-concurrency/users/:userId",
     "PUT /api/system/agent-concurrency/users/:userId",

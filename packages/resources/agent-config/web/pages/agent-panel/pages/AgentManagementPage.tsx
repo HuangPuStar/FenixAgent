@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "../../../api/agents";
 import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
-import { errorMessage } from "../../../lib/error-message";
+import { agentEntryError, errorMessage } from "../../../lib/error-message";
 import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
 import "./AgentManagementPage.css";
 
@@ -165,9 +165,11 @@ export function AgentManagementPage() {
       manual: true,
       onError: (err) => {
         console.error("Failed to enter agent:", err);
-        // 与侧栏树同一键：提示必须带服务端信封原文（`unwrap()` 抛出的 `ApiError.message`）；
-        // 只记录日志或只上屏固定文案都会让用户与测试定位不到后端故障。
-        toast.error(t("enterFailed", { message: (err as Error).message }));
+        const notice = agentEntryError(err, t);
+        toast.error(notice.title, {
+          description: notice.description,
+          duration: notice.description ? 10000 : undefined,
+        });
       },
       onFinally: () => setEnteringId(null),
     },

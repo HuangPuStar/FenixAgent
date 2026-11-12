@@ -18,6 +18,21 @@ const service = new AgentConcurrencyPolicyService(
   () => ({ userAgentMaxConcurrency: 10 }),
 );
 const facade = new AgentConcurrencyPolicyFacade(service, () => ({
+  searchUsers: async ({ keyword, limit }) => {
+    expect(limit).toBe(50);
+    return keyword && !user.name.includes(keyword)
+      ? []
+      : [
+          {
+            ...user,
+            emailVerified: true,
+            phoneNumber: null,
+            phoneNumberVerified: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ];
+  },
   getUser: async (id) => (id === "u1" ? user : undefined),
   listUserDisplayInfo: async (ids) => new Map(ids.filter((id) => id === "u1").map((id) => [id, user])),
 }));
@@ -49,6 +64,7 @@ test("requires the existing system key for every operation", async () => {
     ["", "GET"],
     ["", "PATCH", {}],
     ["/users", "GET"],
+    ["/user-candidates", "GET"],
     ["/users/u1", "GET"],
     ["/users/u1", "PUT", { userAgentMaxConcurrency: 2 }],
     ["/users/u1", "DELETE"],
@@ -93,4 +109,15 @@ test("keeps the last committed snapshot after a failed API write", async () => {
   failWrite = true;
   expect((await send("", "PATCH", { agentMaxConcurrency: 8 })).status).toBe(500);
   expect(service.limits().agentMaxConcurrency).toBe(4);
+});
+
+// 搜索只暴露配置所需字段，且关键字传递到身份目录。
+test("searches minimal user candidates", async () => {
+  const candidates: unknown = await (await send("/user-candidates?keyword=User")).json();
+  expect(candidates).toEqual({
+    success: true,
+    data: [{ id: "u1", name: "User One", email: "user@example.com" }],
+  });
+  const missing: unknown = await (await send("/user-candidates?keyword=missing")).json();
+  expect(missing).toEqual({ success: true, data: [] });
 });

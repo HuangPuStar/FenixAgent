@@ -1,9 +1,5 @@
-// web/lib/error-message.ts
-// 失败提示的取值口径：`unwrap()` 抛出的 `ApiError.message` 就是服务端错误信封原文，优先上屏——把它换成
-// 一句固定字典文案，用户与测试都定位不到后端故障（2026-10-12 的「错误文案收口」因此回滚）。字典文案只在
-// 没有可读 message 时兜底。
-//
-// 与 workflow-v2 的 `pages/list/error-message.ts` 同形不同源：本包不跨包依赖别包的页面级私有文件。
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { TFunction } from "i18next";
 
 /**
  * 取一句可上屏的服务端失败原因。
@@ -12,4 +8,23 @@
  */
 export function errorMessage(error: unknown): string | null {
   return error instanceof Error && error.message ? error.message : null;
+}
+
+/** 进入失败提示：并发拒绝按稳定错误码解释，其他错误保留服务端原因。 */
+export function agentEntryError(error: Error, t: TFunction<"agents">): { title: string; description?: string } {
+  let reason: string | undefined;
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case "AGENT_CONCURRENCY_LIMIT_REACHED":
+        reason = t("platformInstanceLimitReached");
+        break;
+      case "USER_AGENT_CONCURRENCY_LIMIT_REACHED":
+        reason = t("userInstanceLimitReached");
+        break;
+    }
+  }
+  return {
+    title: t("enterFailed", { message: reason ?? error.message }),
+    description: reason ? t("instanceLimitHelp") : undefined,
+  };
 }

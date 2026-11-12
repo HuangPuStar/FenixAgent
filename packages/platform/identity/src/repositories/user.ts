@@ -133,17 +133,17 @@ export async function searchSystemUsers(input: UserSearchInput): Promise<ApiSyst
     conditions.push(or(ilike(user.name, keyword), ilike(user.email, keyword), ilike(user.phoneNumber, keyword)));
   }
 
-  if (input.organizationId) {
-    return db
-      .select(SYSTEM_USER_FIELDS)
-      .from(user)
-      .innerJoin(member, eq(member.userId, user.id))
-      .where(and(...conditions))
-      .orderBy(asc(user.createdAt), asc(user.id));
-  }
-  return db
-    .select(SYSTEM_USER_FIELDS)
-    .from(user)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(user.createdAt), asc(user.id));
+  const query = input.organizationId
+    ? db
+        .select(SYSTEM_USER_FIELDS)
+        .from(user)
+        .innerJoin(member, eq(member.userId, user.id))
+        .where(and(...conditions))
+        .orderBy(asc(user.createdAt), asc(user.id))
+    : db
+        .select(SYSTEM_USER_FIELDS)
+        .from(user)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(asc(user.createdAt), asc(user.id));
+  return input.limit === undefined ? query : query.limit(input.limit);
 }

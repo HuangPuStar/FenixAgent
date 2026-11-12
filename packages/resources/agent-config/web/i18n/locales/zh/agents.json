@@ -387,5 +387,8 @@
   },
   "loadFailed": "加载智能体失败",
   "envCreateFailed": "创建运行环境失败",
-  "enterFailed": "进入智能体失败: {{message}}"
+  "enterFailed": "进入智能体失败: {{message}}",
+  "platformInstanceLimitReached": "已达到平台活跃实例总并发上限。",
+  "userInstanceLimitReached": "已达到当前用户的活跃实例并发上限。",
+  "instanceLimitHelp": "你可以先停止暂时不用的实例，再重试；或联系管理员提高实例并发数。"
 }
