@@ -77,6 +77,8 @@ export interface OrganizationWithMembers {
  * 姓名、邮箱与手机号做模糊匹配。三者可组合。
  */
 export interface UserSearchInput {
+  /** 可选的数据库结果上限，交互式候选搜索必须指定。 */
+  readonly limit?: number;
   readonly keyword?: string;
   readonly organizationId?: string;
   readonly userId?: string;

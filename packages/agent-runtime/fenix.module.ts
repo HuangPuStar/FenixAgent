@@ -251,6 +251,13 @@ export const moduleManifest = {
   ],
   contributions: [
     {
+      id: "agent-runtime.api-concurrency-policy",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeConcurrencyPolicyRoutes(host)),
+    },
+    {
       id: "agent-runtime.web-control",
       kind: "app-route",
       slot: "web",
@@ -300,5 +307,10 @@ export const moduleManifest = {
         import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeAcpAppRoutes(host)),
     },
   ],
-  create: () => import("./src/runtime").then((module) => module.createAgentRuntimeModule()),
+  create: async () => {
+    const { agentConcurrencyPolicyService } = await import("./src/server/services/agent-concurrency-policy-state");
+    await agentConcurrencyPolicyService.initialize();
+    const module = await import("./src/runtime");
+    return module.createAgentRuntimeModule();
+  },
 } satisfies ModuleManifest;

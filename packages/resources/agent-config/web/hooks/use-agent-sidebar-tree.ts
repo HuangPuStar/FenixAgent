@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "../api/agents";
 import { AGENTS_NS } from "../i18n/namespace";
+import { agentEntryError } from "../lib/error-message";
 
 /** 树节点：一个 agent 配置 + 它当前绑定的环境与实例。 */
 export interface AgentSidebarTreeNode {
@@ -213,7 +214,11 @@ export function useAgentSidebarTree({
         // 失败提示必须带上服务端信封原文（`unwrap()` 抛出的 `ApiError.message`）：只上屏固定文案会让
         // 用户与测试都拿不到后端故障原因；原始 error 对象同时进日志，留下可查的诊断上下文。
         console.error("Failed to enter instance:", err);
-        toast.error(t("enterFailed", { message: (err as Error).message }));
+        const notice = agentEntryError(err, t);
+        toast.error(notice.title, {
+          description: notice.description,
+          duration: notice.description ? 10000 : undefined,
+        });
       },
     },
   );

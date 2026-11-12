@@ -1,3 +1,4 @@
+import { agentConcurrencyAdminNavigation } from "@fenix/agent-runtime/web/contribution";
 import { MODELS_NS } from "@fenix/model-management/web/i18n";
 import { CHANNELS_NS } from "@fenix/resource-channel/web/i18n";
 import { PLUGIN_MARKET_NS } from "@fenix/resource-plugin-market/web/i18n";
@@ -38,6 +39,7 @@ const NAV_ITEMS: {
     | "/admin/logs"
     | "/admin/people"
     | "/admin/channels"
+    | "/admin/agent-concurrency"
     | "/admin/sandbox"
     | "/admin/model-gateway"
     | "/admin/plugin-market"
@@ -48,6 +50,7 @@ const NAV_ITEMS: {
   moduleId?: string;
 }[] = [
   { to: "/admin", labelKey: "title", icon: Activity },
+  agentConcurrencyAdminNavigation,
   { to: "/admin/sandbox", labelKey: "nav", ns: SANDBOX_NS, icon: Box },
   // 消息通道的跨组织面：控制台的 `/agent/channels` 按当前组织过滤，这里给系统 key 面看全部通道与会话实例。
   { to: "/admin/channels", labelKey: "langbot.admin.nav", ns: CHANNELS_NS, icon: MessageSquare },

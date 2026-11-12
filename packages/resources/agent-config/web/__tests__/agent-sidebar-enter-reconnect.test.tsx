@@ -5,7 +5,9 @@ import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
+import { toast } from "sonner";
 import type { AgentSidebarTreeNode } from "../hooks/use-agent-sidebar-tree";
+import zh from "../i18n/locales/zh/agents.json";
 
 const win = initializeHappyDomWindow(new Window({ url: "http://localhost:3000" }));
 const globals = globalThis as Record<string, unknown>;
@@ -15,7 +17,7 @@ globals.document = win.document;
 globals.navigator = win.navigator;
 const { useAgentSidebarTree } = await import("../hooks/use-agent-sidebar-tree");
 const i18n = createInstance();
-await i18n.init({ lng: "zh", resources: {} });
+await i18n.init({ lng: "zh", resources: { zh: { agents: zh } } });
 
 const node: AgentSidebarTreeNode = {
   agent: {
@@ -129,4 +131,33 @@ describe("进入实例后的连接恢复通知", () => {
       error.mockRestore();
     }
   });
+});
+
+// 真实 enter 错误信封应在侧栏提示具体限制，并给出可执行建议且不发生导航。
+test("concurrency rejection shows the reason and recovery advice", async () => {
+  const notification = spyOn(toast, "error").mockImplementation(() => "notice");
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  const h = renderSidebar();
+  try {
+    h.enter();
+    await h.finish(
+      Response.json(
+        {
+          success: false,
+          error: { code: "USER_AGENT_CONCURRENCY_LIMIT_REACHED", message: "Request could not be completed" },
+        },
+        { status: 429 },
+      ),
+    );
+    expect(notification).toHaveBeenCalledWith("进入智能体失败: 已达到当前用户的活跃实例并发上限。", {
+      description: "你可以先停止暂时不用的实例，再重试；或联系管理员提高实例并发数。",
+      duration: 10000,
+    });
+    expect(h.events).toEqual([]);
+    expect(h.selections).toEqual([]);
+  } finally {
+    h.unmount();
+    notification.mockRestore();
+    log.mockRestore();
+  }
 });

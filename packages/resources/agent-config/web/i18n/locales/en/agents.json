@@ -387,5 +387,8 @@
   },
   "loadFailed": "Failed to load agents",
   "envCreateFailed": "Failed to create runtime environment",
-  "enterFailed": "Failed to enter agent: {{message}}"
+  "enterFailed": "Failed to enter agent: {{message}}",
+  "platformInstanceLimitReached": "The platform limit for active instances has been reached.",
+  "userInstanceLimitReached": "The concurrency limit for your active instances has been reached.",
+  "instanceLimitHelp": "Stop instances you are not currently using and try again, or contact an administrator to increase the instance concurrency limit."
 }

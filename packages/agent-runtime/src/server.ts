@@ -36,6 +36,7 @@
 
 export { mapOrchestrationErrorToHttp } from "./errors/orchestration-http"; // 错误映射·编排域错误 → HTTP 的单一真相（宿主 errorPlugin 共用）
 export { createAcpRoutes } from "./routes/acp"; // 路由·ACP（守卫/认证/错误日志由宿主注入）
+export { createAgentConcurrencyPolicyRoutes } from "./routes/api/agent-concurrency-policy"; // 路由·系统并发策略管理
 export { createApiInstanceRoutes } from "./routes/api/instances"; // 路由·实例管理
 export { createOpenaiChatRoutes } from "./routes/api/openai-chat"; // 路由·OpenAI Chat
 export type {

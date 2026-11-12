@@ -50,7 +50,12 @@ import {
   DASHBOARD_NS,
   dashboardResources,
 } from "@fenix/agent-config/web/i18n";
-import { AGENT_CHAT_NS, agentChatResources } from "@fenix/agent-runtime/web/i18n";
+import {
+  AGENT_CHAT_NS,
+  AGENT_CONCURRENCY_NS,
+  agentChatResources,
+  agentConcurrencyResources,
+} from "@fenix/agent-runtime/web/i18n";
 import {
   APIKEY_NS,
   apikeyResources,
@@ -135,6 +140,7 @@ const packageResources = {
   en: {
     [AGENTS_NS]: agentResources.en,
     [AGENT_CHAT_NS]: agentChatResources.en,
+    [AGENT_CONCURRENCY_NS]: agentConcurrencyResources.en,
     [DASHBOARD_NS]: dashboardResources.en,
     [AGENT_HOME_NS]: agentHomeResources.en,
     [APIKEY_NS]: apikeyResources.en,
@@ -161,6 +167,7 @@ const packageResources = {
   zh: {
     [AGENTS_NS]: agentResources.zh,
     [AGENT_CHAT_NS]: agentChatResources.zh,
+    [AGENT_CONCURRENCY_NS]: agentConcurrencyResources.zh,
     [DASHBOARD_NS]: dashboardResources.zh,
     [AGENT_HOME_NS]: agentHomeResources.zh,
     [APIKEY_NS]: apikeyResources.zh,

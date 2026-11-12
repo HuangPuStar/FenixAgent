@@ -9,3 +9,6 @@
  * 既有形态一致——宿主在 `apps/web/src/i18n/index.ts` 从包出口取本常量登记，命名空间归属与字典同源。
  */
 export const AGENT_CHAT_NS = "agentChat";
+
+/** 系统并发策略管理命名空间。 */
+export const AGENT_CONCURRENCY_NS = "agentConcurrency";
