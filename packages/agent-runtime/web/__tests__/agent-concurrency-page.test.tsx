@@ -44,6 +44,10 @@ let unauthorized: boolean;
 let failWrite: boolean;
 let lastPatch: unknown;
 let failRefreshAfterPatch: boolean;
+let failUsersLoad: boolean;
+let policyLoads: number;
+let usersLoads: number;
+let pendingUsers: Promise<void> | undefined;
 const i18n = createInstance();
 await i18n.init({
   lng: "en",
@@ -95,6 +99,18 @@ function typeInput(id: string, value: string) {
     );
   });
 }
+
+async function renderPage() {
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <AgentConcurrencyPage />
+      </I18nextProvider>,
+    );
+  });
+  await settle();
+}
 beforeEach(async () => {
   globalOverride = 4;
   userOverride = 2;
@@ -103,6 +119,10 @@ beforeEach(async () => {
   failWrite = false;
   lastPatch = undefined;
   failRefreshAfterPatch = false;
+  failUsersLoad = false;
+  policyLoads = 0;
+  usersLoads = 0;
+  pendingUsers = undefined;
   window.sessionStorage.setItem("rcs_admin_master_key", "test-admin");
   globalThis.fetch = Object.assign(
     async (input: string | URL | Request, init?: RequestInit) => {
@@ -130,7 +150,11 @@ beforeEach(async () => {
           },
         });
       }
-      if (path.endsWith("/users"))
+      if (path.endsWith("/users")) {
+        usersLoads++;
+        await pendingUsers;
+        if (failUsersLoad)
+          return Response.json({ error: { code: "FAILED", message: "User list unavailable" } }, { status: 500 });
         return response(
           userOverride === null
             ? []
@@ -142,7 +166,7 @@ beforeEach(async () => {
                     ...policy(),
                     userAgentMaxConcurrency: {
                       override: userOverride,
-                      value: 2,
+                      value: userOverride,
                       defaultValue: globalOverride ?? 10,
                       source: "user",
                     },
@@ -150,27 +174,21 @@ beforeEach(async () => {
                 },
               ],
         );
+      }
       if (init?.method === "PATCH") {
         const body = JSON.parse(String(init.body)) as { userAgentMaxConcurrency?: number | null };
         lastPatch = body;
         globalOverride = body.userAgentMaxConcurrency ?? null;
         if (failRefreshAfterPatch) failLoad = true;
       }
+      if (!init?.method || init.method === "GET") policyLoads++;
       return response(policy());
     },
     { preconnect: originalFetch.preconnect },
   ) as typeof fetch;
   container = document.createElement("div");
   document.body.appendChild(container);
-  root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <I18nextProvider i18n={i18n}>
-        <AgentConcurrencyPage />
-      </I18nextProvider>,
-    );
-  });
-  await settle();
+  await renderPage();
 });
 afterEach(async () => {
   await act(async () => root.unmount());
@@ -257,7 +275,67 @@ test("searches and selects a user before saving", async () => {
   typeInput("concurrency-user-limit", "6");
   await click("Save configuration");
   expect(userOverride).toBe(6);
+  expect(container.querySelector('[aria-label="Configure user concurrency"]')?.textContent).toContain("6");
   expect(document.body.querySelector('[role="dialog"]') === null).toBe(true);
+});
+
+// 用户列表首次失败不能隐藏平台控制，局部重试不得重新加载平台或覆盖编辑草稿。
+test("keeps platform controls available when the initial user list fails", async () => {
+  failUsersLoad = true;
+  await act(async () => root.unmount());
+  await renderPage();
+  expect(container.querySelector("#effective-userAgentMaxConcurrency")?.textContent).toContain("4");
+  const users = container.querySelector('[aria-label="Configure user concurrency"]');
+  expect(users?.querySelector('[role="alert"]')?.textContent).toContain("User list unavailable");
+  expect(users?.textContent).not.toContain(translations.empty);
+  await click("Edit Default concurrency per user");
+  typeInput("concurrency-limit", "7");
+  const previousPolicyLoads = policyLoads;
+  const previousUsersLoads = usersLoads;
+  failUsersLoad = false;
+  await click("Retry");
+  expect(policyLoads).toBe(previousPolicyLoads);
+  expect(usersLoads).toBe(previousUsersLoads + 1);
+  expect(users?.textContent).toContain("User One");
+  expect(users?.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector<HTMLInputElement>("#concurrency-limit")?.value).toBe("7");
+});
+
+// 用户列表故障时平台写入仍须提交并显示成功，列表错误只显示在用户区域。
+test("saves platform limits while the user list remains unavailable", async () => {
+  failUsersLoad = true;
+  await click("Refresh");
+  await click("Edit Default concurrency per user");
+  typeInput("concurrency-limit", "7");
+  await click("Save");
+  expect(globalOverride).toBe(7);
+  expect(container.querySelector("#effective-userAgentMaxConcurrency")?.textContent).toContain("7");
+  expect(container.textContent).toContain("Saved");
+  expect(container.querySelector('[aria-label="Configure user concurrency"] [role="alert"]')?.textContent).toContain(
+    "User list unavailable",
+  );
+});
+
+// 用户列表仍在等待时也不能阻塞平台编辑与保存，后台刷新不延长写入忙状态。
+test("keeps platform edits responsive while the user list is pending", async () => {
+  let releaseUsers = () => {};
+  pendingUsers = new Promise<void>((resolve) => {
+    releaseUsers = resolve;
+  });
+  try {
+    await act(async () => root.unmount());
+    await renderPage();
+    await click("Edit Default concurrency per user");
+    typeInput("concurrency-limit", "8");
+    await click("Save");
+    expect(globalOverride).toBe(8);
+    expect(container.querySelector("#effective-userAgentMaxConcurrency")?.textContent).toContain("8");
+    await click("Edit Default concurrency per user");
+    expect(container.querySelector<HTMLInputElement>("#concurrency-limit")?.disabled).toBe(false);
+  } finally {
+    releaseUsers();
+    await settle();
+  }
 });
 
 // 用户保存失败必须在弹窗内显示错误并保留选择和额度。

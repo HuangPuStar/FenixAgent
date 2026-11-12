@@ -55,14 +55,14 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
   const handleError = (error: Error) => {
     if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
   };
-  const query = useRequest(
-    async () => {
-      const [policy, users] = await Promise.all([agentConcurrencyApi.getGlobal(), agentConcurrencyApi.listUsers()]);
-      return { policy, users };
-    },
-    { onError: handleError },
-  );
-  const disabled = busy || query.loading;
+  const policyQuery = useRequest(agentConcurrencyApi.getGlobal, { onError: handleError });
+  const usersQuery = useRequest(agentConcurrencyApi.listUsers, { onError: handleError });
+  const disabled = busy || policyQuery.loading;
+  const usersDisabled = disabled || usersQuery.loading || !usersQuery.data;
+  const refresh = () => {
+    policyQuery.refresh();
+    usersQuery.refresh();
+  };
   const valueLabel = (value: number | null) => (value === null ? t("unlimited") : t("limitValue", { count: value }));
   const run = async (operation: () => Promise<void>) => {
     if (disabled) return;
@@ -72,13 +72,8 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
     try {
       await operation();
       setFeedback(t("saved"));
-      try {
-        await query.refreshAsync();
-      } catch (error) {
-        // 写响应已提交；刷新失败仍保留提交结果与用户尚未提交的草稿。
-        if (!(error instanceof Error)) throw error;
-        handleError(error);
-      }
+      // 写响应已提交；两区独立后台刷新，用户目录等待不延长平台写入忙状态。
+      refresh();
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       handleError(error);
@@ -89,11 +84,11 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
   };
   const patch = async (key: Dimension, value: number | null) => {
     const policy = await agentConcurrencyApi.patchGlobal({ [key]: value });
-    query.mutate((current) => ({ policy, users: current?.users ?? [] }));
+    policyQuery.mutate(policy);
     setEditing(undefined);
     setReset(undefined);
   };
-  const policy = query.data?.policy;
+  const policy = policyQuery.data;
   const resetSetting =
     reset && policy
       ? "key" in reset
@@ -107,16 +102,16 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
         </div>
-        <Button variant="outline" disabled={disabled} onClick={() => query.refresh()}>
-          <RefreshCw className={query.loading ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+        <Button variant="outline" disabled={disabled} onClick={refresh}>
+          <RefreshCw className={policyQuery.loading ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
           {t("refresh")}
         </Button>
       </header>
-      {query.loading && !policy && <p role="status">{t("loading")}</p>}
-      {query.error && (
+      {policyQuery.loading && !policy && <p role="status">{t("loading")}</p>}
+      {policyQuery.error && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
-          <span>{query.data ? t("refreshFailed", { message: query.error.message }) : query.error.message}</span>
-          <Button variant="outline" disabled={disabled} onClick={() => query.refresh()}>
+          <span>{policy ? t("refreshFailed", { message: policyQuery.error.message }) : policyQuery.error.message}</span>
+          <Button variant="outline" disabled={disabled} onClick={() => policyQuery.refresh()}>
             {t("retry")}
           </Button>
         </div>
@@ -133,7 +128,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
       )}
       {policy && (
         <>
-          <Card className="gap-0 overflow-hidden py-0 shadow-none">
+          <Card className="gap-0 overflow-hidden py-0 shadow-none" role="region" aria-label={t("global")}>
             <div className="p-6">
               <h2 className="font-semibold">{t("global")}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t("globalHelp")}</p>
@@ -231,19 +226,24 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
               </div>
             ))}
           </Card>
-          <Card className="gap-0 overflow-hidden py-0 shadow-none">
+          <Card
+            className="gap-0 overflow-hidden py-0 shadow-none"
+            role="region"
+            aria-label={t("users")}
+            aria-busy={usersQuery.loading}
+          >
             <div className="flex flex-wrap items-center justify-between gap-4 p-6">
               <div>
                 <h2 className="font-semibold">
                   {t("users")}
                   <span className="ml-2 rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
-                    {query.data?.users.length}
+                    {usersQuery.data?.length}
                   </span>
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">{t("usersHelp")}</p>
               </div>
               <Button
-                disabled={disabled}
+                disabled={usersDisabled}
                 onClick={() => {
                   setMutationError("");
                   setUserDialog({});
@@ -258,10 +258,23 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
               <span>{t("userLimit")}</span>
               <span className="text-right">{t("actions")}</span>
             </div>
-            {!query.data?.users.length ? (
+            {usersQuery.loading && !usersQuery.data && (
+              <p role="status" className="p-6">
+                {t("loading")}
+              </p>
+            )}
+            {usersQuery.error && (
+              <div role="alert" className="flex flex-wrap items-center gap-3 px-6 py-4 text-sm text-destructive">
+                <span>{t("usersLoadFailed", { message: usersQuery.error.message })}</span>
+                <Button variant="outline" disabled={busy || usersQuery.loading} onClick={() => usersQuery.refresh()}>
+                  {t("retry")}
+                </Button>
+              </div>
+            )}
+            {usersQuery.data?.length === 0 ? (
               <p className="p-8 text-center text-sm text-muted-foreground">{t("empty")}</p>
             ) : (
-              query.data.users.map((user) => (
+              usersQuery.data?.map((user) => (
                 <div
                   key={user.userId}
                   className="grid gap-4 border-b px-6 py-5 last:border-b-0 sm:grid-cols-3 sm:items-center"
@@ -282,7 +295,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={disabled}
+                      disabled={usersDisabled}
                       aria-label={t("editUser", { name: user.name })}
                       onClick={() => {
                         setMutationError("");
@@ -295,7 +308,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
                       variant="ghost"
                       size="sm"
                       className="text-muted-foreground"
-                      disabled={disabled}
+                      disabled={usersDisabled}
                       aria-label={t("resetUserLabel", { name: user.name })}
                       onClick={() => {
                         setMutationError("");
@@ -315,7 +328,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
           {userDialog && (
             <ConcurrencyUserDialog
               initialUser={userDialog.user}
-              users={query.data?.users ?? []}
+              users={usersQuery.data ?? []}
               defaultValue={policy.userAgentMaxConcurrency.value}
               busy={busy}
               error={mutationError}
@@ -324,11 +337,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
               onSave={(id, value) =>
                 run(async () => {
                   const committed = await agentConcurrencyApi.putUser(id, value);
-                  query.mutate((current) =>
-                    current
-                      ? { ...current, users: [...current.users.filter((user) => user.userId !== id), committed] }
-                      : current,
-                  );
+                  usersQuery.mutate((current) => [...(current ?? []).filter((user) => user.userId !== id), committed]);
                   setUserDialog(undefined);
                 })
               }
@@ -374,9 +383,7 @@ function ConcurrencyDashboard({ onAuthFailure }: { onAuthFailure: () => void }) 
                       else {
                         const id = reset.user.userId;
                         await agentConcurrencyApi.deleteUser(id);
-                        query.mutate((current) =>
-                          current ? { ...current, users: current.users.filter((user) => user.userId !== id) } : current,
-                        );
+                        usersQuery.mutate((current) => current?.filter((user) => user.userId !== id));
                         setReset(undefined);
                       }
                     })

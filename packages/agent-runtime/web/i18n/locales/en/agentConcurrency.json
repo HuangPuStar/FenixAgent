@@ -23,6 +23,7 @@
   "loginSubmit": "Unlock",
   "loginError": "Invalid system API key",
   "refreshFailed": "Refresh failed: {{message}}",
+  "usersLoadFailed": "Could not load user settings: {{message}}",
   "globalHelp": "Current limits. Changes apply to new admissions.",
   "hints": {
     "agentMaxConcurrency": "Active Agent instances shared by all users",

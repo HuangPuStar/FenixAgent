@@ -2,6 +2,8 @@ import * as z from "zod/v4";
 
 /** null 继承，非空上限须能落入 PostgreSQL integer。 */
 export const ConcurrencyLimitSchema = z.number().int().positive().max(2147483647).nullable();
+// 有效值可能继承部署配置，其范围不受数据库覆盖列约束。
+const effectiveLimitSchema = z.number().int().positive().nullable();
 /** 平台部分更新契约。 */
 export const ConcurrencyPatchSchema = z
   .object({
@@ -13,8 +15,8 @@ export const ConcurrencyPatchSchema = z
 /** 单项的显式覆盖、有效值及继承来源。 */
 export const ConcurrencySettingSchema = z.object({
   override: ConcurrencyLimitSchema,
-  value: ConcurrencyLimitSchema,
-  defaultValue: ConcurrencyLimitSchema,
+  value: effectiveLimitSchema,
+  defaultValue: effectiveLimitSchema,
   source: z.enum(["environment", "global", "user"]),
 });
 /** 管理端三项设置。 */

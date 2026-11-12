@@ -23,6 +23,7 @@
   "loginSubmit": "解锁",
   "loginError": "系统 API 密钥无效",
   "refreshFailed": "刷新失败：{{message}}",
+  "usersLoadFailed": "用户配置加载失败：{{message}}",
   "globalHelp": "显示当前生效的限制，修改后对新请求生效。",
   "hints": {
     "agentMaxConcurrency": "所有用户共享的活跃 Agent 实例上限",
