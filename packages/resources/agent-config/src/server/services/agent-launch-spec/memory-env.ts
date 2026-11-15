@@ -26,6 +26,7 @@ export async function buildMemoryLaunchEnv(
   deps: AgentLaunchSpecAssemblerDeps,
   input: {
     agentConfigId: string;
+    environmentId?: string;
     organizationId: string;
     userId: string;
     extra: Record<string, unknown> | null;
@@ -43,6 +44,7 @@ export async function buildMemoryLaunchEnv(
       }
     : input.extra;
   const disabled: MemoryLaunchEnv = { extra, plugins: [], workspaceFiles: [] };
+  if (input.environmentId?.startsWith("temp-")) return disabled;
   const hindsight = getHindsightConfig();
   if (!hindsight || !(await isAgentMemoryEnabled(input.agentConfigId))) return disabled;
 

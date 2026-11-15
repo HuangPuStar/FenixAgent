@@ -1,9 +1,12 @@
 import { agentInstance, environment } from "@fenix/agent-runtime/db";
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, like, notLike } from "drizzle-orm";
 import { getAgentRuntimeDatabase } from "../db";
 
 /** Agent Instance 的不可变创建来源。 */
 export type InstanceCreationSource = "user" | "api" | "workflow";
+
+/** 实例所属环境的查询范围；默认只返回普通环境。 */
+export type InstanceEnvironmentType = "regular" | "temporary" | "all";
 
 /** 持久 Agent Instance 记录。 */
 export interface AgentInstanceRecord {
@@ -147,16 +150,25 @@ export async function listApiAgentInstances(input: {
   organizationId: string;
   userId: string;
   agentConfigId: string;
+  environmentType?: InstanceEnvironmentType;
   limit: number;
   offset: number;
 }): Promise<{ items: AgentInstanceRecord[]; total: number }> {
   const db = getAgentRuntimeDatabase();
+  const environmentType = input.environmentType ?? "regular";
+  const environmentFilter =
+    environmentType === "all"
+      ? undefined
+      : environmentType === "temporary"
+        ? like(environment.id, "temp-%")
+        : notLike(environment.id, "temp-%");
   const where = and(
     eq(environment.organizationId, input.organizationId),
     eq(environment.userId, input.userId),
     eq(environment.agentConfigId, input.agentConfigId),
     eq(agentInstance.ownerUserId, input.userId),
     inArray(agentInstance.creationSource, ["api", "user"]),
+    environmentFilter,
   );
   const items = await db
     .select({ instance: agentInstance })

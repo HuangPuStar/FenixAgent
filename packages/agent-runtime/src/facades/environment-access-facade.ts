@@ -19,6 +19,7 @@
 
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { environmentRepo } from "../server/repositories/environment";
+import { isTemporaryEnvironment } from "../server/services/temporary-environment-lifecycle";
 
 /**
  * 控制面回查实例所绑定环境的结论。
@@ -75,7 +76,9 @@ export function isOwnedEnvironment(
 class EnvironmentAccessFacade implements EnvironmentAccessFacadeApi {
   async listAcpEnvironments(organizationId: string | null, userId: string): Promise<EnvironmentRecord[]> {
     const environments = await environmentRepo.listByOrganizationId(organizationId ?? userId);
-    return environments.filter((environment) => environment.workerType === "acp");
+    return environments.filter(
+      (environment) => environment.workerType === "acp" && !isTemporaryEnvironment(environment.id),
+    );
   }
 
   async resolveOwnedEnvironment(

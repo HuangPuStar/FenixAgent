@@ -195,9 +195,9 @@ test("Webhook 协议入口不出现在任何一份文档中", async () => {
 });
 
 // 从真实贡献冻结完整操作、包装、SDK 例外、上传和已移除 handler，避免只测手写路由替身。
-test("External v1 freezes 37 operations and retires old handlers", async () => {
+test("External v1 freezes 42 operations and retires old handlers", async () => {
   const { instances, declared } = await collectContributedRoutes();
-  expect(EXTERNAL_V1_OPERATIONS).toHaveLength(37);
+  expect(EXTERNAL_V1_OPERATIONS).toHaveLength(42);
   const hiddenWorkflowPath = "/api/v1/workflows/{workflowId}/execute";
   const visibleOperations = EXTERNAL_V1_OPERATIONS.filter((operation) => operation !== `POST ${hiddenWorkflowPath}`);
   expect(declared.filter((route) => route.includes(" /api/v1/")).sort()).toEqual(visibleOperations);

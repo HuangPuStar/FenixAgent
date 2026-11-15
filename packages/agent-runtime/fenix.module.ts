@@ -90,6 +90,15 @@ export const moduleManifest = {
   dependsOn: [],
   capabilities: ["runtime.agent"],
   envDefinitions: [
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_TEMP_ENV_MAX_TTL_SECONDS",
+      schema: z.coerce.number().int().positive().default(86400),
+      defaultValue: 86400,
+      secret: false,
+      restartRequired: true,
+      description: "临时 Environment 最大 TTL（秒）。",
+    },
     // ── 运行态旋钮：并发上限 ──
     {
       moduleId: "agent-runtime",

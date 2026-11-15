@@ -94,6 +94,7 @@ export async function buildAgentLaunchSpec(
   // Phase 3: 记忆转换为工作区文件；观测/普通变量仍合并，Hindsight 定位由平台统一绑定。
   const memory = await buildMemoryLaunchEnv(deps, {
     agentConfigId: agentConfig.id,
+    environmentId,
     organizationId,
     userId,
     extra: (agentConfig.extra as Record<string, unknown> | null | undefined) ?? null,

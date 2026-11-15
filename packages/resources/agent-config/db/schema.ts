@@ -3,7 +3,19 @@ import { model } from "@fenix/model-management/db";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
 import { skill } from "@fenix/resource-skill/db";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 /**
  * Agent 配置聚合的 schema 唯一真相来源（任务 1.7 B7）。
@@ -157,4 +169,18 @@ export const agentSiteApp = pgTable(
     orgIdx: index("idx_agent_site_app_org").on(table.organizationId),
     userIdx: index("idx_agent_site_app_user").on(table.userId),
   }),
+);
+
+/** 每个 AgentConfig 至多一个临时环境 TTL 覆盖。 */
+export const agentEnvironmentPolicy = pgTable(
+  "agent_environment_policy",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .primaryKey()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    ttlSeconds: integer("ttl_seconds").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({ positive: check("agent_environment_policy_ttl_positive", sql`${table.ttlSeconds} > 0`) }),
 );

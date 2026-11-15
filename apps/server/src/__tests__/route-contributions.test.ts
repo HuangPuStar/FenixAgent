@@ -503,6 +503,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "GET /api/v1/instances/:id",
     "POST /api/v1/instances/:id/stop",
     "POST /api/v1/instances/:id/restart",
+    "POST /api/v1/agents/:id/environments",
+    "POST /api/v1/environments/:environmentId/renew",
     "POST /api/v1/chat/completions",
     // knowledge
     "GET /api/v1/knowledge-bases",
@@ -524,6 +526,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/v1/agents",
     "PATCH /api/v1/agents/:id",
     "DELETE /api/v1/agents/:id",
+    "GET /api/v1/agents/:id/environment-policy",
+    "PUT /api/v1/agents/:id/environment-policy",
+    "DELETE /api/v1/agents/:id/environment-policy",
     // channel 系统管理入口沿用独立认证。
     "GET /api/system/channels/",
     // machine

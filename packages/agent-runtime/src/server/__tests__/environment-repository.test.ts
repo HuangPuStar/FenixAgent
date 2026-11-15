@@ -47,10 +47,21 @@ function installDb(options: { selectRows?: unknown[][]; updateCount?: number } =
       },
     }),
     select: () => selected(selectRows.shift() ?? []),
+    delete: () => ({
+      where: () =>
+        Object.assign(Promise.resolve({ rowCount: options.updateCount ?? 0 }), {
+          returning: async () => (options.updateCount ? [{ id: "env-1" }] : []),
+        }),
+    }),
     update: () => ({
       set: (value: unknown) => {
         calls.updated.push(value);
-        return { where: async () => ({ count: options.updateCount ?? 0 }) };
+        return {
+          where: () =>
+            Object.assign(Promise.resolve({ rowCount: options.updateCount ?? 0 }), {
+              returning: async () => (options.updateCount ? [{ id: "env-1" }] : []),
+            }),
+        };
       },
     }),
   });
@@ -140,4 +151,12 @@ describe("round69 environment repository 真实行为", () => {
 
     await expect(environmentRepo.update("missing", { name: "不会更新" })).resolves.toBeFalse();
   });
+});
+
+// 驱动受影响行计数名称不同，删除存在性必须由返回的标识行判断。
+test("delete 对已删除记录与不存在记录分别返回 true/false", async () => {
+  installDb({ updateCount: 1 });
+  await expect(environmentRepo.delete("env-1")).resolves.toBeTrue();
+  installDb({ updateCount: 0 });
+  await expect(environmentRepo.delete("missing")).resolves.toBeFalse();
 });

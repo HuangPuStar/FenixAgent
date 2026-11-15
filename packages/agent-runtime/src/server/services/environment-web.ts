@@ -60,6 +60,8 @@ function toEnvironmentRecord(row: typeof environment.$inferSelect): EnvironmentR
     userId: row.userId,
     organizationId: row.organizationId ?? null,
     autoStart: row.autoStart ?? false,
+    expiresAt: row.expiresAt,
+    expiryReclaimedAt: row.expiryReclaimedAt,
     lastPollAt: row.lastPollAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -78,7 +80,10 @@ async function findReusableEnvironment(params: CreateWebEnvironmentParams): Prom
   // 绑定 agent 的 runtime environment 需要和访问者一一对应；
   // 否则同组织成员会复用彼此的 workspace，导致环境准备和文件视图都落到错误用户目录。
   const matched =
-    environments.find((env) => env.agentConfigId === params.agentConfigId && env.userId === params.userId) ?? null;
+    environments.find(
+      (env) =>
+        !env.id.startsWith("temp-") && env.agentConfigId === params.agentConfigId && env.userId === params.userId,
+    ) ?? null;
   return matched ? toEnvironmentRecord(matched) : null;
 }
 
@@ -135,6 +140,8 @@ async function insertEnvironmentRecord(params: {
     organizationId: params.organizationId,
     autoStart: params.autoStart,
     lastPollAt: now,
+    expiresAt: null,
+    expiryReclaimedAt: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -273,6 +280,7 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
 
   const results = [];
   for (const env of rows) {
+    if (env.id.startsWith("temp-")) continue;
     // agent 绑定的 runtime environment 是按用户隔离的；列表页只暴露当前用户自己的 runtime，
     // 避免前端把其他成员的 env 误挂到自己看到的 agent 上。
     if (viewerUserId && env.agentConfigId && env.userId !== viewerUserId) {

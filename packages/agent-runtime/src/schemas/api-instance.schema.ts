@@ -43,6 +43,7 @@ export const ApiInstanceListQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(20),
+    environmentType: z.enum(["regular", "temporary", "all"]).default("regular").describe("按实例所属环境筛选。"),
   })
   .strict();
 /** Version-owned lifecycle snapshot without internal failure details. */

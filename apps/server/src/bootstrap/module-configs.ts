@@ -47,6 +47,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     // manifest 并经此处投影，包内直读与包内默认值同批删除。
     "agent-runtime": {
       agentMaxConcurrency: config.agentMaxConcurrency,
+      tempEnvMaxTtlSeconds: readDeclaredEnv<number>(env, "RCS_TEMP_ENV_MAX_TTL_SECONDS"),
       userAgentMaxConcurrency: config.userAgentMaxConcurrency,
       scheduledAgentMaxConcurrency: config.scheduledAgentMaxConcurrency,
       acpIdleTimeoutSeconds: config.acpIdleTimeoutSeconds,

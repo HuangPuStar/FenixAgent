@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -64,6 +65,8 @@ export const environment = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
     autoStart: boolean("auto_start").notNull().default(true),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    expiryReclaimedAt: timestamp("expiry_reclaimed_at", { withTimezone: true }),
     lastPollAt: timestamp("last_poll_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -71,7 +74,10 @@ export const environment = pgTable(
   (table) => ({
     orgUserAgentConfigIdx: uniqueIndex("idx_environment_org_user_agent_config")
       .on(table.organizationId, table.userId, table.agentConfigId)
-      .where(sql`${table.agentConfigId} is not null`),
+      .where(sql`${table.agentConfigId} is not null and ${table.id} not like 'temp-%'`),
+    expiresAtIdx: index("idx_environment_expires_at")
+      .on(table.expiresAt)
+      .where(sql`${table.expiresAt} is not null and ${table.expiryReclaimedAt} is null`),
   }),
 );
 

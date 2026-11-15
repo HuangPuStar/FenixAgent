@@ -1,8 +1,30 @@
 import { afterEach, expect, test } from "bun:test";
 import type { AgentFileService } from "../services/agent-file-service";
 import { setApiWorkspaceDeps, uploadWorkspaceFiles } from "../services/api-workspace";
+import { FileServiceError } from "../services/file-types";
 
 afterEach(() => setApiWorkspaceDeps(null));
+// 直接经过服务错误转换，避免其他层先脱敏而掩盖诊断信息外泄或 cause 丢失。
+test("workspace service redacts internal errors and retains the original cause", async () => {
+  const original = new FileServiceError("internal-machine-secret", "file_service_unavailable", 503);
+  setApiWorkspaceDeps({
+    createAgentFileService: () =>
+      ({
+        upload: async () => {
+          throw original;
+        },
+      }) as unknown as AgentFileService,
+  });
+  const form = new FormData();
+  form.append("files", new File(["data"], "input.txt"));
+  await expect(uploadWorkspaceFiles("env", form, "user")).rejects.toMatchObject({
+    statusCode: 503,
+    code: "FILE_SERVICE_UNAVAILABLE",
+    message: "File service unavailable",
+    cause: original,
+  });
+});
+
 // 整批输入必须在统一执行面写盘之前校验，避免第二个目标非法时已写第一个。
 test("v1 upload rejects duplicate and mismatched targets before writing", async () => {
   let writes = 0;

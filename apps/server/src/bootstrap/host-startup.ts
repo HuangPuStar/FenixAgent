@@ -1,5 +1,16 @@
-import { bindMachineLookupPort, bindModelLookupPort, getAgentConfigModule } from "@fenix/agent-config/server";
-import { bindAgentConfigLookupPort, bindAgentLaunchSpecPort } from "@fenix/agent-runtime/server";
+import {
+  bindEnvironmentPolicyMaximum,
+  bindMachineLookupPort,
+  bindModelLookupPort,
+  getAgentConfigModule,
+} from "@fenix/agent-config/server";
+import {
+  bindAgentConfigLookupPort,
+  bindAgentLaunchSpecPort,
+  getTemporaryEnvironmentMaxTtl,
+  startTemporaryEnvironmentMaintenance,
+  stopTemporaryEnvironmentMaintenance,
+} from "@fenix/agent-runtime/server";
 import { ensureSystemAdmin } from "@fenix/identity/server";
 import { createLogger } from "@fenix/logger";
 import {
@@ -229,6 +240,7 @@ async function runStartupSteps(
   });
   bindAgentLaunchSpecPort(preLaunchPorts.launchSpec);
   bindAgentConfigLookupPort(preLaunchPorts.lookup);
+  bindEnvironmentPolicyMaximum(getTemporaryEnvironmentMaxTtl);
   // agent-config 的机器标签与模型标签端口：实现分别是 machine 与 model-management 包的只读投影。绑在这里
   // 而不是 `host-wiring.ts`，是为了与本文件已有的另两个 agent-config 端口放在一起——host-wiring 刻意不
   // 导入 agent-config 的入口。
@@ -264,6 +276,7 @@ async function runStartupSteps(
   await sandboxManager.recoverAfterRestart();
 
   await initCoreRuntime();
+  await startTemporaryEnvironmentMaintenance();
   startupLog.info("Core runtime initialized");
 
   await startSchedulerUnlessDisabled({
@@ -318,6 +331,7 @@ export async function shutdownHostRuntime(agentRuntime: AgentRuntimeHandles): Pr
   const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
   const runtimeDrain = agentRuntime.shutdown();
   schedulerService.stop();
+  stopTemporaryEnvironmentMaintenance();
   agentRuntime.stopIdleMonitor();
   agentRuntime.closeAllRelayConnections();
   agentRuntime.closeAllAcpConnections();

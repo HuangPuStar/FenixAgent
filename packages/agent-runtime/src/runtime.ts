@@ -1,4 +1,6 @@
 /** 对外运行入口：组合既有实例、会话和观测服务，不产生第二份生命周期状态。 */
+
+import { AppError } from "@fenix/platform-sdk";
 import type {
   AgentRuntime,
   AgentRuntimeModule,
@@ -18,11 +20,13 @@ import {
   stopInstance,
 } from "./server/services/agent-instance-runtime-projection";
 import { agentInstanceService, bindAgentInstanceRuntimeOperations } from "./server/services/agent-instance-service";
+import { getBoundCoreRuntime } from "./server/services/core-runtime-port";
 import {
   createWebEnvironment,
   listEnvironmentsWithInstances,
   updateWebEnvironment,
 } from "./server/services/environment-web";
+import { bindTemporaryEnvironmentStop } from "./server/services/temporary-environment-state";
 import {
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
@@ -184,6 +188,30 @@ let boundRuntime: AgentRuntime | null = null;
  * 放在这里之后，宿主只表达「装配 Runtime 模块」，不再复述本包的内部接线。
  */
 export function createAgentRuntimeModule(): AgentRuntimeModule {
+  bindTemporaryEnvironmentStop(async (id) => {
+    const instances = await agentInstanceRepo.listByEnvironment(id);
+    const results = await Promise.allSettled(
+      instances.map(async (instance) => {
+        const stoppedHere = agentInstanceService.hasConfirmedRuntimeStop(instance.id);
+        const state = agentInstanceService.getRuntimeSnapshot(instance.id);
+        const startingHere =
+          state.currentOperation === "ensure" ||
+          state.currentOperation === "start" ||
+          state.currentOperation === "restart";
+        // 重启后的空内存不证明旧进程退出；无法定位的历史 Runtime 保留持久待办。
+        if (!getBoundCoreRuntime().getInstance(instance.id) && !stoppedHere && !startingHere) {
+          throw new AppError("Previous runtime termination is not confirmed", "ENVIRONMENT_RUNTIME_UNCONFIRMED", 503);
+        }
+        await agentInstanceService.stopInstanceRuntime(instance, "strict");
+      }),
+    );
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Temporary environment stop failed",
+      );
+  });
   if (!boundRuntime) {
     boundRuntime = createAgentRuntime();
     // 只在首次装配时绑定：重复调用不得覆盖用例或宿主后置绑定的替身（同 `bind*Port` 的一次装配语义）。

@@ -23,11 +23,12 @@
 | MCP | `GET/POST /mcp-servers`；`GET/PATCH/DELETE /mcp-servers/:id` |
 | KB | `GET /knowledge-bases` |
 | Instance | `GET /agents/:id/instances`；`POST /agents/:id/instances/connect`；`GET /instances/:id`；`POST /instances/:id/stop`、`/restart` |
+| 临时环境 | `POST /agents/:id/environments`；`POST /environments/:environmentId/renew`；`GET/PUT/DELETE /agents/:id/environment-policy` |
 | 文件 | `GET/POST /environments/:environmentId/workspace/files`；`GET /environments/:environmentId/workspace/files/download?path=...` |
 | 对话 | `POST /chat/completions` |
 | Workflow v2 | `POST /workflow-v2/workflows/:id/run` |
 
-公开文档合计 36 项。请求与响应字段以 `/docs/openapi/external/json` 为准。
+公开文档合计 41 项。请求与响应字段以 `/docs/openapi/external/json` 为准。
 
 ## 配置规则
 
@@ -40,7 +41,11 @@
 
 ## 实例与 ACP
 
-自动调用仅选择当前组织、当前用户、当前 Agent 的 `api/api` 持久实例；默认环境按 createdAt、id 稳定选取，首次准备通过数据库事务锁防重。显式 instanceId 必须是当前用户在当前组织拥有且绑定该 Agent 的 api / user 实例，不能使用 workflow 实例。
+自动调用排除 temp 环境，仅选择当前组织、当前用户、当前 Agent 的 `api/api` 持久实例；默认环境按 createdAt、id 稳定选取，首次准备通过数据库事务锁防重。显式 instanceId 必须是当前用户在当前组织拥有且绑定该 Agent 的 api / user 实例，不能使用 workflow 实例。
+
+`GET /api/v1/agents/:id/instances` 支持 `environmentType=regular|temporary|all`，默认 `regular`。筛选在 SQL 分页与计数前生效；返回仍为 `items`、`total`、`page`、`pageSize`，不改变组织、环境属主与实例属主的隔离条件，也不包含 workflow 实例。详情、停止与重启仍按实例 ID 定位。
+
+`POST /api/v1/instances/:id/stop` 完成归属与 Agent use 授权、确认仲裁器已持有停止意图后返回 `202 Accepted`，信封为 `{success:true,data:null}`。删除中返回 `409`，仲裁器未接纳停止时返回 `503`。后台严格停止由既有实例仲裁器持有，重复请求复用在途操作，HTTP 请求结束不取消停止。调用方通过 `GET /api/v1/instances/:id` 等待 `stopped`；后台停止失败时状态为 `unknown`，诊断保留在服务端日志。该停止任务为进程内生命周期，不提供持久任务或跨重启执行承诺。
 
 Relay 在异步认证前建立有界入站队列，认证与归属校验完成后才转发；原始与包裹 JSON-RPC 在边界处归一化为 ACP 请求。
 
@@ -76,3 +81,5 @@ stop / restart 只影响指定实例，失效其对话句柄；请求结束或�
 工作区上传省略 path 时默认 user；显式空字符串或 . 表示工作区根目录，其他相对目录也可写入。所有上传路径均相对服务端解析的当前 Environment 工作区；拒绝绝对路径（含 Windows / UNC 格式）、.. 段和控制字符。整批先校验文件名、relativePaths 数量、路径和重复目标，再读取并调用统一文件服务；本地与远程均拒绝覆盖已有文件。单文件 92 MiB，远程批次总量 92 MiB；整请求预算 108 MiB，包括无 Content-Length 的流式上传。除词法与 realpath 检查外，本地与远程写入逐级使用不跟随 symlink 的目录描述符并排他创建最终文件，防止父目录在校验后被替换。远程断开不回退本地。审计使用当前用户和 api 来源。
 
 Workflow v2 执行端点保留业务参数、领域状态码、异步和限流行为，使用 v1 路径与包装。同步结果或异步执行信息在外层 data 内；框架参数错误仍为 422。上游业务 data 字段仍属于嵌套结果，不与平台包装混淆。执行重试可能产生新运行，调用方按业务自行去重。
+
+临时环境的创建、续期与期限行为见[临时 Environment](./temporary-agent-environments.md)。到期限制聊天与 Runtime，文件访问沿原接口授权；不新增文件期限或取消规则。

@@ -41,6 +41,8 @@ export interface RuntimeAdapter {
 
 /** 单个实例的进程内生命周期状态，仅由仲裁器持有和修改。 */
 export interface RuntimeEntry {
+  /** 当前控制面曾确认已观察实体退出，不能从默认 stopped 推导。 */
+  stopConfirmed: boolean;
   generation: number;
   operationId: number;
   runtimePresent: boolean;
