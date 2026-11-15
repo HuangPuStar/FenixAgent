@@ -57,6 +57,7 @@ FENIX_USER_API_KEY='<用户 API Key>' FENIX_AGENT_ID='<Agent UUID>' \\
 
 需要 Agent use/update 权限及可用执行节点。会临时修改指定 Agent 的 TTL，
 结束或 Ctrl+C 后恢复原策略、停止本次实例；Environment、Instance 和测试文件保留。
+Ctrl+C 会等待在途策略写入响应；超时、断网或无法确认的服务错误需人工核对策略。
 需要两个可用运行槽位。A 使用 ACP、B 使用 OpenAI；每轮并发发送，共两轮、四次回复。
 控制台逐次打印请求与响应，凭据脱敏。失败退出码 1，Ctrl+C 退出码 130。
 重启补偿、停止失败注入和数据库回收确认不属于纯 API Key 自动测试范围。`;
@@ -101,6 +102,7 @@ async function run(config: Config, signal: AbortSignal): Promise<void> {
   let original: Policy | undefined;
   let confirmedTtl: number | undefined;
   let attemptedTtl: number | undefined;
+  let policyWriteUnconfirmed = false;
   let currentStep = "初始化";
   let passed = 0;
   let failure: unknown;
@@ -116,10 +118,19 @@ async function run(config: Config, signal: AbortSignal): Promise<void> {
   const setTtl = async (seconds: number) => {
     // PUT 可能已生效但响应丢失，发出请求前就把它纳入恢复责任。
     attemptedTtl = seconds;
-    const result = await http.api("PUT", policyPath, policySchema, { json: { ttlSeconds: seconds } });
+    policyWriteUnconfirmed = true;
+    // 策略写入不跟随用户取消；先等服务端响应，再恢复，避免清理被迟到提交覆盖。
+    const result = await cleanup.api("PUT", policyPath, policySchema, {
+      json: { ttlSeconds: seconds },
+      onResponseComplete: (status) => {
+        // 同步成功和写入前的明确拒绝才能结算；网关错误或异步受理仍可能有迟到提交。
+        policyWriteUnconfirmed = ![200, 400, 401, 403, 404, 422].includes(status);
+      },
+    });
     assert.equal(result.effectiveTtlSeconds, seconds);
     assert.equal(result.source, "agent");
     confirmedTtl = seconds;
+    signal.throwIfAborted();
   };
   const create = async () => {
     const result = await http.api("POST", `${agent}/environments`, environmentSchema, {
@@ -349,6 +360,10 @@ async function run(config: Config, signal: AbortSignal): Promise<void> {
     if (original && attemptedTtl !== undefined) {
       const saved = original;
       await clean("恢复原 TTL 策略", async () => {
+        assert.ok(
+          !policyWriteUnconfirmed,
+          "TTL 策略写入结果未确认，不能保证自动恢复；请等待服务端写入结束后人工核对原策略。",
+        );
         const current = await cleanup.api("GET", policyPath, policySchema);
         if (current.source === saved.source && current.ttlSeconds === saved.ttlSeconds) return;
         // 失败 PUT 既可能已落库，也可能保留上次成功写入值；两者都属于本次测试的恢复责任。
@@ -383,7 +398,11 @@ if (import.meta.main) {
   if (Bun.argv.slice(2).includes("--help")) console.log(help);
   else {
     const controller = new AbortController();
-    const interrupt = () => controller.abort(new Error("用户取消测试"));
+    const interrupt = () => {
+      if (controller.signal.aborted) return;
+      controller.abort(new Error("用户取消测试"));
+      console.log("[CANCELLED] 已请求取消，等待在途策略写入确认并清理。");
+    };
     process.on("SIGINT", interrupt);
     process.on("SIGTERM", interrupt);
     let config: Config | undefined;

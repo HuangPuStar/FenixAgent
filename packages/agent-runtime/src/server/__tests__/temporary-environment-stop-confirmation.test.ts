@@ -2,9 +2,13 @@ import { afterEach, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { registerCreatedTemporaryEnvironment } from "../../facades/temporary-environment-facade";
 import { createAgentRuntimeModule } from "../../runtime";
-import type { AgentInstanceRecord } from "../repositories/agent-instance";
+import type { AgentInstanceRecord, IAgentInstanceRepo } from "../repositories/agent-instance";
 import { AgentInstanceRuntimeCoordinator } from "../services/agent-instance-runtime-coordinator";
-import { agentInstanceService, bindAgentInstanceRuntimeOperations } from "../services/agent-instance-service";
+import {
+  AgentInstanceService,
+  agentInstanceService,
+  bindAgentInstanceRuntimeOperations,
+} from "../services/agent-instance-service";
 import {
   stopTemporaryEnvironmentMaintenance,
   temporaryEnvironmentLifecycle,
@@ -130,17 +134,96 @@ test("an empty runtime registry cannot manufacture termination confirmation", as
   expect(coordinator.hasConfirmedStop(instance.id)).toBe(false);
 });
 
-// 启动失败后已严格完成补偿停止，后续到期回收应能使用这份确认。
-test("a failed start retains its confirmed compensating stop", async () => {
+// 未观察到实体的启动失败只能结束本次尝试，不能证明历史进程已经退出。
+test("a failed start without an observed runtime cannot confirm termination", async () => {
   const coordinator = new AgentInstanceRuntimeCoordinator({
     start: async () => {
       throw new Error("prepare failed");
     },
     stop: async () => {},
+    hasActiveRuntime: () => false,
   });
   await expect(coordinator.startRuntime(instance)).rejects.toThrow("prepare failed");
   expect(coordinator.snapshot(instance.id).state).toBe("stopped");
+  expect(coordinator.hasConfirmedStop(instance.id)).toBe(false);
+});
+
+// 启动部分成功后确实停止了已观察实体，才允许后续到期回收使用这份确认。
+test("a failed start confirms termination after stopping an observed runtime", async () => {
+  let present = false;
+  const coordinator = new AgentInstanceRuntimeCoordinator({
+    start: async () => {
+      present = true;
+      throw new Error("startup handshake failed");
+    },
+    stop: async () => {
+      present = false;
+    },
+    hasActiveRuntime: () => present,
+  });
+  await expect(coordinator.startRuntime(instance)).rejects.toThrow("startup handshake failed");
+  expect(present).toBe(false);
   expect(coordinator.hasConfirmedStop(instance.id)).toBe(true);
+});
+
+// 启动期间先收到权威死亡事件时，迟到的补偿不能抹掉同代次已有的退出确认。
+test("a late failed-start cleanup preserves an earlier authoritative death confirmation", async () => {
+  let markStarted!: () => void;
+  let failStart!: (error: Error) => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const starting = new Promise<void>((_resolve, reject) => {
+    failStart = reject;
+  });
+  const coordinator = new AgentInstanceRuntimeCoordinator({
+    start: async () => {
+      markStarted();
+      await starting;
+    },
+    stop: async () => {},
+    hasActiveRuntime: () => false,
+  });
+  const operation = coordinator.startRuntime(instance);
+  await started;
+  coordinator.handleRuntimeDeath(instance.id, coordinator.snapshot(instance.id).runtimeGeneration);
+  expect(coordinator.hasConfirmedStop(instance.id)).toBe(true);
+  failStart(new Error("startup failed after runtime death"));
+  await expect(operation).rejects.toThrow("startup failed after runtime death");
+  expect(coordinator.hasConfirmedStop(instance.id)).toBe(true);
+});
+
+// 普通用户实例入口不得扩展临时环境，避免插入没有冷实例来源确认的第二个实例。
+test.each([
+  "temp-user-instance",
+  "regular-user-instance",
+])("user instance creation enforces environment kind: %s", async (environmentId) => {
+  stubEnvironmentRepo({ getById: async () => ({ id: environmentId, expiresAt: new Date(Date.now() + 60_000) }) });
+  const rows: AgentInstanceRecord[] = [];
+  const created = { ...instance, environmentId, creationSource: "user" as const, name: "additional" };
+  const repository = {
+    insert: async () => {
+      rows.push(created);
+      return created;
+    },
+  } as IAgentInstanceRepo;
+  const service = new AgentInstanceService(
+    repository,
+    new AgentInstanceRuntimeCoordinator({ start: async () => {}, stop: async () => {} }),
+  );
+  const creation = service.createUserInstance({
+    environmentId,
+    ownerUserId: "user",
+    actorUserId: "user",
+    name: "additional",
+  });
+  if (environmentId.startsWith("temp-")) {
+    await expect(creation).rejects.toMatchObject({ code: "INSTANCE_NOT_FOUND", statusCode: 404 });
+    expect(rows).toEqual([]);
+  } else {
+    expect(await creation).toEqual(created);
+    expect(rows).toEqual([created]);
+  }
 });
 
 // 停止已观察实体才产生证明，新运行代次不能沿用旧停止确认。

@@ -21,6 +21,8 @@ interface RequestOptions {
   form?: FormData;
   headers?: Record<string, string>;
   expected?: number | number[];
+  /** 完整响应到达后报告状态，调用方判断是否为写入完成或明确拒绝。 */
+  onResponseComplete?: (status: number) => void;
 }
 
 /** 请求、响应及错误统一脱敏，避免服务端回显凭据时泄漏到终端。 */
@@ -86,6 +88,7 @@ export class TemporaryE2eHttp {
         redirect: "error",
       });
       const text = await response.text();
+      options.onResponseComplete?.(response.status);
       let json: unknown = null;
       try {
         json = JSON.parse(text);

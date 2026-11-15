@@ -31,7 +31,6 @@ export class AgentInstanceRuntimeCoordinator {
   readonly #shutdownDrainTimeoutMs: number;
   #shuttingDown = false;
   #shutdownPromise: Promise<void> | null = null;
-
   constructor(
     private readonly adapter: RuntimeAdapter,
     options: RuntimeCoordinatorOptions = {},
@@ -421,11 +420,12 @@ export class AgentInstanceRuntimeCoordinator {
       let startTerminationConfirmed = startingGeneration === undefined;
       if (startingGeneration !== undefined) {
         try {
+          const observed = this.adapter.hasActiveRuntime?.(instance.id) === true;
           await this.adapter.stop(instance.id, startingGeneration, new AbortController().signal);
           startTerminationConfirmed = true;
           if (entry.generation === startingGeneration) {
             entry.runtimePresent = false;
-            entry.stopConfirmed = true;
+            entry.stopConfirmed ||= observed; // 保留同代次已到达的权威死亡确认。
             this.adapter.onStopped?.(instance.id);
           }
         } catch (cleanupError) {

@@ -3,7 +3,7 @@
 ## 资源与复用边界
 
 1. 沿用 `AgentConfig → Environment → Instance → ACP Session`，不增加 Agent Service 或新的 Session 表。
-2. 外部后端持有现有用户 API Key；每个独立访客交互创建 `temp-<UUID>` Environment 和一个非默认 `api/api` Instance，不创建访客账号或独立沙盒。
+2. 外部后端持有现有用户 API Key；每个独立访客交互创建 `temp-<UUID>` Environment 和一个非默认 `api/api` Instance，不创建访客账号或独立沙盒。临时环境不开放普通用户实例创建入口，避免额外实例绕过初始实例的来源确认与生命周期登记。
 3. Environment 归调用方组织和用户；创建、续期、聊天均重新校验资源权限。普通环境选择、控制台及 ACP 发现列表排除临时环境。外部实例列表默认排除临时环境，可用 `environmentType=regular|temporary|all` 显式筛选；按 ID 查询与正常删除仍可用。
 4. 工作区按原规则计算：`{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}`。文件接口、路径防越界和执行节点解析全部复用现有实现。
 

@@ -4,6 +4,63 @@ import { fixture } from "./fixtures/temporary-environment-e2e";
 
 const script = resolve(import.meta.dir, "../temporary-environments/e2e.ts");
 
+// Ctrl+C 不得取消尚未提交的策略写入，清理必须在真实写入响应之后恢复原值。
+test("SIGINT waits for the policy write response before restoring the original policy", async () => {
+  const f = fixture("policy-interrupt");
+  try {
+    await Promise.race([
+      f.policyWriting,
+      f.child.exited.then(() => {
+        throw new Error("CLI exited before policy write");
+      }),
+    ]);
+    f.child.kill("SIGINT");
+    const outcome = await Promise.race([f.interrupted.then(() => "interrupted"), f.result.then(() => "exited")]);
+    expect(outcome).toBe("interrupted");
+    expect(f.child.exitCode).toBeNull();
+    f.finishPolicyWrite();
+    await f.policyCommitted;
+    const result = await f.result;
+    expect(result.exit).toBe(130);
+    expect(f.policy().source).toBe("default");
+    expect(result.output).toContain("[PASS] 清理：恢复原 TTL 策略");
+  } finally {
+    f.stop();
+  }
+}, 15_000);
+
+// 网络超时无法证明服务端写入已结束，必须报恢复未确认，不能用旧值读取误报成功。
+test("an unacknowledged policy write cannot be reported as restored", async () => {
+  const f = fixture("policy-timeout");
+  try {
+    const result = await f.result;
+    expect(result.exit).toBe(1);
+    expect(result.output).toContain("TTL 策略写入结果未确认");
+    expect(result.output).not.toContain("[PASS] 清理：恢复原 TTL 策略");
+    f.finishPolicyWrite();
+    await f.policyCommitted;
+    expect(f.policy().source).toBe("agent");
+  } finally {
+    f.stop();
+  }
+}, 15_000);
+
+// 网关错误响应不代表上游已结束，不能在迟到提交前误报策略恢复。
+test.each([202, 408, 500, 502, 503, 504])("HTTP %s cannot acknowledge an upstream policy write", async (status) => {
+  const f = fixture("policy-gateway", null, status);
+  try {
+    const result = await f.result;
+    expect(result.exit).toBe(1);
+    expect(result.output).toContain("TTL 策略写入结果未确认");
+    expect(result.output).not.toContain("[PASS] 清理：恢复原 TTL 策略");
+    f.finishPolicyWrite();
+    await f.policyCommitted;
+    expect(f.policy().source).toBe("agent");
+  } finally {
+    f.stop();
+  }
+});
+
 // 缺少到期校验、身份复用或文件隔离断言时，脚本不能把完整链路误报为通过。
 test("temporary environment CLI runs concurrent two-turn ACP/OpenAI conversations and restores policy", async () => {
   const f = fixture();
@@ -93,8 +150,8 @@ test("a workspace isolation breach causes a nonzero exit", async () => {
   }
 });
 
-// 后续 PUT 未生效时仍由脚本持有上次成功写入的短 TTL，不能误判外部修改而遗留该策略。
-test("a failed subsequent TTL write still restores the preceding script-owned policy", async () => {
+// 明确拒绝的后续 PUT 不会继续提交，仍应恢复上一次成功写入的脚本策略。
+test("a rejected subsequent TTL write still restores the preceding script-owned policy", async () => {
   const f = fixture("ttl");
   try {
     const result = await f.result;

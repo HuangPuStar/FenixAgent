@@ -10,6 +10,9 @@ type Fault =
   | "leak"
   | "ttl"
   | "cleanup-interrupt"
+  | "policy-interrupt"
+  | "policy-timeout"
+  | "policy-gateway"
   | "openai-memory"
   | "openai-handle"
   | "acp-session"
@@ -18,7 +21,7 @@ type Fault =
   | "stop-failure";
 
 /** 只替代外部 HTTP 服务，运行真实 CLI、fetch、计时、断言和清理流程。 */
-export function fixture(fault: Fault = "none", originalTtl: number | null = null) {
+export function fixture(fault: Fault = "none", originalTtl: number | null = null, gatewayStatus = 504) {
   const apiKey = crypto.randomUUID();
   let ttl = originalTtl;
   let ttlWrites = 0;
@@ -61,6 +64,22 @@ export function fixture(fault: Fault = "none", originalTtl: number | null = null
   });
   const cleanupGate = new Promise<void>((resolve) => {
     finishCleaning = resolve;
+  });
+  let markPolicyWriting!: () => void;
+  let finishPolicyWrite!: () => void;
+  let markPolicyCommitted!: () => void;
+  let markInterrupted!: () => void;
+  const policyWriting = new Promise<void>((resolve) => {
+    markPolicyWriting = resolve;
+  });
+  const policyGate = new Promise<void>((resolve) => {
+    finishPolicyWrite = resolve;
+  });
+  const policyCommitted = new Promise<void>((resolve) => {
+    markPolicyCommitted = resolve;
+  });
+  const interrupted = new Promise<void>((resolve) => {
+    markInterrupted = resolve;
   });
   const policy = () => ({
     source: ttl === null ? "default" : "agent",
@@ -105,8 +124,22 @@ export function fixture(fault: Fault = "none", originalTtl: number | null = null
       }
       if (path.endsWith("/environment-policy")) {
         if (method === "PUT") {
-          if (fault === "ttl" && ++ttlWrites === 3) return ok(null, 503);
-          ttl = ((await request.json()) as { ttlSeconds: number }).ttlSeconds;
+          if (fault === "ttl" && ++ttlWrites === 3) return ok(null, 400);
+          const next = ((await request.json()) as { ttlSeconds: number }).ttlSeconds;
+          if (fault === "policy-gateway") {
+            markPolicyWriting();
+            void policyGate.then(() => {
+              ttl = next;
+              markPolicyCommitted();
+            });
+            return ok(null, gatewayStatus);
+          }
+          if (fault === "policy-interrupt" || fault === "policy-timeout") {
+            markPolicyWriting();
+            await policyGate;
+          }
+          ttl = next;
+          markPolicyCommitted();
         }
         if (method === "DELETE") {
           if (fault === "restore") return ok(null, 503);
@@ -319,7 +352,18 @@ export function fixture(fault: Fault = "none", originalTtl: number | null = null
     stdout: "pipe",
     stderr: "pipe",
   });
-  const result = Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]).then(
+  const decoder = new TextDecoder();
+  let cancellationOutput = "";
+  const stdout = child.stdout.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        cancellationOutput = (cancellationOutput + decoder.decode(chunk, { stream: true })).slice(-1000);
+        if (cancellationOutput.includes("[CANCELLED] 已请求取消")) markInterrupted();
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  const result = Promise.all([child.exited, new Response(stdout).text(), new Response(child.stderr).text()]).then(
     ([exit, out, err]) => ({ exit, output: out + err }),
   );
   return {
@@ -328,12 +372,17 @@ export function fixture(fault: Fault = "none", originalTtl: number | null = null
     chatting,
     cleaning,
     finishCleaning,
+    policyWriting,
+    finishPolicyWrite,
+    policyCommitted,
+    interrupted,
     apiKey,
     handles: [httpSession, replacedHandle],
     instances,
     policy,
     conversation: () => ({ turns, peakRequests, sessionsCreated }),
     stop: () => {
+      finishPolicyWrite();
       child.kill();
       server.stop(true);
     },

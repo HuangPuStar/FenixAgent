@@ -169,6 +169,7 @@ export class AgentInstanceService {
     actorUserId: string;
     name: string;
   }): Promise<AgentInstanceRecord> {
+    if (isTemporaryEnvironment(input.environmentId)) throw this.#notFound();
     await temporaryEnvironmentLifecycle.assertAvailable(input.environmentId);
     const name = input.name.trim();
     if (!name || name.length > 100 || name === "default") {

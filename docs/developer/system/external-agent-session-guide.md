@@ -2,7 +2,7 @@
 
 稳定协议见 [External Agent API v1](../../arch/external-api-v1.md)，字段见 `/docs/openapi/external`。下面的 API_KEY、各资源 ID 和执行节点需使用当前环境实际值。
 
-匿名访客需要独立文件时，先创建临时 Environment，再复用下文聊天、文件和实例接口；完整顺序见[临时环境接入](../../operations/temporary-agent-environments.md)。
+匿名访客需要独立文件时，先创建临时 Environment，再复用下文聊天、文件和实例接口。下文示例默认使用普通实例；临时环境须在 connect 的 `instanceId` 和聊天请求的 `X-Instance-Id` 中指定返回的临时实例 ID。完整顺序见[临时环境接入](../../operations/temporary-agent-environments.md)。
 
 ## 最小流程
 

@@ -95,12 +95,13 @@ test.each([false, true])("stop accepts before runtime exit for temporary=%s", as
     expect(await response?.json()).toEqual({ success: true, data: null });
     expect(await f.status()).toBe("stopping");
     f.stopping.resolve();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await agentInstanceRuntimeCoordinator.stopRuntime(f.row, "strict");
     expect(await f.status()).toBe("stopped");
   } finally {
     if (timer) clearTimeout(timer);
     f.stopping.resolve();
     await request;
+    await agentInstanceRuntimeCoordinator.stopRuntime(f.row, "strict");
   }
 });
 
@@ -113,21 +114,24 @@ test("repeated accepted stops share the same running lifecycle operation", async
     expect(f.calls()).toBe(1);
   } finally {
     f.stopping.resolve();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await agentInstanceRuntimeCoordinator.stopRuntime(f.row, "strict");
   }
 });
 
 // 后台停止失败不能变成已停止，也不能产生未处理的 Promise 拒绝。
 test("a failed accepted stop remains observable as unknown", async () => {
   const f = fixture();
+  let completion: Promise<unknown> | undefined;
   try {
     expect((await f.stop()).status).toBe(202);
+    completion = agentInstanceRuntimeCoordinator.stopRuntime(f.row, "strict").catch((error: unknown) => error);
     f.stopping.reject(new Error("remote stop failed"));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(await completion).toMatchObject({ message: "remote stop failed" });
     expect(await f.status()).toBe("unknown");
     expect(agentInstanceService.getRuntimeSnapshot(f.id).lastFailure).toContain("remote stop failed");
   } finally {
     f.stopping.resolve();
+    await completion;
   }
 });
 
