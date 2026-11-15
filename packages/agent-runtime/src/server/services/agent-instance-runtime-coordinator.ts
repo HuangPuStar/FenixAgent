@@ -429,13 +429,7 @@ export class AgentInstanceRuntimeCoordinator {
             this.adapter.onStopped?.(instance.id);
           }
         } catch (cleanupError) {
-          const cleanupFailure = new AggregateError(
-            [error, cleanupError],
-            "Runtime start cleanup could not be confirmed",
-          );
-          failure = cleanupFailure;
-          entry.lastFailure = cleanupFailure.message;
-          entry.state = "unknown";
+          failure = new AggregateError([error, cleanupError], "Runtime start cleanup could not be confirmed");
         }
       }
       // 终止未确认时保留运行事实（state=unknown），由权威死亡/复位事件结算。

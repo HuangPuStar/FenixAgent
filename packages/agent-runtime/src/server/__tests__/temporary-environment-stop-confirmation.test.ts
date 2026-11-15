@@ -193,6 +193,46 @@ test("a late failed-start cleanup preserves an earlier authoritative death confi
   expect(coordinator.hasConfirmedStop(instance.id)).toBe(true);
 });
 
+// 补偿失败只保留未确认的运行事实，不能覆盖补偿等待期间先到的权威退出确认。
+test.each([false, true])("failed compensation preserves authoritative death=%s", async (authoritativeDeath) => {
+  let markStopping!: () => void;
+  let rejectStop!: (error: Error) => void;
+  const stopping = new Promise<void>((resolve) => {
+    markStopping = resolve;
+  });
+  const stopGate = new Promise<void>((_resolve, reject) => {
+    rejectStop = reject;
+  });
+  let present = false;
+  const coordinator = new AgentInstanceRuntimeCoordinator({
+    start: async () => {
+      present = true;
+      throw new Error("startup handshake failed");
+    },
+    stop: async () => {
+      markStopping();
+      await stopGate;
+    },
+    hasActiveRuntime: () => present,
+  });
+  const operation = coordinator.startRuntime(instance);
+  await stopping;
+  if (authoritativeDeath) {
+    present = false;
+    coordinator.handleRuntimeDeath(instance.id, coordinator.snapshot(instance.id).runtimeGeneration);
+    expect(coordinator.hasConfirmedStop(instance.id)).toBe(true);
+  }
+  rejectStop(new Error("compensation failed after runtime event"));
+  await expect(operation).rejects.toMatchObject({
+    name: "AggregateError",
+    message: "Runtime start cleanup could not be confirmed",
+  });
+  expect(coordinator.snapshot(instance.id).state).toBe(authoritativeDeath ? "stopped" : "unknown");
+  expect(coordinator.hasConfirmedStop(instance.id)).toBe(authoritativeDeath);
+  if (!authoritativeDeath)
+    expect(coordinator.snapshot(instance.id).lastFailure).toContain("Runtime start cleanup could not be confirmed");
+});
+
 // 普通用户实例入口不得扩展临时环境，避免插入没有冷实例来源确认的第二个实例。
 test.each([
   "temp-user-instance",
