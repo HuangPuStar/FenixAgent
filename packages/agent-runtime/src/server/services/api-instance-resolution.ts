@@ -6,6 +6,7 @@ import { environmentRepo } from "../repositories/environment";
 import { getAgentConfigLookupPort } from "./agent-config-lookup-port";
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";
+import { assertEnvironmentAvailable } from "./temporary-environment-lifecycle";
 
 /** Only credential-derived organization and user identity are accepted. */
 export interface InstanceOwner {
@@ -45,6 +46,7 @@ export async function getApiOwnedInstance(
   owner: InstanceOwner,
   instanceId: string,
   agentConfigId?: string,
+  requireAvailable = false,
 ): Promise<ResolvedApiAgentInstance> {
   const instance = await deps.getOwnedInstance(instanceId, owner.userId);
   if (!instance || instance.ownerUserId !== owner.userId || instance.creationSource === "workflow") throw unavailable();
@@ -63,6 +65,7 @@ export async function getApiOwnedInstance(
     action: "use",
   });
   if (!agent) throw unavailable();
+  if (requireAvailable) assertEnvironmentAvailable(environment);
   return { agentConfigId: agent.id, environmentId: environment.id, instance };
 }
 
@@ -73,7 +76,7 @@ export async function resolveApiAgentInstance(
   options: { instanceId?: string; signal?: AbortSignal } = {},
 ): Promise<ResolvedApiAgentInstance> {
   options.signal?.throwIfAborted();
-  if (options.instanceId) return getApiOwnedInstance(owner, options.instanceId, agentConfigId);
+  if (options.instanceId) return getApiOwnedInstance(owner, options.instanceId, agentConfigId, true);
   const agent = await deps.findVisibleAgentConfig({ ...owner, agentConfigId, action: "use" });
   if (!agent) throw new AppError("Agent not found", "NOT_FOUND", 404);
   const environment = await deps.withEnvironmentLock(owner, agentConfigId, async () => {
@@ -81,7 +84,10 @@ export async function resolveApiAgentInstance(
     const candidates = (await deps.listEnvironmentsByOrganizationId(owner.organizationId))
       .filter(
         (env) =>
-          env.organizationId === owner.organizationId && env.userId === owner.userId && env.agentConfigId === agent.id,
+          !env.id.startsWith("temp-") &&
+          env.organizationId === owner.organizationId &&
+          env.userId === owner.userId &&
+          env.agentConfigId === agent.id,
       )
       .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || a.id.localeCompare(b.id));
     if (candidates[0]) return candidates[0];

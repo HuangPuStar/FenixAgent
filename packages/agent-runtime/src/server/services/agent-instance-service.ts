@@ -17,6 +17,8 @@ import type {
   RuntimeStopMode,
 } from "./agent-instance-runtime-types";
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
+import { isTemporaryEnvironment } from "./temporary-environment-lifecycle";
+import { temporaryEnvironmentLifecycle } from "./temporary-environment-state";
 
 export type AutomaticInstanceSelection = "chat" | "api" | "workflow";
 
@@ -142,6 +144,7 @@ export class AgentInstanceService {
   ) {}
 
   findOrCreateDefaultInstance(environmentId: string, ownerUserId: string): Promise<AgentInstanceRecord> {
+    if (isTemporaryEnvironment(environmentId)) throw this.#notFound();
     return this.#findOrCreate(environmentId, ownerUserId, "chat");
   }
 
@@ -166,6 +169,7 @@ export class AgentInstanceService {
     actorUserId: string;
     name: string;
   }): Promise<AgentInstanceRecord> {
+    await temporaryEnvironmentLifecycle.assertAvailable(input.environmentId);
     const name = input.name.trim();
     if (!name || name.length > 100 || name === "default") {
       throw new AppError("Invalid Agent Instance name", "INSTANCE_NAME_INVALID", 400);
@@ -194,6 +198,7 @@ export class AgentInstanceService {
     requestedInstanceUid?: string;
     automaticSelection: AutomaticInstanceSelection;
   }): Promise<AgentInstanceRecord> {
+    if (!input.requestedInstanceUid && isTemporaryEnvironment(input.environmentId)) throw this.#notFound();
     if (input.requestedInstanceUid) {
       const instance = await this.getOwnedInstance(input.requestedInstanceUid, input.ownerUserId);
       if (instance.environmentId !== input.environmentId) throw this.#notFound();
@@ -204,6 +209,11 @@ export class AgentInstanceService {
 
   getRuntimeSnapshot(instanceUid: string): RuntimeSnapshot {
     return this.coordinator.snapshot(instanceUid);
+  }
+
+  /** 供到期回收持久确认使用，不以默认 stopped 冒充旧进程退出。 */
+  hasConfirmedRuntimeStop(instanceUid: string): boolean {
+    return this.coordinator.hasConfirmedStop(instanceUid);
   }
 
   handleRuntimeDeath(instanceUid: string, generation: number): void {
@@ -234,14 +244,18 @@ export class AgentInstanceService {
     signal?: AbortSignal,
     activation: RuntimeActivation = "automatic",
   ): Promise<void> {
-    if (this.recoverDisconnectedRuntime) {
-      const recovery = await this.coordinator.getDisconnectedRecovery(instance.id, signal);
-      if (recovery?.isCurrent()) {
-        await this.recoverDisconnectedRuntime({ ...recovery, ownerUserId: instance.ownerUserId, signal });
+    return temporaryEnvironmentLifecycle.admit(instance.environmentId, async (expirySignal) => {
+      signal = signal ? AbortSignal.any([signal, expirySignal]) : expirySignal;
+      if (this.recoverDisconnectedRuntime) {
+        const recovery = await this.coordinator.getDisconnectedRecovery(instance.id, signal);
+        if (recovery?.isCurrent()) {
+          await this.recoverDisconnectedRuntime({ ...recovery, ownerUserId: instance.ownerUserId, signal });
+        }
       }
-    }
-    if (activation === "explicit") await this.coordinator.startRuntime(instance, signal);
-    else await this.coordinator.ensureRuntime(instance, signal);
+      signal.throwIfAborted();
+      if (activation === "explicit") await this.coordinator.startRuntime(instance, signal);
+      else await this.coordinator.ensureRuntime(instance, signal);
+    });
   }
 
   /** 自动回收保留实例持久身份，后续任务可重新启动。 */
@@ -254,14 +268,19 @@ export class AgentInstanceService {
   }
 
   async restartInstanceRuntime(instance: AgentInstanceRecord): Promise<void> {
-    await this.coordinator.restartRuntime(instance);
+    await temporaryEnvironmentLifecycle.admit(instance.environmentId, async (signal) => {
+      signal.throwIfAborted();
+      await this.coordinator.restartRuntime(instance, signal);
+    });
   }
 
   /** 重启指定 Environment 下当前运行中或启动中的持久 Instance，与实例列表 Restart 按钮的目标判定一致。 */
   async restartActiveInstancesForEnvironments(environmentIds: string[]): Promise<string[]> {
     const instances = (
       await Promise.all(
-        [...new Set(environmentIds)].map((environmentId) => this.repository.listByEnvironment(environmentId)),
+        [...new Set(environmentIds)]
+          .filter((id) => !isTemporaryEnvironment(id))
+          .map((environmentId) => this.repository.listByEnvironment(environmentId)),
       )
     ).flat();
     const activeInstances = instances.filter((instance) => {
@@ -291,7 +310,9 @@ export class AgentInstanceService {
     environmentId?: string,
   ): Promise<Array<AgentInstanceRecord & { runtime: RuntimeSnapshot }>> {
     const instances = await this.repository.listByOwner(ownerUserId, environmentId);
-    return instances.map((instance) => ({ ...instance, runtime: this.coordinator.snapshot(instance.id) }));
+    return instances
+      .filter((instance) => environmentId !== undefined || !isTemporaryEnvironment(instance.environmentId))
+      .map((instance) => ({ ...instance, runtime: this.coordinator.snapshot(instance.id) }));
   }
 
   async #findOrCreateWithStatus(

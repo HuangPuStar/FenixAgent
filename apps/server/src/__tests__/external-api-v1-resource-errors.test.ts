@@ -7,6 +7,7 @@ import {
   installAgentConfigModule,
   resetAgentConfigModuleForTesting,
 } from "@fenix/agent-config/server/testing";
+import { AppError } from "@fenix/platform-sdk";
 import { initializeTestApplicationInfrastructure, readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import {
@@ -59,6 +60,33 @@ test("real host and upload routes preserve file conflict and unavailable statuse
     const body = await readJson(response);
     expect(body.error.code).toBe(code);
     expect(JSON.stringify(body)).not.toContain("internal-machine-secret");
+  }
+});
+
+// 全局错误处理先注册时，下载与文件树仍应保留安全拒绝、文件缺失及服务不可用语义。
+test("real host preserves workspace read error statuses and redacts diagnostics", async () => {
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: "temp-read", organizationId: "org", userId: "user" });
+  authenticate();
+  const app = new Elysia().use(errorPlugin).use(createApiWorkspaceRoutes({ authGuardPlugin }));
+  for (const [fault, status, code] of [
+    [new AppError("missing", "NOT_FOUND", 404), 404, "NOT_FOUND"],
+    [new AppError("invalid path", "VALIDATION_ERROR", 400), 400, "VALIDATION_ERROR"],
+    [new Error("internal-machine-secret"), 503, "FILE_SERVICE_UNAVAILABLE"],
+  ] as const) {
+    for (const path of ["/workspace/files", "/workspace/files/download?path=input.txt"]) {
+      const fail = async () => {
+        throw mapFileError(fault);
+      };
+      setApiWorkspaceDeps({
+        createAgentFileService: () => ({ read: fail, tree: fail }) as unknown as AgentFileService,
+      });
+      const response = await app.handle(new Request(`http://localhost/api/v1/environments/temp-read${path}`));
+      expect(response.status).toBe(status);
+      const body = await readJson(response);
+      expect(body.error.code).toBe(code);
+      expect(JSON.stringify(body)).not.toContain("internal-machine-secret");
+    }
   }
 });
 // KB 不存在或属于其他组织属于输入错误，不能被宿主先注册的 onError 变成 500。

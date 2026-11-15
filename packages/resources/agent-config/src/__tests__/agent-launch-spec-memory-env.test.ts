@@ -24,6 +24,21 @@ describe("Hindsight 工作区配置下发", () => {
   });
   afterEach(() => resetAllStubs());
 
+  // 临时环境不能查询共享 bank，哪怕 Agent 的长期记忆已开启。
+  test("临时环境跳过成员 bank 并禁用记忆", async () => {
+    let bankReads = 0;
+    stubIdentityDirectory({
+      resolveMembershipId: async () => {
+        bankReads += 1;
+        return "shared-bank";
+      },
+    });
+    const result = await buildMemoryLaunchEnv(launchSpecDeps(), { ...input, environmentId: "temp-a" });
+    expect(result.plugins).toEqual([]);
+    expect(result.workspaceFiles).toEqual([]);
+    expect(bankReads).toBe(0);
+  });
+
   // 未配置或未启用时不分配插件和文件，避免绕过平台记忆开关。
   test("两级记忆开关控制文件与插件", async () => {
     stubMemorySwitch(false);

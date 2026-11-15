@@ -51,7 +51,11 @@ export class AgentInstanceRuntimeCoordinator {
       lastFailure: entry.lastFailure,
     };
   }
-
+  /** 区分真实停止确认与重启后默认生成的 stopped 快照。 */
+  hasConfirmedStop(instanceUid: string): boolean {
+    const entry = this.#entries.get(instanceUid);
+    return entry?.state === "stopped" && entry.stopConfirmed;
+  }
   ensureRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void> {
     return this.#run(instance, "ensure", "strict", signal);
   }
@@ -169,6 +173,7 @@ export class AgentInstanceRuntimeCoordinator {
       finishAgentRun(instanceUid, "cancelled");
       entry.state = "stopped";
       entry.runtimePresent = false;
+      entry.stopConfirmed = true;
       entry.machineId = null;
       entry.pendingCleanSlate = false;
       entry.lastFailure = null;
@@ -253,6 +258,7 @@ export class AgentInstanceRuntimeCoordinator {
     entry.runtimePresent = false;
     entry.abortController?.abort(new Error(reason));
     entry.state = state;
+    entry.stopConfirmed = state === "stopped";
     if (state === "stopped") this.adapter.onStopped?.(instanceUid);
     // 归属只由不可用事件写入:death 传 null 即清空归属;新的不可用事件必须作废任何延后的
     // clean-slate 确认,否则旧确认会在条目之后再次进入 unknown 时被误用为"已确认无残留"。
@@ -266,6 +272,7 @@ export class AgentInstanceRuntimeCoordinator {
     finishAgentRun(instanceUid, "cancelled");
     entry.runtimePresent = false;
     entry.state = "stopped";
+    entry.stopConfirmed = true;
     entry.machineId = null;
     entry.pendingCleanSlate = false;
     entry.lastFailure = null;
@@ -397,6 +404,7 @@ export class AgentInstanceRuntimeCoordinator {
       entry.machineId = null;
       entry.pendingCleanSlate = false;
       startingGeneration = ++entry.generation;
+      entry.stopConfirmed = false;
       entry.runtimePresent = true;
       entry.state = "starting";
       if (!("environmentId" in instance)) throw new Error("Runtime start requires a persistent instance record");
@@ -417,6 +425,7 @@ export class AgentInstanceRuntimeCoordinator {
           startTerminationConfirmed = true;
           if (entry.generation === startingGeneration) {
             entry.runtimePresent = false;
+            entry.stopConfirmed = true;
             this.adapter.onStopped?.(instance.id);
           }
         } catch (cleanupError) {
@@ -443,13 +452,16 @@ export class AgentInstanceRuntimeCoordinator {
   }
 
   async #stopCurrent(instanceUid: string, entry: RuntimeEntry, signal: AbortSignal): Promise<void> {
-    if (this.adapter.stopActiveRuntime && this.adapter.hasActiveRuntime?.(instanceUid)) {
+    const active = this.adapter.hasActiveRuntime?.(instanceUid) === true;
+    const observed = entry.runtimePresent || active;
+    if (this.adapter.stopActiveRuntime && active) {
       await this.adapter.stopActiveRuntime(instanceUid, signal);
     } else {
       await this.adapter.stop(instanceUid, entry.generation, signal);
     }
     finishAgentRun(instanceUid, "success");
     entry.runtimePresent = false;
+    if (observed) entry.stopConfirmed = true;
     this.adapter.onStopped?.(instanceUid);
   }
 
@@ -467,6 +479,7 @@ export class AgentInstanceRuntimeCoordinator {
     let entry = this.#entries.get(instanceUid);
     if (!entry) {
       entry = {
+        stopConfirmed: false,
         generation: 0,
         operationId: 0,
         runtimePresent: false,

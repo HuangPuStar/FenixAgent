@@ -3,6 +3,7 @@ import { log, error as logError, requestAls } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
 import { agentInstanceService } from "../server/services/agent-instance-service";
 import { resolveApiAgentInstance } from "../server/services/api-instance-resolution";
+import { temporaryEnvironmentLifecycle } from "../server/services/temporary-environment-state";
 import { connectAgentRelay } from "../server/transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/instance";
 import type { ApiChatSessionOwner } from "./api-chat-session-registry";
@@ -114,63 +115,77 @@ async function openAdmittedAgentSession(
     input.signal,
   );
   const instance = resolved.instance;
-  input.signal?.throwIfAborted();
-  execution.attach(instance.id);
-  await waitWithSignal(deps.ensureInstanceRuntime(instance, input.signal), input.signal);
-  execution.confirmRuntime();
-  markAgentExecutionIdleReclaimable(instance.id);
-  input.signal?.throwIfAborted();
-  log(`[agent-chat] Instance ready: instanceId=${instance.id}`, { requestId });
-
-  const lifecycleSignal = input.onResolved?.({
-    organizationId: input.organizationId,
-    userId: input.userId,
-    agentConfigId: resolved.agentConfigId,
-    environmentId: resolved.environmentId,
-    instanceId: instance.id,
-    runtimeGeneration: agentInstanceService.getRuntimeSnapshot(instance.id).runtimeGeneration,
-  });
-
-  if (lifecycleSignal)
-    input = { ...input, signal: input.signal ? AbortSignal.any([input.signal, lifecycleSignal]) : lifecycleSignal };
-  input.signal?.throwIfAborted();
-
-  // 3-5. 连接 relay → 创建 AgentSession → startPromptTurn。
-  // 失败和正常 dispose 都只关闭本请求的 relay/listener；持久 runtime 由 Coordinator 管理。
-  let session: AgentSession | null = null;
+  const expiryLease = resolved.environmentId.startsWith("temp-")
+    ? await temporaryEnvironmentLifecycle.acquire(resolved.environmentId)
+    : undefined;
+  let handedOff = false;
   try {
-    // requestId 随 ConnectInstanceRelayRequest 进入 core 的 relay 链路，使两侧日志可关联
-    const handle = await waitWithSignal(
-      deps.connectAgentRelay(instance.id, input.sessionId ?? "", requestId),
-      input.signal,
-      (late) => late.close(),
-    );
-    log(`[agent-chat] Relay connected: instanceId=${instance.id}`, { requestId });
+    if (expiryLease)
+      input = { ...input, signal: AbortSignal.any([expiryLease.signal, ...(input.signal ? [input.signal] : [])]) };
+    input.signal?.throwIfAborted();
+    execution.attach(instance.id);
+    await waitWithSignal(deps.ensureInstanceRuntime(instance, input.signal), input.signal);
+    execution.confirmRuntime();
+    markAgentExecutionIdleReclaimable(instance.id);
+    input.signal?.throwIfAborted();
+    log(`[agent-chat] Instance ready: instanceId=${instance.id}`, { requestId });
 
-    session = createAgentSession({
-      relayHandle: handle,
+    const lifecycleSignal = input.onResolved?.({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      agentConfigId: resolved.agentConfigId,
+      environmentId: resolved.environmentId,
       instanceId: instance.id,
+      runtimeGeneration: agentInstanceService.getRuntimeSnapshot(instance.id).runtimeGeneration,
     });
 
-    const { turn } = await startPromptTurn({
-      session,
-      sessionId: input.sessionId,
-      signal: input.signal,
-      onExecutionFinished: () => execution.release(),
-    });
+    if (lifecycleSignal)
+      input = { ...input, signal: input.signal ? AbortSignal.any([input.signal, lifecycleSignal]) : lifecycleSignal };
+    input.signal?.throwIfAborted();
+
+    // 3-5. 连接 relay → 创建 AgentSession → startPromptTurn。
+    // 失败和正常 dispose 都只关闭本请求的 relay/listener；持久 runtime 由 Coordinator 管理。
+    let session: AgentSession | null = null;
     try {
-      execution.confirmRuntime();
-    } catch (error) {
-      await turn.dispose();
-      throw error;
-    }
-    return { turn, instanceId: instance.id };
-  } catch (err) {
-    if (session) {
-      await session.dispose().catch((rollbackErr) => {
-        logError(`[agent-chat] Failed to release session for instance ${instance.id}:`, rollbackErr, { requestId });
+      // requestId 随 ConnectInstanceRelayRequest 进入 core 的 relay 链路，使两侧日志可关联
+      const handle = await waitWithSignal(
+        deps.connectAgentRelay(instance.id, input.sessionId ?? "", requestId),
+        input.signal,
+        (late) => late.close(),
+      );
+      log(`[agent-chat] Relay connected: instanceId=${instance.id}`, { requestId });
+
+      session = createAgentSession({
+        relayHandle: handle,
+        instanceId: instance.id,
       });
+
+      const { turn } = await startPromptTurn({
+        session,
+        sessionId: input.sessionId,
+        signal: input.signal,
+        onExecutionFinished: () => {
+          execution.release();
+          expiryLease?.release();
+        },
+      });
+      try {
+        execution.confirmRuntime();
+      } catch (error) {
+        await turn.dispose();
+        throw error;
+      }
+      handedOff = true;
+      return { turn, instanceId: instance.id };
+    } catch (err) {
+      if (session) {
+        await session.dispose().catch((rollbackErr) => {
+          logError(`[agent-chat] Failed to release session for instance ${instance.id}:`, rollbackErr, { requestId });
+        });
+      }
+      throw err;
     }
-    throw err;
+  } finally {
+    if (!handedOff) expiryLease?.release();
   }
 }

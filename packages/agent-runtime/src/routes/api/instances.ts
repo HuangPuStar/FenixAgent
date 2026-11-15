@@ -116,6 +116,7 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
         401: ApiErrorResponseSchema,
         404: ApiErrorResponseSchema,
         409: ApiErrorResponseSchema,
+        410: ApiErrorResponseSchema,
         422: ApiErrorResponseSchema,
         500: ApiErrorResponseSchema,
         503: ApiErrorResponseSchema,
@@ -166,15 +167,26 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
   );
   app.post(
     "/instances/:id/stop",
-    async ({ store, params }) => ({
-      success: true as const,
-      data: await stopApiInstance(store.authContext as InstanceOwner, params.id),
-    }),
+    async ({ store, params, set }) => {
+      const data = await stopApiInstance(store.authContext as InstanceOwner, params.id);
+      set.status = 202;
+      return { success: true as const, data };
+    },
     {
       sessionAuth: true,
       params: ApiInstanceIdParamsSchema,
-      response: { 200: ApiV1OkSchema(z.null()), 401: ApiV1ErrSchema, 404: ApiV1ErrSchema, 409: ApiV1ErrSchema },
-      detail: { tags: ["External Instance"], summary: "严格停止实例" },
+      response: {
+        202: ApiV1OkSchema(z.null()),
+        401: ApiV1ErrSchema,
+        404: ApiV1ErrSchema,
+        409: ApiV1ErrSchema,
+        503: ApiV1ErrSchema,
+      },
+      detail: {
+        tags: ["External Instance"],
+        summary: "提交实例停止请求",
+        description: "202 表示已受理，后台严格停止 Runtime；通过 GET /api/v1/instances/{id} 查询最终状态。",
+      },
     },
   );
   app.post(
@@ -191,6 +203,7 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
         401: ApiV1ErrSchema,
         404: ApiV1ErrSchema,
         409: ApiV1ErrSchema,
+        410: ApiV1ErrSchema,
       },
       detail: { tags: ["External Instance"], summary: "重启实例" },
     },

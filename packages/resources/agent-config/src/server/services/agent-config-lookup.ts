@@ -1,7 +1,9 @@
 import { findAgentConfigNamesByIds } from "../repositories/agent-config";
 import type { AgentConfigRow, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
+import { getAgentEnvironmentTtl } from "../repositories/environment-policy";
 import { getAgentConfigById, getAgentConfigVisibleToUser } from "../system-entries";
 import { resolveAgentNode } from "./config/agent-config";
+import { effectiveEnvironmentTtl } from "./environment-policy";
 
 /**
  * Agent 配置的**查询投影**：把「资源行」收窄成 agent-runtime 消费的那几个字段，并把执行节点的
@@ -49,6 +51,8 @@ export interface AgentConfigExecutionFields {
 
 /** 查询投影的读入口；宿主把它绑定到 agent-runtime 的 `AgentConfigLookupPort`。 */
 export interface AgentConfigLookup {
+  /** 已授权创建/续期读取策略；最大值由 Runtime owner 提供。 */
+  getEnvironmentTtl(agentConfigId: string, maximum: number): Promise<number>;
   /** 无授权按资源 ID 读。 */
   findAgentConfig(agentConfigId: string): Promise<AgentConfigLookupResult | null>;
   /** 按真实用户身份的组织可见性读。 */
@@ -89,6 +93,9 @@ function toLookupResult(row: AgentConfigRow | ScopedAgentConfigRow): AgentConfig
 /** 构造查询投影；宿主启动装配阶段构造一次后绑定（无状态，重复构造等价）。 */
 export function createAgentConfigLookup(): AgentConfigLookup {
   return {
+    async getEnvironmentTtl(id, maximum) {
+      return effectiveEnvironmentTtl(await getAgentEnvironmentTtl(id), maximum);
+    },
     async findAgentConfig(agentConfigId) {
       const row = await getAgentConfigById(agentConfigId);
       return row ? toLookupResult(row) : null;

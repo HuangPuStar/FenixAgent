@@ -80,4 +80,5 @@ export type {
   AgentKnowledgePolicy,
   AgentNode,
 } from "./server/services/config/types";
+export { bindEnvironmentPolicyMaximum } from "./server/services/environment-policy";
 export { getSidebarConfig, parseHiddenSidebarTabs } from "./server/services/sidebar-config";

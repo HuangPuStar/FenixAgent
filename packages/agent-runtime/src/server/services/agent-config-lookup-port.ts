@@ -48,6 +48,8 @@ export interface AgentConfigExecutionFields {
 }
 
 export interface AgentConfigLookupPort {
+  /** 临时环境策略读取；只有临时创建/续期使用。 */
+  getEnvironmentTtl?(agentConfigId: string, maximum: number): Promise<number>;
   /** 无授权按资源 ID 读（transport 层的机器解析）。 */
   findAgentConfig(agentConfigId: string): Promise<AgentConfigLookupResult | null>;
   /** 按真实用户身份的组织可见性读（环境绑定校验、实例自动创建）。 */

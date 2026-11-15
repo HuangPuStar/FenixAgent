@@ -67,3 +67,52 @@ describe("API instance selection", () => {
     expect((await resolveApiAgentInstance(owner, "a")).environmentId).toBe("env-a");
   });
 });
+
+// 临时环境即使更早创建，也不能被普通调用当作默认环境选中。
+test("automatic selection excludes temporary environments", async () => {
+  setApiInstanceResolutionDeps({
+    findVisibleAgentConfig: async () => ({
+      id: "a",
+      name: "agent",
+      description: null,
+      organizationId: "org-1",
+      node: null,
+    }),
+    withEnvironmentLock: async (_owner, _id, operation) => operation(),
+    listEnvironmentsByOrganizationId: async () =>
+      [
+        { id: "temp-earliest", createdAt: new Date(0), organizationId: "org-1", userId: "u1", agentConfigId: "a" },
+        { id: "env-regular", createdAt: new Date(1), organizationId: "org-1", userId: "u1", agentConfigId: "a" },
+      ] as never,
+    resolveInstance: async (input) => ({ ...instance, environmentId: input.environmentId }),
+  });
+  expect((await resolveApiAgentInstance(owner, "a")).environmentId).toBe("env-regular");
+});
+// 过期错误只能在完整归属及 Agent use 授权后返回，跨组织仍是404。
+test("expired owned selection returns 410 while foreign selection stays 404", async () => {
+  setApiInstanceResolutionDeps({
+    getOwnedInstance: async () => ({ ...instance, environmentId: "temp-expired" }),
+    getEnvironmentById: async () =>
+      ({
+        id: "temp-expired",
+        organizationId: "org-1",
+        userId: "u1",
+        agentConfigId: "a",
+        expiresAt: new Date(0),
+      }) as never,
+    findVisibleAgentConfig: async () => ({
+      id: "a",
+      name: "agent",
+      description: null,
+      organizationId: "org-1",
+      node: null,
+    }),
+  });
+  await expect(resolveApiAgentInstance(owner, "a", { instanceId: instance.id })).rejects.toMatchObject({
+    statusCode: 410,
+    code: "ENVIRONMENT_EXPIRED",
+  });
+  await expect(
+    resolveApiAgentInstance({ ...owner, organizationId: "other" }, "a", { instanceId: instance.id }),
+  ).rejects.toMatchObject({ statusCode: 404 });
+});

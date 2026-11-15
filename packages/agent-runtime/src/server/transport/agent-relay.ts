@@ -6,8 +6,10 @@
  */
 
 import { error as logError } from "@fenix/logger";
-import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import { waitWithSignal } from "../../services/agent-turn-events";
 import { getBoundCoreRuntime } from "../services/core-runtime-port";
+import { temporaryEnvironmentLifecycle } from "../services/temporary-environment-state";
 
 /** EngineRelayHandle 的扩展类型（含 onMessage / ready） */
 export type FullRelayHandle = EngineRelayHandle & {
@@ -51,15 +53,59 @@ export async function connectAgentRelay(
       logError(`[agent-relay] runtime death cleanup failed: instanceId=${instanceId}`, error);
     }
   };
+  const environmentId = snapshot?.launchSpec?.environmentId;
+  const expiryLease = environmentId?.startsWith("temp-")
+    ? await temporaryEnvironmentLifecycle.acquire(environmentId)
+    : undefined;
   let handle: EngineRelayHandle | undefined;
   try {
-    handle = await facade.connectInstanceRelay({ instanceId, sessionId, requestId });
+    handle = await waitWithSignal(
+      facade.connectInstanceRelay({ instanceId, sessionId, requestId }),
+      expiryLease?.signal,
+      (late) => late.close(),
+    );
     handle.onMessage?.((message) => {
       if (message.type === "relay_closed") void reclaimCapturedRuntime();
     });
+    if (expiryLease) {
+      const close = handle.close.bind(handle);
+      const subscribe = handle.onMessage?.bind(handle);
+      const listeners = new Set<(message: EngineRelayMessage) => void>();
+      if (subscribe)
+        handle.onMessage = (listener) => {
+          const unsubscribe = subscribe(listener);
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+            unsubscribe();
+          };
+        };
+      const abort = () => {
+        // 消费者 close 会先注销物理 relay 监听；主动通知上层，避免外部 WS 永远等不到断连。
+        for (const listener of [...listeners]) {
+          try {
+            listener({ type: "relay_closed", payload: { code: "environment_expired" } });
+          } catch (error) {
+            logError("Expired relay notification failed", error);
+          }
+        }
+        Promise.resolve(handle?.close(4000, "environment expired")).catch((error) =>
+          logError("Expired relay close failed", error),
+        );
+      };
+      handle.close = (code, reason) => {
+        listeners.clear();
+        expiryLease.signal.removeEventListener("abort", abort);
+        expiryLease.release();
+        return close(code, reason);
+      };
+      expiryLease.signal.addEventListener("abort", abort, { once: true });
+      expiryLease.signal.throwIfAborted();
+    }
     if (handle.ready) await handle.ready;
     return handle;
   } catch (error) {
+    expiryLease?.release();
     // 句柄是当前消费者租约；握手失败只释放本消费者的监听器。
     try {
       await handle?.close();

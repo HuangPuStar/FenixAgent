@@ -1,6 +1,6 @@
 import { environment } from "@fenix/agent-runtime/db";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, like, lte, notLike } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { type AgentRuntimeDatabase, getAgentRuntimeDatabase } from "../db";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
@@ -24,6 +24,10 @@ export interface EnvironmentRecord {
   userId: string | null;
   organizationId: string | null;
   autoStart: boolean;
+  /** 临时环境硬期限；普通环境为空。 */
+  expiresAt?: Date | null;
+  /** 本轮到期回收已确认的时间；续期后清空。 */
+  expiryReclaimedAt?: Date | null;
   lastPollAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -47,6 +51,7 @@ export interface EnvironmentCreateParams {
   username?: string;
   capabilities?: Record<string, unknown>;
   autoStart?: boolean;
+  expiresAt?: Date | null;
 }
 
 export type EnvironmentUpdateParams = Partial<
@@ -63,6 +68,8 @@ export type EnvironmentUpdateParams = Partial<
     | "branch"
     | "gitRepoUrl"
     | "autoStart"
+    | "expiresAt"
+    | "expiryReclaimedAt"
   >
 >;
 
@@ -104,6 +111,8 @@ function rowToRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
     userId: row.userId,
     organizationId: row.organizationId ?? null,
     autoStart: row.autoStart ?? false,
+    expiresAt: row.expiresAt,
+    expiryReclaimedAt: row.expiryReclaimedAt,
     lastPollAt: row.lastPollAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -136,6 +145,8 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       userId: params.userId,
       organizationId: orgId,
       autoStart: params.autoStart ?? true,
+      expiresAt: params.expiresAt ?? null,
+      expiryReclaimedAt: null,
       lastPollAt: now,
     });
     return {
@@ -156,6 +167,8 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       userId: params.userId,
       organizationId: orgId,
       autoStart: params.autoStart ?? true,
+      expiresAt: params.expiresAt ?? null,
+      expiryReclaimedAt: null,
       lastPollAt: now,
       createdAt: now,
       updatedAt: now,
@@ -177,6 +190,8 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   async update(id: string, patch: EnvironmentUpdateParams): Promise<boolean> {
     const db = getAgentRuntimeDatabase();
     const set: Record<string, unknown> = { updatedAt: new Date() };
+    if (patch.expiresAt !== undefined) set.expiresAt = patch.expiresAt;
+    if (patch.expiryReclaimedAt !== undefined) set.expiryReclaimedAt = patch.expiryReclaimedAt;
     if (patch.status !== undefined) set.status = patch.status;
     if (patch.lastPollAt !== undefined) set.lastPollAt = patch.lastPollAt;
     if (patch.capabilities !== undefined) set.capabilities = patch.capabilities ?? null;
@@ -188,14 +203,14 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     if (patch.branch !== undefined) set.branch = patch.branch;
     if (patch.gitRepoUrl !== undefined) set.gitRepoUrl = patch.gitRepoUrl;
     if (patch.autoStart !== undefined) set.autoStart = patch.autoStart;
-    const result = await db.update(environment).set(set).where(eq(environment.id, id));
-    return (result as unknown as { count: number }).count > 0;
+    const rows = await db.update(environment).set(set).where(eq(environment.id, id)).returning({ id: environment.id });
+    return rows.length > 0;
   }
 
   async delete(id: string): Promise<boolean> {
     const db = getAgentRuntimeDatabase();
-    const result = await db.delete(environment).where(eq(environment.id, id));
-    return (result as unknown as { count: number }).count > 0;
+    const rows = await db.delete(environment).where(eq(environment.id, id)).returning({ id: environment.id });
+    return rows.length > 0;
   }
 
   async listActive(): Promise<EnvironmentRecord[]> {
@@ -263,7 +278,13 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     const rows = await db
       .select()
       .from(environment)
-      .where(and(eq(environment.organizationId, organizationId), eq(environment.agentConfigId, agentConfigId)))
+      .where(
+        and(
+          eq(environment.organizationId, organizationId),
+          eq(environment.agentConfigId, agentConfigId),
+          notLike(environment.id, "temp-%"),
+        ),
+      )
       .limit(1);
     return rows.length > 0 ? rowToRecord(rows[0]) : undefined;
   }
@@ -362,5 +383,51 @@ export async function deleteEnvironmentsByAgentConfig(
     .delete(environment)
     .where(
       and(eq(environment.organizationId, input.organizationId), eq(environment.agentConfigId, input.agentConfigId)),
+    );
+}
+
+/** 读取仍有效的临时期限，供宿主重启后恢复到期调度；不加载历史环境和敏感字段。 */
+export async function listUnexpiredTemporaryEnvironmentExpiries(): Promise<Array<{ id: string; expiresAt: Date }>> {
+  const rows = await getAgentRuntimeDatabase()
+    .select({ id: environment.id, expiresAt: environment.expiresAt })
+    .from(environment)
+    .where(and(like(environment.id, "temp-%"), gt(environment.expiresAt, new Date())));
+  return rows.filter((row): row is { id: string; expiresAt: Date } => row.expiresAt !== null);
+}
+
+/** 按稳定游标分页读取持久回收待办，失败记录不会挡住同轮后续环境。 */
+export async function listExpiredUnreclaimedTemporaryEnvironments(
+  before: Date,
+  afterId?: string,
+  limit = 100,
+): Promise<Array<{ id: string; expiresAt: Date }>> {
+  const rows = await getAgentRuntimeDatabase()
+    .select({ id: environment.id, expiresAt: environment.expiresAt })
+    .from(environment)
+    .where(
+      and(
+        like(environment.id, "temp-%"),
+        lte(environment.expiresAt, before),
+        isNull(environment.expiryReclaimedAt),
+        afterId === undefined ? undefined : gt(environment.id, afterId),
+      ),
+    )
+    .orderBy(asc(environment.id))
+    .limit(limit);
+  return rows.filter((row): row is { id: string; expiresAt: Date } => row.expiresAt !== null);
+}
+
+/** 只确认捕获的同一期限，避免迟到停止结果覆盖续期后的待办。 */
+export async function markTemporaryEnvironmentReclaimed(id: string, expiresAt: Date, reclaimedAt: Date): Promise<void> {
+  await getAgentRuntimeDatabase()
+    .update(environment)
+    .set({ expiryReclaimedAt: reclaimedAt, updatedAt: reclaimedAt })
+    .where(
+      and(
+        eq(environment.id, id),
+        like(environment.id, "temp-%"),
+        eq(environment.expiresAt, expiresAt),
+        isNull(environment.expiryReclaimedAt),
+      ),
     );
 }

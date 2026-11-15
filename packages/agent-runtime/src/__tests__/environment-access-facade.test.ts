@@ -100,7 +100,11 @@ describe("EnvironmentAccessFacade 的组织隔离", () => {
     stubEnvironmentRepo({
       listByOrganizationId: async (scope: string) => {
         scopes.push(scope);
-        return [environment({ id: "env-acp", workerType: "acp" }), environment({ id: "env-local" })];
+        return [
+          environment({ id: "env-acp", workerType: "acp" }),
+          environment({ id: "env-local" }),
+          environment({ id: "temp-visitor", workerType: "acp", userId: "other-user" }),
+        ];
       },
     });
 

@@ -39,6 +39,8 @@ import * as z from "zod/v4";
 export interface AgentRuntimeModuleConfig {
   /** 全部活跃 Agent 实例的并发上限；缺省表示不限制总量。 */
   readonly agentMaxConcurrency?: number;
+  /** 临时环境最大 TTL（秒）。 */
+  readonly tempEnvMaxTtlSeconds?: number;
   /** 单用户活跃 Agent 实例的并发上限；缺省表示不限制单用户。 */
   readonly userAgentMaxConcurrency?: number;
   /** scheduled 来源的活跃执行并发上限（同实例多任务分别计数）；缺省表示不限制。 */
@@ -91,6 +93,7 @@ export interface AgentRuntimeModuleConfig {
  * 「不限制」表达成必须给一个哨兵值。
  */
 const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.strictObject({
+  tempEnvMaxTtlSeconds: z.number().int().positive().default(86400),
   agentMaxConcurrency: z.number().int().positive().optional(),
   userAgentMaxConcurrency: z.number().int().positive().optional(),
   scheduledAgentMaxConcurrency: z.number().int().positive().optional(),

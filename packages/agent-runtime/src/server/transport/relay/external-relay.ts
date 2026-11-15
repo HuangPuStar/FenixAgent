@@ -1,3 +1,4 @@
+import { assertEnvironmentAvailable } from "../../services/temporary-environment-lifecycle";
 /** Authenticated external ACP forwarding; workspace and Agent use remain server controlled. */
 
 import { randomUUID } from "node:crypto";
@@ -169,6 +170,12 @@ export async function handleExternalRelayOpen(
 
     if (!env.agentConfigId || !(await deps.canUseAgent(env.agentConfigId, authCtx))) {
       ws.close(4003, "unauthorized");
+      return;
+    }
+
+    assertEnvironmentAvailable(env);
+    if (env.id.startsWith("temp-") && !requestedInstanceId) {
+      ws.close(4004, "instance required");
       return;
     }
 

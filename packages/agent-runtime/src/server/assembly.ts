@@ -1,9 +1,10 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
-import type { AnyElysia } from "elysia";
+import Elysia, { type AnyElysia } from "elysia";
 import { createAcpRoutes } from "../routes/acp";
 import { createAgentConcurrencyPolicyRoutes } from "../routes/api/agent-concurrency-policy";
 import { createApiInstanceRoutes } from "../routes/api/instances";
 import { createOpenaiChatRoutes } from "../routes/api/openai-chat";
+import { createTemporaryEnvironmentRoutes } from "../routes/api/temporary-environments";
 import type {
   AcpRouteDependencies,
   AgentRuntimeAuthDependencies,
@@ -58,7 +59,9 @@ export function createAgentRuntimeApiInstanceRoutes(host: ServerRouteHost) {
     authGuardPlugin: host.authGuardPlugin as AnyElysia,
     logError: host.logError as RequestErrorLogger,
   };
-  return createApiInstanceRoutes(deps);
+  return new Elysia({ name: "runtime-api-assembly" })
+    .use(createApiInstanceRoutes(deps))
+    .use(createTemporaryEnvironmentRoutes(deps));
 }
 
 /** `/api/v1/chat/completions` OpenAI 兼容对话（挂宿主 `api` 聚合槽）。 */

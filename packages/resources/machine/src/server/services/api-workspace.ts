@@ -17,6 +17,19 @@ let overrides: Partial<typeof defaults> | null = null;
 export function setApiWorkspaceDeps(next: Partial<typeof defaults> | null): void {
   overrides = next;
 }
+
+/** 对外文件边界使用宿主也能识别的错误类型，避免全局错误处理抢先返回 500。 */
+function toWorkspaceApiError(error: unknown): unknown {
+  if (!(error instanceof FileServiceError)) return error;
+  return Object.assign(
+    new AppError(
+      error.statusCode >= 500 ? "File service unavailable" : error.message,
+      error.type.toUpperCase(),
+      error.statusCode,
+    ),
+    { cause: error },
+  );
+}
 /** Stable upload result using Environment-relative paths. */
 export interface WorkspaceFileUploadResult {
   environmentId: string;
@@ -44,7 +57,9 @@ export async function getWorkspaceFileTree(environmentId: string, actorId: strin
     actorId,
     source: "api",
   });
-  const result = await service.tree();
+  const result = await service.tree().catch((error: unknown) => {
+    throw toWorkspaceApiError(error);
+  });
   if (result.errors?.length) logError("[api-workspace] Incomplete file tree", result.errors);
   return {
     environmentId,
@@ -67,7 +82,9 @@ export async function downloadWorkspaceFile(
     actorId,
     source: "api",
   });
-  const result = await service.read(path, "binary");
+  const result = await service.read(path, "binary").catch((error: unknown) => {
+    throw toWorkspaceApiError(error);
+  });
   if (result.type !== "binary" || !(result.stream instanceof Readable))
     throw new AppError("Unexpected file download result", "INTERNAL_ERROR", 500);
   const stream = result.stream;
@@ -77,7 +94,7 @@ export async function downloadWorkspaceFile(
     if (stream.readableLength === 0 && !stream.readableEnded) await once(stream, "readable");
   } catch (error) {
     stream.destroy();
-    throw mapFileError(error);
+    throw toWorkspaceApiError(mapFileError(error));
   }
   return { name: result.name, stream: result.stream };
 }
@@ -136,12 +153,6 @@ export async function uploadWorkspaceFiles(
     const result = await service.upload(dir, inputs);
     return { environmentId, files: result.files };
   } catch (error) {
-    if (error instanceof FileServiceError)
-      throw new AppError(
-        error.statusCode >= 500 ? "File service unavailable" : error.message,
-        error.type.toUpperCase(),
-        error.statusCode,
-      );
-    throw error;
+    throw toWorkspaceApiError(error);
   }
 }

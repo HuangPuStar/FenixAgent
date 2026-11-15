@@ -2,6 +2,8 @@
 
 稳定协议见 [External Agent API v1](../../arch/external-api-v1.md)，字段见 `/docs/openapi/external`。下面的 API_KEY、各资源 ID 和执行节点需使用当前环境实际值。
 
+匿名访客需要独立文件时，先创建临时 Environment，再复用下文聊天、文件和实例接口；完整顺序见[临时环境接入](../../operations/temporary-agent-environments.md)。
+
 ## 最小流程
 
 1. 查询或创建 Provider、Model；网关配置和模型只读。
@@ -43,9 +45,12 @@ curl -s -X POST "$BASE_URL/api/v1/agents/$AGENT_ID/instances/connect" \
 
 ```bash
 curl -s "$BASE_URL/api/v1/agents/$AGENT_ID/instances" -H "Authorization: Bearer $API_KEY" | jq '.data'
+curl -s "$BASE_URL/api/v1/agents/$AGENT_ID/instances?environmentType=temporary&page=1&pageSize=20" -H "Authorization: Bearer $API_KEY" | jq '.data'
 curl -s "$BASE_URL/api/v1/instances/$INSTANCE_ID" -H "Authorization: Bearer $API_KEY" | jq '.data'
 curl -s -X POST "$BASE_URL/api/v1/instances/$INSTANCE_ID/restart" -H "Authorization: Bearer $API_KEY" | jq '.data'
 ```
+
+实例列表默认 `environmentType=regular`；`temporary` 仅查询临时实例，`all` 查询两类，均只返回当前用户有权访问的实例。
 
 上传到刚取得的 Environment：
 
@@ -119,5 +124,7 @@ relay 支持原始 JSON-RPC 和现有 acp-link 包裹格式，保留 Agent statu
 ```bash
 curl -s -X POST "$BASE_URL/api/v1/instances/$INSTANCE_ID/stop" -H "Authorization: Bearer $API_KEY"
 ```
+
+停止接口返回 `202` 和 `{ "success": true, "data": null }`，只表示受理。通过 `GET /api/v1/instances/$INSTANCE_ID` 查询，直到 `status` 为 `stopped`；`unknown` 表示后台停止未确认，需要查看服务端诊断。重启、续期等后续操作可能等待原停止操作收尾。
 
 普通错误读取 error.code / error.message；SDK 错误读取原生 OpenAI error。排查时记录 X-Request-Id 与 Instance，避免记录密钥、原始 ACP ID 和完整对话。实例 A 停止不会停止实例 B；当前请求结束不会停止同实例其他会话。
