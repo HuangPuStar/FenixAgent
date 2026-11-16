@@ -23,6 +23,13 @@ function userText(message: StructuredMessage): string {
 }
 
 describe("新旧消息合并的覆盖次数", () => {
+  // 不同身份的消息只存在子串关系时不构成覆盖，否则数字回复会被后续天气问答误删。
+  test("其他轮次的长正文包含短回复时保留两条", () => {
+    const legacy = [assistant("old-answer", "6", 1), assistant("old-answer-2", "广州", 2)];
+    const merged = createSyncMessageMerger()(legacy, [assistant("new-answer", "6月广州天气晴朗", 60_000)]);
+    expect(merged.map((message) => message.id)).toEqual(["old-answer", "old-answer-2", "new-answer"]);
+  });
+
   // 两轮出现相同助手文本时，一条未配对的新投影文本只能退役一条旧副本（B02）。
   test("异轮同文本助手消息只按覆盖次数退役一条", () => {
     const legacy = [assistant("legacy-a1", "收到", 1), assistant("legacy-a2", "收到", 2)];

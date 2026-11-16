@@ -24,7 +24,7 @@ import * as Y from "yjs";
 import type { DigestFn, RandomSource } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { assertIdentifier, buildDocId } from "../protocol/identity";
-import type { HistoryRecordKind } from "./ingest";
+import type { HistoryRecordKind, HistoryRecordMeta } from "./ingest";
 
 /** 内容块根键的 schema 版本；与读取契约同源，读到未知版本必须拒绝而不是尽力解析。 */
 const CONTENT_SCHEMA_VERSION = 1;
@@ -49,6 +49,8 @@ export interface BlockRecordInput {
   kind: HistoryRecordKind;
   payload: Uint8Array;
   entryId: string;
+  /** 源角色不参与记录身份，原样传给只读展示投影。 */
+  role?: HistoryRecordMeta["role"];
   /** 时间线位置（设计 §4.2：任务完成时间与网络到达时间都不能改变它）。 */
   entryOrder: number;
   /** 同一 entry 内的内容位置。 */
@@ -57,7 +59,7 @@ export interface BlockRecordInput {
   partIndex: number;
 }
 
-/** Y.Doc 中 `records` 的元素形状：扁平普通对象，键序与规格 §5.4 逐字一致。 */
+/** Y.Doc 中 `records` 的元素形状：固定键序的扁平普通对象，role 是可选源角色。 */
 interface FlatRecordValue {
   recordId: string;
   entryId: string;
@@ -66,6 +68,7 @@ interface FlatRecordValue {
   partIndex: number;
   kind: HistoryRecordKind;
   payload: Uint8Array;
+  role?: HistoryRecordMeta["role"];
 }
 
 /**
@@ -222,7 +225,7 @@ function selectTargetPrefix(records: readonly PreparedRecord[], targetPayloadByt
 function deriveClientId(records: readonly PreparedRecord[]): number {
   let acc = FNV_OFFSET_BASIS;
   for (const record of records) {
-    const seed = `${record.sourceOrdinal}:${record.digest}`;
+    const seed = `${record.sourceOrdinal}:${record.digest}${record.role === undefined ? "" : `:${record.role}`}`;
     for (let index = 0; index < seed.length; index += 1) {
       acc = Math.imul(acc ^ seed.charCodeAt(index), FNV_PRIME) >>> 0;
     }
@@ -240,6 +243,7 @@ function toFlatRecord(record: PreparedRecord): FlatRecordValue {
     partIndex: record.partIndex,
     kind: record.kind,
     payload: record.payload,
+    ...(record.role === undefined ? {} : { role: record.role }),
   };
 }
 
