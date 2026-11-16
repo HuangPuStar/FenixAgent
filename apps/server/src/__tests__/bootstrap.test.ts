@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import { loadAssemblyProfile } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
+import type { startHostRuntime } from "../bootstrap/host-startup";
 
 const profile = {
   identity: "identity",
@@ -96,20 +97,24 @@ test("拒绝显式注入的 null profile", async () => {
 });
 
 // server bootstrap 只编排公共契约，不直接导入或创建具体业务实现。
+// 嵌入宿主在 CE 启动期的行为另由 EE 的 A1 真实启动测试验证。
 test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
   const events: string[] = [];
+  const overrides = {
+    manifests,
+    mountContribution: ({ contribution }) => {
+      events.push(`mount:${contribution.id}`);
+    },
+  } satisfies NonNullable<Parameters<typeof startHostRuntime>[3]>;
   const result = await bootstrapServerAssembly({
     profile,
-    manifests,
+    ...overrides,
     loadEnv: (definitions) => {
       events.push(`env:${definitions.length}`);
       return {};
     },
     preflight: ({ modules }) => {
       events.push(`preflight:${modules.length}`);
-    },
-    mountContribution: ({ contribution }) => {
-      events.push(`mount:${contribution.id}`);
     },
   });
 
