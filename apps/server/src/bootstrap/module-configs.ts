@@ -108,13 +108,14 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
 
       return parseGitModuleConfig(source, secretValues);
     })(),
-    // 知识模块配置：RAGFlow 三项与 Gotenberg 地址。四个键的 schema 都归 knowledge 模块声明
+    // 知识模块配置：RAGFlow 三项、Gotenberg 地址与运行时授权模式。五个键的 schema 都归 knowledge 模块声明
     // （1.7 C 块），宿主 `buildConfig` 只做透传，两个地址类键的空串归一已在声明侧完成。
     knowledge: {
       ragflowApiUrl: config.ragflowApiUrl,
       ragflowApiKey: config.ragflowApiKey,
       ragflowRequestTimeoutMs: config.ragflowRequestTimeoutMs,
       gotenbergUrl: config.gotenbergUrl,
+      runtimeAuthMode: config.knowledgeRuntimeAuthMode,
     },
     // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
     memory: { hindsightMcpUrl: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_MCP_URL") },

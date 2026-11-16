@@ -384,7 +384,7 @@ Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init
 
 | 开关（`FENIX_FEATURE_<NAME>`） | 目录 | 平台能力 | 关键配置 |
 | --- | --- | --- | --- |
-| `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL`；MySQL（`ragflow-mysql`）、Valkey 与对象存储（`ragflow-rustfs`）**都是本栈自带**，不依赖别的目录，也没有对应开关（§5） |
+| `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL` / `KNOWLEDGE_RUNTIME_AUTH_MODE`；MySQL（`ragflow-mysql`）、Valkey 与对象存储（`ragflow-rustfs`）**都是本栈自带**，不依赖别的目录，也没有对应开关（§5） |
 | `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*`；库是栈内的 `litellm-postgres`（本栈自带，库与角色由镜像首启建好） |
 | `HINDSIGHT` | `docker/hindsight/` | memory：长期记忆 | `HINDSIGHT_MCP_URL`、`DASHSCOPE_API_KEY` |
 | `OTEL_COLLECTOR` | `docker/otel-collector/` | 平台标准观测采集与有界持久队列 | `OO_OTLP_ENDPOINT` / `OO_AUTH_HEADER` / 真实主机身份；不自动启用 OO |

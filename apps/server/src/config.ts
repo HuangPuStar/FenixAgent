@@ -131,6 +131,8 @@ function buildConfig(env: ServerEnv) {
     ragflowApiKey: readDeclaredEnv<string>(env, "RAGFLOW_API_KEY"),
     /** Timeout in milliseconds for RagFlow API requests. */
     ragflowRequestTimeoutMs: readDeclaredEnv<number>(env, "RAGFLOW_REQUEST_TIMEOUT_MS"),
+    /** Agent 知识运行时授权模式；值域由 knowledge 模块配置在读取时再次严格校验。 */
+    knowledgeRuntimeAuthMode: readDeclaredEnv<string>(env, "KNOWLEDGE_RUNTIME_AUTH_MODE"),
     /**
      * Gotenberg（文档转 PDF）服务地址，Knowledge 模块的文档导入使用。
      *

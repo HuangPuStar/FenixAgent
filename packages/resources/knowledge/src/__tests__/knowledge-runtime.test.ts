@@ -131,6 +131,44 @@ describe("知识运行时绑定解析", () => {
     expect(result.map((item) => item.id)).toEqual(["kb-0", "kb-1", "kb-2"]);
   });
 
+  test("trusted-delegate 在同组织绑定下正常解析", async () => {
+    initializeKnowledgeModuleConfig({ runtimeAuthMode: "trusted-delegate" });
+    stubDb(
+      createJoinedBindingsQuery([
+        {
+          kbId: "kb-1",
+          kbRemoteId: "remote-1",
+          kbUserId: "owner-1",
+          kbOrganizationId: "org-1",
+          priority: 0,
+        },
+      ]),
+    );
+
+    await expect(
+      resolveBoundKnowledgeBasesByConfigId("agent-1", { userId: "user-1", organizationId: "org-1" }),
+    ).resolves.toMatchObject([{ id: "kb-1", organizationId: "org-1" }]);
+  });
+
+  test("trusted-delegate 在过滤未同步远端行之前拒绝缺组织绑定", async () => {
+    initializeKnowledgeModuleConfig({ runtimeAuthMode: "trusted-delegate" });
+    stubDb(
+      createJoinedBindingsQuery([
+        {
+          kbId: "kb-unsynced",
+          kbRemoteId: null,
+          kbUserId: "owner-1",
+          kbOrganizationId: null,
+          priority: 0,
+        },
+      ]),
+    );
+
+    await expect(
+      resolveBoundKnowledgeBasesByConfigId("agent-1", { userId: "user-1", organizationId: "org-1" }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_ORGANIZATION_MISMATCH" });
+  });
+
   // Agent 没有可检索的知识库绑定时必须直接返回空结果，避免访问密钥或上游 provider。
   test("没有可检索绑定时直接返回空结果", async () => {
     stubDb(createJoinedBindingsQuery([]));
