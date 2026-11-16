@@ -239,6 +239,8 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     - **AMS 环境的写法两条链不同**：预览的 `.md` 由 auto-render 处理，裸写的 `\begin{equation}…` 能识别；
       聊天由 remark-math 解析，AMS 环境必须写在 `$$…$$` 内（`$$\begin{aligned}…\end{aligned}$$`）。
       这是解析器语义差异，不是配置问题。
+    - **聊天块公式容错**：根级公式的开头定界符独占一行、结束定界符紧贴公式末尾时，依据 Markdown
+      解析器识别出的公式节点补齐换行后重解析，避免结束符被交给 KaTeX；原始消息与代码示例保持原样。
     - `.md` 预览的渲染仍由 `@open-file-viewer` 的 markdown 分支承担（本包不新增 markdown 实现），
       渲染完成后补一层 KaTeX 自动渲染（`markdown-math-plugin`）；`\(`、`\[` 定界符不列——markdown 的
       转义规则会吃掉反斜杠，定界符到不了 DOM。
