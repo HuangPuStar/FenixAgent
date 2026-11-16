@@ -65,7 +65,11 @@ async function waitFor(host: HTMLElement, selector: string): Promise<Element> {
 }
 
 /** 渲染一条助手正文（生产路径：`MessageResponse` → 惰性 streamdown + `MESSAGE_PLUGINS`）。 */
-async function renderMessage(markdown: string): Promise<HTMLElement> {
+async function renderMessage(
+  markdown: string,
+  mode: "static" | "streaming" = "static",
+  isStreaming = false,
+): Promise<HTMLElement> {
   const { MessageResponse } = await import("../chat/primitives/message");
   const host = win.document.createElement("div") as unknown as HTMLElement;
   win.document.body.appendChild(host as unknown as Parameters<typeof win.document.body.appendChild>[0]);
@@ -74,7 +78,9 @@ async function renderMessage(markdown: string): Promise<HTMLElement> {
   act(() => {
     root.render(
       <I18nextProvider i18n={i18n}>
-        <MessageResponse mode="static">{markdown}</MessageResponse>
+        <MessageResponse mode={mode} isStreaming={isStreaming}>
+          {markdown}
+        </MessageResponse>
       </I18nextProvider>,
     );
   });
@@ -82,6 +88,67 @@ async function renderMessage(markdown: string): Promise<HTMLElement> {
 }
 
 describe("聊天正文的数学渲染", () => {
+  // 列表与引用中的代码仍是源码，不能被块公式容错改写显示、复制或下载内容。
+  test.each([
+    ["列表波浪线围栏", "- ~~~md\n  $$\n  x$$\n  ~~~", "$$\nx$$\n"],
+    ["列表反引号围栏", "- ```md\n  $$\n  x$$\n  ```\n\n后文", "$$\nx$$\n"],
+    ["嵌套列表围栏", "- 项目\n  - ~~~md\n    $$\n    x$$\n    ~~~", "$$\nx$$\n"],
+    ["引用代码围栏", "> ~~~md\n> $$\n> x$$\n> ~~~", "$$\nx$$\n"],
+    ["缩进代码", "    $$\n    x$$", "$$\nx$$\n"],
+  ])("%s 保留公式示例原文", async (_name, markdown, code) => {
+    const host = await renderMessage(markdown);
+    await waitFor(host, "code");
+
+    expect([...host.querySelector("code")!.children].map((node) => node.textContent).join("\n")).toBe(code.trimEnd());
+    expect(host.querySelectorAll(".katex").length).toBe(0);
+  });
+
+  // 模型把块公式的结束符贴在公式后时，仍须显示公式，并保留紧随其后的正文和下一条公式。
+  test.each([
+    ["静态消息", "static", false],
+    ["流式结束", "streaming", false],
+    ["流式生成中", "streaming", true],
+  ] as const)("%s 中混合换行的公式正常渲染", async (_name, mode, isStreaming) => {
+    const formula = String.raw`\frac{\partial}{\partial B}\mathrm{tr}(\Lambda B^TB)=B(\Lambda+\Lambda^T)=2B\Lambda.`;
+    const host = await renderMessage(
+      `**第 2 步：一阶条件。**\n\n$$\n${formula}$$\n令 $\\partial L/\\partial B=0$，得\n\n$$\n\\Sigma B=B\\Lambda\n$$`,
+      mode,
+      isStreaming,
+    );
+
+    await waitFor(host, ".katex");
+
+    expect(host.querySelector(".katex-error")?.getAttribute("title") ?? null).toBeNull();
+    expect([...host.querySelectorAll("annotation")].map((node) => node.textContent)).toEqual([
+      formula,
+      String.raw`\partial L/\partial B=0`,
+      String.raw`\Sigma B=B\Lambda`,
+    ]);
+    expect([...host.querySelectorAll("p")].some((node) => node.textContent?.startsWith("令 "))).toBe(true);
+  });
+
+  // 多条坏公式可能互相吞掉开头；修正后每条公式都须独立识别，不能吞正文或代码。
+  test.each([
+    ["连续公式", "$$\nx$$\n\n$$\ny$$\n\n$$\nz$$", ["x", "y", "z"]],
+    ["CRLF", "$$\r\nx^2$$", ["x^2"]],
+    ["缩进公式", "  $$\n  x$$", ["x"]],
+    ["未配对反引号后的公式", "示例 `\n\n$$\nx$$", ["x"]],
+    ["代码后的公式", "~~~md\n$$\nx$$\n~~~\n\n$$\ny$$", ["y"]],
+    ["公式后的代码", "$$\nx$$\n\n~~~md\n$$\ny$$\n~~~", ["x"]],
+  ])("%s 保留独立公式的边界", async (_name, markdown, formulas) => {
+    const host = await renderMessage(markdown);
+    await waitFor(host, ".katex");
+
+    expect(host.querySelectorAll(".katex-error").length).toBe(0);
+    expect([...host.querySelectorAll("annotation")].map((node) => node.textContent)).toEqual(formulas);
+    if (markdown.includes("~~~")) {
+      expect([...host.querySelector("code")!.children].map((node) => node.textContent)).toEqual([
+        "$$",
+        markdown.includes("~~~md\n$$\nx") ? "x$$" : "y$$",
+      ]);
+    }
+  });
+
   // 行内 `$…$` 与行间 `$$…$$` 都要真的渲染成公式节点：这是接入 math 插件的全部意义
   test("行内与行间公式渲染为 KaTeX 节点", async () => {
     const host = await renderMessage("Inline $a^2 + b^2$ end.\n\n$$\n\\int_0^1 x\\,dx\n$$\n");
