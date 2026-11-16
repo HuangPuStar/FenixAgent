@@ -19,7 +19,7 @@ Access Control 是资源管理面的唯一授权边界。它基于认证层提�
 
 ## 嵌入宿主的装配替换
 
-CE 独立启动时，`startHostRuntime` 使用生成的模块清单与默认路由贡献挂载函数。嵌入宿主可在启动前通过可选的 `assemblyOverrides` 同时传入 `manifests` 与 `mountContribution`，在原启动序中替换身份、授权实现和对应认证路由；`bootstrapServerAssembly` 仍按 profile 校验并装配依赖，不接受运行期修改模块。
+CE 独立启动时，`startHostRuntime` 使用生成的模块清单与默认路由贡献挂载函数。嵌入宿主可在启动前通过可选的 `assemblyOverrides` 同时传入 `manifests` 与 `mountContribution`，在原启动序中替换 Identity 和 Access Control 模块，并自行挂载受其认证守卫保护的模块路由。`bootstrapServerAssembly` 仍按 profile 校验并装配依赖，不接受运行期修改模块。此接缝不替换 CE 宿主自身的认证插件或系统管理员初始化；嵌入宿主须在自身入口处理认证并选择挂载哪些 CE 路由。
 
 覆盖不改变生命周期：装配结果句柄由 CE 宿主保管，启动失败及正常关闭时均释放。身份与授权须成套替换，不能让新的身份目录与默认 CE 授权或认证路由混用；嵌入宿主负责在调用前检查这组依赖完整性。
 

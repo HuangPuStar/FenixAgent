@@ -97,6 +97,7 @@ test("拒绝显式注入的 null profile", async () => {
 });
 
 // server bootstrap 只编排公共契约，不直接导入或创建具体业务实现。
+// 嵌入宿主在 CE 启动期的行为另由 EE 的 A1 真实启动测试验证。
 test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
   const events: string[] = [];
   const overrides = {
@@ -119,16 +120,6 @@ test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
 
   expect(events).toEqual(["env:0", "preflight:4", "mount:agent-config.routes"]);
   expect(result.webContributions.get("agent-config")).toBe("page");
-});
-
-// 启动函数必须把嵌入宿主的覆盖继续传到装配入口；参数类型检查本身不能发现转发遗漏。
-test("启动路径保留嵌入宿主的清单、挂载函数和装配释放接线", async () => {
-  const source = await Bun.file(new URL("../bootstrap/host-startup.ts", import.meta.url)).text();
-  expect(source).toContain("runStartupSteps(env, agentRuntime, profile, assemblyOverrides)");
-  expect(source).toContain("hostAssembly = await bootstrapServerAssembly({");
-  expect(source).toContain("manifests: assemblyOverrides?.manifests");
-  expect(source).toContain("mountContribution: assemblyOverrides?.mountContribution ?? mountServerRouteContribution");
-  expect(source).toContain("await disposeHostAssembly(Date.now() + SHUTDOWN_DEADLINE_MS)");
 });
 
 // 基础模块必须能读到本次装配的全部声明（含尚未实例化的资源模块）：授权模块据此收集资源模块声明的
