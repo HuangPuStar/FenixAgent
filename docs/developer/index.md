@@ -29,5 +29,6 @@ graph LR
 5. **[知识库](./agent/knowledge-base)** — 为 Agent 构建私有知识检索能力
 ## 系统开发与集成
 
+- 第三方系统集成：[Agent 接入指南 v1](./api/third-party-agent-integration-v1) 与 [v1.1 扩展](./api/third-party-agent-integration-v1-1)，面向通过 API 或 ACP 集成 Agent 的开发者，涵盖对话、文件、实例与临时环境。
 - [后端开发规范](./system/backend-development) 与[前端开发规范](./system/frontend-development)：开发和维护 FenixAgent 本身。
-- [External API](./system/external-api) 与[Agent 管理与会话说明](./system/external-agent-session-guide)：将外部系统接入 FenixAgent。
+- [External API 总览](./system/external-api)：对外接口入口、密钥、System API 与工作流调用。

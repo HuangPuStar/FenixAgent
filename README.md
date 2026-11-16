@@ -191,8 +191,8 @@ Console / External API / Workflow / Scheduler
 ## 文档与示例
 
 - [贡献与本地开发](CONTRIBUTING.md)
-- [外部 API 指南](docs/developer/system/external-api.md)
-- [外部 Agent 引擎会话接入](docs/developer/system/external-agent-session-guide.md)
+- [External API 总览](docs/developer/system/external-api.md)
+- 第三方系统 Agent 接入指南：[v1](docs/developer/api/third-party-agent-integration-v1.md) · [v1.1 扩展](docs/developer/api/third-party-agent-integration-v1-1.md)
 - [MCP 集成](docs/developer/agent/mcp-integration.md)
 - [Skill 开发](docs/developer/agent/skill-development.md)
 - [Engine Plugin 开发](packages/plugin-sdk/README.md)

@@ -1,15 +1,21 @@
-# External API 使用指南
+# External API 总览
 
 Fenix 对外提供了一套独立的 External API，供其他系统通过 API Key 调用。外部系统应使用 `/api/v1/*` 路径，不要直接依赖控制台内部使用的 `/web/*` 接口。
+
+本文维护通用入口、密钥、System API 和工作流说明；Agent 的对话、文件与实例操作统一在第三方系统 Agent 接入指南中维护。
 
 ## 文档入口
 
 - 交互式文档：`http://server/docs/openapi/external`
 - OpenAPI JSON：`http://server/docs/openapi/external/json`
+- [第三方系统 Agent 接入指南 v1](../api/third-party-agent-integration-v1.md)：认证、实例、OpenAI/ACP 对话、文件与资源配置。
+- [Agent 接入指南 v1.1 扩展](../api/third-party-agent-integration-v1-1.md)：配合 v1 阅读，补充临时环境、场景选型、TTL 和异步停止约定。
 
 文档由宿主统一按路径收录：`external` 包含 `/api/*`，排除 `apps/server/src/openapi.ts` 中 `EXTERNAL_API_EXCLUDED_PATHS` 声明的路径及其子路径；控制台 `/web/*` 接口位于 `/docs/openapi/web`。路由标签仅用于分组，不决定文档归属。
 
 具体字段、请求体和响应体定义，请直接以交互式文档为准，不要以本文档中的示例推断全部接口形态。
+
+普通资源接口返回 `{ success: true, data }`，失败返回 `{ success: false, error: { code, message } }`；Chat Completions 使用 OpenAI 原生 JSON / SSE 与错误格式。
 
 ## API Key
 
@@ -72,37 +78,6 @@ Authorization: Bearer your-system-api-key
 - `RCS_SYSTEM_API_KEYS` 是系统管理通道，不建议暴露给普通业务方
 - system key 一旦泄漏，调用方可以直接创建用户、组织和 API Key，应按高敏感凭证管理
 
-## 请求示例
-
-下面用“查询 Agent 列表”作为一个最小示例：
-
-```bash
-curl -X GET 'https://rcs.example.com/api/agents?page=1&pageSize=20' \
-  -H 'Authorization: Bearer rcs_xxx'
-```
-
-普通接口返回 `{ success: true, data }`，失败返回 `{ success: false, error: { code, message } }`。Chat Completions 使用 OpenAI 原生 JSON / SSE 与错误格式。
-
-示例响应：
-
-```json
-{
-  "success": true,
-  "data": {
-  "items": [
-    {
-      "id": "95136b37-1af8-48cf-a29d-59e092e4f5a1",
-      "name": "Demo Agent",
-      "description": "示例 Agent"
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "pageSize": 20
-  }
-}
-```
-
 ## 触发工作流运行
 
 `POST /api/v1/workflow-v2/workflows/:id/run` 触发指定工作流的**已发布版本**运行；`:id` 是控制台里的工作流主键（在控制台的工作流列表页「更多 → 调用接口」里可以直接看到调用地址与示例）。
@@ -154,10 +129,6 @@ curl -X POST 'https://rcs.example.com/api/v1/workflow-v2/workflows/9f1c2f9e-0d3a
 - 上游没有幂等键：**重试等于再运行一次**，请按业务语义自行去重
 - 限流按调用方身份计数（默认每分钟 60 次），超限返回 `429` 与 `Retry-After`
 
-## 更多接口
+## 维护参考
 
-更多接口的使用方式，请直接参考：
-
-- 交互式文档：`http://server/docs/openapi/external`
-- Agent 管理与会话说明：`/developer/system/external-agent-session-guide`
-- [稳定契约](../../arch/external-api-v1.md)
+平台维护者可参考 [External API 稳定契约](../../arch/external-api-v1.md)；接入方的 Agent 操作说明以本文链接的接入指南和当前服务 OpenAPI 为准。

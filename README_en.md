@@ -190,8 +190,8 @@ The control service decides who can use which agent, with which resources, and w
 ## Documentation and examples
 
 - [Contributing and local development](CONTRIBUTING.md)
-- [External API guide](docs/developer/system/external-api.md)
-- [External agent engine session integration](docs/developer/system/external-agent-session-guide.md)
+- [External API overview](docs/developer/system/external-api.md)
+- Third-party Agent integration guide: [v1](docs/developer/api/third-party-agent-integration-v1.md) · [v1.1 extension](docs/developer/api/third-party-agent-integration-v1-1.md)
 - [MCP integration](docs/developer/agent/mcp-integration.md)
 - [Skill development](docs/developer/agent/skill-development.md)
 - [Engine plugin development](packages/plugin-sdk/README.md)
