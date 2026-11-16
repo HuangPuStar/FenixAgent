@@ -51,7 +51,7 @@ Agent 运行时
 - `status`：empty / indexing / ready / error
 - `lastError`：最近一次错误信息
 
-控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404。Agent 检索（MCP 的 `kb_search` / `kb_read` / `kb_graph_get`）的授权来源是 Agent 的绑定表本身，不按调用方组织或用户过滤：跨组织运行共享 Agent 时环境属调用方、知识库属提供方，按调用方过滤会让绑定整体失效。绑定写入时校验知识库归属与 Agent 归属组织一致，运行时不加组织过滤仍不会越过组织边界。全局 RAGFlow key 仅是上游连接凭据，不赋予跨组织读取权限。
+控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404。Agent 检索（MCP 的 `kb_search` / `kb_read` / `kb_graph_get`）的授权来源是 Agent 的绑定表本身。默认 `KNOWLEDGE_RUNTIME_AUTH_MODE=owner` 不按调用方组织或用户过滤，保留跨组织运行共享 Agent 的能力；`trusted-delegate` 要求 Environment 的 `userId` / `organizationId` 非空，且所有绑定知识库都同属该组织，任一缺失或跨组织即拒绝整次请求，供已完成逐请求知识库授权的外部门控使用。启用 `trusted-delegate` 的前提是 `/mcp/knowledge` 及全部知识库控制台入口只能经外部授权门控访问，部署方必须封堵 CE 直连；授权拒绝以稳定的 `KNOWLEDGE_*` 错误码返回。两种模式下全局 RAGFlow key 都仅是上游连接凭据，不额外授予知识库访问权。
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
@@ -83,7 +83,7 @@ Provider 是对外部索引服务的抽象。定义了统一的接口（创建�
 
 ### MCP 端点（Agent 查询入口）
 
-Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成。
+Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成；三个工具都会把解析出的 Environment 用户与组织传入 Knowledge 运行时，由模块授权模式决定是否执行组织交集。
 
 ## 数据库表
 

@@ -192,6 +192,7 @@ test("声明键未设置时使用模块声明的默认值", async () => {
   expect(env.RCS_YJS_SNAPSHOT_INTERVAL_MS).toBe(2000);
   expect(env.RCS_YJS_SNAPSHOT_IDLE_MS).toBe(500);
   expect(env.RCS_YJS_SNAPSHOT_TTL_SECONDS).toBe(604800);
+  expect(env.KNOWLEDGE_RUNTIME_AUTH_MODE).toBe("owner");
   // 新同步协议默认启用；显式设为 "false" 才回退旧路径。
   expect(env.RCS_CHAT_SYNC_PROTOCOL_ENABLED).toBe(true);
   expect(env.WORKSPACE_ROOT).toBeUndefined();
@@ -217,6 +218,9 @@ test("声明键的非法值在启动期被拒绝", async () => {
   await expect(
     resolveAssemblyEnv({ input: { ...baseInput, RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: "0" } }),
   ).rejects.toThrow(/RCS_SCHEDULED_AGENT_MAX_CONCURRENCY/);
+  await expect(
+    resolveAssemblyEnv({ input: { ...baseInput, KNOWLEDGE_RUNTIME_AUTH_MODE: "unrestricted" } }),
+  ).rejects.toThrow(/KNOWLEDGE_RUNTIME_AUTH_MODE/);
 });
 
 // 装配 profile 的位置不再由源码固定：默认仍是 CE 入口的固定 profile（应用根 + 固定相对路径，与迁移前等价），
