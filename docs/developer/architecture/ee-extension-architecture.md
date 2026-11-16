@@ -18,6 +18,8 @@ EE 依赖 CE 的方向只能是 `EE → CE`。EE package 和 app 只能使用 CE
 
 EE 可整体替换 Identity 与 AccessControl，但两者必须由 manifest 的精确 `dependsOn` 成套绑定。profile 混用不匹配的 Identity 与 AccessControl 时必须在 preflight 失败。
 
+CE 宿主 `startHostRuntime` 的可选 `assemblyOverrides` 将静态 manifest 集合及路由贡献挂载函数传给启动期 `bootstrapServerAssembly`；嵌入宿主据此在启动前成套替换身份、授权和认证路由。CE 独立启动不传该参数，仍使用自身生成清单与默认挂载函数；覆盖不得跳过装配句柄的启动失败清理或正常关闭释放。
+
 ## 3. 平台、资源与数据库扩展
 
 EE 的 Identity 与 AccessControl 保持两个包，作为一套平台实现被选择。EE 不得要求 CE 资源 service 读取 EE 的 member、role 或表；需要的通用授权能力应先成为稳定契约，客户专属能力保留在 EE 侧。

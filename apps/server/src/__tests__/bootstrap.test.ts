@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { startHostRuntime } from "../bootstrap/host-startup";
 import { loadAssemblyProfile } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
 
@@ -98,18 +99,21 @@ test("拒绝显式注入的 null profile", async () => {
 // server bootstrap 只编排公共契约，不直接导入或创建具体业务实现。
 test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
   const events: string[] = [];
+  const overrides = {
+    manifests,
+    mountContribution: ({ contribution }) => {
+      events.push(`mount:${contribution.id}`);
+    },
+  } satisfies NonNullable<Parameters<typeof startHostRuntime>[3]>;
   const result = await bootstrapServerAssembly({
     profile,
-    manifests,
+    ...overrides,
     loadEnv: (definitions) => {
       events.push(`env:${definitions.length}`);
       return {};
     },
     preflight: ({ modules }) => {
       events.push(`preflight:${modules.length}`);
-    },
-    mountContribution: ({ contribution }) => {
-      events.push(`mount:${contribution.id}`);
     },
   });
 
