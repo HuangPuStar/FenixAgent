@@ -615,6 +615,8 @@ interface SessionSummaryProjection {
 
 ### 5.4 Schema 演进
 
+历史导入的 `text_part` / `tool_boundary` 记录保留源条目的 `entryId` 和 `role: "user" | "assistant"`，角色随每个切片写入 content Doc，与去重身份分离。前端优先使用明确角色；没有角色字段的实时记录继续遵循 `:user` / `:assistant` 写入身份契约，不能用该后缀推断 callback 等历史条目的角色。新旧投影合并仅允许同身份或完整正文匹配的覆盖证明，跨身份的正文子串关系不能退役旧回复。同步 store 是内存投影，服务重新发布后从旧 Chat Doc 重建历史记录，无需数据迁移。
+
 - `schemaVersion` 描述结构版本，`projectionVersion` 描述当前 Instance ACP session data 已镜像到 Y.Doc 的进度，两者不可混用。
 - 服务端升级实时 schema 时，应为仍存活的 Instance ACP session 以兼容方式更新 Y.Doc（实现为 `state/factory.ts` / `chat-writer.ts` 的幂等结构初始化：旧结构或空 Doc 补齐新骨架，不破坏已存在的同版本结构）；客户端只能消费服务端声明支持的版本。
 - 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `chatMeta` / `connection` / `permissions` / `capabilities` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。`modelState` / `modeState` / `availableCommands` 属会话级元数据，以新结构投影到 Session Doc `session` map（models/modes 来自 session/new、load 响应，命令列表来自 `available_commands_update` 通知，见 `state/aggregator.ts` `applySessionControl`）。旧 Chat Doc 的 `sessions` 字段一并删除；Session Doc 当前 `sessions` 投影位（v3）是新的 agent 级会话列表，与旧字段同名不同义。

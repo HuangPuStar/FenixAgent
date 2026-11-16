@@ -35,6 +35,8 @@ export interface HistoryRecordMeta {
   /** 逻辑消息/工具入口身份。给出时必须是合法标识（非空、≤256 UTF-8 字节、无控制字符）；缺省时该记录没有
    * 可判定身份，不参与重复对象判定（设计 §5.3：没有稳定源身份就不去重，内容相同的对象都要保留）。 */
   entryId?: string;
+  /** 源消息角色；独立于 ID 和去重身份，缺省时沿用写入方的身份契约。 */
+  role?: "user" | "assistant";
   /** 同一条消息内的内容槽位；参与重复对象判定（缺省与显式 `0` 视为不同槽位，不替调用方猜语义）。 */
   contentSlot?: number;
   /** 片段序号（长载荷拆成多片时的拼接位置）；参与重复对象判定。 */
@@ -144,6 +146,9 @@ function optionalIndex(value: unknown, field: string): number | null {
 function normalizeMeta(meta: HistoryRecordMeta): NormalizedMeta {
   if (typeof meta !== "object" || meta === null) {
     throw malformed("record meta must be an object");
+  }
+  if (meta.role !== undefined && meta.role !== "user" && meta.role !== "assistant") {
+    throw malformed('record meta "role" must be user or assistant');
   }
   return {
     kind: assertRecordKind(meta.kind),

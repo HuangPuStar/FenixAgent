@@ -440,6 +440,7 @@ export class HistoryImportService {
         kind: record.kind,
         payload,
         entryId: meta.entryId ?? `ordinal-${record.sourceOrdinal}`,
+        ...(meta.role === undefined ? {} : { role: meta.role }),
         entryOrder: record.sourceOrdinal,
         contentSlot: meta.contentSlot ?? 0,
         partIndex: meta.partIndex ?? 0,

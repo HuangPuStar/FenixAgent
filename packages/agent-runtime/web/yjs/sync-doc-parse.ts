@@ -15,6 +15,8 @@ export interface ParsedPart {
 }
 
 export interface DocEntryContribution {
+  /** 历史源的明确角色；实时记录缺省时由投影按写入方身份契约解析。 */
+  role: "user" | "assistant" | null;
   entryOrder: number | null;
   completedAt: number | null;
   /** 该 entry 在本 Doc 全部记录中的最小下标（含 final/跳过记录，与旧 firstPosition 语义一致）。 */
@@ -94,6 +96,7 @@ export function parseContentDoc(doc: Y.Doc): ParsedContentDoc {
     let entry = contribution.get(entryId);
     if (entry === undefined) {
       entry = {
+        role: null,
         entryOrder: null,
         completedAt: null,
         firstRecordIndex: index,
@@ -104,6 +107,7 @@ export function parseContentDoc(doc: Y.Doc): ParsedContentDoc {
     } else {
       entry.firstRecordIndex = Math.min(entry.firstRecordIndex, index);
     }
+    if (record.role === "user" || record.role === "assistant") entry.role = record.role;
     const entryOrder = record.entryOrder;
     if (typeof entryOrder === "number" && Number.isFinite(entryOrder)) {
       entry.entryOrder = entry.entryOrder === null ? entryOrder : Math.min(entry.entryOrder, entryOrder);

@@ -291,8 +291,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
 
     // 退役预算：一条未配对的新投影助手文本至多抵消一条未配对旧助手文本。
     // 用全局文本并集会把其他轮次的同文本旧消息一并删掉（B02）。
-    const coverage: Array<{ text: string }> = [];
-    const exactCoverage = new Map<string, number[]>();
+    const exactCoverage = new Map<string, string[]>();
     const coverageIds = new Set<string>();
     for (const message of sync) {
       if (message.type !== "assistant_message" || pairedSyncs.has(message)) continue;
@@ -301,12 +300,11 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
       if (aliases.has(syncAliasKey(message.id)) || coverageIds.has(message.id)) continue;
       coverageIds.add(message.id);
       const text = normalizedText(textOf(message));
-      coverage.push({ text });
       const bucket = exactCoverage.get(text);
-      if (bucket) bucket.push(coverage.length - 1);
-      else exactCoverage.set(text, [coverage.length - 1]);
+      if (bucket) bucket.push(message.id);
+      else exactCoverage.set(text, [message.id]);
     }
-    const usedCoverage = new Set<number>();
+    const usedCoverage = new Set<string>();
     const takeCoverage = (text: string): boolean => {
       for (const index of exactCoverage.get(text) ?? []) {
         if (!usedCoverage.has(index)) {
@@ -314,15 +312,7 @@ export function createSyncMessageMerger(now: () => number = Date.now, options: S
           return true;
         }
       }
-      // 流式正文可能比旧快照更长；逐条比较仍保证每条新文本只抵消一条旧消息。
-      for (let index = 0; index < coverage.length; index += 1) {
-        if (usedCoverage.has(index)) continue;
-        const candidate = coverage[index];
-        if (candidate?.text.includes(text)) {
-          usedCoverage.add(index);
-          return true;
-        }
-      }
+      // 异身份的子串不能证明同轮覆盖，短回复可能只是后续消息里的数字或词语。
       return false;
     };
 

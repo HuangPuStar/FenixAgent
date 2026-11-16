@@ -8,7 +8,7 @@
 // 映射规则：
 // - 只取终态条目（completed / cancelled / error），pending / streaming 仍可能继续增长，不能封成历史；
 // - 只取 `type: "text"` 的可见正文块，reasoning 与工具块不进入文本投影；
-// - entryId 原样保留（`${turnId}:user` / `${turnId}:assistant`），新投影按同一身份与旧视图去重；
+// - entryId 与 role 原样保留，callback 等身份不携带角色后缀，不能按 ID 猜角色；
 // - 长正文按代码单元切片，避免单条记录触碰入口原始帧上限；切片不拆代理对。
 //
 // 已知限制：导入发生在握手时，之后旧 Doc 新增的稳定条目不会自动追补（旧路径仍可见）；
@@ -43,7 +43,12 @@ export interface LegacyChatDocumentSource {
  * 顺序严格按 `blockOrder`：文本块输出 `text_part`，工具块输出 `tool_boundary` 标记，
  * 新投影据此把正文切成与旧结构一致的分段；reasoning 块不进入正文也不产生边界。
  */
-function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: number): SyncHistoryRecord[] {
+function readEntryRecords(
+  entry: Y.Map<unknown>,
+  entryId: string,
+  role: "user" | "assistant",
+  maxPartChars: number,
+): SyncHistoryRecord[] {
   const blocks = entry.get("blocks");
   const order = entry.get("blockOrder");
   if (!(blocks instanceof Y.Map) || !(order instanceof Y.Array)) return [];
@@ -63,7 +68,7 @@ function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: 
           toolCallId: typeof toolCallId === "string" ? toolCallId : "",
           ordinal: boundaryOrdinal,
         }),
-        meta: { kind: "tool_boundary", entryId, contentSlot: 0, partIndex: partIndex++ },
+        meta: { kind: "tool_boundary", entryId, role, contentSlot: 0, partIndex: partIndex++ },
       });
       boundaryOrdinal += 1;
       continue;
@@ -76,7 +81,7 @@ function readEntryRecords(entry: Y.Map<unknown>, entryId: string, maxPartChars: 
     for (const part of splitText(text, maxPartChars)) {
       records.push({
         value: part,
-        meta: { kind: "text_part", entryId, contentSlot: 0, partIndex: partIndex++ },
+        meta: { kind: "text_part", entryId, role, contentSlot: 0, partIndex: partIndex++ },
       });
       emittedText = true;
     }
@@ -123,7 +128,7 @@ export function readLegacyCommittedHistory(ydoc: Y.Doc, maxPartChars = LEGACY_HI
     if (status === "pending" || status === "streaming") continue;
     const role = entry.get("role");
     if (role !== "user" && role !== "assistant") continue;
-    records.push(...readEntryRecords(entry, entryId, maxPartChars));
+    records.push(...readEntryRecords(entry, entryId, role, maxPartChars));
   }
   return records;
 }

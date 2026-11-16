@@ -46,8 +46,22 @@ describe("readLegacyCommittedHistory", () => {
     const records = readLegacyCommittedHistory(ydoc);
     expect(records.map((record) => record.value)).toEqual(["question", "failed answer"]);
     expect(records.map((record) => record.meta)).toEqual([
-      { kind: "text_part", entryId: "turn-1:user", contentSlot: 0, partIndex: 0 },
-      { kind: "text_part", entryId: "turn-3:assistant", contentSlot: 0, partIndex: 0 },
+      { kind: "text_part", entryId: "turn-1:user", role: "user", contentSlot: 0, partIndex: 0 },
+      { kind: "text_part", entryId: "turn-3:assistant", role: "assistant", contentSlot: 0, partIndex: 0 },
+    ]);
+    ydoc.destroy();
+  });
+
+  // callback 与任意合法 ID 的角色只能取自源条目，长文本每片都要携带同一角色。
+  test("历史切片保留源角色，不依赖 entryId 命名", () => {
+    const ydoc = emptyChat();
+    addEntry(ydoc, "callback_question", "user", "completed", "广州天气");
+    addEntry(ydoc, "arbitrary:user", "assistant", "completed", "晴天");
+    const records = readLegacyCommittedHistory(ydoc, 2);
+    expect(records.map((record) => [record.meta.entryId, record.meta.role, record.value])).toEqual([
+      ["callback_question", "user", "广州"],
+      ["callback_question", "user", "天气"],
+      ["arbitrary:user", "assistant", "晴天"],
     ]);
     ydoc.destroy();
   });
@@ -86,6 +100,7 @@ describe("readLegacyCommittedHistory", () => {
     expect(records.map((record) => record.meta.kind)).toEqual(["text_part", "tool_boundary", "text_part"]);
     expect(records.map((record) => record.value)).toEqual(["A", JSON.stringify({ toolCallId: "t1", ordinal: 0 }), "B"]);
     expect(records.map((record) => record.meta.partIndex)).toEqual([0, 1, 2]);
+    expect(records.map((record) => record.meta.role)).toEqual(["assistant", "assistant", "assistant"]);
     ydoc.destroy();
   });
 
