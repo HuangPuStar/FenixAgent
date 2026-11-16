@@ -441,7 +441,12 @@ export async function getKnowledgeGraphForAgent(input: {
   // 若指定了 KB ID，只查那个
   if (input.knowledgeBaseId) {
     const target = knowledgeBases.find((kb) => kb.id === input.knowledgeBaseId);
-    if (!target) throw new Error(`Knowledge base ${input.knowledgeBaseId} is not bound to this agent`);
+    if (!target) {
+      throw new KnowledgeRuntimeAccessError(
+        "KNOWLEDGE_BINDING_REQUIRED",
+        `Knowledge base ${input.knowledgeBaseId} is not bound to this agent`,
+      );
+    }
     try {
       const apiKey = await resolveRagflowApiKey("global", target.userId, target.organizationId);
       const result = await provider.getKnowledgeGraph({

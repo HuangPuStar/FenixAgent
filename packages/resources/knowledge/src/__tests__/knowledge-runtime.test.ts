@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import {
+  getKnowledgeGraphForAgent,
   resolveBoundKnowledgeBasesByConfigId,
   searchKnowledgeDetailedForAgent,
 } from "../server/services/knowledge-runtime";
@@ -167,6 +168,24 @@ describe("知识运行时绑定解析", () => {
     await expect(
       resolveBoundKnowledgeBasesByConfigId("agent-1", { userId: "user-1", organizationId: "org-1" }),
     ).rejects.toMatchObject({ code: "KNOWLEDGE_ORGANIZATION_MISMATCH" });
+  });
+
+  test("图谱请求选择未绑定知识库时返回稳定授权错误", async () => {
+    stubDb(
+      createJoinedBindingsQuery([
+        {
+          kbId: "kb-bound",
+          kbRemoteId: "remote-bound",
+          kbUserId: "owner-1",
+          kbOrganizationId: "org-1",
+          priority: 0,
+        },
+      ]),
+    );
+
+    await expect(
+      getKnowledgeGraphForAgent({ agentConfigId: "agent-1", knowledgeBaseId: "kb-not-bound" }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_BINDING_REQUIRED" });
   });
 
   // Agent 没有可检索的知识库绑定时必须直接返回空结果，避免访问密钥或上游 provider。
