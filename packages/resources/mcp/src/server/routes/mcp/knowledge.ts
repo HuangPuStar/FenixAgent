@@ -26,7 +26,7 @@ const KNOWLEDGE_ACCESS_ERROR_MESSAGES = {
 } as const;
 
 /** 把授权拒绝映射为稳定的工具错误，不向 Agent 暴露内部知识库 ID 或其他敏感上下文。 */
-function mapKnowledgeAccessError(error: unknown) {
+export function mapKnowledgeAccessError(error: unknown) {
   if (!(error instanceof KnowledgeRuntimeAccessError)) throw error;
   const payload = {
     code: error.code,

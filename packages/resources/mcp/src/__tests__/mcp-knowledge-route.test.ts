@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readJson } from "@fenix/platform-sdk/testing";
-import knowledgeMcpRoutes from "../server/routes/mcp/knowledge";
+import { KnowledgeRuntimeAccessError } from "@fenix/resource-knowledge/server";
+import knowledgeMcpRoutes, { mapKnowledgeAccessError } from "../server/routes/mcp/knowledge";
 
 /**
  * `/mcp/knowledge` 的鉴权拒绝路径。
@@ -33,6 +34,31 @@ describe("mcp knowledge 入口鉴权", () => {
     expect(response.status).toBe(401);
     expect(await readJson(response)).toEqual({
       error: { code: "UNAUTHORIZED", message: "Missing bearer token" },
+    });
+  });
+});
+
+describe("mcp knowledge 授权错误", () => {
+  test("将知识运行时授权拒绝映射为稳定的工具错误", () => {
+    const result = mapKnowledgeAccessError(
+      new KnowledgeRuntimeAccessError("KNOWLEDGE_BINDING_REQUIRED", "resource is not bound"),
+    );
+
+    expect(result).toEqual({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            code: "KNOWLEDGE_BINDING_REQUIRED",
+            message: "知识资源不属于当前 Agent 绑定的知识库",
+          }),
+        },
+      ],
+      structuredContent: {
+        code: "KNOWLEDGE_BINDING_REQUIRED",
+        message: "知识资源不属于当前 Agent 绑定的知识库",
+      },
     });
   });
 });
