@@ -68,14 +68,20 @@ export default defineConfig({
           items: [{ text: "开发者指南", link: "/developer/" }],
         },
         {
+          text: "第三方系统集成",
+          items: [
+            { text: "External API 总览", link: "/developer/system/external-api" },
+            { text: "Agent 接入指南 v1", link: "/developer/api/third-party-agent-integration-v1" },
+            { text: "Agent 接入指南 v1.1", link: "/developer/api/third-party-agent-integration-v1-1" },
+          ],
+        },
+        {
           text: "系统开发",
           items: [
             { text: "后端开发规范", link: "/developer/system/backend-development" },
             { text: "前端开发规范", link: "/developer/system/frontend-development" },
             { text: "代码行为门禁", link: "/developer/system/forbidden-code-patterns" },
             { text: "ACP 会话重命名", link: "/developer/system/acp-session-rename" },
-            { text: "External API", link: "/developer/system/external-api" },
-            { text: "Agent 管理与会话说明", link: "/developer/system/external-agent-session-guide" },
           ],
         },
         {
