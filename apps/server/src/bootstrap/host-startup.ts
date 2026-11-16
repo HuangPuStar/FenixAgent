@@ -122,9 +122,13 @@ async function disposeHostAssembly(deadline: number): Promise<void> {
   }
 }
 
-/** Optional module and route adapters for an embedding host; standalone CE uses its defaults. */
+/**
+ * 宿主对装配步骤的覆盖：不传即默认行为（generatedModuleManifests + mountServerRouteContribution）。
+ */
 export interface HostRuntimeAssemblyOverrides {
+  /** 替换装配用的模块清单；缺省用 generatedModuleManifests。 */
   readonly manifests?: readonly ModuleManifest[];
+  /** 替换路由贡献的挂载函数；缺省用 mountServerRouteContribution。 */
   readonly mountContribution?: BootstrapModulesOptions["mountContribution"];
 }
 
