@@ -19,7 +19,7 @@ import {
   findModelLabelsByIds,
   getModelManagementModule,
 } from "@fenix/model-management/server";
-import type { BootstrapResult } from "@fenix/platform-sdk";
+import type { BootstrapModulesOptions, BootstrapResult, ModuleManifest } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import {
   bindChannelAgentConfigLookup,
@@ -134,6 +134,16 @@ async function disposeHostAssembly(deadline: number): Promise<void> {
 }
 
 /**
+ * 宿主对装配步骤的覆盖：不传即默认行为（generatedModuleManifests + mountServerRouteContribution）。
+ */
+export interface HostRuntimeAssemblyOverrides {
+  /** 替换装配用的模块清单；缺省用 generatedModuleManifests。 */
+  readonly manifests?: readonly ModuleManifest[];
+  /** 替换路由贡献的挂载函数；缺省用 mountServerRouteContribution。 */
+  readonly mountContribution?: BootstrapModulesOptions["mountContribution"];
+}
+
+/**
  * 按关键序列与启动后编排完成全部启动步骤。
  *
  * 本函数是薄壳：工作都在 {@link runStartupSteps}，这里只保证**中途失败也释放已经建好的装配**。
@@ -144,9 +154,10 @@ export async function startHostRuntime(
   env: ServerEnv,
   agentRuntime: AgentRuntimeHandles,
   profile: AssemblyProfile,
+  assemblyOverrides?: HostRuntimeAssemblyOverrides,
 ): Promise<void> {
   try {
-    await runStartupSteps(env, agentRuntime, profile);
+    await runStartupSteps(env, agentRuntime, profile, assemblyOverrides);
   } catch (error) {
     await disposeHostAssembly(Date.now() + SHUTDOWN_DEADLINE_MS);
     throw error;
@@ -163,6 +174,7 @@ async function runStartupSteps(
   env: ServerEnv,
   agentRuntime: AgentRuntimeHandles,
   profile: AssemblyProfile,
+  assemblyOverrides?: HostRuntimeAssemblyOverrides,
 ): Promise<void> {
   // 模型网关的运行时凭证解析器：在启动序列里解析后交给 agent-config 的启动参数组装器
   // （见下方 `createPreLaunchPorts` + 端口绑定）。W4b 删掉 agent-runtime 的旧解析器槽位后，
@@ -185,7 +197,11 @@ async function runStartupSteps(
       //
       // 返回值必须落在 `hostAssembly` 上：模块登记的 cleanup 只有它的 `dispose()` 能触发，关闭序与启动
       // 失败清理都经那个句柄释放；丢弃返回值等于这些资源永远不释放。
-      hostAssembly = await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
+      hostAssembly = await bootstrapServerAssembly({
+        profile,
+        manifests: assemblyOverrides?.manifests,
+        mountContribution: assemblyOverrides?.mountContribution ?? mountServerRouteContribution,
+      });
     },
     initModelGateway: async () => {
       registerConfiguredSandboxProviders();
