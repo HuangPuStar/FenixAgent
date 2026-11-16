@@ -35,7 +35,7 @@ import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
 import { Progress } from "../ui/progress";
 import { Spinner } from "../ui/spinner";
-import { FileTreeArborist } from "./file-tree-arborist";
+import { FileTreeArborist, type FileTreeInteractionProps } from "./file-tree-arborist";
 import type { FileTreeContextMenuState, FileTreeDownloadState } from "./file-tree-context-menu";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import type { ParsedFileNode } from "./file-tree-model";
@@ -57,7 +57,7 @@ const PANEL_ACTION_CLASS =
 const SECTION_HEADING_CLASS =
   "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-sm font-semibold normal-case tracking-normal";
 
-export interface FileTreeViewProps {
+export interface FileTreeViewProps extends FileTreeInteractionProps {
   /** 首屏或刷新中；影响刷新按钮转圈与空态展示。 */
   loading: boolean;
   /** 上次拉取失败但仍在自动重连：显示可重试的横幅而不是空态。 */
@@ -81,7 +81,7 @@ export interface FileTreeViewProps {
   userHasNodes: boolean;
   expandedIds: string[];
   contextMenu: FileTreeContextMenuState | null;
-  deleteConfirm: { path: string; name: string } | null;
+  deleteConfirm: { paths: string[]; name: string } | null;
   deleting: boolean;
   download: FileTreeDownloadState | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -95,7 +95,7 @@ export interface FileTreeViewProps {
    * 由消费方决定内容——例如 `@fenix/resource-machine` 的浮动/固定布局切换。
    */
   headerActions?: ReactNode;
-  onSelect: (node: ParsedFileNode) => void;
+  onClearSelection: () => void;
   onToggle: (nodeId: string, expanded: boolean) => void;
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
@@ -133,7 +133,7 @@ export function FileTreeView(props: FileTreeViewProps) {
             type="button"
             className={PANEL_ACTION_CLASS}
             onClick={props.onRefresh}
-            disabled={props.loading || !canMutate}
+            disabled={props.loading}
             title={t("fileTree.refresh")}
             aria-label={t("fileTree.refresh")}
           >
@@ -185,6 +185,15 @@ export function FileTreeView(props: FileTreeViewProps) {
           props.onDrop(event, target);
         }}
         onContextMenu={props.onContextMenu}
+        onClick={(event) => {
+          if (!(event.target as Element).closest("[data-tree-item],button,input")) props.onClearSelection();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            props.onClearSelection();
+          }
+        }}
       >
         {props.dragOver && (
           <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-sm text-brand">
@@ -222,6 +231,7 @@ export function FileTreeView(props: FileTreeViewProps) {
       {props.contextMenu && (
         <FileTreeContextMenu
           state={props.contextMenu}
+          canMutate={canMutate}
           download={props.download}
           onReference={props.onReference}
           onDownload={props.onDownload}
@@ -234,9 +244,16 @@ export function FileTreeView(props: FileTreeViewProps) {
       )}
       <ConfirmDialog
         open={!!props.deleteConfirm}
-        onOpenChange={(open) => !open && props.onCloseDelete()}
+        onOpenChange={(open) => !open && !props.deleting && props.onCloseDelete()}
         title={t("fileTree.contextMenu.delete")}
-        description={props.deleteConfirm?.name ?? ""}
+        description={
+          props.deleteConfirm
+            ? t("fileTree.deleteConfirmation", {
+                names: props.deleteConfirm.name,
+                count: props.deleteConfirm.paths.length,
+              })
+            : ""
+        }
         variant="destructive"
         onConfirm={props.onConfirmDelete}
         confirmLabel={t("fileTree.contextMenu.delete")}
@@ -324,10 +341,22 @@ function FileTreeSections(props: FileTreeViewProps) {
     onUploadClick: props.onUploadClick,
     onFolderUploadClick: props.onFolderUploadClick,
   };
+  const interaction = {
+    selectedPaths: props.selectedPaths,
+    onSelectionChange: props.onSelectionChange,
+    onSelect: props.onSelect,
+    onDragStart: props.onDragStart,
+    onDragEnd: props.onDragEnd,
+    dropTarget: props.dropTarget,
+    canMutate,
+  };
 
   return (
     <div data-slot="file-tree-sections-layout" className="file-tree-sections-grid grid min-h-0 flex-1 overflow-hidden">
-      <section data-upload-target="" className="flex h-full min-h-0 flex-col">
+      <section
+        data-upload-target=""
+        className={cn("flex h-full min-h-0 flex-col", props.dropTarget === "" && "ring-1 ring-inset ring-brand")}
+      >
         <div className={cn(SECTION_HEADING_CLASS, "pe-2.5 text-text-secondary")}>
           <span>{t("fileTree.workspace")}</span>
           <SectionActions targetDir="" {...sectionActions} />
@@ -341,11 +370,10 @@ function FileTreeSections(props: FileTreeViewProps) {
               key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
               data={props.workspaceNodes}
               expandedIds={props.expandedIds}
-              onSelect={props.onSelect}
+              {...interaction}
               onToggle={props.onToggle}
               onRefresh={props.onRefresh}
               onNewFile={props.onNewFile}
-              onDeleteRequest={props.onDeleteRequest}
             />
           ) : (
             <Feedback
@@ -356,7 +384,13 @@ function FileTreeSections(props: FileTreeViewProps) {
           )}
         </div>
       </section>
-      <section data-upload-target="user" className="flex h-full min-h-0 flex-col border-t border-border-subtle">
+      <section
+        data-upload-target="user"
+        className={cn(
+          "flex h-full min-h-0 flex-col border-t border-border-subtle",
+          props.dropTarget === "user" && "ring-1 ring-inset ring-brand",
+        )}
+      >
         <div className={cn(SECTION_HEADING_CLASS, "pe-2.5 text-text-primary")}>
           <span>{t("fileTree.user")}</span>
           <SectionActions targetDir="user" {...sectionActions} />
@@ -370,11 +404,10 @@ function FileTreeSections(props: FileTreeViewProps) {
               key={`user:${props.treeVersion}:${props.normalizedSearch}`}
               data={props.userNodes}
               expandedIds={props.expandedIds}
-              onSelect={props.onSelect}
+              {...interaction}
               onToggle={props.onToggle}
               onRefresh={props.onRefresh}
               onNewFile={props.onNewFile}
-              onDeleteRequest={props.onDeleteRequest}
             />
           ) : (
             <Feedback

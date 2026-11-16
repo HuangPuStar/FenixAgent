@@ -22,6 +22,8 @@ export interface FileTreeContextMenuState {
   y: number;
   path: string;
   isDir: boolean;
+  /** 菜单打开时的整组选择快照，避免异步选择变化扩大删除范围。 */
+  paths?: string[];
 }
 
 export interface FileTreeDownloadState {
@@ -45,6 +47,8 @@ const MENU_ITEM_CLASS =
 
 export interface FileTreeContextMenuProps {
   state: FileTreeContextMenuState;
+  /** 写操作在离线或有在途变更时禁用；只读菜单仍可使用。 */
+  canMutate?: boolean;
   /** 当前下载状态；命中 state.path 时该项显示 loading / 重试文案。 */
   download?: FileTreeDownloadState | null;
   onReference: () => void;
@@ -59,6 +63,7 @@ export interface FileTreeContextMenuProps {
 /** 文件树右键菜单；超出视口时自动贴边，渲染到 body 以避免被面板裁剪。 */
 export function FileTreeContextMenu({
   state,
+  canMutate = true,
   download,
   onReference,
   onDownload,
@@ -73,6 +78,7 @@ export function FileTreeContextMenu({
   const [position, setPosition] = useState({ left: state.x, top: state.y });
   const name = state.path.split("/").pop() ?? state.path;
   const downloading = download?.path === state.path && !download.error;
+  const multiple = (state.paths?.length ?? 1) > 1;
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -84,79 +90,116 @@ export function FileTreeContextMenu({
     });
   }, [state.x, state.y]);
 
+  useLayoutEffect(() => {
+    const origin = document.activeElement;
+    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    return () => {
+      if (origin instanceof HTMLElement && origin.isConnected) origin.focus({ preventScroll: true });
+    };
+  }, []);
+
   return createPortal(
     <div
       ref={menuRef}
       className="file-tree-context-menu-panel fixed z-[1000] flex min-w-38 flex-col gap-0.5 rounded-md border border-border-subtle bg-surface-1 p-1.25"
       role="menu"
+      onKeyDown={(event) => {
+        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const index =
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? items.length - 1
+              : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[index]?.focus();
+      }}
       style={{ left: position.left, top: position.top }}
     >
+      {!multiple && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+            onClick={onReference}
+          >
+            <MessageSquareQuote className="size-3.75 shrink-0" aria-hidden />
+            {t("fileTree.contextMenu.reference")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+            disabled={downloading}
+            onClick={() => onDownload(state.path, state.isDir)}
+          >
+            {downloading ? (
+              <Loader2 className="size-3.75 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Download className="size-3.75 shrink-0" aria-hidden />
+            )}
+            {download?.path === state.path
+              ? download.error
+                ? t("fileTree.retryDownload")
+                : t("fileTree.downloading")
+              : state.isDir
+                ? t("fileTree.downloadZip")
+                : t("fileTree.download")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+            onClick={() => onRenameRequest(state.path, name)}
+            disabled={!canMutate}
+          >
+            <Pencil className="size-3.75 shrink-0" aria-hidden />
+            {t("fileTree.contextMenu.rename")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+            onClick={() => onMoveRequest(state.path)}
+            disabled={!canMutate}
+          >
+            <Move className="size-3.75 shrink-0" aria-hidden />
+            {t("fileTree.contextMenu.move")}
+          </button>
+        </>
+      )}
       <button
         type="button"
-        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
-        onClick={onReference}
-      >
-        <MessageSquareQuote className="size-3.75 shrink-0" aria-hidden />
-        {t("fileTree.contextMenu.reference")}
-      </button>
-      <button
-        type="button"
-        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
-        disabled={downloading}
-        onClick={() => onDownload(state.path, state.isDir)}
-      >
-        {downloading ? (
-          <Loader2 className="size-3.75 shrink-0 animate-spin" aria-hidden />
-        ) : (
-          <Download className="size-3.75 shrink-0" aria-hidden />
-        )}
-        {download?.path === state.path
-          ? download.error
-            ? t("fileTree.retryDownload")
-            : t("fileTree.downloading")
-          : state.isDir
-            ? t("fileTree.downloadZip")
-            : t("fileTree.download")}
-      </button>
-      <button
-        type="button"
-        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
-        onClick={() => onRenameRequest(state.path, name)}
-      >
-        <Pencil className="size-3.75 shrink-0" aria-hidden />
-        {t("fileTree.contextMenu.rename")}
-      </button>
-      <button
-        type="button"
-        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
-        onClick={() => onMoveRequest(state.path)}
-      >
-        <Move className="size-3.75 shrink-0" aria-hidden />
-        {t("fileTree.contextMenu.move")}
-      </button>
-      <button
-        type="button"
+        role="menuitem"
         className={cn(MENU_ITEM_CLASS, "text-destructive")}
         onClick={() => onDeleteRequest(state.path, name)}
+        disabled={!canMutate}
       >
         <Trash2 className="size-3.75 shrink-0" aria-hidden />
         {t("fileTree.contextMenu.delete")}
       </button>
-      {state.isDir && (
+      {state.isDir && !multiple && (
         <button
           type="button"
+          role="menuitem"
           className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
           onClick={() => onNewFolder(state.path)}
+          disabled={!canMutate}
         >
           <FolderPlus className="size-3.75 shrink-0" aria-hidden />
           {t("fileTree.contextMenu.newFolder")}
         </button>
       )}
-      {state.isDir && (
+      {state.isDir && !multiple && (
         <button
           type="button"
+          role="menuitem"
           className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
           onClick={() => onNewFile(state.path)}
+          disabled={!canMutate}
         >
           <FilePlus2 className="size-3.75 shrink-0" aria-hidden />
           {t("fileTree.newFile")}

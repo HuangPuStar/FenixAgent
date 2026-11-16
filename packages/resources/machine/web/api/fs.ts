@@ -348,11 +348,12 @@ export const fsApi = {
    * @param subpath - 文件路径（相对于 workspace 根）
    * @param content - 要写入的文本内容
    */
-  writeFile: (id: string, subpath: string, content: string) =>
+  writeFile: (id: string, subpath: string, content: string, signal?: AbortSignal) =>
     request<FileWriteResult>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
       method: "PUT",
       params: { id },
       body: { content },
+      signal,
       timeout: WRITE_TIMEOUT_MS,
       opId: randomUUID(),
     }),
@@ -364,11 +365,12 @@ export const fsApi = {
    * @param oldPath - 原路径
    * @param newPath - 新路径（完整路径，非仅文件名）
    */
-  rename: (id: string, oldPath: string, newPath: string) =>
+  rename: (id: string, oldPath: string, newPath: string, signal?: AbortSignal) =>
     request<RenameResponse>("/web/environments/:id/fs/rename", {
       method: "POST",
       params: { id },
       body: { oldPath, newPath },
+      signal,
       timeout: WRITE_TIMEOUT_MS,
       opId: randomUUID(),
     }),
@@ -379,11 +381,12 @@ export const fsApi = {
    * @param id - 环境 ID
    * @param path - 要创建的目录路径（相对于 workspace 根）
    */
-  mkdir: (id: string, path: string) =>
+  mkdir: (id: string, path: string, signal?: AbortSignal) =>
     request<MkdirResponse>("/web/environments/:id/fs/mkdir", {
       method: "POST",
       params: { id },
       body: { path },
+      signal,
       timeout: WRITE_TIMEOUT_MS,
       opId: randomUUID(),
     }),
@@ -394,11 +397,12 @@ export const fsApi = {
    * @param id - 环境 ID
    * @param paths - 待删除的文件路径数组
    */
-  batchDelete: (id: string, paths: string[]) =>
+  batchDelete: (id: string, paths: string[], signal?: AbortSignal) =>
     request<BatchDeleteResponse>("/web/environments/:id/fs/batch", {
       method: "DELETE",
       params: { id },
       body: { paths },
+      signal,
       timeout: WRITE_TIMEOUT_MS,
       opId: randomUUID(),
     }),

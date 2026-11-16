@@ -1,49 +1,27 @@
-import { FileTreeInputDialog } from "@fenix/ui-components/components/file-tree-input-dialog";
 import {
   collectDirectoryPaths,
   filterFileTree,
-  findFileNode,
+  getVisibleFileTreePaths,
   type ParsedFileNode,
   parsePathsToTree,
   splitFileTreeSections,
 } from "@fenix/ui-components/components/file-tree-model";
 import { FileTreeView } from "@fenix/ui-components/components/file-tree-view";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "../api/fs";
-import { useDragCounter } from "../hooks/use-drag-counter";
 import { useFileTreeEvents } from "../hooks/use-file-tree-events";
+import { useFileTreeInputDialog } from "../hooks/use-file-tree-input-dialog";
+import { useFileTreeInteractions } from "../hooks/use-file-tree-interactions";
+import { useFileTreeOperations } from "../hooks/use-file-tree-operations";
 import { useFileUploads } from "../hooks/use-file-uploads";
 import { MACHINE_NS } from "../i18n/namespace";
-import { getFileOperationErrorMessage } from "../lib/file-operation-errors";
+import type { WorkspaceFilesChange } from "../lib/workspace-file-operations";
 
-const MAX_FILE_NAME_BYTES = 255;
-/** 浏览器侧按 UTF-8 字节校验 basename，与服务端文件系统 NAME_MAX 契约一致。 */
-export function getFileTreeNameByteLength(value: string) {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-export function isValidFileTreeBasename(value: string) {
-  const trimmed = value.trim();
-  return (
-    !!trimmed &&
-    !trimmed.includes("\0") &&
-    !trimmed.includes("/") &&
-    trimmed !== "." &&
-    trimmed !== ".." &&
-    getFileTreeNameByteLength(value) <= MAX_FILE_NAME_BYTES
-  );
-}
-export function isValidFileTreeMovePath(value: string) {
-  const trimmed = value.trim();
-  return !!trimmed && !trimmed.includes("\0");
-}
-
-/** 上传落点所在分区：`user` 作用域（`user` 或 `user/**`）归「我的文件」，其余归工作区。 */
+/** 上传落点在 user 作用域时归「我的文件」，其余归工作区。 */
 export function resolveUploadSection(targetDir: string): "workspace" | "user" {
   const normalized = targetDir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   return normalized === "user" || normalized.startsWith("user/") ? "user" : "workspace";
@@ -53,267 +31,113 @@ interface FileTreeTabProps {
   envId: string | null;
   onPreviewFile: (path: string) => void;
   onReferenceFile: (path: string, name: string) => void;
-  /** 追加到树的面板标题栏的控件（本包用 `FileTreeLayoutToggle` 放布局切换）；视图侧由调用方决定内容。 */
+  onFilesChanged: (change: WorkspaceFilesChange) => void;
   headerActions?: ReactNode;
 }
 
-/** 文件树容器：编排下载、上传、重试与文件变更订阅，视图由公共组件承载。 */
-export function FileTreeTab({ envId, onPreviewFile, onReferenceFile, headerActions }: FileTreeTabProps) {
+/** 文件树装配：读取与事件、上传、交互和写操作分别由各自 hook 管理。 */
+export function FileTreeTab({
+  envId,
+  onPreviewFile,
+  onReferenceFile,
+  onFilesChanged,
+  headerActions,
+}: FileTreeTabProps) {
   const { t } = useTranslation(MACHINE_NS);
-  const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const treeDataRef = useRef<ParsedFileNode[]>([]);
   const [treeVersion, setTreeVersion] = useState(0);
-  const [, setSelectedDir] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
-  const expandedIdsRef = useRef<Set<string>>(new Set());
-  const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
-  const [inputDialog, setInputDialog] = useState<{
-    kind: "rename" | "move" | "newFile" | "newFolder";
-    path: string;
-    value: string;
-    error?: string;
-  } | null>(null);
-  // 加载失败时保留旧树并展示过期横幅（文件服务不可用 ≠ 空目录，docs/arch/12-files.md §7.3）
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
+  const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
+  const [searchExpandedPaths, setSearchExpandedPaths] = useState<string[]>([]);
   const [stale, setStale] = useState(false);
   const [download, setDownload] = useState<{ path: string; isDir: boolean; error: boolean } | null>(null);
   const downloadControllerRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    // 环境变化时取消旧连接；读取 envId 保证 effect 与当前环境生命周期绑定。
-    if (envId === null && downloadControllerRef.current === null) return;
-    downloadControllerRef.current?.abort();
-    downloadControllerRef.current = null;
-    setDownload(null);
-  }, [envId]);
-
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
-  // 用最新树数据替换当前树：加载/重校验共用，成功后同时清除过期横幅
   const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>) => {
-    // 按文件修改时间倒序排列（最新上传的在前）
     const sorted = [...paths].sort((a, b) => (mtimes?.[b] ?? 0) - (mtimes?.[a] ?? 0));
     treeDataRef.current = parsePathsToTree(sorted);
+    const search = searchQueryRef.current.trim().toLocaleLowerCase();
+    if (search) setSearchExpandedPaths(collectDirectoryPaths(filterFileTree(treeDataRef.current, search)));
     setStale(false);
-    setTreeVersion((v) => v + 1);
+    setTreeVersion((version) => version + 1);
   }, []);
 
-  // ── 文件树加载 ──
   const { loading, refresh: refreshTree } = useRequest(() => unwrap(fsApi.tree(envId!)), {
     ready: !!envId,
-    onSuccess: (data) => {
-      applyTree(data?.paths ?? [], data?.mtimes);
-    },
-    onError: (err) => {
-      console.error("Failed to load file tree:", err);
-      // 失败不清空旧树：断连/降级期间继续展示上次数据 + 过期横幅，禁止渲染为空目录
+    refreshDeps: [envId],
+    onSuccess: (data) => applyTree(data?.paths ?? [], data?.mtimes),
+    onError: (error) => {
+      console.error("Failed to load file tree:", error);
       setStale(true);
     },
   });
+  const handleEventsUnavailable = useCallback((error: unknown) => {
+    console.error("Failed to revalidate file tree:", error);
+    setStale(true);
+  }, []);
+  useFileTreeEvents({ envId, applyTree, onUnavailable: handleEventsUnavailable });
 
-  const handleUploadError = useCallback((message: string) => toast.error(message), []);
   const uploadTargetRef = useRef<string | undefined>(undefined);
-  const {
-    fileInputRef,
-    folderInputRef,
-    uploading,
-    uploadProgress,
-    uploadDroppedFiles,
-    handleFileInputChange,
-    handleFolderInputChange,
-  } = useFileUploads({
+  const handleUploadError = useCallback((message: string) => toast.error(message), []);
+  const uploads = useFileUploads({
     envId,
     targetDir: undefined,
     getTargetDir: () => uploadTargetRef.current,
     onUploaded: refreshTree,
     onError: handleUploadError,
   });
-
-  // 重命名 / 移动 / 新建目录 / 新建文件共用的收尾：关掉输入弹窗并重取树。
-  // 四处逐字相同（此前各写一份 `() => { setInputDialog(null); refreshTree(); }`），只有失败分支不同。
-  const closeInputDialogAndRefresh = useCallback(() => {
-    setInputDialog(null);
-    refreshTree();
-  }, [refreshTree]);
-
-  // ── 重命名 ──
-  const { run: runRename, loading: renaming } = useRequest(
-    (oldPath: string, newName: string) => {
-      const parentDir = oldPath.includes("/") ? oldPath.substring(0, oldPath.lastIndexOf("/")) : "";
-      const newPath = parentDir ? `${parentDir}/${newName}` : newName;
-      return unwrap(fsApi.rename(envId!, oldPath, newPath));
-    },
-    {
-      manual: true,
-      onSuccess: closeInputDialogAndRefresh,
-      onError: (err) => {
-        console.error("Rename failed:", err);
-        toast.error(getFileOperationErrorMessage(err, t, t("fileTree.renameFailed")));
-      },
-    },
-  );
-
-  // 移动使用完整目标路径；路径合法性、workspace 越界与 symlink 防护仍由服务端统一校验。
-  const { run: runMove, loading: moving } = useRequest(
-    (oldPath: string, newPath: string) => unwrap(fsApi.rename(envId!, oldPath, newPath)),
-    {
-      manual: true,
-      onSuccess: closeInputDialogAndRefresh,
-      onError: (err) => {
-        console.error("Move failed:", err);
-        toast.error(getFileOperationErrorMessage(err, t, t("fileTree.moveFailed")));
-      },
-    },
-  );
-
-  // ── 删除 ──
-  const { run: runDelete, loading: deleting } = useRequest(
-    (path: string) => unwrap(fsApi.batchDelete(envId!, [path])),
-    {
-      manual: true,
-      onSuccess: (data) => {
-        const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
-        if (failed && failed.length > 0) {
-          toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
-          return;
-        }
-        setDeleteConfirm(null);
-        refreshTree();
-      },
-      onError: (err) => {
-        console.error("Delete failed:", err);
-        // 与重命名 / 移动同一口径：服务端信封原文优先上屏，取不到原因才退回字典文案。
-        toast.error(getFileOperationErrorMessage(err, t, t("fileTree.contextMenu.delete")));
-      },
-    },
-  );
-
-  // ── 创建目录 ──
-  const { run: runMkdir, loading: makingDirectory } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
-    manual: true,
-    onSuccess: closeInputDialogAndRefresh,
-    onError: (err) => {
-      console.error("Mkdir failed:", err);
-      toast.error(err.message || t("fileTree.mkdirFailed"));
-    },
-  });
-
-  // ── 创建新文件 ──
-  const { run: runNewFile, loading: makingFile } = useRequest(
-    (path: string) => unwrap(fsApi.writeFile(envId!, path, "")),
-    {
-      manual: true,
-      onSuccess: closeInputDialogAndRefresh,
-      onError: (err) => {
-        console.error("New file failed:", err);
-        toast.error(err.message || t("fileTree.newFileFailed"));
-      },
-    },
-  );
-
-  const handleEventsUnavailable = useCallback((error: unknown) => {
-    console.error("Failed to revalidate file tree:", error);
-    setStale(true);
-  }, []);
-
-  useFileTreeEvents({ envId, applyTree, onUnavailable: handleEventsUnavailable });
-
-  // 从缓存的 ParsedNode 树中查找指定路径的子节点
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const visibleTree = filterFileTree(treeDataRef.current, normalizedSearch);
-  const visibleSections = splitFileTreeSections(visibleTree);
+  const sections = splitFileTreeSections(visibleTree);
+  const expandedIds = normalizedSearch ? searchExpandedPaths : expandedPaths;
+  const visiblePaths = [
+    ...getVisibleFileTreePaths(sections.workspace, expandedIds),
+    ...getVisibleFileTreePaths(sections.user, expandedIds),
+  ];
 
-  // treeVersion 变化时 Arborist 重新挂载，通过 initialOpenState 恢复展开状态
-  const handleToggle = useCallback((nodeId: string, expanded: boolean) => {
-    if (expanded) {
-      expandedIdsRef.current.add(nodeId);
-      // 展开目录时同步更新上传目标，使点击 chevron 和点击行展开行为一致
-      const parsed = findFileNode(treeDataRef.current, nodeId);
-      if (parsed?.isDir) {
-        setSelectedDir(nodeId);
-      }
-    } else {
-      expandedIdsRef.current.delete(nodeId);
-    }
-  }, []);
+  const operations = useFileTreeOperations({
+    envId,
+    enabled: !stale,
+    getTree: () => treeDataRef.current,
+    onChanged: onFilesChanged,
+    onSelectionChange: (paths) => interactions.setSelectedPaths(paths),
+    refreshTree,
+  });
+  const interactions = useFileTreeInteractions({
+    envId,
+    searchQuery,
+    treeVersion,
+    getTree: () => treeDataRef.current,
+    visiblePaths,
+    enabled: !!envId && !stale && !operations.busy,
+    onPreviewFile,
+    moveToDirectory: operations.moveToDirectory,
+    uploadDroppedFiles: uploads.uploadDroppedFiles,
+  });
+  const input = useFileTreeInputDialog(operations, interactions.closeContextMenu);
 
-  /** 单击：目录选中，可预览文件触发预览，二进制文件忽略 */
-  const handleSelect = useCallback(
-    (parsed: ParsedFileNode) => {
-      const nodeId = parsed.path;
-      if (parsed.isDir) {
-        setSelectedDir(nodeId);
-      } else {
-        const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
-        setSelectedDir(parentDir || undefined);
-        // office/binary 忽略分类检查，统一交给 @open-file-viewer 插件链处理
-        onPreviewFile(nodeId);
-      }
-    },
-    [onPreviewFile],
-  );
+  function handleSearchChange(query: string) {
+    setSearchQuery(query);
+    setSearchExpandedPaths(
+      collectDirectoryPaths(filterFileTree(treeDataRef.current, query.trim().toLocaleLowerCase())),
+    );
+  }
+  function handleToggle(path: string, expanded: boolean) {
+    const update = (paths: string[]) =>
+      expanded ? (paths.includes(path) ? paths : [...paths, path]) : paths.filter((item) => item !== path);
+    if (normalizedSearch) setSearchExpandedPaths(update);
+    else setExpandedPaths(update);
+  }
+  function handleReference() {
+    const menu = interactions.contextMenu;
+    if (!menu) return;
+    onReferenceFile(menu.path, menu.path.split("/").pop() ?? menu.path);
+    interactions.closeContextMenu();
+  }
 
-  // 右键菜单
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    path: string;
-    isDir: boolean;
-  } | null>(null);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const target = (e.target as HTMLElement).closest("[data-tree-item]");
-    if (!target) return;
-    const nodeEl = target as HTMLElement;
-    const nodeId = nodeEl.getAttribute("data-node-id");
-    if (!nodeId) return;
-    const node = findFileNode(treeDataRef.current, nodeId);
-    setContextMenu({ x: e.clientX, y: e.clientY, path: nodeId, isDir: node?.isDir ?? false });
-  }, []);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [contextMenu]);
-
-  const handleReference = useCallback(() => {
-    if (!contextMenu) return;
-    const name = contextMenu.path.split("/").pop() || contextMenu.path;
-    onReferenceFile(contextMenu.path, name);
-    setContextMenu(null);
-  }, [contextMenu, onReferenceFile]);
-
-  // 拖拽上传：进入/离开计数与遮罩态由同包 `hooks/use-drag-counter` 统一维护
-  const { isDragging: dragOver, handleDragEnter, handleDragOver, handleDragLeave, resetDragCounter } = useDragCounter();
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent, targetDir?: string) => {
-      e.preventDefault();
-      resetDragCounter();
-      if (!e.dataTransfer) return;
-      void uploadDroppedFiles(e.dataTransfer, targetDir ?? "");
-    },
-    [resetDragCounter, uploadDroppedFiles],
-  );
-
-  const handleUploadClick = useCallback(
-    (targetDir?: string) => {
-      uploadTargetRef.current = targetDir;
-      fileInputRef.current?.click();
-    },
-    [fileInputRef],
-  );
-  const handleFolderUploadClick = useCallback(
-    (targetDir?: string) => {
-      uploadTargetRef.current = targetDir;
-      folderInputRef.current?.click();
-    },
-    [folderInputRef],
-  );
-
-  // 下载由 API 层统一构造 URL 和解析错误；新请求会取消旧请求，卸载时也会释放连接。
   const handleDownload = useCallback(
     async (nodePath: string, isDir: boolean) => {
       if (!envId) return;
@@ -323,13 +147,14 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile, headerActio
       setDownload({ path: nodePath, isDir, error: false });
       try {
         const blob = await downloadWorkspacePath(envId, nodePath, isDir, controller.signal);
+        if (controller.signal.aborted) return;
         const blobUrl = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         try {
           anchor.href = blobUrl;
           anchor.download = isDir
-            ? `${nodePath.split("/").filter(Boolean).pop() || "download"}.zip`
-            : nodePath.split("/").pop() || "file";
+            ? `${nodePath.split("/").filter(Boolean).pop() ?? "download"}.zip`
+            : (nodePath.split("/").pop() ?? "file");
           document.body.appendChild(anchor);
           anchor.click();
         } finally {
@@ -350,143 +175,75 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile, headerActio
   );
 
   const isEmpty = !loading && treeDataRef.current.length === 0;
-  const hasSearchResults = visibleSections.workspace.length > 0 || visibleSections.user.length > 0;
-  const expandedIds = normalizedSearch ? collectDirectoryPaths(visibleTree) : [...expandedIdsRef.current];
-  const showTree = !!envId && !(isEmpty && !stale);
-
-  const openInputDialog = useCallback((kind: "rename" | "move" | "newFile" | "newFolder", path: string, value = "") => {
-    setInputDialog({ kind, path, value });
-    setContextMenu(null);
-  }, []);
-
-  // 输入弹窗的四类标题/描述与三类错误文案都写成逐条带字面量取键的 `t` 调用，不用模板串拼键：本包
-  // i18n 守卫（`web/__tests__/machine-i18n.test.ts`）按字面量收集消费点，模板键会让整组字典项被判成死键。
-  // 两张表用 `useMemo` 而不是每次渲染新建：`handleInputSubmit` 的依赖数组引用它们，内联对象会让该回调
-  // 的身份逐次渲染变化（迁入前依赖的是稳定的 `t`），弹窗一旦被 memo 化或挂进 effect 依赖就会反复失效。
-  const dialogText = useMemo(
-    () =>
-      ({
-        rename: { title: t("fileTree.dialog.renameTitle"), description: t("fileTree.dialog.renameDescription") },
-        move: { title: t("fileTree.dialog.moveTitle"), description: t("fileTree.dialog.moveDescription") },
-        newFile: { title: t("fileTree.dialog.newFileTitle"), description: t("fileTree.dialog.newFileDescription") },
-        newFolder: {
-          title: t("fileTree.dialog.newFolderTitle"),
-          description: t("fileTree.dialog.newFolderDescription"),
-        },
-      }) as const,
-    [t],
-  );
-  const dialogErrorText = useMemo(
-    () =>
-      ({
-        nameTooLong: t("fileTree.dialog.nameTooLong"),
-        invalidName: t("fileTree.dialog.invalidName"),
-        invalidPath: t("fileTree.dialog.invalidPath"),
-      }) as const,
-    [t],
-  );
-
-  const handleInputSubmit = useCallback(() => {
-    if (!inputDialog) return;
-    const value = inputDialog.value;
-    const isBasename = inputDialog.kind !== "move";
-    const invalid =
-      value.trim().length === 0 || (isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value));
-    if (invalid) {
-      const errorKey =
-        isBasename && getFileTreeNameByteLength(value) > MAX_FILE_NAME_BYTES
-          ? "nameTooLong"
-          : isBasename
-            ? "invalidName"
-            : "invalidPath";
-      setInputDialog((current) => (current ? { ...current, error: dialogErrorText[errorKey] } : null));
-      return;
-    }
-
-    if (inputDialog.kind === "rename") runRename(inputDialog.path, value);
-    else if (inputDialog.kind === "move") runMove(inputDialog.path, value);
-    else {
-      // 分区工具条以空父目录表示工作区根；拼成 `/name` 会被服务端当作绝对路径拒绝。
-      const path = inputDialog.path ? `${inputDialog.path}/${value}` : value;
-      if (inputDialog.kind === "newFile") runNewFile(path);
-      else runMkdir(path);
-    }
-  }, [inputDialog, runMkdir, runMove, runNewFile, runRename, dialogErrorText]);
-
-  const dialogKind = inputDialog?.kind;
-  const dialogSubmitting = renaming || moving || makingFile || makingDirectory;
-  const dialogTitle = dialogKind ? dialogText[dialogKind].title : "";
-  const dialogDescription = dialogKind ? dialogText[dialogKind].description : "";
-
   return (
     <>
       <FileTreeView
-        canMutate={!!envId}
+        canMutate={!!envId && !stale && !operations.busy}
         headerActions={headerActions}
         loading={loading && treeDataRef.current.length === 0}
         stale={stale}
-        uploading={uploading}
-        uploadProgress={uploadProgress?.percent}
-        uploadSaving={uploadProgress?.saving}
-        uploadSection={uploadProgress ? resolveUploadSection(uploadProgress.targetDir) : undefined}
-        dragOver={dragOver}
+        uploading={uploads.uploading}
+        uploadProgress={uploads.uploadProgress?.percent}
+        uploadSaving={uploads.uploadProgress?.saving}
+        uploadSection={uploads.uploadProgress ? resolveUploadSection(uploads.uploadProgress.targetDir) : undefined}
+        dragOver={interactions.dragOver}
+        dropTarget={interactions.dropTarget}
+        selectedPaths={interactions.selectedPaths}
         searchQuery={searchQuery}
         normalizedSearch={normalizedSearch}
         treeVersion={treeVersion}
-        showTree={showTree}
-        hasSearchResults={hasSearchResults}
-        workspaceHasNodes={visibleSections.workspace.length > 0}
-        userHasNodes={visibleSections.user.length > 0}
+        showTree={!!envId && !(isEmpty && !stale)}
+        hasSearchResults={sections.workspace.length > 0 || sections.user.length > 0}
+        workspaceHasNodes={sections.workspace.length > 0}
+        userHasNodes={sections.user.length > 0}
         expandedIds={expandedIds}
-        workspaceNodes={visibleSections.workspace}
-        userNodes={visibleSections.user}
-        contextMenu={contextMenu}
-        deleteConfirm={deleteConfirm}
-        deleting={deleting}
+        workspaceNodes={sections.workspace}
+        userNodes={sections.user}
+        contextMenu={interactions.contextMenu}
+        deleteConfirm={operations.deleteConfirm}
+        deleting={operations.deleting}
         download={download}
-        fileInputRef={fileInputRef}
-        folderInputRef={folderInputRef}
-        onSelect={handleSelect}
+        fileInputRef={uploads.fileInputRef}
+        folderInputRef={uploads.folderInputRef}
+        onSelect={interactions.handleSelect}
+        onSelectionChange={interactions.setSelectedPaths}
+        onClearSelection={interactions.clearSelection}
         onToggle={handleToggle}
-        onSearchChange={setSearchQuery}
+        onSearchChange={handleSearchChange}
         onRefresh={refreshTree}
-        onUploadClick={handleUploadClick}
-        onFolderUploadClick={handleFolderUploadClick}
-        onFileInputChange={handleFileInputChange}
-        onFolderInputChange={handleFolderInputChange}
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onContextMenu={handleContextMenu}
+        onUploadClick={(target) => {
+          uploadTargetRef.current = target;
+          uploads.fileInputRef.current?.click();
+        }}
+        onFolderUploadClick={(target) => {
+          uploadTargetRef.current = target;
+          uploads.folderInputRef.current?.click();
+        }}
+        onFileInputChange={uploads.handleFileInputChange}
+        onFolderInputChange={uploads.handleFolderInputChange}
+        onDragStart={interactions.handleDragStart}
+        onDragEnd={interactions.handleDragEnd}
+        onDragOver={interactions.handleDragOver}
+        onDragEnter={interactions.handleDragEnter}
+        onDragLeave={interactions.handleDragLeave}
+        onDrop={interactions.handleDrop}
+        onContextMenu={interactions.handleContextMenu}
         onReference={handleReference}
         onDownload={handleDownload}
-        onRenameRequest={(path, name) => openInputDialog("rename", path, name)}
-        onMoveRequest={(path) => openInputDialog("move", path, path)}
-        onDeleteRequest={(path, name) => {
-          setDeleteConfirm({ path, name });
-          setContextMenu(null);
+        onRenameRequest={(path, name) => input.open("rename", path, name)}
+        onMoveRequest={(path) => input.open("move", path, path)}
+        onDeleteRequest={(path) => {
+          operations.requestDelete(interactions.contextMenu?.paths ?? [path]);
+          interactions.closeContextMenu();
         }}
-        onNewFile={(path) => openInputDialog("newFile", path)}
-        onNewFolder={(path) => openInputDialog("newFolder", path)}
-        onCloseDelete={() => setDeleteConfirm(null)}
-        onConfirmDelete={() => deleteConfirm && runDelete(deleteConfirm.path)}
+        onNewFile={(path) => input.open("newFile", path)}
+        onNewFolder={(path) => input.open("newFolder", path)}
+        onCloseDelete={operations.closeDelete}
+        onConfirmDelete={() => {
+          void operations.confirmDelete();
+        }}
       />
-      <FileTreeInputDialog
-        open={inputDialog !== null}
-        title={dialogTitle}
-        description={dialogDescription}
-        value={inputDialog?.value ?? ""}
-        error={inputDialog?.error}
-        submitting={dialogSubmitting}
-        confirmLabel={t("fileTree.dialog.confirm")}
-        cancelLabel={tUi("confirmDialog.cancel")}
-        onValueChange={(value) =>
-          setInputDialog((current) => (current ? { ...current, value, error: undefined } : null))
-        }
-        onOpenChange={(open) => !open && !dialogSubmitting && setInputDialog(null)}
-        onSubmit={handleInputSubmit}
-      />
+      {input.dialog}
     </>
   );
 }
