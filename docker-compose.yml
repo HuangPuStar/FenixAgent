@@ -145,6 +145,7 @@ services:
             # GOTENBERG_URL 与 RAGFLOW_API_URL 同属 knowledge 的文档链路（先转 PDF、再解析），一并写容器内地址：
             # 若留给 .env 的宿主默认值 http://127.0.0.1:3200，容器里的 127.0.0.1 会指向 rcs 自己。
             RAGFLOW_API_URL: http://ragflow:9380
+            KNOWLEDGE_RUNTIME_AUTH_MODE: ${KNOWLEDGE_RUNTIME_AUTH_MODE:-owner}
             GOTENBERG_URL: http://gotenberg:3000
             HINDSIGHT_MCP_URL: http://hindsight:8888
             RCS_SANDBOX_CLUSTER_URL: http://opensandbox-cluster:8080

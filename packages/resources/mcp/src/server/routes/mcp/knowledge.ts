@@ -2,6 +2,7 @@ import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
 import {
   getKnowledgeGraphForAgent,
+  KnowledgeRuntimeAccessError,
   readKnowledgeResourceForAgent,
   searchKnowledgeDetailedForAgent,
 } from "@fenix/resource-knowledge/server";
@@ -17,11 +18,44 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
+const KNOWLEDGE_ACCESS_ERROR_MESSAGES = {
+  KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED: "知识运行时缺少用户身份",
+  KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED: "知识运行时缺少组织身份",
+  KNOWLEDGE_ORGANIZATION_MISMATCH: "知识库不在当前组织内",
+  KNOWLEDGE_BINDING_REQUIRED: "知识资源不属于当前 Agent 绑定的知识库",
+} as const;
+
+/** 把授权拒绝映射为稳定的工具错误，不向 Agent 暴露内部知识库 ID 或其他敏感上下文。 */
+function mapKnowledgeAccessError(error: unknown) {
+  if (!(error instanceof KnowledgeRuntimeAccessError)) throw error;
+  const payload = {
+    code: error.code,
+    message: KNOWLEDGE_ACCESS_ERROR_MESSAGES[error.code],
+  };
+  return {
+    isError: true as const,
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+    structuredContent: payload,
+  };
+}
+
+async function runKnowledgeTool<T>(operation: () => Promise<T>) {
+  try {
+    return await operation();
+  } catch (error) {
+    return mapKnowledgeAccessError(error);
+  }
+}
+
 /**
- * 只接 Agent 标识：知识库的授权范围就是 Agent 的绑定，环境所属的调用方身份不参与判定
- * （跨组织运行共享 Agent 时两者天生不同）。
+ * 透传 Environment 的运行时身份；是否使用它由 Knowledge 模块的授权模式决定。
+ * 默认 owner 模式仍可运行跨组织共享 Agent，trusted-delegate 才强制组织交集。
  */
-function createKnowledgeMcpServer(environment: { agentConfigId: string | null }) {
+function createKnowledgeMcpServer(environment: {
+  agentConfigId: string | null;
+  userId: string | null;
+  organizationId: string | null;
+}) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
@@ -83,27 +117,31 @@ function createKnowledgeMcpServer(environment: { agentConfigId: string | null })
       },
     },
     async (params) => {
-      if (!environment.agentConfigId) {
-        throw new Error("Environment agent is not configured");
-      }
-      const results = await searchKnowledgeDetailedForAgent({
-        agentConfigId: environment.agentConfigId,
-        query: params.query,
-        topK: params.topK ?? 5,
-        similarityThreshold: params.similarityThreshold,
-        vectorSimilarityWeight: params.vectorSimilarityWeight,
-        rerankId: params.rerankId,
-        keyword: params.keyword,
-        useKg: params.useKg,
-        crossLanguages: params.crossLanguages,
-        metaDataFilter: params.metaDataFilter as Parameters<
-          typeof searchKnowledgeDetailedForAgent
-        >[0]["metaDataFilter"],
+      return runKnowledgeTool(async () => {
+        if (!environment.agentConfigId) {
+          throw new Error("Environment agent is not configured");
+        }
+        const results = await searchKnowledgeDetailedForAgent({
+          agentConfigId: environment.agentConfigId,
+          query: params.query,
+          topK: params.topK ?? 5,
+          userId: environment.userId,
+          organizationId: environment.organizationId,
+          similarityThreshold: params.similarityThreshold,
+          vectorSimilarityWeight: params.vectorSimilarityWeight,
+          rerankId: params.rerankId,
+          keyword: params.keyword,
+          useKg: params.useKg,
+          crossLanguages: params.crossLanguages,
+          metaDataFilter: params.metaDataFilter as Parameters<
+            typeof searchKnowledgeDetailedForAgent
+          >[0]["metaDataFilter"],
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ results }) }],
+          structuredContent: { results },
+        };
       });
-      return {
-        content: [{ type: "text", text: JSON.stringify({ results }) }],
-        structuredContent: { results },
-      };
     },
   );
 
@@ -117,32 +155,36 @@ function createKnowledgeMcpServer(environment: { agentConfigId: string | null })
       },
     },
     async ({ resourceId }) => {
-      if (!environment.agentConfigId) {
-        throw new Error("Environment agent is not configured");
-      }
-      const result = await readKnowledgeResourceForAgent({
-        agentConfigId: environment.agentConfigId,
-        resourceId,
-      });
-      // 内容为空时给出明确提示，帮助 agent 判断下一步操作
-      if (!result.content && result.chunkCount === 0) {
+      return runKnowledgeTool(async () => {
+        if (!environment.agentConfigId) {
+          throw new Error("Environment agent is not configured");
+        }
+        const result = await readKnowledgeResourceForAgent({
+          agentConfigId: environment.agentConfigId,
+          resourceId,
+          userId: environment.userId,
+          organizationId: environment.organizationId,
+        });
+        // 内容为空时给出明确提示，帮助 agent 判断下一步操作
+        if (!result.content && result.chunkCount === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  ...result,
+                  _hint: "该文档尚未解析（chunkCount=0）。请等待解析完成，或使用文档的 reparse 功能触发重新解析。",
+                }),
+              },
+            ],
+            structuredContent: result as unknown as Record<string, unknown>,
+          };
+        }
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                ...result,
-                _hint: "该文档尚未解析（chunkCount=0）。请等待解析完成，或使用文档的 reparse 功能触发重新解析。",
-              }),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result as unknown as Record<string, unknown>,
         };
-      }
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result as unknown as Record<string, unknown>,
-      };
+      });
     },
   );
 
@@ -161,22 +203,26 @@ function createKnowledgeMcpServer(environment: { agentConfigId: string | null })
       },
     },
     async ({ knowledgeBaseId }) => {
-      if (!environment.agentConfigId) {
-        throw new Error("Environment agent is not configured");
-      }
-      const result = await getKnowledgeGraphForAgent({
-        agentConfigId: environment.agentConfigId,
-        knowledgeBaseId,
-      });
-      if (!result) {
+      return runKnowledgeTool(async () => {
+        if (!environment.agentConfigId) {
+          throw new Error("Environment agent is not configured");
+        }
+        const result = await getKnowledgeGraphForAgent({
+          agentConfigId: environment.agentConfigId,
+          knowledgeBaseId,
+          userId: environment.userId,
+          organizationId: environment.organizationId,
+        });
+        if (!result) {
+          return {
+            content: [{ type: "text" as const, text: "未找到知识图谱数据。请先在知识库中生成知识图谱。" }],
+          };
+        }
         return {
-          content: [{ type: "text", text: "未找到知识图谱数据。请先在知识库中生成知识图谱。" }],
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result as unknown as Record<string, unknown>,
         };
-      }
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result as unknown as Record<string, unknown>,
-      };
+      });
     },
   );
 

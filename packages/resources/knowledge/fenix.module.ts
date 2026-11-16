@@ -42,11 +42,12 @@ import { z } from "zod/v4";
  * `lucide-react` / React 载荷只存在于 `@fenix/resource-knowledge/web/contribution` 导出的值里，不会沿
  * registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
  *
- * 声明 `envDefinitions`（§1.7 路线 A）：RAGFlow 三键与 Gotenberg 地址合起来就是 `KnowledgeModuleConfig`
- * 的完整部署面（`src/server/config.ts` 只认这四个字段），宿主既不第二处读取、也没有别的模块消费，因此
- * 唯一 owner 是本模块——这三个宿主键（`RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `RAGFLOW_REQUEST_TIMEOUT_MS`）
- * 的宿主 `apps/server/src/env.ts` 同名行必须**同批**删除，否则 `assertNoHostKeyOverride` 会在启动期抛
- * 「同一变量只能有一个声明处」。没有留在宿主的兄弟键：本模块的部署面就是这四个，也不与多模块共享键
+ * 声明 `envDefinitions`（§1.7 路线 A）：RAGFlow 三键、Gotenberg 地址与运行时授权模式合起来就是
+ * `KnowledgeModuleConfig` 的完整部署面（`src/server/config.ts` 只认这五个字段），宿主既不第二处读取、
+ * 也没有别的模块消费，因此
+ * 唯一 owner 是本模块——这些部署键的宿主 `apps/server/src/env.ts` 同名行必须**同批**删除，否则
+ * `assertNoHostKeyOverride` 会在启动期抛「同一变量只能有一个声明处」。没有留在宿主的兄弟键：本模块的
+ * 部署面就是这五个，也不与多模块共享键
  * （`DATABASE_URL`、`RCS_REDIS_*` 一类）重叠。声明只承担启动期校验与汇总，值仍由宿主
  * `bootstrap/module-configs.ts` 手工投影成模块配置（路线 A 的窄口径：不引入通用拆分器、不改模块 config.ts 形态）。
  *
@@ -139,6 +140,18 @@ export const moduleManifest = {
       description:
         "RAGFlow 单次 HTTP 请求超时（毫秒，正整数）。装配期由宿主投影为模块配置 ragflowRequestTimeoutMs。" +
         "字符串数字经 z.coerce 归一；非正整数在启动期即被拒绝。",
+    },
+    {
+      moduleId: "knowledge",
+      key: "KNOWLEDGE_RUNTIME_AUTH_MODE",
+      schema: z.enum(["owner", "trusted-delegate"]).default("owner"),
+      defaultValue: "owner",
+      secret: false,
+      restartRequired: true,
+      description:
+        "Agent 知识运行时授权模式。默认 owner 保留当前 Agent 绑定即授权的 CE 行为；trusted-delegate 要求" +
+        "运行时 userId/organizationId 非空且所有绑定知识库同属该组织，供已完成逐请求知识库授权的外部门控使用。" +
+        "非法值在启动期失败。",
     },
     {
       moduleId: "knowledge",
