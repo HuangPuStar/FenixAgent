@@ -23,6 +23,7 @@ const KNOWLEDGE_ACCESS_ERROR_MESSAGES = {
   KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED: "知识运行时缺少组织身份",
   KNOWLEDGE_ORGANIZATION_MISMATCH: "知识库不在当前组织内",
   KNOWLEDGE_BINDING_REQUIRED: "知识资源不属于当前 Agent 绑定的知识库",
+  KNOWLEDGE_BASE_UNAVAILABLE: "知识库不存在或当前无法访问",
 } as const;
 
 /** 把授权拒绝映射为稳定的工具错误，不向 Agent 暴露内部知识库 ID 或其他敏感上下文。 */

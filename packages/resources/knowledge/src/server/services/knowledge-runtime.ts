@@ -77,10 +77,7 @@ export async function readKnowledgeResourceForAgent(input: {
 
   const boundKnowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
   if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
-    throw new KnowledgeRuntimeAccessError(
-      "KNOWLEDGE_BINDING_REQUIRED",
-      "Knowledge resource is not bound to the agent",
-    );
+    throw new KnowledgeRuntimeAccessError("KNOWLEDGE_BINDING_REQUIRED", "Knowledge resource is not bound to the agent");
   }
 
   const provider = getKnowledgeRuntimeProvider();
@@ -121,12 +118,23 @@ async function resolveBoundKnowledgeBasesWithAccess(
   agentConfigId: string,
   identity: KnowledgeRuntimeRequestIdentity,
 ): Promise<BoundKnowledgeBase[]> {
+  const rows = await resolveKnowledgeBindingsWithAccess(agentConfigId, identity);
+  return toAvailableKnowledgeBases(rows);
+}
+
+async function resolveKnowledgeBindingsWithAccess(agentConfigId: string, identity: KnowledgeRuntimeRequestIdentity) {
   const access = resolveKnowledgeRuntimeAccessScope(getKnowledgeConfig().runtimeAuthMode, identity);
   const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
   assertKnowledgeRuntimeBindingsInScope(
     access,
     rows.map((row) => ({ id: row.kbId, organizationId: row.kbOrganizationId })),
   );
+  return rows;
+}
+
+function toAvailableKnowledgeBases(
+  rows: Awaited<ReturnType<typeof resolveKnowledgeBindingsWithAccess>>,
+): BoundKnowledgeBase[] {
   return rows
     .filter((row) => !!row.kbRemoteId)
     .sort((a, b) => a.priority - b.priority)
@@ -433,20 +441,20 @@ export async function getKnowledgeGraphForAgent(input: {
   graph: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] };
   mind_map?: unknown;
 } | null> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
-  if (knowledgeBases.length === 0) return null;
-
-  const provider = getKnowledgeRuntimeProvider();
-
-  // 若指定了 KB ID，只查那个
+  const bindings = await resolveKnowledgeBindingsWithAccess(input.agentConfigId, input);
+  const knowledgeBases = toAvailableKnowledgeBases(bindings);
   if (input.knowledgeBaseId) {
     const target = knowledgeBases.find((kb) => kb.id === input.knowledgeBaseId);
     if (!target) {
+      if (bindings.some((binding) => binding.kbId === input.knowledgeBaseId)) {
+        throw new KnowledgeRuntimeAccessError("KNOWLEDGE_BASE_UNAVAILABLE", "Knowledge base remote id is missing");
+      }
       throw new KnowledgeRuntimeAccessError(
         "KNOWLEDGE_BINDING_REQUIRED",
         `Knowledge base ${input.knowledgeBaseId} is not bound to this agent`,
       );
     }
+    const provider = getKnowledgeRuntimeProvider();
     try {
       const apiKey = await resolveRagflowApiKey("global", target.userId, target.organizationId);
       const result = await provider.getKnowledgeGraph({
@@ -462,6 +470,9 @@ export async function getKnowledgeGraphForAgent(input: {
       return null;
     }
   }
+
+  if (knowledgeBases.length === 0) return null;
+  const provider = getKnowledgeRuntimeProvider();
 
   // 否则遍历所有绑定 KB，返回第一个有图谱的。单个 KB 失败不阻断。
   for (const kb of knowledgeBases) {

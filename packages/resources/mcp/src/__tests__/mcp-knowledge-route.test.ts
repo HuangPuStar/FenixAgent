@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { readJson } from "@fenix/platform-sdk/testing";
-import { KnowledgeRuntimeAccessError } from "@fenix/resource-knowledge/server";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
+import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { KnowledgeRuntimeAccessError, setKnowledgeRuntimeProviderForTesting } from "@fenix/resource-knowledge/server";
+import { initializeKnowledgeModuleConfig } from "@fenix/resource-knowledge/server/testing";
 import knowledgeMcpRoutes, { mapKnowledgeAccessError } from "../server/routes/mcp/knowledge";
 
 /**
@@ -60,5 +62,138 @@ describe("mcp knowledge 授权错误", () => {
         message: "知识资源不属于当前 Agent 绑定的知识库",
       },
     });
+  });
+});
+
+describe("MCP 知识工具授权链", () => {
+  const search = mock(async () => []);
+  const readResource = mock(async () => ({ content: "文档", chunkCount: 1 }));
+  const getKnowledgeGraph = mock(async () => null);
+
+  afterEach(() => {
+    setKnowledgeRuntimeProviderForTesting(null);
+    resetAllStubs();
+    resetAgentRuntimePort();
+    search.mockClear();
+    readResource.mockClear();
+    getKnowledgeGraph.mockClear();
+  });
+
+  async function callTool(
+    name: string,
+    args: Record<string, string>,
+    userId: string | null,
+    organizationId: string | null,
+    mode: "owner" | "trusted-delegate",
+    remoteId: string | null = "remote-1",
+  ) {
+    initializeKnowledgeModuleConfig({ runtimeAuthMode: mode, ragflowApiKey: "test-key" });
+    stubAgentRuntimePort({
+      getEnvironmentBySecret: async (secret) => ({
+        id: "env-1",
+        agentConfigId: "agent-1",
+        userId,
+        organizationId,
+        secret,
+      }),
+    });
+    const binding = {
+      kbId: "kb-1",
+      kbRemoteId: remoteId,
+      kbUserId: "owner-1",
+      kbOrganizationId: "org-provider",
+      priority: 0,
+    };
+    const resource = {
+      id: "resource-1",
+      knowledgeBaseId: "kb-1",
+      remoteId: "remote-resource",
+      kbRemoteId: "remote-1",
+      kbUserId: "owner-1",
+      kbOrganizationId: "org-provider",
+    };
+    stubDb({
+      select: () => ({
+        from: () => ({
+          innerJoin: () => ({
+            where: () => Object.assign(Promise.resolve([binding]), { limit: async () => [resource] }),
+          }),
+        }),
+      }),
+    });
+    const provider = new Proxy(
+      {},
+      {
+        get: (_target, key) =>
+          ({ search, readResource, getKnowledgeGraph })[key as "search" | "readResource" | "getKnowledgeGraph"],
+      },
+    );
+    setKnowledgeRuntimeProviderForTesting(
+      provider as NonNullable<Parameters<typeof setKnowledgeRuntimeProviderForTesting>[0]>,
+    );
+    const response = await knowledgeMcpRoutes.handle(
+      new Request("http://localhost/mcp/knowledge", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-secret",
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).result;
+  }
+
+  for (const [name, args] of [
+    ["kb_search", { query: "问题" }],
+    ["kb_read", { resourceId: "resource-1" }],
+    ["kb_graph_get", { knowledgeBaseId: "kb-1" }],
+  ] as const) {
+    // 三个工具必须透传身份，拒绝跨组织访问且不调用上游。
+    test(`${name} 拒绝跨组织委派`, async () => {
+      const result = await callTool(name, args, "user-1", "org-caller", "trusted-delegate");
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent.code).toBe("KNOWLEDGE_ORGANIZATION_MISMATCH");
+      expect(search).not.toHaveBeenCalled();
+      expect(readResource).not.toHaveBeenCalled();
+      expect(getKnowledgeGraph).not.toHaveBeenCalled();
+    });
+
+    // 缺失用户身份不能以空结果或成功响应代替授权拒绝。
+    test(`${name} 拒绝缺失身份`, async () => {
+      const result = await callTool(name, args, null, "org-provider", "trusted-delegate");
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent.code).toBe("KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED");
+      expect(search).not.toHaveBeenCalled();
+      expect(readResource).not.toHaveBeenCalled();
+      expect(getKnowledgeGraph).not.toHaveBeenCalled();
+    });
+  }
+
+  // 默认模式继续允许跨组织运行公开 Agent 的知识检索。
+  test("owner 模式保留跨组织绑定检索", async () => {
+    const result = await callTool("kb_search", { query: "问题" }, "user-1", "org-caller", "owner");
+    expect(result.isError).not.toBe(true);
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  // 无远端定位时 MCP 应返回中性错误，不能猜测同步状态。
+  test("图谱查询返回知识库不可用错误", async () => {
+    const result = await callTool(
+      "kb_graph_get",
+      { knowledgeBaseId: "kb-1" },
+      "user-1",
+      "org-provider",
+      "trusted-delegate",
+      null,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      code: "KNOWLEDGE_BASE_UNAVAILABLE",
+      message: "知识库不存在或当前无法访问",
+    });
+    expect(getKnowledgeGraph).not.toHaveBeenCalled();
   });
 });

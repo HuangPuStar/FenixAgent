@@ -188,6 +188,40 @@ describe("知识运行时绑定解析", () => {
     ).rejects.toMatchObject({ code: "KNOWLEDGE_BINDING_REQUIRED" });
   });
 
+  // 显式选择未绑定的知识库必须拒绝，未选择时仍表示没有图谱。
+  test("没有绑定时区分显式选择和默认图谱查询", async () => {
+    stubDb(createJoinedBindingsQuery([]));
+    await expect(
+      getKnowledgeGraphForAgent({ agentConfigId: "agent-1", knowledgeBaseId: "kb-not-bound" }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_BINDING_REQUIRED" });
+    await expect(getKnowledgeGraphForAgent({ agentConfigId: "agent-1" })).resolves.toBeNull();
+  });
+
+  // 已绑定但无法定位远端时不能误报为未绑定，也不能推断具体原因。
+  test("已绑定知识库缺少远端定位时返回不可用错误", async () => {
+    stubDb(createJoinedBindingsQuery([{ kbId: "kb-1", kbRemoteId: null, kbOrganizationId: "org-1" }]));
+    await expect(
+      getKnowledgeGraphForAgent({ agentConfigId: "agent-1", knowledgeBaseId: "kb-1" }),
+    ).rejects.toMatchObject({
+      code: "KNOWLEDGE_BASE_UNAVAILABLE",
+    });
+    await expect(getKnowledgeGraphForAgent({ agentConfigId: "agent-1" })).resolves.toBeNull();
+  });
+
+  // 未授权时不能借远端状态区分知识库是否可用。
+  test("组织校验先于知识库可用性判断", async () => {
+    initializeKnowledgeModuleConfig({ runtimeAuthMode: "trusted-delegate" });
+    stubDb(createJoinedBindingsQuery([{ kbId: "kb-1", kbRemoteId: null, kbOrganizationId: "org-other" }]));
+    await expect(
+      getKnowledgeGraphForAgent({
+        agentConfigId: "agent-1",
+        knowledgeBaseId: "kb-1",
+        userId: "user-1",
+        organizationId: "org-1",
+      }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_ORGANIZATION_MISMATCH" });
+  });
+
   // Agent 没有可检索的知识库绑定时必须直接返回空结果，避免访问密钥或上游 provider。
   test("没有可检索绑定时直接返回空结果", async () => {
     stubDb(createJoinedBindingsQuery([]));

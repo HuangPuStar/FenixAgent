@@ -11,7 +11,8 @@ export type KnowledgeRuntimeAccessErrorCode =
   | "KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED"
   | "KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED"
   | "KNOWLEDGE_ORGANIZATION_MISMATCH"
-  | "KNOWLEDGE_BINDING_REQUIRED";
+  | "KNOWLEDGE_BINDING_REQUIRED"
+  | "KNOWLEDGE_BASE_UNAVAILABLE";
 
 /** 知识运行时授权错误；MCP 调用方仍只看到安全文案，内部日志与测试可稳定识别 code。 */
 export class KnowledgeRuntimeAccessError extends Error {

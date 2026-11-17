@@ -53,6 +53,10 @@ Agent 运行时
 
 控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404。Agent 检索（MCP 的 `kb_search` / `kb_read` / `kb_graph_get`）的授权来源是 Agent 的绑定表本身。默认 `KNOWLEDGE_RUNTIME_AUTH_MODE=owner` 不按调用方组织或用户过滤，保留跨组织运行共享 Agent 的能力；`trusted-delegate` 要求 Environment 的 `userId` / `organizationId` 非空，且所有绑定知识库都同属该组织，任一缺失或跨组织即拒绝整次请求，供已完成逐请求知识库授权的外部门控使用。启用 `trusted-delegate` 的前提是 `/mcp/knowledge` 及全部知识库控制台入口只能经外部授权门控访问，部署方必须封堵 CE 直连；授权拒绝以稳定的 `KNOWLEDGE_*` 错误码返回。两种模式下全局 RAGFlow key 都仅是上游连接凭据，不额外授予知识库访问权。
 
+`trusted-delegate` 的同组织限制是不可被外部门控放宽的部署契约：即使外部授权允许跨组织访问，CE 仍拒绝该请求。此模式不自行验证用户对 Agent 或知识库的权限，外部门控必须逐请求完成这些检查。
+
+Agent 显式查询绑定知识库的图谱时，缺少远端定位返回 `KNOWLEDGE_BASE_UNAVAILABLE`；该错误不推断远端不可用的原因。未绑定的知识库返回 `KNOWLEDGE_BINDING_REQUIRED`，组织授权检查优先于可用性判断。
+
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
 已发布的 `GET /api/v1/knowledge-bases` 以单一可见集合返回结果：仅包含当前组织已有知识库，同一知识库在 `items` 中至多一次，`total` 与分页均基于该去重集合。
