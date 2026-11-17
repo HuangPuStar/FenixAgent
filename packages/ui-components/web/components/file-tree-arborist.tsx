@@ -11,8 +11,8 @@
  *    抽成 `ROW_HEIGHT` 常量避免两处漂移（行为不变）。
  */
 
-import { FilePlus2, Folder, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
-import type { MouseEvent } from "react";
+import { FilePlus2, Folder, FolderOpen, RefreshCw } from "lucide-react";
+import type { DragEvent, MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
@@ -22,7 +22,7 @@ import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
 import { FileTypeIcon } from "./file-icon-helper";
 import "./file-tree-arborist.css";
-import type { ParsedFileNode } from "./file-tree-model";
+import type { FileTreeSelectionGesture, ParsedFileNode } from "./file-tree-model";
 
 /** 行高与缩进；行高同时用于 sticky 目录条的可见行索引换算。 */
 const ROW_HEIGHT = 32;
@@ -37,23 +37,25 @@ const INDENT = 12;
 const ROW_ACTION_CLASS =
   "file-tree-row-action inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary";
 
-/**
- * 删除按钮样式。原 `.file-tree-row-action--delete` 在靠后的规则里整体覆盖了悬停配色（底色改危险色浅底、
- * 文字改危险色），这里直接写成独立一份，避免与通用悬停类在同属性上争夺优先级。
- * 图标尺寸与通用态同值，同样写在图标元素自身（`size-3.5`）。
- */
-const ROW_ACTION_DANGER_CLASS =
-  "file-tree-row-action--delete inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive";
+/** 双分区共享的受控选择与原生拖动事件。 */
+export interface FileTreeInteractionProps {
+  selectedPaths: string[];
+  onSelect: (node: ParsedFileNode, gesture: FileTreeSelectionGesture) => void;
+  onSelectionChange: (paths: string[]) => void;
+  onDragStart: (event: DragEvent<HTMLDivElement>, path: string) => void;
+  onDragEnd: () => void;
+  canMutate?: boolean;
+  dropTarget?: string | null;
+}
 
-export interface FileTreeArboristProps {
+/** 虚拟树的展示、展开与操作入口。 */
+export interface FileTreeArboristProps extends FileTreeInteractionProps {
   data: ParsedFileNode[];
   /** 展开节点 id 列表，由调用方持久化，用于跨刷新恢复展开状态。 */
   expandedIds: string[];
-  onSelect: (node: ParsedFileNode) => void;
   onToggle: (nodeId: string, expanded: boolean) => void;
   onRefresh: () => void;
   onNewFile: (parentPath: string) => void;
-  onDeleteRequest: (path: string, name: string) => void;
 }
 
 /**
@@ -64,10 +66,15 @@ export function FileTreeArborist({
   data,
   expandedIds,
   onSelect,
+  selectedPaths,
+  onSelectionChange,
+  onDragStart,
+  onDragEnd,
+  canMutate,
+  dropTarget,
   onToggle,
   onRefresh,
   onNewFile,
-  onDeleteRequest,
 }: FileTreeArboristProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,8 +82,32 @@ export function FileTreeArborist({
   const [height, setHeight] = useState(0);
   const [stickyFolder, setStickyFolder] = useState<ParsedFileNode | null>(null);
   // 节点渲染器由 Arborist 缓存，通过 ref 读取最新回调，避免每次父级重渲染都重建整棵树。
-  const propsRef = useRef({ onSelect, onToggle, onRefresh, onNewFile, onDeleteRequest });
-  propsRef.current = { onSelect, onToggle, onRefresh, onNewFile, onDeleteRequest };
+  const propsRef = useRef({
+    onSelect,
+    selectedPaths,
+    onSelectionChange,
+    onDragStart,
+    onDragEnd,
+    canMutate,
+    dropTarget,
+    onToggle,
+    onRefresh,
+    onNewFile,
+  });
+  propsRef.current = {
+    onSelect,
+    selectedPaths,
+    onSelectionChange,
+    onDragStart,
+    onDragEnd,
+    canMutate,
+    dropTarget,
+    onToggle,
+    onRefresh,
+    onNewFile,
+  };
+  const syncingSelectionRef = useRef(false);
+  const selectionReadyRef = useRef(false);
   const initialOpenState = useMemo(() => Object.fromEntries(expandedIds.map((id) => [id, true])), [expandedIds]);
 
   const updateStickyFolder = useCallback((scrollOffset = 0) => {
@@ -107,6 +138,21 @@ export function FileTreeArborist({
   useEffect(() => {
     if (height > 0) updateStickyFolder();
   }, [height, updateStickyFolder]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 测高后树才挂载，展开变化也须同步第三方 aria 选择。
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const ids = selectedPaths.filter((path) => tree.get(path));
+    // 两棵树共同消费外层选择；回写第三方的 aria 状态时不能再次触发外层更新。
+    syncingSelectionRef.current = true;
+    try {
+      tree.setSelection({ ids, anchor: ids[0] ?? null, mostRecent: ids.at(-1) ?? null });
+    } finally {
+      syncingSelectionRef.current = false;
+      selectionReadyRef.current = true;
+    }
+  }, [height, selectedPaths, expandedIds]);
 
   const handleScroll = useCallback(
     ({ scrollOffset }: { scrollOffset: number }) => {
@@ -142,13 +188,18 @@ export function FileTreeArborist({
           data={data}
           ref={treeRef}
           idAccessor="path"
-          childrenAccessor="children"
+          childrenAccessor={(node) => (node.isDir ? node.children : null)}
           initialOpenState={initialOpenState}
           openByDefault={false}
           disableDrag
           disableDrop
           disableEdit
-          disableMultiSelection
+          onSelect={(nodes) => {
+            if (selectionReadyRef.current && !syncingSelectionRef.current)
+              onSelectionChange(nodes.map((node) => node.id));
+          }}
+          onActivate={(node) => onSelect(node.data, { toggle: false, range: false })}
+          onToggle={(id) => onToggle(id, treeRef.current?.get(id)?.isOpen ?? false)}
           rowHeight={ROW_HEIGHT}
           indent={INDENT}
           overscanCount={8}
@@ -168,41 +219,48 @@ export function FileTreeArborist({
 function FileTreeNode({
   node,
   style,
-  dragHandle,
   viewProps,
 }: NodeRendererProps<ParsedFileNode> & { viewProps: Omit<FileTreeArboristProps, "data" | "expandedIds"> }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const data = node.data;
-  const handleSelect = () => {
-    node.select();
-    viewProps.onSelect(data);
-    if (data.isDir) {
-      const expanded = !node.isOpen;
-      node.toggle();
-      viewProps.onToggle(data.path, expanded);
-    }
+  const handleSelect = (event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    node.tree.focus(node.id, { scroll: false });
+    const gesture = { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey };
+    viewProps.onSelect(data, gesture);
+    if (data.isDir && !gesture.toggle && !gesture.range) node.toggle();
   };
   const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      handleSelect(event);
+      return;
+    }
     event.stopPropagation();
-    const expanded = !node.isOpen;
     node.toggle();
-    viewProps.onToggle(data.path, expanded);
   };
 
   return (
     <div
-      ref={dragHandle}
       style={{ ...style, paddingLeft: node.level * INDENT + 8 }}
       className={cn(
         "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-xs pe-1.5 h-full",
         // 原 `.is-selected` 与 `:hover` 两条规则里，选中态在靠后位置整体覆盖悬停底色与文字色，
         // 这里按互斥两态写出，避免两条同属性工具类靠生成顺序决定胜负。
-        node.isSelected ? "bg-brand/10 text-brand" : "text-text-secondary hover:bg-surface-2/70",
+        viewProps.selectedPaths.includes(data.path)
+          ? "bg-brand/10 text-brand"
+          : "text-text-secondary hover:bg-surface-2/70",
+        viewProps.dropTarget === data.path && "ring-1 ring-inset ring-brand bg-brand/10",
       )}
       data-tree-item
       data-node-id={data.path}
       data-is-dir={data.isDir ? "true" : "false"}
       onClick={handleSelect}
+      draggable={viewProps.canMutate ?? true}
+      onDragStart={(event) => {
+        event.stopPropagation();
+        viewProps.onDragStart(event, data.path);
+      }}
+      onDragEnd={viewProps.onDragEnd}
     >
       <button
         type="button"
@@ -258,17 +316,6 @@ function FileTreeNode({
           }}
         >
           <RefreshCw className="size-3.5" aria-hidden />
-        </button>
-        <button
-          type="button"
-          className={ROW_ACTION_DANGER_CLASS}
-          title={t("fileTree.contextMenu.delete")}
-          onClick={(event) => {
-            event.stopPropagation();
-            viewProps.onDeleteRequest(data.path, data.name);
-          }}
-        >
-          <Trash2 className="size-3.5" aria-hidden />
         </button>
       </span>
     </div>

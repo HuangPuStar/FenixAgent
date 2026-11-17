@@ -111,6 +111,39 @@ async function expectCommonErrorContract(): Promise<void> {
 }
 
 describe("本地环境（无 machine 配置）", () => {
+  // 新建请求不得清空已有内容，普通编辑仍允许覆盖。
+  test("createOnly 同名返回 409 且保留原文件", async () => {
+    const put = (content: string, createOnly = false) =>
+      handle("/fs/user/existing.txt", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, createOnly }),
+      });
+    expect((await put("original")).status).toBe(200);
+    const conflict = await put("", true);
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ error: { type: "path_conflict", code: "path_conflict" } });
+    expect(await readFile(join(workspaceDir(), "user/existing.txt"), "utf8")).toBe("original");
+    expect((await put("edited")).status).toBe(200);
+    expect(await readFile(join(workspaceDir(), "user/existing.txt"), "utf8")).toBe("edited");
+  });
+
+  // 两个同时通过路径校验的新建请求只能有一个取得文件创建权。
+  test("并发新建同一路径只允许一个成功", async () => {
+    const responses = await Promise.all(
+      ["first", "second"].map((content) =>
+        handle("/fs/user/race.txt", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content, createOnly: true }),
+        }),
+      ),
+    );
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const winner = responses.findIndex((response) => response.status === 200);
+    expect(await readFile(join(workspaceDir(), "user/race.txt"), "utf8")).toBe(["first", "second"][winner]);
+  });
+
   // 超长名称必须在门面前置校验中稳定返回 400，不能落入底层 ENAMETOOLONG 的 503 兜底。
   test("创建超过 255 UTF-8 字节的目录返回明确校验错误", async () => {
     const response = await handle("/fs/mkdir", {
@@ -365,6 +398,60 @@ describe("远程环境（stub file-ws 在线）", () => {
     });
     stubFileWsTransport({ isFileWsConnected: () => true });
     stubMachineConfig({ defaultMachineId: MACHINE_ID });
+  });
+
+  // 复用机器已有的排他上传协议，同名冲突不能退回覆盖写。
+  test("远程 createOnly 复用上传保留同名内容，普通编辑仍可覆盖", async () => {
+    let content = "original";
+    stubFileWsTransport({
+      sendFileOpAndWait: async (_machine, operation, params) => {
+        if (operation === "upload")
+          return { status: "error", error: "exists", errorCode: "path_conflict", statusCode: 409 };
+        if (operation !== "write") return { status: "error", error: `Unknown operation: ${operation}` };
+        content = String(params.content);
+        return { status: "ok", data: { path: params.path, name: "existing.txt", size: content.length } };
+      },
+    });
+    const response = await handle("/fs/user/existing.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "", createOnly: true }),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: "path_conflict" } });
+    expect(content).toBe("original");
+    const edited = await handle("/fs/user/existing.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "edited" }),
+    });
+    expect(edited.status).toBe(200);
+    expect(content).toBe("edited");
+  });
+
+  // 根目录和两个分区的嵌套路径均可通过已有 upload 操作原子新建空文件。
+  test.each(["new.txt", "docs/新 #.txt", "user/nested/space .txt"])("远程新建 %s 使用既有上传协议", async (path) => {
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    const content = path.startsWith("user/") ? "你好" : "";
+    const size = path.startsWith("user/") ? 6 : 0;
+    stubFileWsTransport({
+      sendFileOpAndWait: async (_machine, operation, params) => {
+        if (operation !== "upload") return { status: "error", error: `Unknown operation: ${operation}` };
+        expect(params).toEqual({
+          environmentId: ENV_ID,
+          dir: "",
+          files: [{ name, relativePath: path, content: path.startsWith("user/") ? "5L2g5aW9" : "" }],
+        });
+        return { status: "ok", data: { files: [{ name, path, size }] } };
+      },
+    });
+    const response = await handle(`/fs/${path.split("/").map(encodeURIComponent).join("/")}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, createOnly: true }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true, data: { name, path, size } });
   });
 
   /** 按操作返回机器端结果的 stub（对齐 remote-file-service 的返回结构） */

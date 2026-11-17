@@ -34,7 +34,19 @@
 import { describe, expect, test } from "bun:test";
 import type { FileTreeViewProps } from "@fenix/ui-components";
 import { FileTreeView } from "@fenix/ui-components";
+import { UI_COMPONENTS_NS } from "@fenix/ui-components/i18n";
+import { createInstance } from "i18next";
 import ReactDOMServer from "react-dom/server";
+import { I18nextProvider } from "react-i18next";
+
+const i18n = createInstance();
+await i18n.init({
+  lng: "contract",
+  fallbackLng: false,
+  initAsync: false,
+  ns: [UI_COMPONENTS_NS],
+  resources: { contract: { [UI_COMPONENTS_NS]: {} } },
+});
 
 /** 视图契约的最小注入：所有远端操作由调用方通过回调提供，视图自身不碰文件 API。 */
 function treeProps(overrides: Partial<FileTreeViewProps> = {}): FileTreeViewProps {
@@ -51,6 +63,11 @@ function treeProps(overrides: Partial<FileTreeViewProps> = {}): FileTreeViewProp
     workspaceHasNodes: true,
     userHasNodes: true,
     expandedIds: [],
+    selectedPaths: [],
+    onSelectionChange: () => {},
+    onClearSelection: () => {},
+    onDragStart: () => {},
+    onDragEnd: () => {},
     contextMenu: null,
     deleteConfirm: null,
     deleting: false,
@@ -87,7 +104,11 @@ function treeProps(overrides: Partial<FileTreeViewProps> = {}): FileTreeViewProp
 
 /** 渲染视图首屏；`renderToString` 不执行 effect，因此这里只覆盖由 props 决定的结构。 */
 function renderTree(overrides: Partial<FileTreeViewProps> = {}): string {
-  return ReactDOMServer.renderToString(<FileTreeView {...treeProps(overrides)} />);
+  return ReactDOMServer.renderToString(
+    <I18nextProvider i18n={i18n}>
+      <FileTreeView {...treeProps(overrides)} />
+    </I18nextProvider>,
+  );
 }
 
 describe("文件树视图（消费方契约）", () => {

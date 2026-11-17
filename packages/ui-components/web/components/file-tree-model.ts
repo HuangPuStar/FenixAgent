@@ -91,3 +91,53 @@ export function findFileNode(nodes: ParsedFileNode[], path: string): ParsedFileN
   }
   return null;
 }
+
+/** 两个文件分区共享的选择；anchor 是 Shift 连选的起点。 */
+export interface FileTreeSelection {
+  paths: string[];
+  anchor: string | null;
+}
+
+/** 将平台修饰键归一为切换选择与范围选择。 */
+export interface FileTreeSelectionGesture {
+  toggle: boolean;
+  range: boolean;
+}
+
+/** 按可见顺序计算选择，不把折叠或搜索隐藏的节点带入连选。 */
+export function selectFileTreePaths(
+  state: FileTreeSelection,
+  path: string,
+  visiblePaths: string[],
+  gesture: FileTreeSelectionGesture,
+): FileTreeSelection {
+  if (gesture.range && state.anchor !== null) {
+    const start = visiblePaths.indexOf(state.anchor);
+    const end = visiblePaths.indexOf(path);
+    if (start >= 0 && end >= 0) {
+      const range = visiblePaths.slice(Math.min(start, end), Math.max(start, end) + 1);
+      return { paths: gesture.toggle ? [...new Set([...state.paths, ...range])] : range, anchor: state.anchor };
+    }
+  }
+  if (gesture.toggle) {
+    return {
+      paths: state.paths.includes(path) ? state.paths.filter((item) => item !== path) : [...state.paths, path],
+      anchor: path,
+    };
+  }
+  return { paths: [path], anchor: path };
+}
+
+/** 展开状态决定可见行集合；与虚拟树渲染顺序保持一致。 */
+export function getVisibleFileTreePaths(nodes: ParsedFileNode[], expandedIds: string[]): string[] {
+  const expanded = new Set(expandedIds);
+  const visit = (items: ParsedFileNode[]): string[] =>
+    items.flatMap((node) => [node.path, ...(node.isDir && expanded.has(node.path) ? visit(node.children) : [])]);
+  return visit(nodes);
+}
+
+/** 父路径已经包含后代操作，按原顺序只保留顶层且非重复的选择。 */
+export function getRootFileTreePaths(paths: string[]): string[] {
+  const unique = [...new Set(paths.filter(Boolean))];
+  return unique.filter((path) => !unique.some((other) => other !== path && path.startsWith(`${other}/`)));
+}

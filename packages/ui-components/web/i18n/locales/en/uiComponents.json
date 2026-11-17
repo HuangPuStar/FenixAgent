@@ -413,6 +413,7 @@
   },
   "fileTree": {
     "accessibleName": "File tree",
+    "deleteConfirmation": "Delete {{names}} ({{count}} items)? Folders and their contents will be deleted. This cannot be undone.",
     "clearSearch": "Clear file search",
     "contextMenu": {
       "delete": "Delete",

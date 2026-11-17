@@ -271,11 +271,11 @@ class LocalBackend implements BackEnd {
     if (to) change.to = to;
     publishFileChanged(envId, change);
   }
-
   async write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
     const resolved = await this.resolve(envId, path);
     await this.assertLocalIfMatch(resolved.resolved, path, options?.ifMatch);
-    await writeFileContent(resolved.resolved, content);
+    if (options?.createOnly) await uploadWorkspaceFileExclusive(resolved.workspaceDir, path, Buffer.from(content));
+    else await writeFileContent(resolved.resolved, content);
     const name = path.substring(path.lastIndexOf("/") + 1);
     this.publishLocal(envId, "write", path, options);
     return { name, path: resolved.displayPath, size: Buffer.byteLength(content) };
@@ -446,7 +446,7 @@ class RemoteBackend implements BackEnd {
   }
   async write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
     await this.assertRemoteIfMatch(envId, path, options?.ifMatch);
-    return remoteWriteFile(this.machineId, envId, path, content, this.remoteOptions(options));
+    return remoteWriteFile(this.machineId, envId, path, content, this.remoteOptions(options), options?.createOnly);
   }
   async upload(
     envId: string,
