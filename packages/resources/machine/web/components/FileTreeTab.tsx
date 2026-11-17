@@ -13,6 +13,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "../api/fs";
+import { useFileMutationLock } from "../hooks/use-file-mutation-lock";
 import { useFileTreeEvents } from "../hooks/use-file-tree-events";
 import { useFileTreeInputDialog } from "../hooks/use-file-tree-input-dialog";
 import { useFileTreeInteractions } from "../hooks/use-file-tree-interactions";
@@ -81,9 +82,12 @@ export function FileTreeTab({
   useFileTreeEvents({ envId, applyTree, onUnavailable: handleEventsUnavailable });
 
   const uploadTargetRef = useRef<string | undefined>(undefined);
+  const mutationLock = useFileMutationLock(envId);
   const handleUploadError = useCallback((message: string) => toast.error(message), []);
   const uploads = useFileUploads({
     envId,
+    enabled: !stale,
+    mutationLock,
     targetDir: undefined,
     getTargetDir: () => uploadTargetRef.current,
     onUploaded: refreshTree,
@@ -100,6 +104,7 @@ export function FileTreeTab({
 
   const operations = useFileTreeOperations({
     envId,
+    mutationLock,
     enabled: !stale,
     getTree: () => treeDataRef.current,
     onChanged: onFilesChanged,

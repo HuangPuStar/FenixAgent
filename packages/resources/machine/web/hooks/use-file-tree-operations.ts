@@ -15,20 +15,19 @@ import {
   type WorkspaceFilesChange,
   type WorkspaceMoveFailure,
 } from "../lib/workspace-file-operations";
+import { type FileMutationLock, type FileMutationTask, useFileMutationLock } from "./use-file-mutation-lock";
 
 interface FileTreeOperationsOptions {
   envId: string | null;
   enabled: boolean;
+  mutationLock?: FileMutationLock;
   getTree: () => ParsedFileNode[];
   onChanged: (change: WorkspaceFilesChange) => void;
   onSelectionChange: (paths: string[]) => void;
   refreshTree: () => void;
 }
 
-interface OperationTask {
-  envId: string;
-  controller: AbortController;
-}
+type OperationTask = FileMutationTask;
 
 interface OperationFailure {
   path: string;
@@ -40,23 +39,18 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   const { t } = useTranslation(MACHINE_NS);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const activeRef = useRef<OperationTask | null>(null);
+  const localLock = useFileMutationLock(options.envId);
+  const mutationLock = options.mutationLock ?? localLock;
   const [kind, setKind] = useState<"delete" | "write" | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ paths: string[]; name: string } | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 环境切换必须清空确认态，写请求取消由共享锁负责。
   useEffect(() => {
     setKind(null);
     setDeleteConfirm(null);
-    return () => {
-      if (activeRef.current?.envId === options.envId) {
-        activeRef.current.controller.abort();
-        activeRef.current = null;
-      }
-    };
   }, [options.envId]);
 
-  const current = (task: OperationTask) =>
-    activeRef.current === task && optionsRef.current.envId === task.envId && !task.controller.signal.aborted;
+  const current = (task: OperationTask) => mutationLock.isCurrent(task) && optionsRef.current.envId === task.envId;
 
   async function run(
     operationKind: "delete" | "write",
@@ -64,9 +58,9 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
     operation: (task: OperationTask) => Promise<boolean>,
   ): Promise<boolean> {
     const { envId, enabled } = optionsRef.current;
-    if (!envId || !enabled || activeRef.current) return false;
-    const task: OperationTask = { envId, controller: new AbortController() };
-    activeRef.current = task;
+    if (!envId || !enabled) return false;
+    const task = mutationLock.acquire();
+    if (!task) return false;
     setKind(operationKind);
     try {
       return await operation(task);
@@ -78,10 +72,10 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
       }
       return false;
     } finally {
-      if (activeRef.current === task) {
-        activeRef.current = null;
+      if (mutationLock.isCurrent(task)) {
         setKind(null);
       }
+      mutationLock.release(task);
     }
   }
 
@@ -105,7 +99,7 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   }
 
   function requestDelete(paths: string[]) {
-    if (activeRef.current || !optionsRef.current.enabled) return;
+    if (mutationLock.isBusy() || !optionsRef.current.enabled) return;
     const roots = getRootFileTreePaths(paths).filter(
       (path) => path !== "user" && findFileNode(optionsRef.current.getTree(), path),
     );
@@ -177,7 +171,7 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   async function createPath(path: string, directory: boolean): Promise<boolean> {
     return run("write", directory ? t("fileTree.mkdirFailed") : t("fileTree.newFileFailed"), async (task) => {
       if (directory) await unwrap(fsApi.mkdir(task.envId, path, task.controller.signal));
-      else await unwrap(fsApi.writeFile(task.envId, path, "", task.controller.signal));
+      else await unwrap(fsApi.createFile(task.envId, path, task.controller.signal));
       if (!current(task)) return false;
       optionsRef.current.refreshTree();
       return true;
@@ -185,12 +179,12 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   }
 
   return {
-    busy: kind !== null,
+    busy: mutationLock.busy,
     deleting: kind === "delete",
     deleteConfirm,
     requestDelete,
     closeDelete: () => {
-      if (!activeRef.current) setDeleteConfirm(null);
+      if (!mutationLock.isBusy()) setDeleteConfirm(null);
     },
     confirmDelete,
     moveToDirectory,

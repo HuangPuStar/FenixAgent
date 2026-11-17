@@ -142,7 +142,8 @@ describe("§7.2 读重试矩阵", () => {
     expect(frames[0].request_id).not.toBe(frames[1].request_id);
   });
 
-  test("写操作 timeout 不自动重试（只发一帧，调用方带 op_id 重发幂等）", async () => {
+  // 新建与覆盖写都不能在丢失回执后自动执行第二次。
+  test.each(["write", "create"])("%s timeout 不自动重试", async (operation) => {
     // 写操作超时直接失败返回：自动重试会放大"已执行但结果丢失"的重复写风险，
     // 重发由调用方决策（§7.3：写操作直接失败，调用方重发时幂等去重）
     const handler = await import("../transport/file-ws-handler");
@@ -150,7 +151,7 @@ describe("§7.2 读重试矩阵", () => {
 
     const pending = fileOpRequests.sendFileOpAndWait(
       "mach_opid_wt",
-      "write",
+      operation,
       { path: "/a.txt", content: "x", environmentId: "env-opid-wt" },
       30,
       { opId: "op-w-t" },

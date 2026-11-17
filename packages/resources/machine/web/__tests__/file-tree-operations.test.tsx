@@ -188,6 +188,32 @@ afterAll(() => {
 });
 
 describe("文件写操作编排", () => {
+  // 新建入口必须发出仅创建意图，过期树中的同名文件不能被空内容覆盖。
+  test("新建文件遇到服务端同名冲突保留原内容并反馈失败", async () => {
+    let content = "original";
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { content: string; createOnly?: boolean };
+      if (body.createOnly)
+        return new Response(JSON.stringify({ error: { code: "path_conflict", message: "exists" } }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      content = body.content;
+      return new Response(JSON.stringify(ok({ name: "hidden.md", path: "hidden.md", size: 0 })));
+    });
+    try {
+      let success = true;
+      await act(async () => {
+        success = await api.createPath("hidden.md", false);
+      });
+      expect(success).toBe(false);
+      expect(content).toBe("original");
+      expect(errorSpy.mock.calls[0]?.[0]).toBe(machineResources.zh.fileTree.pathConflict);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   // 请求删除只准备确认范围，取消和打开菜单均不能触发实际删除。
   test("确认之前不调用删除接口，父子路径只提交一次", async () => {
     act(() => api.requestDelete(["docs", "docs/a.md"]));

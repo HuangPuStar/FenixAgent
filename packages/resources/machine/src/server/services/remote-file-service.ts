@@ -181,11 +181,13 @@ export async function remoteWriteFile(
   filePath: string,
   content: string,
   options?: FileOpOptions,
+  createOnly = false,
 ): Promise<{ name: string; path: string; size: number }> {
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(
     machineId,
-    "write",
+    // 独立操作让旧版机器明确拒绝，不能忽略新参数后按覆盖写执行。
+    createOnly ? "create" : "write",
     {
       path: filePath,
       content,
@@ -194,7 +196,12 @@ export async function remoteWriteFile(
     undefined,
     options,
   );
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "path_conflict" && result.statusCode === 409) {
+      throw new AppError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+    }
+    throw new Error(result.error as string);
+  }
   return result.data as { name: string; path: string; size: number };
 }
 

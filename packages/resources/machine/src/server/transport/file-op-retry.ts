@@ -38,7 +38,7 @@ export async function waitForFileWsConnection(isConnected: () => boolean, deadli
 }
 
 /** 不可自动重试操作：写操作，以及可能长时间占用 CPU/I/O 的 ZIP 快照。 */
-const NON_RETRYABLE_OPERATIONS = new Set(["write", "mkdir", "delete", "rename", "upload", "zip"]);
+const NON_RETRYABLE_OPERATIONS = new Set(["write", "create", "mkdir", "delete", "rename", "upload", "zip"]);
 
 /**
  * 熔断打开期间的快速失败错误。code 恒为 "circuit_open"。

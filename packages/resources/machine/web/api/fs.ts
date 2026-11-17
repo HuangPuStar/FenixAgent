@@ -358,6 +358,17 @@ export const fsApi = {
       opId: randomUUID(),
     }),
 
+  /** 原子创建空文件；同名路径返回冲突，保留原内容。 */
+  createFile: (id: string, subpath: string, signal?: AbortSignal) =>
+    request<FileWriteResult>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
+      method: "PUT",
+      params: { id },
+      body: { content: "", createOnly: true },
+      signal,
+      timeout: WRITE_TIMEOUT_MS,
+      opId: randomUUID(),
+    }),
+
   /**
    * 重命名或移动 workspace 中的文件或目录。
    * 写操作超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
