@@ -5,6 +5,7 @@ import {
 } from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeToUserPath } from "../lib/normalize-to-user-path";
+import { remapWorkspaceFilePath, type WorkspaceFilesChange } from "../lib/workspace-file-operations";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
@@ -84,6 +85,15 @@ export function useArtifactsFiles({
   // changedFiles 变化时：仅统计增量并更新 pendingDiffCount 角标，
   // 不再自动打开文件 tab（文件预览改为用户手动点击工具卡片的预览按钮触发）
   const prevChangedPathsRef = useRef<string[]>([]);
+  const fileEnvironmentRef = useRef(envId);
+  useEffect(() => {
+    if (fileEnvironmentRef.current === envId) return;
+    fileEnvironmentRef.current = envId;
+    setOpenFiles([]);
+    setActiveFile(null);
+    setPendingDiffCount(0);
+    prevChangedPathsRef.current = [];
+  }, [envId]);
   useEffect(() => {
     const paths = normalizedChangedFiles.map((f) => f.path);
     if (paths.length === 0) return;
@@ -122,6 +132,15 @@ export function useArtifactsFiles({
     [envId],
   );
 
+  const handleFilesChanged = useCallback((change: WorkspaceFilesChange) => {
+    setOpenFiles((paths) => [
+      ...new Set(
+        paths.map((path) => remapWorkspaceFilePath(path, change)).filter((path): path is string => path !== null),
+      ),
+    ]);
+    setActiveFile((path) => (path === null ? null : remapWorkspaceFilePath(path, change)));
+  }, []);
+
   return {
     openFiles,
     activeFile,
@@ -131,5 +150,6 @@ export function useArtifactsFiles({
     normalizedChangedFiles,
     handleCloseFile,
     handleReferenceFile,
+    handleFilesChanged,
   };
 }

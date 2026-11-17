@@ -9,7 +9,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { getFileTreeNameByteLength, isValidFileTreeBasename, isValidFileTreeMovePath } from "../components/FileTreeTab";
+import {
+  getFileTreeNameByteLength,
+  isValidFileTreeBasename,
+  isValidFileTreeMovePath,
+} from "../hooks/use-file-tree-input-dialog";
 
 describe("getFileTreeNameByteLength", () => {
   // 字节数而非字符数是服务端 NAME_MAX 的契约：中文名 1 字符占 3 字节。

@@ -68,6 +68,7 @@ export const FileWriteResultSchema = WriteOkSchema(
 /** 写入文件请求体 */
 export const WriteFileRequestSchema = z.object({
   content: z.string().describe("要写入文件的文本内容；允许为空字符串。"),
+  createOnly: z.boolean().optional().describe("仅创建新文件；同名路径已存在时返回 409，不覆盖内容。"),
 });
 
 /** 递归文件树响应 */

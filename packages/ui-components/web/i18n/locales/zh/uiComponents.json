@@ -413,6 +413,7 @@
   },
   "fileTree": {
     "accessibleName": "文件树",
+    "deleteConfirmation": "确定删除 {{names}}（{{count}} 项）？文件夹及其内容会一并删除，此操作无法撤销。",
     "clearSearch": "清除文件搜索",
     "contextMenu": {
       "delete": "删除",

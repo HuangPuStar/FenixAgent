@@ -285,6 +285,8 @@ describe("有界校验", () => {
     await begin(ingest);
     const invalidMetas = [
       runtimeMeta('{"kind":"unknown_kind"}'),
+      runtimeMeta('{"kind":"text_part","entryId":"entry_1","role":"tool"}'),
+      runtimeMeta('{"kind":"text_part","entryId":"entry_1","role":null}'),
       runtimeMeta('{"kind":"history_object","entryId":""}'),
       runtimeMeta('{"kind":"text_part","entryId":"entry_1","partIndex":-1}'),
       runtimeMeta('{"kind":"text_part","entryId":"entry_1","contentSlot":1.5}'),

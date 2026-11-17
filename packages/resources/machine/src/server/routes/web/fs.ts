@@ -402,7 +402,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         /* 已解码 */
       }
 
-      const b = body as { content?: string };
+      const b = body as { content?: string; createOnly?: boolean };
       if (typeof b.content !== "string")
         return error(400, withOpId({ error: { type: "validation_error", message: "content field required" } }, opId));
 
@@ -414,7 +414,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
 
       try {
         const fs = await machineFileFacade.open(authCtx, params.id);
-        const result = await fs.write(rawFilePath, b.content, options);
+        const result = await fs.write(rawFilePath, b.content, { ...options, createOnly: b.createOnly });
         return withOpId({ success: true, data: result }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -427,7 +427,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
       detail: {
         tags: ["FS"],
         summary: "写入文件内容",
-        description: "将文本内容写入 workspace 任意路径文件。",
+        description: "将文本内容写入 workspace 文件；createOnly 为 true 时仅原子创建，同名返回 409。",
       },
     },
   );

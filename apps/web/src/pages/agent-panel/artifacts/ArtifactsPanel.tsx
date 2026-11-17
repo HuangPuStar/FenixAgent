@@ -140,6 +140,7 @@ function ArtifactsPanelView({
     normalizedChangedFiles,
     handleCloseFile,
     handleReferenceFile,
+    handleFilesChanged,
   } = useArtifactsFiles({ envId, changedFiles, isFilesMode, onEnterFilesMode: enterFilesMode });
 
   // agent 切换：回到 Files 模式（站点列表、选中态与角标各由对应 hook 复位）
@@ -196,6 +197,7 @@ function ArtifactsPanelView({
           onCloseFile={handleCloseFile}
           onOpenFile={openFile}
           onReferenceFile={handleReferenceFile}
+          onFilesChanged={handleFilesChanged}
         />
       ) : topMode === "tasks" ? (
         <TasksPanel agentId={agentConfigId} />

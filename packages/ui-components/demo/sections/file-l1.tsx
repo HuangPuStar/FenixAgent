@@ -1,9 +1,12 @@
 import {
   type FileTreeContextMenuState,
   type FileTreeDownloadState,
+  type FileTreeSelection,
   FileTreeView,
   filterFileTree,
+  getVisibleFileTreePaths,
   parsePathsToTree,
+  selectFileTreePaths,
   splitFileTreeSections,
 } from "@fenix/ui-components";
 import { useState } from "react";
@@ -46,14 +49,18 @@ export function FileL1Section() {
   const [loading, setLoading] = useState(false);
   const [stale, setStale] = useState(false);
   const [contextMenu, setContextMenu] = useState<FileTreeContextMenuState | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ paths: string[]; name: string } | null>(null);
   const [download, setDownload] = useState<FileTreeDownloadState | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selection, setSelection] = useState<FileTreeSelection>({ paths: [], anchor: null });
 
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const sections = splitFileTreeSections(DEMO_TREE);
   const workspaceNodes = filterFileTree(sections.workspace, normalizedSearch);
   const userNodes = filterFileTree(sections.user, normalizedSearch);
+  const visiblePaths = [
+    ...getVisibleFileTreePaths(workspaceNodes, expandedIds),
+    ...getVisibleFileTreePaths(userNodes, expandedIds),
+  ];
 
   return (
     <section>
@@ -81,7 +88,6 @@ export function FileL1Section() {
           >
             stale: {String(stale)}
           </button>
-          {selected && <span className="mt-3 text-text-muted text-[12px]">selected: {selected}</span>}
         </div>
         {/* 树需要确定高度才能虚拟化：宿主里高度来自 artifacts 面板，这里给定值。 */}
         <div
@@ -109,12 +115,19 @@ export function FileL1Section() {
               setContextMenu(null);
             }}
             onContextMenu={(event) => {
+              event.preventDefault();
               const row = (event.target as HTMLElement).closest<HTMLElement>("[data-node-id]");
               const path = row?.dataset.nodeId;
               const isDir = row?.dataset.isDir === "true";
-              setContextMenu(path ? { x: event.clientX, y: event.clientY, path, isDir } : null);
+              const paths = path && selection.paths.includes(path) ? selection.paths : path ? [path] : [];
+              if (path && !selection.paths.includes(path)) setSelection({ paths, anchor: path });
+              setContextMenu(path ? { x: event.clientX, y: event.clientY, path, isDir, paths } : null);
             }}
-            onDeleteRequest={(path, name) => setDeleteConfirm({ path, name })}
+            onDeleteRequest={(path) => {
+              const paths = contextMenu?.paths ?? [path];
+              setDeleteConfirm({ paths, name: paths.join("、") });
+              setContextMenu(null);
+            }}
             onDownload={(path, isDir) => {
               setDownload({ path, isDir, error: false });
               setTimeout(() => setDownload(null), 1200);
@@ -122,6 +135,8 @@ export function FileL1Section() {
             onDragEnter={() => {}}
             onDragLeave={() => {}}
             onDragOver={() => {}}
+            onDragStart={(event) => event.preventDefault()}
+            onDragEnd={() => {}}
             onDrop={() => {}}
             onFileInputChange={() => {}}
             onFolderInputChange={() => {}}
@@ -132,8 +147,16 @@ export function FileL1Section() {
             onReference={() => setContextMenu(null)}
             onRefresh={() => {}}
             onRenameRequest={() => {}}
-            onSearchChange={setSearchQuery}
-            onSelect={(node) => setSelected(node.path)}
+            onSearchChange={(query) => {
+              setSearchQuery(query);
+              setSelection({ paths: [], anchor: null });
+            }}
+            selectedPaths={selection.paths}
+            onSelectionChange={(paths) => setSelection({ paths, anchor: paths.at(-1) ?? null })}
+            onClearSelection={() => setSelection({ paths: [], anchor: null })}
+            onSelect={(node, gesture) =>
+              setSelection((current) => selectFileTreePaths(current, node.path, visiblePaths, gesture))
+            }
             onToggle={(nodeId, expanded) =>
               setExpandedIds((ids) => (expanded ? [...ids, nodeId] : ids.filter((id) => id !== nodeId)))
             }

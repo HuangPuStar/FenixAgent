@@ -39,6 +39,8 @@ export interface AgentFileScope {
 }
 /** 写操作可选参数（契约占位，P2 落地）：opId 幂等键 / ifMatch 条件写 / 审计字段 */
 export interface FileWriteOptions {
+  /** 仅创建：执行点原子排他打开，同名路径不得覆盖。 */
+  createOnly?: boolean;
   opId?: string;
   ifMatch?: string;
   actorId?: string;

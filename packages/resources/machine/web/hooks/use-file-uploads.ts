@@ -5,6 +5,7 @@ import { MAX_UPLOAD_BATCH_SIZE_BYTES, MAX_UPLOAD_SIZE_BYTES, uploadFiles as uplo
 import { MACHINE_NS } from "../i18n/namespace";
 import { collectDroppedUpload } from "../lib/dropped-files";
 import { getFileOperationErrorMessage } from "../lib/file-operation-errors";
+import { type FileMutationLock, type FileMutationTask, useFileMutationLock } from "./use-file-mutation-lock";
 
 /**
  * workspace 文件上传的唯一前端入口（容量校验、按字节分批、进度、幂等 opId）。
@@ -23,6 +24,8 @@ interface UseFileUploadsOptions {
   getTargetDir?: () => string | undefined;
   onUploaded: () => void;
   onError: (message: string) => void;
+  enabled?: boolean;
+  mutationLock?: FileMutationLock;
 }
 
 function validateFiles(files: File[], t: TFunction<typeof MACHINE_NS>): string | null {
@@ -68,8 +71,18 @@ export function createUploadBatches(files: File[], relativePaths?: string[]): Up
  * 文件/文件夹上传的唯一前端入口。目标目录仍是 workspace 相对路径，服务端负责词法校验、
  * realpath 越界防护与权限判断；这里仅提供容量校验、进度和幂等 opId。
  */
-export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onError }: UseFileUploadsOptions) {
+export function useFileUploads({
+  envId,
+  targetDir,
+  getTargetDir,
+  onUploaded,
+  onError,
+  enabled = true,
+  mutationLock: sharedLock,
+}: UseFileUploadsOptions) {
   const { t } = useTranslation(MACHINE_NS);
+  const localLock = useFileMutationLock(envId);
+  const mutationLock = sharedLock ?? localLock;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -94,14 +107,15 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
     [],
   );
 
-  const uploadFiles = useCallback(
+  const uploadWithinTask = useCallback(
     async (
+      task: FileMutationTask,
       files: File[],
       onProgress?: (percent: number) => void,
       relativePaths?: string[],
       targetDirOverride?: string,
     ) => {
-      if (!envId || files.length === 0) return;
+      if (!envId || files.length === 0 || !mutationLock.isCurrent(task)) return;
       const uploadTargetDir =
         targetDirOverride !== undefined ? targetDirOverride : (getTargetDir?.() ?? targetDir ?? "");
       const validationError = validateFiles(files, t);
@@ -110,8 +124,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
         return;
       }
 
-      const controller = new AbortController();
-      uploadControllerRef.current?.abort();
+      const controller = task.controller;
       uploadControllerRef.current = controller;
       setUploading(true);
       setUploadProgress({ percent: 0, saving: false, targetDir: uploadTargetDir });
@@ -143,7 +156,7 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
           });
           uploadedSize += batch.size;
         }
-        if (envIdRef.current === envId) onUploaded();
+        if (mutationLock.isCurrent(task)) onUploaded();
       } catch (error) {
         if (controller.signal.aborted || isAbortError(error)) return;
         // 上屏的失败原因取服务端 message（`uploadWorkspaceFiles` 抛的 `ApiError.message` 即错误信封原文），
@@ -164,7 +177,26 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
         }
       }
     },
-    [envId, getTargetDir, onError, onUploaded, t, targetDir],
+    [envId, getTargetDir, mutationLock, onError, onUploaded, t, targetDir],
+  );
+
+  const uploadFiles = useCallback(
+    async (
+      files: File[],
+      onProgress?: (percent: number) => void,
+      relativePaths?: string[],
+      targetDirOverride?: string,
+    ) => {
+      if (!enabled) return;
+      const task = mutationLock.acquire();
+      if (!task) return;
+      try {
+        await uploadWithinTask(task, files, onProgress, relativePaths, targetDirOverride);
+      } finally {
+        mutationLock.release(task);
+      }
+    },
+    [enabled, mutationLock, uploadWithinTask],
   );
 
   const handleFileInputChange = useCallback(
@@ -178,19 +210,23 @@ export function useFileUploads({ envId, targetDir, getTargetDir, onUploaded, onE
 
   const uploadDroppedFiles = useCallback(
     async (dataTransfer: DataTransfer, targetDirOverride?: string) => {
-      const droppedEnvironment = envId;
+      if (!enabled) return;
+      const task = mutationLock.acquire();
+      if (!task) return;
       try {
         const dropped = await collectDroppedUpload(dataTransfer, () =>
           targetDirOverride !== undefined ? targetDirOverride : (getTargetDir?.() ?? targetDir ?? ""),
         );
-        if (envIdRef.current !== droppedEnvironment) return;
-        await uploadFiles(dropped.files, undefined, dropped.relativePaths, dropped.targetDir);
+        if (!mutationLock.isCurrent(task)) return;
+        await uploadWithinTask(task, dropped.files, undefined, dropped.relativePaths, dropped.targetDir);
       } catch (error) {
         console.error("Reading dropped workspace files failed:", error);
-        if (envIdRef.current === droppedEnvironment) onError(t("fileTree.uploadFailed"));
+        if (mutationLock.isCurrent(task)) onError(t("fileTree.uploadFailed"));
+      } finally {
+        mutationLock.release(task);
       }
     },
-    [envId, getTargetDir, onError, t, targetDir, uploadFiles],
+    [enabled, getTargetDir, mutationLock, onError, t, targetDir, uploadWithinTask],
   );
 
   const handleFolderInputChange = useCallback(

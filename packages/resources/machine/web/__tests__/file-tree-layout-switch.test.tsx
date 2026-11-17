@@ -133,6 +133,7 @@ function renderWorkspace(): { container: HTMLElement; root: Root } {
           onCloseFile={() => {}}
           onOpenFile={() => {}}
           onReferenceFile={() => {}}
+          onFilesChanged={() => {}}
         />
       </I18nextProvider>,
     );

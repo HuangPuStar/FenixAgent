@@ -1,13 +1,10 @@
 // packages/agent-runtime/web/yjs/sync-doc-hub.ts
 // 新同步协议 content Doc → 现有 Chat UI 只读消息投影（隔离实例）。
 //
-// 为什么另建一份 Y.Doc：`@fenix/chat-channel/sync-client` 的 DocHub 只负责 apply 与 ACK，不暴露已应用
-// 文档的读取口；旧 Chat/Session Doc 又不能混入新协议字节（隔离决策）。因此本模块只做**只读镜像**：
-// 由 transport 的入站帧旁路喂入，不写回、不发 ACK、不参与协议状态判定。镜像失败（坏 payload、未知记录）
-// 只计入 skipped/invalidUpdates，异常不得抛回 WebSocket 事件循环。
+// sync-client 的 DocHub 只负责 apply/ACK；此处镜像 content Doc 供 UI 只读消费，失败只计入诊断。
 //
 // 投影规则（与 sync/runtime/ingress.ts、sync/live/live-writer.ts 的写入契约对齐）：
-// - 只消费 `root.records` 里的扁平记录（recordId/entryId/entryOrder/contentSlot/partIndex/kind/payload）；
+// - 历史 role 取源条目；无 role 的实时记录沿用 :user / :assistant 身份契约；
 // - `kind: "text" | "text_part"` 按 UTF-8 解码后拼接；`kind: "final"` 只读取 completedAt，不伪造正文；
 // - `history_object` / `tool_object` 不在本适配器解码（保真 JSON 尚无展示映射），计入 skipped；
 // - 时间戳在 content Doc 中不存在：assistant 取 final descriptor 的 completedAt，其余为 0（限制见报告）。
@@ -92,6 +89,7 @@ interface MirrorDoc {
 
 interface GlobalEntry {
   readonly byDoc: Map<string, DocEntryContribution>;
+  role: DocEntryContribution["role"];
   firstEntryOrder: number | null;
   completedAt: number | null;
   /** 正文分段缓存：有序工具边界把文本切成与旧投影一致的段。 */
@@ -123,9 +121,11 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
   let notifyScheduled = false;
 
   function invalidateEntry(entry: GlobalEntry): void {
+    entry.role = null;
     let firstEntryOrder: number | null = null;
     let completedAt: number | null = null;
     for (const contribution of entry.byDoc.values()) {
+      entry.role = contribution.role ?? entry.role;
       if (contribution.entryOrder !== null) {
         firstEntryOrder =
           firstEntryOrder === null ? contribution.entryOrder : Math.min(firstEntryOrder, contribution.entryOrder);
@@ -147,6 +147,7 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
   function sameContribution(left: DocEntryContribution, right: DocEntryContribution): boolean {
     if (
       left.entryOrder !== right.entryOrder ||
+      left.role !== right.role ||
       left.completedAt !== right.completedAt ||
       left.firstRecordIndex !== right.firstRecordIndex ||
       left.recordCount !== right.recordCount ||
@@ -194,6 +195,7 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
       if (entry === undefined) {
         entry = {
           byDoc: new Map(),
+          role: null,
           firstEntryOrder: null,
           completedAt: null,
           segments: null,
@@ -336,7 +338,8 @@ export function createSyncContentProjectionHub(options: SyncContentProjectionHub
       const segments = entry.segments;
       if (segments.length === 0) continue;
       const ts = entry.completedAt ?? 0;
-      const type = row.entryId.endsWith(":user") ? "user_message" : "assistant_message";
+      const role = entry.role ?? (row.entryId.endsWith(":user") ? "user" : "assistant");
+      const type = role === "user" ? "user_message" : "assistant_message";
       const signature = `${String(seq)}|${type}|${String(ts)}|${String(entry.boundaryCount)}|${String(
         entry.boundaryIssue,
       )}|${segments

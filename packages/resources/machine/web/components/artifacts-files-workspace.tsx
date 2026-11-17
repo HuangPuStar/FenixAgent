@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { buildPreviewSourceUrl, readPreviewSource } from "../api/fs";
 import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
 import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
+import type { WorkspaceFilesChange } from "../lib/workspace-file-operations";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab } from "./FileTreeTab";
 import { FileTreeLayoutToggle } from "./file-tree-layout-toggle";
@@ -18,6 +19,7 @@ interface ArtifactsFilesWorkspaceProps {
   onCloseFile: (path: string) => void;
   onOpenFile: (path: string) => void;
   onReferenceFile: (path: string, name: string) => void;
+  onFilesChanged: (change: WorkspaceFilesChange) => void;
 }
 
 function readFileTreeWidth(): number {
@@ -53,6 +55,7 @@ export function ArtifactsFilesWorkspace({
   onCloseFile,
   onOpenFile,
   onReferenceFile,
+  onFilesChanged,
 }: ArtifactsFilesWorkspaceProps) {
   const { mode: treeLayout, isWideViewport, toggleMode } = useFileTreeLayout();
   // 首屏：小屏（<1024px）默认浮动 → 收起，只露切换按钮、内容区最大化；大屏维持「固定 + 展开」。
@@ -88,9 +91,11 @@ export function ArtifactsFilesWorkspace({
       onToggleTree={toggleTree}
       tree={
         <FileTreeTab
+          key={envId ?? "no-environment"}
           envId={envId}
           onPreviewFile={onOpenFile}
           onReferenceFile={onReferenceFile}
+          onFilesChanged={onFilesChanged}
           headerActions={<FileTreeLayoutToggle mode={treeLayout} onToggleMode={switchLayoutMode} />}
         />
       }
