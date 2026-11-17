@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChatStatusPanel } from "../chat/panels/chat-status-panel";
 import { PermissionPanel } from "../chat/panels/PermissionPanel";
 import { QuestionPanel } from "../chat/panels/QuestionPanel";
+import { Conversation } from "../chat/primitives/conversation";
 import { ToolCallRow } from "../chat/timeline/ToolCallRow";
 import type { ThreadEntry, ToolCallData, UserMessageEntry } from "../chat/types";
 import { ChatView } from "../chat/view/ChatView";
@@ -262,7 +263,7 @@ describe("chat 样式迁移：工具时间线", () => {
       { type: "user_message", id: "prompt-0", content: "第一条" },
       { type: "user_message", id: "prompt-1", content: "第二条" },
     ];
-    const html = renderToStaticMarkup(createElement(PromptJumpRail, { entries }));
+    const html = renderToStaticMarkup(createElement(Conversation, null, createElement(PromptJumpRail, { entries })));
 
     expectNoLegacyClasses(html);
     // beui 的锚点（`data-slot` 与轨道/刻度类名都是它自带的，未改动）。
@@ -294,7 +295,7 @@ describe("chat 样式迁移：工具时间线", () => {
       { type: "user_message", id: "prompt-0", content: "第一条" },
       { type: "user_message", id: "prompt-1", content: "第二条" },
     ];
-    const html = renderToStaticMarkup(createElement(PromptJumpRail, { entries }));
+    const html = renderToStaticMarkup(createElement(Conversation, null, createElement(PromptJumpRail, { entries })));
 
     // 先做元素级定位：两个元素都得在，否则下面的类断言在「元素压根没渲染」时也会通过。
     const anchorTag = html.match(/<div[^>]*chat-prompt-rail-anchor[^>]*>/)?.[0] ?? "";

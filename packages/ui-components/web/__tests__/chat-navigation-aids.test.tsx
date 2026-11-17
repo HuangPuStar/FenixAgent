@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { initReactI18next } from "react-i18next/initReactI18next";
+import { Conversation, ConversationContent } from "../chat/primitives/conversation";
 import type { UserMessageEntry } from "../chat/types";
 import { PromptJumpRail } from "../chat/view/chat-navigation-aids";
 import en from "../i18n/locales/en/uiComponents.json";
@@ -33,6 +34,13 @@ const window = initializeHappyDomWindow(new Window());
 (globalThis as any).HTMLElement = window.HTMLElement;
 /* biome-ignore lint/suspicious/noExplicitAny: 同上（streamdown 的 diff 组件按 `customElements.get` 判定自定义元素） */
 (globalThis as any).customElements = window.customElements;
+Object.assign(globalThis, {
+  DOMRect: window.DOMRect,
+  ResizeObserver: window.ResizeObserver,
+  getComputedStyle: window.getComputedStyle.bind(window),
+  requestAnimationFrame: window.requestAnimationFrame.bind(window),
+  cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+});
 /* biome-ignore lint/suspicious/noExplicitAny: React 19 的 act 环境标记 */
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -73,7 +81,13 @@ describe("PromptJumpRail", () => {
 
   // 超长会话只渲染固定上限的均匀采样刻度，并始终覆盖第一条与最后一条用户输入。
   test("samples long conversations into a bounded prompt index", async () => {
-    await act(async () => root.render(<PromptJumpRail entries={entries(80)} />));
+    await act(async () =>
+      root.render(
+        <Conversation>
+          <PromptJumpRail entries={entries(80)} />
+        </Conversation>,
+      ),
+    );
 
     const ticks = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')];
     expect(ticks).toHaveLength(14);
@@ -94,7 +108,13 @@ describe("PromptJumpRail", () => {
       { ...entries(1)[0]!, id: "prompt-1", content: "第二条用户输入" },
     ];
 
-    await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
+    await act(async () =>
+      root.render(
+        <Conversation>
+          <PromptJumpRail entries={promptEntries} />
+        </Conversation>,
+      ),
+    );
 
     const ticks = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')];
     expect(ticks).toHaveLength(2);
@@ -114,38 +134,65 @@ describe("PromptJumpRail", () => {
       },
     ];
 
-    await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
+    await act(async () =>
+      root.render(
+        <Conversation>
+          <PromptJumpRail entries={promptEntries} />
+        </Conversation>,
+      ),
+    );
 
     expect(host.querySelector('[data-slot="preview-rail-item"]')).toBeNull();
     expect(host.querySelector('[data-slot="preview-rail-tick"]')).toBeNull();
   });
 
-  // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
-  test("smoothly jumps to the selected user prompt", async () => {
+  // 中间再跳末条只移动消息滚动层，避免外层隐藏容器被滚动后裁掉会话视口。
+  test("jumping from a middle prompt to the last stays inside the conversation viewport", async () => {
     const promptEntries = entries(3);
     await act(async () =>
       root.render(
-        <div>
+        <Conversation initial={false}>
           <PromptJumpRail entries={promptEntries} />
-          {promptEntries.map((entry) => (
-            <article key={entry.id} id={`chat-entry-${entry.id}`} />
-          ))}
-        </div>,
+          <ConversationContent data-slot="chat-conversation-content">
+            {promptEntries.map((entry) => (
+              <article key={entry.id} id={`chat-entry-${entry.id}`} />
+            ))}
+          </ConversationContent>
+        </Conversation>,
       ),
     );
-    // happy-dom 的 getElementById 返回其自有 Element 类型（与 DOM lib 声明不同名）
-    const target = window.document.getElementById("chat-entry-prompt-1") as unknown as HTMLElement;
-    const scrollIntoView = mock(() => {});
-    target.scrollIntoView = scrollIntoView as unknown as typeof target.scrollIntoView;
-    const tick = host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')[1]!;
+    const content = host.querySelector<HTMLElement>('[data-slot="chat-conversation-content"]')!;
+    const scroll = content.parentElement!;
+    const conversation = scroll.parentElement!;
+    Object.defineProperties(scroll, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 2100 },
+    });
+    scroll.getBoundingClientRect = () => new DOMRect(0, 80, 600, 400);
+    scroll.scrollTop = 100;
+    scroll.scrollLeft = 20;
+    const offsets = [0, 700, 1800];
+    const targets = [...content.querySelectorAll<HTMLElement>("article")];
+    for (const [index, target] of targets.entries()) {
+      target.getBoundingClientRect = () => new DOMRect(0, 80 + offsets[index]! - scroll.scrollTop, 600, 80);
+    }
+    const ticks = host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]');
 
-    await act(async () => tick.click());
+    await act(async () => {
+      ticks[1]!.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(scroll.scrollTop).toBe(540);
+    await act(async () => {
+      ticks[2]!.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
-    // 无 href 的刻度渲染为 `<button>`，选中态是 `aria-current="location"`（beui 自带语义）。
-    expect(tick.getAttribute("aria-current")).toBe("location");
-    // 高亮由 `data-active-prompt` 属性承担（原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
-    expect(target.hasAttribute("data-active-prompt")).toBe(true);
-    expect(window.document.getElementById("chat-entry-prompt-0")?.hasAttribute("data-active-prompt")).toBe(false);
+    expect(scroll.scrollTop).toBe(1640);
+    expect(scroll.scrollLeft).toBe(20);
+    expect(conversation.scrollTop).toBe(0);
+    expect(ticks[2]!.getAttribute("aria-current")).toBe("location");
+    expect(targets[2]!.hasAttribute("data-active-prompt")).toBe(true);
+    expect(targets[1]!.hasAttribute("data-active-prompt")).toBe(false);
   });
 });

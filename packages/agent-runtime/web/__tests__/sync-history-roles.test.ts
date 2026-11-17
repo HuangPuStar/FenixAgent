@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
+import { Conversation } from "@fenix/ui-components/chat/primitives/conversation";
 import { PromptJumpRail } from "@fenix/ui-components/chat/view/chat-navigation-aids";
 import { createInstance } from "i18next";
 import { createElement } from "react";
@@ -101,9 +102,13 @@ test("重复刷新后 callback 问答保持源角色与唯一时间线", () => {
         createElement(
           I18nextProvider,
           { i18n },
-          createElement(PromptJumpRail, {
-            entries: merged.filter((message) => message.type === "user_message"),
-          }),
+          createElement(
+            Conversation,
+            null,
+            createElement(PromptJumpRail, {
+              entries: merged.filter((message) => message.type === "user_message"),
+            }),
+          ),
         ),
       );
       expect(rail).toContain("广州今天的天气");
