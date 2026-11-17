@@ -1,7 +1,8 @@
 import "./chat-navigation-aids.css";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import { PreviewRail, type PreviewRailItem } from "../../components/preview-rail";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import type { UserMessageEntry } from "../types";
@@ -63,10 +64,11 @@ interface PromptJumpRailProps {
  * 本组件只做「造 items + 接回会话」：过滤 system-reminder、等距采样上限、滚动跟随（scroll-spy）、
  * 点击定位、`data-active-prompt` 跨组件契约，以及用自己的外层元素承载浮层定位
  * （beui 的根是「轨道 + 内容」并排的容器，这里是浮在会话之上的轨道，故不把 ConversationContent 塞成它的 children）。
+ * 必须置于 Conversation 内，锚点查询与滚动均限定在该会话的滚动层。
  */
 export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, stopScroll } = useStickToBottomContext();
   const promptEntries = useMemo(() => entries.filter((entry) => !isSystemReminderPrompt(entry)), [entries]);
   const visiblePrompts = useMemo(() => samplePromptJumps(promptEntries), [promptEntries]);
   const [activeId, setActiveId] = useState(promptEntries[0]?.id ?? "");
@@ -99,26 +101,20 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
     // 本组件只负责按 activeId 给该节点打上 `data-active-prompt`（样式由 ChatView 的
     // `data-[active-prompt]:` 工具类承担，原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
     // 迁移到本包时保持该约定不变，宿主必须沿用 `chat-entry-${entryId}` 作为消息节点 id。
-    const activePrompt = activeId ? document.getElementById(`chat-entry-${activeId}`) : null;
+    const activePrompt = activeId
+      ? scrollRef.current?.querySelector<HTMLElement>(`#${window.CSS.escape(`chat-entry-${activeId}`)}`)
+      : null;
     activePrompt?.setAttribute("data-active-prompt", "");
     return () => activePrompt?.removeAttribute("data-active-prompt");
-  }, [activeId]);
+  }, [activeId, scrollRef]);
 
   useEffect(() => {
-    const anchor = anchorRef.current;
-    const conversation = anchor?.parentElement;
-    if (!anchor || !conversation || visiblePrompts.length === 0) return;
-
-    const scrollRoot = [...conversation.children].find((element): element is HTMLElement => {
-      if (!(element instanceof HTMLElement) || element === anchor) return false;
-      const style = window.getComputedStyle(element);
-      return /(auto|scroll)/.test(`${style.overflow} ${style.overflowY}`);
-    });
-    if (!scrollRoot) return;
+    const scrollRoot = scrollRef.current;
+    if (!scrollRoot || visiblePrompts.length === 0) return;
 
     const anchors = visiblePrompts.map(({ entry }) => ({
       id: entry.id,
-      element: document.getElementById(`chat-entry-${entry.id}`),
+      element: scrollRoot.querySelector<HTMLElement>(`#${window.CSS.escape(`chat-entry-${entry.id}`)}`),
     }));
     let animationFrameId: number | null = null;
 
@@ -153,7 +149,7 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
       scrollRoot.removeEventListener("scroll", scheduleActivePromptUpdate);
       window.removeEventListener("resize", scheduleActivePromptUpdate);
     };
-  }, [visiblePrompts]);
+  }, [scrollRef, visiblePrompts]);
 
   if (promptEntries.length <= 1) return null;
   return (
@@ -170,18 +166,25 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
     // 左侧 40px 处（命中消息正文）立刻 ±400；把本元素临时设为 `pointer-events: none` 后同一批落点
     // 全部恢复 ±400。真正可交互的只有刻度轨（39px 宽），故由 `railClassName` 把它单独放行；
     // beui 的预览卡容器自带 `pointer-events-none` + `aria-hidden`，本就不可交互，无需处理。
-    <div
-      ref={anchorRef}
-      className="chat-prompt-rail-anchor pointer-events-none absolute top-1/2 right-4 z-[8] -translate-y-1/2"
-    >
+    <div className="chat-prompt-rail-anchor pointer-events-none absolute top-1/2 right-4 z-[8] -translate-y-1/2">
       <PreviewRail
         items={items}
         label={railLabel}
         activeId={activeId}
         onActiveChange={setActiveId}
-        // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
         onItemSelect={(item) => {
-          document.getElementById(`chat-entry-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          const scroll = scrollRef.current;
+          const target = scroll?.querySelector<HTMLElement>(`#${window.CSS.escape(`chat-entry-${item.id}`)}`);
+          if (!scroll || !target) return;
+          stopScroll();
+          // scrollIntoView 会连带滚动 overflow-hidden 祖先，预览卡溢出时会推移整个消息视口。
+          const targetBounds = target.getBoundingClientRect();
+          const top =
+            scroll.scrollTop +
+            targetBounds.top -
+            scroll.getBoundingClientRect().top -
+            (scroll.clientHeight - targetBounds.height) / 2;
+          scroll.scrollTo({ top, behavior: "smooth" });
         }}
         highlightActive
         // `pointer-events-auto` 只放行刻度轨本体；`self-center` 让它按刻度栈自身高度收口
