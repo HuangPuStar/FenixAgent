@@ -139,7 +139,9 @@ export function FileTreeTab({
   function handleReference() {
     const menu = interactions.contextMenu;
     if (!menu) return;
-    onReferenceFile(menu.path, menu.path.split("/").pop() ?? menu.path);
+    for (const path of menu.paths ?? [menu.path]) {
+      onReferenceFile(path, path.split("/").pop() ?? path);
+    }
     interactions.closeContextMenu();
   }
 
