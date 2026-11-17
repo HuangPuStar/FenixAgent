@@ -174,7 +174,7 @@ export async function remoteReadBinaryFile(
   return result.data as { name: string; path: string; data: string; size: number; mimeType: string };
 }
 
-/** 写入远程文本文件（options.opId 幂等键透传，§7.2：消费者重试复用同值，机器端 10 分钟内去重） */
+/** 写入远程文本文件；仅创建复用既有排他上传协议，opId 与审计字段继续透传。 */
 export async function remoteWriteFile(
   machineId: string,
   envId: string,
@@ -183,11 +183,27 @@ export async function remoteWriteFile(
   options?: FileOpOptions,
   createOnly = false,
 ): Promise<{ name: string; path: string; size: number }> {
+  if (createOnly) {
+    const name = filePath.slice(filePath.lastIndexOf("/") + 1);
+    const result = await remoteUploadFiles(
+      machineId,
+      envId,
+      "",
+      [
+        {
+          name,
+          relativePath: filePath,
+          content: Buffer.from(content).toString("base64"),
+        },
+      ],
+      options,
+    );
+    return result.files[0];
+  }
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(
     machineId,
-    // 独立操作让旧版机器明确拒绝，不能忽略新参数后按覆盖写执行。
-    createOnly ? "create" : "write",
+    "write",
     {
       path: filePath,
       content,
@@ -196,12 +212,7 @@ export async function remoteWriteFile(
     undefined,
     options,
   );
-  if (result.status === "error") {
-    if (result.errorCode === "path_conflict" && result.statusCode === 409) {
-      throw new AppError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
-    }
-    throw new Error(result.error as string);
-  }
+  if (result.status === "error") throw new Error(result.error as string);
   return result.data as { name: string; path: string; size: number };
 }
 

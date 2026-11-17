@@ -319,18 +319,13 @@ async function opReadBinary(
 async function opWrite(
   workspace: string,
   params: Record<string, unknown>,
-  createOnly = false,
 ): Promise<{ name: string; path: string; size: number }> {
   const filePath = resolveAndValidate(workspace, params.path as string);
   if (!filePath) throw new Error("Invalid path: path traversal detected");
 
   const content = params.content as string;
-  if (createOnly) {
-    await uploadWorkspaceFileExclusive(workspace, params.path as string, Buffer.from(content));
-  } else {
-    await mkdir(resolve(filePath, ".."), { recursive: true });
-    await writeFile(filePath, content, "utf-8");
-  }
+  await mkdir(resolve(filePath, ".."), { recursive: true });
+  await writeFile(filePath, content, "utf-8");
 
   const name = basename(filePath);
   const relPath = relative(workspace, filePath);
@@ -733,9 +728,6 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
         break;
       case "write":
         data = await opWrite(workspace, params);
-        break;
-      case "create":
-        data = await opWrite(workspace, params, true);
         break;
       case "upload":
         data = await opUpload(workspace, params);

@@ -46,53 +46,6 @@ afterEach(async () => {
 });
 
 describe("handleFileOp", () => {
-  // 新建操作不能通过父目录符号链接把文件写到其他用户的目录。
-  test("远程 create 拒绝符号链接父目录", async () => {
-    const { workspace, environmentId } = await createWorkspace();
-    const outside = await mkdtemp(join(tmpdir(), "acp-create-outside-"));
-    temporaryDirectories.push(outside);
-    await symlink(outside, join(workspace, "alias"));
-    const result = await handleFileOp(
-      createMessage(environmentId, "create", { path: "alias/new.txt", content: "secret" }),
-    );
-    expect(result.status).toBe("error");
-    await expect(readFile(join(outside, "new.txt"))).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  // 新建同名远程文件必须拒绝，不能截断已有内容；编辑保留覆盖语义。
-  test("远程 create 同名冲突保留内容且 write 仍可编辑", async () => {
-    const { workspace, environmentId } = await createWorkspace();
-    await writeFile(join(workspace, "existing.txt"), "original");
-    const result = await handleFileOp(createMessage(environmentId, "create", { path: "existing.txt", content: "" }));
-    expect(result).toMatchObject({ status: "error", error_code: "path_conflict", status_code: 409 });
-    expect(await readFile(join(workspace, "existing.txt"), "utf8")).toBe("original");
-    expect(
-      await handleFileOp(createMessage(environmentId, "write", { path: "existing.txt", content: "edited" })),
-    ).toMatchObject({ status: "ok" });
-    expect(await readFile(join(workspace, "existing.txt"), "utf8")).toBe("edited");
-  });
-
-  // 原子排他创建阻止目录校验之后的并发覆盖。
-  test("远程并发 create 只允许一个请求创建文件", async () => {
-    const { workspace, environmentId } = await createWorkspace();
-    const results = await Promise.all(
-      ["first", "second"].map((content) =>
-        handleFileOp({
-          ...createMessage(environmentId, "create", { path: "nested/new.txt", content }),
-          request_id: content,
-        }),
-      ),
-    );
-    expect(results.map((result) => result.status).sort()).toEqual(["error", "ok"]);
-    expect(results.find((result) => result.status === "error")).toMatchObject({
-      error_code: "path_conflict",
-      status_code: 409,
-    });
-    expect(await readFile(join(workspace, "nested/new.txt"), "utf8")).toBe(
-      ["first", "second"][results.findIndex((result) => result.status === "ok")],
-    );
-  });
-
   // 超大单文件必须返回413，不能编码后撑爆共用的128MiB消息预算。
   test("远程二进制下载拒绝92MiB加1字节", async () => {
     const { workspace, environmentId } = await createWorkspace();
