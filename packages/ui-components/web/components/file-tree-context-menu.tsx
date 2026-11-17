@@ -22,7 +22,7 @@ export interface FileTreeContextMenuState {
   y: number;
   path: string;
   isDir: boolean;
-  /** 菜单打开时的整组选择快照，避免异步选择变化扩大删除范围。 */
+  /** 菜单打开时的整组选择快照，避免选择变化扩大引用或删除范围。 */
   paths?: string[];
 }
 
@@ -118,17 +118,17 @@ export function FileTreeContextMenu({
       }}
       style={{ left: position.left, top: position.top }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+        onClick={onReference}
+      >
+        <MessageSquareQuote className="size-3.75 shrink-0" aria-hidden />
+        {t("fileTree.contextMenu.reference")}
+      </button>
       {!multiple && (
         <>
-          <button
-            type="button"
-            role="menuitem"
-            className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
-            onClick={onReference}
-          >
-            <MessageSquareQuote className="size-3.75 shrink-0" aria-hidden />
-            {t("fileTree.contextMenu.reference")}
-          </button>
           <button
             type="button"
             role="menuitem"

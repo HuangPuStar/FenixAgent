@@ -207,15 +207,18 @@ describe("多选右键菜单", () => {
     expect(win.document.activeElement).toBe(items?.[1]);
   });
 
-  // 批量选择不能误执行下载或重命名单项，删除需用户明确点击菜单项。
-  test("多选菜单仅呈现整组删除且打开菜单不执行删除", () => {
+  // 批量菜单只提供整组引用与删除，打开菜单不能执行任一操作。
+  test("多选菜单支持引用与删除，打开菜单不触发操作", () => {
     const deleted: string[] = [];
+    let references = 0;
     act(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
           <FileTreeContextMenu
             state={{ x: 10, y: 10, path: "docs/a.md", isDir: false, paths: ["docs/a.md", "docs/b.md"] }}
-            onReference={() => {}}
+            onReference={() => {
+              references++;
+            }}
             onDownload={() => {}}
             onRenameRequest={() => {}}
             onMoveRequest={() => {}}
@@ -227,9 +230,16 @@ describe("多选右键菜单", () => {
       ),
     );
     const menu = win.document.querySelector('[role="menu"]');
-    expect(menu?.querySelectorAll("button").length).toBe(1);
+    const items = menu?.querySelectorAll("button");
+    expect(items?.length).toBe(2);
+    expect(items?.[0]?.textContent).toBe(en.fileTree.contextMenu.reference);
+    expect(items?.[1]?.textContent).toBe(en.fileTree.contextMenu.delete);
     expect(deleted).toEqual([]);
-    act(() => menu?.querySelector<HTMLButtonElement>("button")?.click());
+    expect(references).toBe(0);
+    act(() => items?.[0]?.click());
+    expect(references).toBe(1);
+    expect(deleted).toEqual([]);
+    act(() => items?.[1]?.click());
     expect(deleted).toEqual(["docs/a.md"]);
   });
 });
