@@ -7,14 +7,13 @@
  * 2. `treeVersion` / `normalizedSearch` 不属于本组件：源实现把它们编进父级的 React `key`
  *    来强制 Arborist 重新挂载，重建逻辑留在 `FileTreeView`。
  * 3. i18n 从宿主的 `NS.COMPONENTS` 改为包内 `UI_COMPONENTS_NS`。
- * 4. 行高 32 在源实现里同时出现在 `rowHeight` 与 sticky 目录条的行索引换算中，
- *    抽成 `ROW_HEIGHT` 常量避免两处漂移（行为不变）。
+ * 4. 行高同时用于虚拟列表与 sticky 目录的索引换算，两处共用 `ROW_HEIGHT`。
  */
 
 import { FilePlus2, Folder, FolderOpen, RefreshCw } from "lucide-react";
 import type { DragEvent, MouseEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { NodeRendererProps, TreeApi } from "react-arborist";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { NodeRendererProps, RowRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 
@@ -23,10 +22,12 @@ import { cn } from "../lib/cn";
 import { FileTypeIcon } from "./file-icon-helper";
 import "./file-tree-arborist.css";
 import type { FileTreeSelectionGesture, ParsedFileNode } from "./file-tree-model";
+import { FileTreeLabel, FileTreeTooltip } from "./internal/file-tree-label";
 
 /** 行高与缩进；行高同时用于 sticky 目录条的可见行索引换算。 */
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 48;
 const INDENT = 12;
+const FileTreeClock = createContext(0);
 
 /**
  * 行内操作按钮（新建 / 刷新）的样式；由原先的 `.file-tree-row-action` 及其 `:hover` / `:focus-visible`
@@ -80,6 +81,7 @@ export function FileTreeArborist({
   const containerRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<TreeApi<ParsedFileNode> | undefined>(undefined);
   const [height, setHeight] = useState(0);
+  const [now, setNow] = useState(Date.now);
   const [stickyFolder, setStickyFolder] = useState<ParsedFileNode | null>(null);
   // 节点渲染器由 Arborist 缓存，通过 ref 读取最新回调，避免每次父级重渲染都重建整棵树。
   const propsRef = useRef({
@@ -109,6 +111,12 @@ export function FileTreeArborist({
   const syncingSelectionRef = useRef(false);
   const selectionReadyRef = useRef(false);
   const initialOpenState = useMemo(() => Object.fromEntries(expandedIds.map((id) => [id, true])), [expandedIds]);
+
+  useEffect(() => {
+    // 虚拟树共享时钟，只更新可见行，避免每个文件各自维护定时器。
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const updateStickyFolder = useCallback((scrollOffset = 0) => {
     // scrollOffset 为 0 表示列表处于顶部，此时不应显示 sticky，也不能为 sticky 预留空白行。
@@ -169,53 +177,67 @@ export function FileTreeArborist({
   );
 
   return (
-    <div
-      ref={containerRef}
-      data-slot="file-tree-arborist"
-      className="relative size-full min-h-0 min-w-0 overflow-hidden"
-    >
-      {stickyFolder && (
-        <div
-          className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-sm font-normal text-text-secondary"
-          aria-hidden
-        >
-          <FolderOpen className="size-4" />
-          <span className="ml-auto">{stickyFolder.path}</span>
-        </div>
-      )}
-      {height > 0 && (
-        <ArboristTree
-          data={data}
-          ref={treeRef}
-          idAccessor="path"
-          childrenAccessor={(node) => (node.isDir ? node.children : null)}
-          initialOpenState={initialOpenState}
-          openByDefault={false}
-          disableDrag
-          disableDrop
-          disableEdit
-          onSelect={(nodes) => {
-            if (selectionReadyRef.current && !syncingSelectionRef.current)
-              onSelectionChange(nodes.map((node) => node.id));
-          }}
-          onActivate={(node) => onSelect(node.data, { toggle: false, range: false })}
-          onToggle={(id) => onToggle(id, treeRef.current?.get(id)?.isOpen ?? false)}
-          rowHeight={ROW_HEIGHT}
-          indent={INDENT}
-          overscanCount={8}
-          width="100%"
-          height={height}
-          onScroll={handleScroll}
-          aria-label={t("fileTree.accessibleName")}
-        >
-          {Node}
-        </ArboristTree>
-      )}
-    </div>
+    <FileTreeClock.Provider value={now}>
+      <div
+        ref={containerRef}
+        data-slot="file-tree-arborist"
+        className="relative size-full min-h-0 min-w-0 overflow-hidden"
+      >
+        {stickyFolder && (
+          <div
+            className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-sm font-normal text-text-secondary"
+            aria-hidden
+          >
+            <FolderOpen className="size-4" />
+            <span className="ml-auto">{stickyFolder.path}</span>
+          </div>
+        )}
+        {height > 0 && (
+          <ArboristTree
+            data={data}
+            ref={treeRef}
+            idAccessor="path"
+            childrenAccessor={(node) => (node.isDir ? node.children : null)}
+            initialOpenState={initialOpenState}
+            openByDefault={false}
+            disableDrag
+            disableDrop
+            disableEdit
+            onSelect={(nodes) => {
+              if (selectionReadyRef.current && !syncingSelectionRef.current)
+                onSelectionChange(nodes.map((node) => node.id));
+            }}
+            onActivate={(node) => onSelect(node.data, { toggle: false, range: false })}
+            onToggle={(id) => onToggle(id, treeRef.current?.get(id)?.isOpen ?? false)}
+            rowHeight={ROW_HEIGHT}
+            renderRow={FileTreeRow}
+            indent={INDENT}
+            overscanCount={8}
+            width="100%"
+            height={height}
+            onScroll={handleScroll}
+            aria-label={t("fileTree.accessibleName")}
+          >
+            {Node}
+          </ArboristTree>
+        )}
+      </div>
+    </FileTreeClock.Provider>
   );
 }
 
-/** 单行节点：目录可折叠、文件显示类型图标，行内操作按钮仅在悬停/聚焦时可见。 */
+/** 保留 Arborist 默认行的焦点与选择行为，让提示绑定真实的 treeitem 焦点。 */
+function FileTreeRow({ node, attrs, innerRef, children }: RowRendererProps<ParsedFileNode>) {
+  return (
+    <FileTreeTooltip node={node.data}>
+      <div {...attrs} ref={innerRef} onFocus={(event) => event.stopPropagation()} onClick={node.handleClick}>
+        {children}
+      </div>
+    </FileTreeTooltip>
+  );
+}
+
+/** 目录可折叠，文件显示双行标签，行内操作仅在悬停或聚焦时可见。 */
 function FileTreeNode({
   node,
   style,
@@ -223,6 +245,7 @@ function FileTreeNode({
 }: NodeRendererProps<ParsedFileNode> & { viewProps: Omit<FileTreeArboristProps, "data" | "expandedIds"> }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const data = node.data;
+  const now = useContext(FileTreeClock);
   const handleSelect = (event: MouseEvent<HTMLElement>) => {
     event.stopPropagation();
     node.tree.focus(node.id, { scroll: false });
@@ -283,15 +306,13 @@ function FileTreeNode({
           <FileTypeIcon filename={data.name} />
         )}
       </button>
-      <span
-        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-sm"
-        title={data.name}
-      >
-        {data.name}
-      </span>
+      <FileTreeLabel node={data} now={now} />
       <span
         data-slot="tree-item-actions"
-        className="absolute top-1/2 right-1 z-[1] flex shrink-0 -translate-y-1/2 items-center gap-px bg-[linear-gradient(90deg,transparent,var(--color-surface-2)_18px)] pl-4.5 opacity-0 transition-opacity duration-[120ms] ease-[ease] group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+        className={cn(
+          "absolute right-1 z-[1] flex shrink-0 items-center gap-px bg-[linear-gradient(90deg,transparent,var(--color-surface-2)_18px)] pl-4.5 opacity-0 transition-opacity duration-[120ms] ease-[ease] group-hover/row:opacity-100 group-focus-within/row:opacity-100",
+          data.isDir ? "top-1/2 -translate-y-1/2" : "top-0.5",
+        )}
       >
         {data.isDir && (
           <button

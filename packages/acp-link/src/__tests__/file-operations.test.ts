@@ -46,6 +46,33 @@ afterEach(async () => {
 });
 
 describe("handleFileOp", () => {
+  // 链接可以出现在路径树中，但不得读取 workspace 外目标的元数据。
+  test("文件树不暴露外部 symbolic link 目标的大小", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const outside = await mkdtemp(join(tmpdir(), "acp-link-tree-outside-"));
+    temporaryDirectories.push(outside);
+    await writeFile(join(outside, "private.txt"), "private");
+    await symlink(join(outside, "private.txt"), join(workspace, "linked.txt"));
+    const tree = await handleFileOp(createMessage(environmentId, "tree"));
+    expect(tree.status).toBe("ok");
+    const data = tree.data as { paths: string[]; sizes: Record<string, number> };
+    expect(data.paths).toContain("linked.txt");
+    expect(data.sizes["linked.txt"]).toBeUndefined();
+  });
+
+  // 机器端树快照必须保留真实字节数，空文件不能和缺失元数据混淆。
+  test("文件树返回文件字节大小与修改时间，目录不填文件大小", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "docs"));
+    await writeFile(join(workspace, "docs", "data.txt"), "你好");
+    await writeFile(join(workspace, "empty.txt"), "");
+    const tree = await handleFileOp(createMessage(environmentId, "tree"));
+    expect(tree).toMatchObject({ status: "ok", data: { sizes: { "docs/data.txt": 6, "empty.txt": 0 } } });
+    const data = tree.data as { mtimes: Record<string, number>; sizes: Record<string, number> };
+    expect(data.mtimes["docs/data.txt"]).toBeGreaterThan(0);
+    expect(data.sizes["docs/"]).toBeUndefined();
+  });
+
   // 超大单文件必须返回413，不能编码后撑爆共用的128MiB消息预算。
   test("远程二进制下载拒绝92MiB加1字节", async () => {
     const { workspace, environmentId } = await createWorkspace();

@@ -1,15 +1,4 @@
-// file-backends.ts — AgentFileService 的执行后端层（§2.3，P1-7a 拆分）
-//
-// 自 agent-file-service.ts 拆出的执行侧逻辑（保持门面单文件 ≤500 行，CLAUDE.md）。
-// 职责边界：
-// - BackEnd 统一执行接口（§2.3）与能力上限显式声明（§2.4 能力不对称条款）；
-// - LocalBackend：包装 workspace-fs（opId/ifMatch 为契约占位，W12b 启用）；
-// - RemoteBackend：包装 remote-file-service（machineId 由门面路由决策注入）；
-// - If-Match 版本比对（etagEquals / assertVersionMatch，W12b，§4.4）：仅被两个
-//   后端调用，随后端迁入本文件（避免与门面 agent-file-service 互相导入成环）；
-// - resolveExecutionBackend：BackEnd 路由决策（§3 回退链，实时判定不缓存）。
-//
-// 依赖方向：门面 → 本文件 → file-types / workspace-fs / remote-file-service。
+/** 本地与远程文件执行后端，共享条件写规则；门面负责授权并选择后端。 */
 
 import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
@@ -200,8 +189,12 @@ class LocalBackend implements BackEnd {
     const { workspaceDir } = await this.resolve(envId, ".");
     const { entries, errors } = await listPathsRecursive(workspaceDir);
     const mtimes: Record<string, number> = {};
-    for (const e of entries) if (e.mtime > 0) mtimes[e.path] = e.mtime;
-    return { paths: entries.map((e) => e.path), mtimes, errors: errors.length > 0 ? errors : undefined };
+    const sizes: Record<string, number> = {};
+    for (const e of entries) {
+      if (e.mtime > 0) mtimes[e.path] = e.mtime;
+      if (e.size !== undefined) sizes[e.path] = e.size;
+    }
+    return { paths: entries.map((e) => e.path), mtimes, sizes, errors: errors.length > 0 ? errors : undefined };
   }
   async list(envId: string, path: string): Promise<FileEntry[]> {
     const resolved = await this.resolve(envId, path);
@@ -409,11 +402,15 @@ class RemoteBackend implements BackEnd {
   async tree(envId: string, _path?: string, connectionWaitDeadline?: number): Promise<TreeResult> {
     const result = await remoteTree(this.machineId, envId, connectionWaitDeadline);
     const paths = result.paths.filter((path) => !shouldHidePath(path));
+    const visiblePaths = new Set(paths);
     const mtimes = result.mtimes
       ? Object.fromEntries(Object.entries(result.mtimes).filter(([path]) => !shouldHidePath(path)))
       : undefined;
     const errors = result.errors?.filter(({ path }) => !shouldHidePath(path));
-    return { paths, ...(mtimes ? { mtimes } : {}), ...(errors?.length ? { errors } : {}) };
+    const sizes = result.sizes
+      ? Object.fromEntries(Object.entries(result.sizes).filter(([path]) => visiblePaths.has(path)))
+      : undefined;
+    return { paths, ...(mtimes ? { mtimes } : {}), ...(sizes ? { sizes } : {}), ...(errors?.length ? { errors } : {}) };
   }
   async list(envId: string, path: string): Promise<FileEntry[]> {
     const entries = await remoteListDir(this.machineId, envId, path);

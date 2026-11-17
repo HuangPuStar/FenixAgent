@@ -81,6 +81,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-dialog", "无样式原语（file-tree-input-dialog / ui/dialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
   ["@radix-ui/react-popover", "无样式原语（ui/popover，文件 tab 的折叠与变更列表）"],
+  ["@radix-ui/react-tooltip", "无样式原语（ui/tooltip，文件树完整名称与元数据提示），无 node 依赖"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（ui-components/lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（ui-components/lib/cn 传递依赖），纯函数"],

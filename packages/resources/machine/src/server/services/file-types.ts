@@ -70,6 +70,8 @@ export type ReadResult =
 export interface TreeResult {
   paths: string[];
   mtimes?: Record<string, number>;
+  /** 文件字节大小；缺失表示机器端未提供或 stat 失败，0 表示空文件。 */
+  sizes?: Record<string, number>;
   errors?: { path: string; message: string }[];
 }
 export interface StatResult {

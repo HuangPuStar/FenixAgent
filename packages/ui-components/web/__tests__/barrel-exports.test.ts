@@ -259,6 +259,8 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "formatDate",
     "formatDateTime",
     "formatDurationMs",
+    "formatFileModifiedTime",
+    "formatFileSize",
     "formatInterval",
     "formatSeconds",
     "formatTokens",

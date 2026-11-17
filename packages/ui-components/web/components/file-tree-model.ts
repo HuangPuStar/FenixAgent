@@ -8,11 +8,14 @@
 
 import type { TreeNodeData } from "../ui/tree";
 
+/** 文件树视图节点；文件元数据缺失时保持未知，不用零值补齐。 */
 export interface ParsedFileNode {
   name: string;
   path: string;
   isDir: boolean;
   children: ParsedFileNode[];
+  size?: number;
+  modifiedAt?: number;
 }
 
 export interface FileTreeSections {
@@ -26,7 +29,11 @@ export interface FileTreeSections {
  * 路径以 `/` 结尾表示目录；`user/` 这一层即使远端为空也保留，作为固定的用户文件入口
  * （源仓库的产品约定，模型层保留以免调用方各自补根节点）。
  */
-export function parsePathsToTree(paths: string[]): ParsedFileNode[] {
+export function parsePathsToTree(
+  paths: string[],
+  mtimes?: Record<string, number>,
+  sizes?: Record<string, number>,
+): ParsedFileNode[] {
   const root: ParsedFileNode[] = [{ name: "user", path: "user", isDir: true, children: [] }];
   for (const rawPath of paths) {
     const isDir = rawPath.endsWith("/");
@@ -41,6 +48,10 @@ export function parsePathsToTree(paths: string[]): ParsedFileNode[] {
       if (!node) {
         node = { name, path, isDir: last ? isDir : true, children: [] };
         current.push(node);
+      }
+      if (last && !node.isDir) {
+        if (sizes?.[path] !== undefined) node.size = sizes[path];
+        if (mtimes?.[path] !== undefined) node.modifiedAt = mtimes[path];
       }
       current = node.children;
     }

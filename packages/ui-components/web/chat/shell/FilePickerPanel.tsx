@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { FileTypeIcon } from "../../components/file-icon-helper";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
+import { formatFileSize } from "../../lib/format";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
@@ -68,13 +69,6 @@ function isApiErrorLike(error: unknown): error is { code?: string; message: stri
 /** 读取错误文案，非 Error 时返回空串（调用方用 i18n 兜底）。 */
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "";
-}
-
-/** 格式化文件体积。复制自源 `FilePickerPanel.tsx`；纯化改动点：无。 */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**

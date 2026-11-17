@@ -24,6 +24,42 @@
 
 const DEFAULT_FALLBACK = "—";
 
+/** 文件字节数转换为紧凑大小；缺失与非法值为未知，0 是有效的空文件。 */
+export function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return DEFAULT_FALLBACK;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = bytes < 1024 ? 0 : Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${index === 0 ? bytes : (bytes / 1024 ** index).toFixed(1)} ${units[index]}`;
+}
+
+/** 文件修改时间的展示选项；now 支持同一棵虚拟树共享时钟。 */
+export interface FileModifiedTimeOptions extends TimeFormatOptions {
+  now?: number;
+}
+
+/** 一天以内显示相对时间，更早显示本地日期；0 表示文件协议中的未知时间。 */
+export function formatFileModifiedTime(
+  value: number | null | undefined,
+  options: FileModifiedTimeOptions = {},
+): string {
+  if (value == null || !Number.isFinite(value) || value <= 0 || Number.isNaN(new Date(value).getTime()))
+    return options.fallback ?? DEFAULT_FALLBACK;
+  const now = options.now ?? Date.now();
+  const minutes = Math.trunc((value - now) / 60_000);
+  if (Math.abs(value - now) < 86_400_000) {
+    const relative = new Intl.RelativeTimeFormat(options.locale, { numeric: "auto", style: "short" });
+    return Math.abs(minutes) < 60
+      ? relative.format(minutes, "minute")
+      : relative.format(Math.trunc(minutes / 60), "hour");
+  }
+  return new Intl.DateTimeFormat(options.locale, {
+    month: "short",
+    day: "numeric",
+    timeZone: options.timeZone,
+    year: new Date(value).getFullYear() === new Date(now).getFullYear() ? undefined : "numeric",
+  }).format(value);
+}
+
 /** 可格式化的时间值：ISO 串、epoch 毫秒、`Date`，以及表示「没有值」的 `null` / `undefined` / `""`。 */
 export type TimeFormatValue = string | number | Date | null | undefined;
 

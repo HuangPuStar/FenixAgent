@@ -490,11 +490,17 @@ async function opMkdir(workspace: string, params: Record<string, unknown>): Prom
 async function opTree(
   workspace: string,
   params: Record<string, unknown>,
-): Promise<{ paths: string[]; mtimes?: Record<string, number>; errors?: { path: string; message: string }[] }> {
+): Promise<{
+  paths: string[];
+  mtimes?: Record<string, number>;
+  sizes?: Record<string, number>;
+  errors?: { path: string; message: string }[];
+}> {
   const rawPath = (params.path as string) || "";
   const rootDir = resolveAndValidate(workspace, rawPath) ?? workspace;
   const paths: string[] = [];
   const mtimes: Record<string, number> = {};
+  const sizes: Record<string, number> = {};
   const errors: { path: string; message: string }[] = [];
 
   async function walk(dir: string): Promise<void> {
@@ -515,8 +521,9 @@ async function opTree(
         }
       } else {
         try {
-          const info = await stat(fullPath);
+          const info = await lstat(fullPath);
           mtimes[relPath] = info.mtimeMs;
+          if (info.isFile()) sizes[relPath] = info.size;
         } catch {
           // Skip mtime for unreadable files, path is still included
         }
@@ -529,10 +536,10 @@ async function opTree(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     errors.push({ path: relative(workspace, rootDir) || ".", message });
-    return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
+    return { paths, mtimes, sizes, errors: errors.length > 0 ? errors : undefined };
   }
 
-  return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
+  return { paths, mtimes, sizes, errors: errors.length > 0 ? errors : undefined };
 }
 
 const MAX_ZIP_BYTES = MAX_DOWNLOAD_BYTES;

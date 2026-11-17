@@ -75,12 +75,24 @@ afterEach(async () => {
 });
 
 describe("tree 端点 ETag 条件请求", () => {
+  // 大小变化也必须触发条件重取，否则前端会继续展示旧的元数据。
+  test("树指纹覆盖文件大小与非最大修改时间的变化", () => {
+    const paths = ["a.txt", "b.txt"];
+    const before = computeTreeFingerprint(paths, { "a.txt": 1, "b.txt": 9 }, { "a.txt": 0, "b.txt": 10 });
+    expect(computeTreeFingerprint(paths, { "a.txt": 1, "b.txt": 9 }, { "a.txt": 2, "b.txt": 10 })).not.toBe(before);
+    expect(computeTreeFingerprint(paths, { "a.txt": 2, "b.txt": 9 }, { "a.txt": 0, "b.txt": 10 })).not.toBe(before);
+    expect(computeTreeFingerprint([...paths].reverse(), { "a.txt": 1, "b.txt": 9 }, { "a.txt": 0, "b.txt": 10 })).toBe(
+      before,
+    );
+  });
+
   test("连续两次请求第二次 304；不带头恒 200", async () => {
     // 条件请求语义：无 If-None-Match → 恒 200 + ETag；带相同 ETag → 304 无 body，
     // 304 响应保留 ETag 供客户端更新缓存；再次无条件请求仍 200（无状态设计不省扫描）
     await writeWorkspaceFile("user/a.txt", "hello");
     const first = await handle("/fs/tree");
     expect(first.status).toBe(200);
+    expect((await first.json()).data.sizes).toEqual({ "user/a.txt": 5 });
     const etag = first.headers.get("etag");
     expect(etag).toBeTruthy();
     expect(first.headers.get("cache-control")).toBe("no-cache");

@@ -76,6 +76,10 @@ export const TreeResponseSchema = WebOkSchema(
   z.object({
     paths: z.array(z.string()).describe("递归展开后的路径列表；目录通常以 / 结尾。"),
     mtimes: z.record(z.string(), z.number()).optional().describe("部分文件路径对应的修改时间戳，单位为毫秒。"),
+    sizes: z
+      .record(z.string(), z.number().nonnegative())
+      .optional()
+      .describe("文件路径对应的字节大小；0 为空文件，缺失表示未知，目录不提供。"),
     errors: z
       .array(
         z.object({
