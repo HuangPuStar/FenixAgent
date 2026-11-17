@@ -21,6 +21,8 @@ const keys = [
   "Element",
   "Image",
   "Node",
+  "Event",
+  "CustomEvent",
   "MutationObserver",
   "ResizeObserver",
   "customElements",
@@ -38,7 +40,11 @@ await i18n.init({
 });
 let root: Root;
 let host: HTMLElement;
-const tree = parsePathsToTree(["docs/a.md", "docs/b.md", "target/"]).filter((node) => node.path !== "user");
+const tree = parsePathsToTree(
+  ["docs/a.md", "docs/b.md", "target/"],
+  { "docs/a.md": 1794912000000, "docs/b.md": 1794912000000 },
+  { "docs/a.md": 0, "docs/b.md": 1024 },
+).filter((node) => node.path !== "user");
 
 beforeEach(() => {
   for (const key of keys)
@@ -117,6 +123,27 @@ function click(path: string, modifiers: { ctrlKey?: boolean; metaKey?: boolean; 
 }
 
 describe("虚拟文件树交互", () => {
+  // 元数据标签新增的嵌套节点和 Tooltip 不能截断受控多选及原生拖动事件。
+  test("从文件大小文字多选并拖动时保留整组选择与完整元数据", () => {
+    const calls = renderTree();
+    const size = (path: string, text: string) => {
+      const label = [...row(path).querySelectorAll("span")].find((element) => element.textContent === text);
+      if (!label) throw new Error(`Missing file size ${path}`);
+      return label;
+    };
+    act(() => size("docs/a.md", "0 B").dispatchEvent(new win.MouseEvent("click", { bubbles: true })));
+    act(() => size("docs/b.md", "1.0 KB").dispatchEvent(new win.MouseEvent("click", { bubbles: true, metaKey: true })));
+    act(() => size("docs/a.md", "0 B").dispatchEvent(new win.Event("dragstart", { bubbles: true })));
+    expect(calls.selected()).toEqual(["docs/a.md", "docs/b.md"]);
+    expect(calls.drags).toEqual(["docs/a.md"]);
+    expect(calls.previews).toEqual(["docs/a.md"]);
+    expect(row("docs/a.md").closest('[role="treeitem"]')?.getAttribute("aria-selected")).toBe("true");
+    const selected = row("docs/b.md").closest('[role="treeitem"]');
+    expect(selected?.getAttribute("aria-selected")).toBe("true");
+    expect(selected?.getAttribute("aria-label")).toContain("1,024 bytes");
+    expect(selected?.getAttribute("aria-label")).toContain("modified");
+  });
+
   // 修饰键点击目录图标与点击行文字遵循相同选择规则，不能意外展开目录。
   test.each([
     { name: "Cmd", modifiers: { metaKey: true }, expected: ["docs/a.md", "target"] },

@@ -4,7 +4,7 @@ import { revalidateWorkspaceTree } from "../api/fs";
 
 interface UseFileTreeEventsOptions {
   envId: string | null;
-  applyTree: (paths: string[], mtimes?: Record<string, number>) => void;
+  applyTree: (paths: string[], mtimes?: Record<string, number>, sizes?: Record<string, number>) => void;
   onUnavailable: (error: unknown) => void;
 }
 
@@ -39,7 +39,7 @@ export function useFileTreeEvents({ envId, applyTree, onUnavailable }: UseFileTr
       const result = await revalidateWorkspaceTree(envId, etagRef.current);
       if (result.status === "not-modified") return;
       etagRef.current = result.etag;
-      applyTree(result.tree.paths, result.tree.mtimes);
+      applyTree(result.tree.paths, result.tree.mtimes, result.tree.sizes);
     } catch (error) {
       onUnavailable(error);
     }

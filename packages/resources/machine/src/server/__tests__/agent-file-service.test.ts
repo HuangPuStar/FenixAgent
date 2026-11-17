@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rename, rm, stat, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
@@ -79,6 +79,29 @@ afterEach(async () => {
 });
 
 describe("本地 LocalBackend（真实 tmp 目录）", () => {
+  // 文件树不跟随链接读取其它环境或 workspace 外文件的大小。
+  test("本地文件树不暴露外部 symbolic link 目标的大小", async () => {
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await fs.write("user/empty.txt", "");
+    const outsideFile = join(workspaceRoot, "private.txt");
+    await writeFile(outsideFile, "private");
+    await symlink(outsideFile, join(workspaceRoot, ORG_ID, USER_ID, ENV_ID, "user/linked.txt"));
+    const tree = await fs.tree();
+    expect(tree.paths).toContain("user/linked.txt");
+    expect(tree.sizes?.["user/linked.txt"]).toBeUndefined();
+  });
+
+  // 取树复用 stat 提供字节大小，并保留零字节和未知大小之间的区别。
+  test("本地文件树返回文件大小且不统计目录大小", async () => {
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await fs.write("user/data.txt", "你好");
+    await fs.write("user/empty.txt", "");
+    const result = await fs.tree();
+    expect(result.sizes?.["user/data.txt"]).toBe(6);
+    expect(result.sizes?.["user/empty.txt"]).toBe(0);
+    expect(result.sizes?.["user/"]).toBeUndefined();
+  });
+
   test("write 后 read（text 模式）往返一致，路径带 user/ 作用域", async () => {
     // 本地写读往返：写入内容应原样读回，返回路径为 displayPath（user/ 前缀）
     const fs = await machineFileFacade.open(ACTOR, ENV_ID);
@@ -267,6 +290,7 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
               data: {
                 paths: ["user/a.txt", "user/.mcp.json"],
                 mtimes: { "user/a.txt": 1, "user/.mcp.json": 2 },
+                sizes: { "user/a.txt": 0, "user/.mcp.json": 128 },
                 errors: [{ path: "user/.mcp.json", message: "hidden" }],
               },
             };
@@ -329,6 +353,8 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
     expect(tree.paths).toContain("user/a.txt");
     expect(tree.paths).not.toContain("user/.mcp.json");
     expect(tree.mtimes?.["user/.mcp.json"]).toBeUndefined();
+    expect(tree.sizes?.["user/a.txt"]).toBe(0);
+    expect(tree.sizes?.["user/.mcp.json"]).toBeUndefined();
     expect(tree.errors).toBeUndefined();
     const entries = await fs.list("user");
     expect(entries).toHaveLength(1);

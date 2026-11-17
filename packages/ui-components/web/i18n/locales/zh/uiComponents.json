@@ -414,6 +414,10 @@
   "fileTree": {
     "accessibleName": "文件树",
     "deleteConfirmation": "确定删除 {{names}}（{{count}} 项）？文件夹及其内容会一并删除，此操作无法撤销。",
+    "fileSize": "文件大小",
+    "modifiedAt": "修改时间",
+    "byteCount": "{{bytes}} 字节",
+    "metadataSummary": "{{name}}，文件大小 {{size}}，修改时间 {{modifiedAt}}",
     "clearSearch": "清除文件搜索",
     "contextMenu": {
       "delete": "删除",

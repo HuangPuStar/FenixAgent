@@ -3,9 +3,20 @@
 // （实测 `ResolveMessage: Cannot find module`），因此不得写成深路径；也不再以六级相对路径穿透到
 // `apps/web`（见 §1 静态条件 3）。
 import { describe, expect, test } from "bun:test";
-import { filterFileTree, parsePathsToTree, splitFileTreeSections } from "@fenix/ui-components";
+import { filterFileTree, findFileNode, parsePathsToTree, splitFileTreeSections } from "@fenix/ui-components";
 
 describe("file-tree-model", () => {
+  // 文件元数据在搜索与分区时必须保留，零字节不能被当成缺失值。
+  test("建树、搜索和用户分区保留文件大小与修改时间", () => {
+    const tree = parsePathsToTree(["user/empty.txt"], { "user/empty.txt": 1000 }, { "user/empty.txt": 0 });
+    const filtered = filterFileTree(tree, "empty");
+    expect(splitFileTreeSections(filtered).user[0]).toMatchObject({ size: 0, modifiedAt: 1000 });
+    expect(findFileNode(tree, "user")?.size).toBeUndefined();
+    const updated = parsePathsToTree(["user/empty.txt"], { "user/empty.txt": 2000 }, { "user/empty.txt": 6 });
+    expect(findFileNode(updated, "user/empty.txt")).toMatchObject({ size: 6, modifiedAt: 2000 });
+    expect(findFileNode(tree, "user/empty.txt")?.size).toBe(0);
+  });
+
   // 搜索命中文件时保留完整祖先链，确保结果仍能在树中定位。
   test("preserves parent folders for matching files", () => {
     const tree = parsePathsToTree(["docs/guide.md", "user/brief.md", "web/main.tsx"]);

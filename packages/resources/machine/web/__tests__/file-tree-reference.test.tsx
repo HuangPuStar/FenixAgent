@@ -23,6 +23,8 @@ const keys = [
   "Element",
   "Image",
   "Node",
+  "Event",
+  "CustomEvent",
   "MutationObserver",
   "ResizeObserver",
   "customElements",
@@ -62,7 +64,14 @@ beforeEach(() => {
   root = createRoot(host);
   references = [];
   submitted = false;
-  treeSpy.mockResolvedValue({ success: true, data: { paths: ["a.md", "b.md", "docs/note.md", "user/c.md"] } });
+  treeSpy.mockResolvedValue({
+    success: true,
+    data: {
+      paths: ["a.md", "b.md", "docs/note.md", "user/c.md"],
+      mtimes: { "a.md": 1794912000000, "b.md": 1794912000000 },
+      sizes: { "a.md": 0, "b.md": 1024 },
+    },
+  });
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -148,6 +157,8 @@ test("多选右键引用整组并保留选择", async () => {
   ]);
   expect(row("a.md").closest('[role="treeitem"]')?.getAttribute("aria-selected")).toBe("true");
   expect(row("b.md").closest('[role="treeitem"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(row("a.md").closest('[role="treeitem"]')?.getAttribute("aria-label")).toContain("0 字节");
+  expect(row("b.md").closest('[role="treeitem"]')?.getAttribute("aria-label")).toContain("1,024 字节");
 });
 
 // 右键未选项应先替换选择，引用不能误带上之前的整组。

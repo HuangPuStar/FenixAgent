@@ -160,8 +160,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
       try {
         const fs = await machineFileFacade.open(authCtx, params.id);
         const result = await fs.tree();
-        // 树指纹：路径 hash + max(mtime) + 路径数；mtimes 缺失（远程弱指纹）时退化为路径 hash
-        const etag = computeTreeFingerprint(result.paths, result.mtimes);
+        const etag = computeTreeFingerprint(result.paths, result.mtimes, result.sizes);
         return conditionalResponse(set, etag, headers["if-none-match"], () => ({ success: true, data: result }));
       } catch (e) {
         const fe = toFileError(e);

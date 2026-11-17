@@ -166,20 +166,14 @@ function hashOf(input: string): string {
   return createHash("sha1").update(input).digest("hex");
 }
 
-/**
- * tree 指纹：路径排序 hash + max(mtimeMs) + 路径数。
- * 路径集合参与 hash 使 rename 必然改变指纹（修复"仅 max mtime + 条数"下
- * rename 前后 mtime 恰巧相同导致的 304 误判）；max(mtimeMs) 是内容变更的
- * 弱校验（文件内容变化但 mtime 未更新的极端场景无法感知，属 §4.2 接受的边界）。
- * mtimes 缺失（远程弱指纹：机器端暂不返回 mtime，补全属跨仓库增强）时退化为
- * 路径 hash + 路径数，max 恒 0——格式与强指纹一致，机器端补齐后 ETag 自然失效一次。
- * 返回值即 HTTP ETag 标准格式（带引号）。
- */
-export function computeTreeFingerprint(paths: string[], mtimes?: Record<string, number>): string {
-  const pathHash = hashOf([...paths].sort().join("\n"));
-  let maxMtime = 0;
-  if (mtimes) for (const t of Object.values(mtimes)) if (t > maxMtime) maxMtime = t;
-  return `"${pathHash}-${maxMtime}-${paths.length}"`;
+/** 每个路径的元数据都参与指纹，避免非最新文件变更后 304 保留旧信息。 */
+export function computeTreeFingerprint(
+  paths: string[],
+  mtimes?: Record<string, number>,
+  sizes?: Record<string, number>,
+): string {
+  const entries = [...paths].sort().map((path) => [path, mtimes?.[path] ?? 0, sizes?.[path] ?? null]);
+  return `"${hashOf(JSON.stringify(entries))}-${paths.length}"`;
 }
 
 /**
@@ -396,6 +390,8 @@ export interface TreeNodeEntry {
   path: string;
   /** 文件修改时间（毫秒时间戳），目录为 0 */
   mtime: number;
+  /** 文件字节大小；目录与 stat 失败项不提供。 */
+  size?: number;
 }
 
 /** 递归列出 workspace 下所有路径（黑名单过滤），返回相对路径及修改时间 */
@@ -440,8 +436,8 @@ export async function listPathsRecursive(workspaceDir: string): Promise<{
     // 文件：获取修改时间
     for (const f of files) {
       try {
-        const info = await stat(f.fullPath);
-        results.push({ path: f.relPath, mtime: info.mtimeMs });
+        const info = await lstat(f.fullPath);
+        results.push({ path: f.relPath, mtime: info.mtimeMs, ...(info.isFile() ? { size: info.size } : {}) });
       } catch {
         results.push({ path: f.relPath, mtime: 0 });
       }

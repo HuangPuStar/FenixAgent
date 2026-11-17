@@ -58,6 +58,7 @@ interface FileWriteResult {
 export interface TreeResponse {
   paths: string[];
   mtimes?: Record<string, number>;
+  sizes?: Record<string, number>;
 }
 
 /** 重命名响应 */
@@ -245,7 +246,7 @@ export async function revalidateWorkspaceTree(id: string, etag?: string | null):
     status: "updated",
     etag: response.headers.get("etag"),
     // paths 归一为数组：调用方（文件树）直接展开，缺字段时保持旧的「空树」语义
-    tree: { paths: payload.data?.paths ?? [], mtimes: payload.data?.mtimes },
+    tree: { paths: payload.data?.paths ?? [], mtimes: payload.data?.mtimes, sizes: payload.data?.sizes },
   };
 }
 

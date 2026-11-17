@@ -57,9 +57,9 @@ export function FileTreeTab({
   const downloadControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
-  const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>) => {
+  const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>, sizes?: Record<string, number>) => {
     const sorted = [...paths].sort((a, b) => (mtimes?.[b] ?? 0) - (mtimes?.[a] ?? 0));
-    treeDataRef.current = parsePathsToTree(sorted);
+    treeDataRef.current = parsePathsToTree(sorted, mtimes, sizes);
     const search = searchQueryRef.current.trim().toLocaleLowerCase();
     if (search) setSearchExpandedPaths(collectDirectoryPaths(filterFileTree(treeDataRef.current, search)));
     setStale(false);
@@ -69,7 +69,7 @@ export function FileTreeTab({
   const { loading, refresh: refreshTree } = useRequest(() => unwrap(fsApi.tree(envId!)), {
     ready: !!envId,
     refreshDeps: [envId],
-    onSuccess: (data) => applyTree(data?.paths ?? [], data?.mtimes),
+    onSuccess: (data) => applyTree(data?.paths ?? [], data?.mtimes, data?.sizes),
     onError: (error) => {
       console.error("Failed to load file tree:", error);
       setStale(true);

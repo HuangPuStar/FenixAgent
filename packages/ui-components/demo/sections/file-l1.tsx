@@ -40,7 +40,12 @@ const DEMO_PATHS = [
   "src/lib/utils.ts",
 ];
 
-const DEMO_TREE = parsePathsToTree(DEMO_PATHS);
+const DEMO_FILES = DEMO_PATHS.filter((path) => !path.endsWith("/"));
+const DEMO_TREE = parsePathsToTree(
+  DEMO_PATHS,
+  Object.fromEntries(DEMO_FILES.map((path, index) => [path, Date.now() - (index + 1) * 120_000])),
+  { "user/notes.md": 0, "README.md": 25190, "report.pdf": 2516582, "budget.xlsx": 47514 },
+);
 
 export function FileL1Section() {
   const { t } = useTranslation(DEMO_NS);

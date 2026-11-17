@@ -352,7 +352,12 @@ export async function remoteTree(
   machineId: string,
   envId: string,
   connectionWaitDeadline?: number,
-): Promise<{ paths: string[]; mtimes?: Record<string, number>; errors?: { path: string; message: string }[] }> {
+): Promise<{
+  paths: string[];
+  mtimes?: Record<string, number>;
+  sizes?: Record<string, number>;
+  errors?: { path: string; message: string }[];
+}> {
   await waitForFileWsConnection(() => isFileWsConnected(machineId), connectionWaitDeadline);
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(machineId, "tree", { environmentId: envId }, undefined, {
@@ -362,6 +367,7 @@ export async function remoteTree(
   return result.data as {
     paths: string[];
     mtimes?: Record<string, number>;
+    sizes?: Record<string, number>;
     errors?: { path: string; message: string }[];
   };
 }

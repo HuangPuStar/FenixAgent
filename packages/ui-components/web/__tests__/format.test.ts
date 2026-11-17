@@ -7,6 +7,8 @@ import {
   formatDate,
   formatDateTime,
   formatDurationMs,
+  formatFileModifiedTime,
+  formatFileSize,
   formatInterval,
   formatSeconds,
   formatTokens,
@@ -20,6 +22,31 @@ import {
  * 或 CI 容器里 `TZ` 为空，结果都一致。唯一的例外是「默认区域」那条，它两侧都用运行时默认区域自比。
  */
 const ISO = "2026-09-22T15:04:05Z";
+
+describe("文件元数据格式化", () => {
+  // 空文件与未知大小需要不同反馈，并按实际字节数选择大小单位。
+  test("文件大小保留零值并对缺失或非法值显示未知", () => {
+    expect(formatFileSize(0)).toBe("0 B");
+    expect(formatFileSize(25190)).toBe("24.6 KB");
+    expect(formatFileSize(1024 ** 3)).toBe("1.0 GB");
+    for (const value of [undefined, null, -1, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(formatFileSize(value)).toBe("—");
+  });
+
+  // 文件时间跟随界面语言，缺失时间不得被显示成当前时间或 1970 年。
+  test("修改时间本地化并区分相对时间和旧日期", () => {
+    const now = Date.parse("2026-11-17T14:34:00Z");
+    const modified = now - 120000;
+    expect(formatFileModifiedTime(modified, { now, locale: "zh-CN" })).toBe("2分钟前");
+    expect(formatFileModifiedTime(modified, { now, locale: "en-US" })).toBe("2 min. ago");
+    expect(formatFileModifiedTime(0, { now })).toBe("—");
+    expect(formatFileModifiedTime(undefined, { now })).toBe("—");
+    expect(formatFileModifiedTime(Number.NaN, { now })).toBe("—");
+    expect(
+      formatFileModifiedTime(Date.parse("2025-01-01T12:00:00Z"), { now, locale: "zh-CN", timeZone: "UTC" }),
+    ).toContain("2025");
+  });
+});
 
 describe("formatDateTime", () => {
   test("日期 + 时刻：区域不同、串不同（字段与样式沿用 toLocaleString 的默认选择）", () => {
