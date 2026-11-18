@@ -20,8 +20,12 @@ const fixedClock: Clock = { now: () => FIXED_NOW };
 
 /** 本文件创建的临时根目录；用例结束整体删除，避免把暂存残留留在系统临时目录里。 */
 const tempRoots: string[] = [];
+const activeSpools: HistorySpool[] = [];
 
 afterEach(async () => {
+  // 暂存器持有当前段句柄，须先完成任务再删除磁盘目录。
+  for (const spool of activeSpools.splice(0))
+    await Promise.all([...spool.stats().taskBytes.keys()].map((id) => spool.completeTask(id)));
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -46,7 +50,9 @@ function spoolConfig(basePath: string, overrides: Partial<SpoolConfig> = {}): Sp
 /** 建暂存器并回传它的 basePath：多数断言要同时观察账目与磁盘残留。 */
 async function createSpool(overrides: Partial<SpoolConfig> = {}): Promise<{ spool: HistorySpool; basePath: string }> {
   const basePath = await createBasePath();
-  return { spool: new HistorySpool(spoolConfig(basePath, overrides), fixedClock), basePath };
+  const spool = new HistorySpool(spoolConfig(basePath, overrides), fixedClock);
+  activeSpools.push(spool);
+  return { spool, basePath };
 }
 
 /** 捕获同步协议错误：非本层异常原样抛出，避免把断言失败误判成「确实抛了错」。 */

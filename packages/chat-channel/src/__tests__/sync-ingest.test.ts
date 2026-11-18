@@ -27,7 +27,10 @@ const fixedClock: Clock = { now: () => FIXED_NOW };
 /** 本文件创建的临时根目录；用例结束整体删除，避免把暂存残留留在系统临时目录里。 */
 const tempRoots: string[] = [];
 
+const spools: HistorySpool[] = [];
 afterEach(async () => {
+  for (const spool of spools.splice(0))
+    for (const loadId of spool.stats().taskBytes.keys()) await spool.completeTask(loadId);
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -57,6 +60,7 @@ async function createHarness(
   const profile = testProfile(options.inputs);
   const basePath = await createBasePath();
   const spool = new HistorySpool({ ...SPOOL_CONFIG, basePath, ...options.spool }, fixedClock);
+  spools.push(spool);
   const admission = new AdmissionController(profile);
   const deps = { spool, clock: fixedClock, digest: sha256Digest, capacity: profile };
   return {
@@ -133,7 +137,7 @@ describe("编号与窗口", () => {
     expect([first.sourceOrdinal, second.sourceOrdinal]).toEqual([1, 2]);
     expect(first.digest).toBe(second.digest);
     expect(ingest.status().objectCount).toBe(2);
-    expect(await ingest.readRecord(1)).toEqual(await ingest.readRecord(2));
+    expect((await ingest.readRecords([1]))[0]).toEqual((await ingest.readRecords([2]))[0]);
   });
 
   // 缺省 entryId 时没有可判定身份，同样不去重：宁可重复落两条，也不能让对象在编号空间里消失。
@@ -326,7 +330,7 @@ describe("大帧单任务路径", () => {
     const error = await captureIngestError(() => second);
     expect(error.code).toBe("CAPACITY_EXCEEDED");
     expect((await first).sourceOrdinal).toBe(1);
-    expect(await ingest.readRecord(1)).toEqual(fidelitySerialize(big));
+    expect((await ingest.readRecords([1]))[0]).toEqual(fidelitySerialize(big));
     expect(admission.used("frameParse")).toBe(0);
     expect(admission.available("frameParse")).toBe(profile.serverPools.frameParse);
     expect(ingest.status().lastOrdinal).toBe(1);
@@ -347,8 +351,8 @@ describe("大帧单任务路径", () => {
     expect([a.sourceOrdinal, b.sourceOrdinal]).toEqual([1, 2]);
     expect(ingest.status().objectCount).toBe(2);
     // 并发提交的字节顺序必须与编号顺序一致
-    expect(await ingest.readRecord(1)).toEqual(fidelitySerialize({ text: "小" }));
-    expect(await ingest.readRecord(2)).toEqual(fidelitySerialize({ text: "小" }));
+    expect((await ingest.readRecords([1]))[0]).toEqual(fidelitySerialize({ text: "小" }));
+    expect((await ingest.readRecords([2]))[0]).toEqual(fidelitySerialize({ text: "小" }));
   });
 
   // 大帧必须计费：缺 admission 时宁可拒绝，也不能让无额度的大帧绕过 frameParse 池（§10.1 缺配置拒绝启用）。
@@ -423,9 +427,9 @@ describe("状态、暂存与配额", () => {
     const first = ingest.accept({ text: "一" }, { kind: "history_object", entryId: "entry_1" });
     const second = ingest.accept({ text: "二" }, { kind: "history_object", entryId: "entry_2" });
     await Promise.all([first, second]);
-    expect(await ingest.readRecord(1)).toEqual(fidelitySerialize({ text: "一" }));
-    expect(await ingest.readRecord(2)).toEqual(fidelitySerialize({ text: "二" }));
-    const error = await captureIngestError(() => ingest.readRecord(3));
+    expect((await ingest.readRecords([1]))[0]).toEqual(fidelitySerialize({ text: "一" }));
+    expect((await ingest.readRecords([2]))[0]).toEqual(fidelitySerialize({ text: "二" }));
+    const error = await captureIngestError(() => ingest.readRecords([3]));
     expect(error.code).toBe("IMPORT_INCOMPLETE");
     expect(error.safeContext.ordinal).toBe(3);
   });

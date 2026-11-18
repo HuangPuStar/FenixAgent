@@ -105,6 +105,8 @@ export interface SyncConnection {
 
 /** 单个前端 WebSocket 客户端在连接生命周期内的全部状态 */
 export interface ClientConnection {
+  /** 宿主确认的 Agent runtime 身份，参与投影缓存隔离。 */
+  runtimeIdentity?: string;
   ws: WsConnection;
   userId: string;
   /**

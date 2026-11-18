@@ -7,12 +7,13 @@
 // 记录顺序逐条解码拼接，不需要读侧新增重组协议。
 
 import type { DigestFn } from "../clock";
+import { HISTORY_OBJECT_PART_KEY } from "../protocol/content-object-parts";
 import { SyncProtocolError } from "../protocol/errors";
 import { fidelitySerialize } from "./fidelity-json";
 import type { HistoryRecordKind, HistoryRecordMeta } from "./ingest";
 
-/** 对象分片信封键：读取方可据此识别并重组逻辑对象。 */
-export const HISTORY_OBJECT_PART_KEY = "__fenixSyncObjectPart";
+export { HISTORY_OBJECT_PART_KEY } from "../protocol/content-object-parts";
+
 /** 片内序号位宽：单个逻辑片段最多 1,048,576 个物理分片。 */
 const PART_BITS = 20;
 const PART_MASK = (1 << PART_BITS) - 1;
@@ -31,8 +32,8 @@ export interface HistoryPartPlanInput {
   readonly meta: HistoryRecordMeta;
   /** 单条记录载荷预算（`historyBlockTargetPayloadBytes`）。 */
   readonly recordBudgetBytes: number;
-  /** 超过该大小的对象保留单任务大帧路径，不在本层拆分。 */
-  readonly largeFrameThresholdBytes: number;
+  /** 调用方已接纳的 canonical 字节，避免重复序列化原始大对象。 */
+  readonly serializedBytes?: Uint8Array;
   readonly digest: DigestFn;
 }
 
@@ -139,14 +140,13 @@ function splitObject(
 /**
  * 规划一次逻辑接收对应的物理记录。
  *
- * 超过大帧阈值的对象不在这里拆：保留 `HistoryIngest` 的单任务大帧额度和原始帧上限判定，避免
- * 拆分绕过并发/内存约束。预算内的小对象保持单条记录，只统一 partIndex 编码。
+ * 原始大小与大帧额度由调用方在分片前接纳。预算内对象保持单条记录。
  */
 export function planHistoryParts(input: HistoryPartPlanInput): HistoryPart[] {
-  const { value, meta, recordBudgetBytes, largeFrameThresholdBytes, digest } = input;
-  const bytes = fidelitySerialize(value);
+  const { value, meta, recordBudgetBytes, digest } = input;
+  const bytes = input.serializedBytes ?? fidelitySerialize(value);
   const base = meta.partIndex ?? 0;
-  if (bytes.byteLength <= recordBudgetBytes || bytes.byteLength > largeFrameThresholdBytes) {
+  if (bytes.byteLength <= recordBudgetBytes) {
     return [{ value, meta: withPartIndex(meta, composePartIndex(base, 0)) }];
   }
   if (meta.kind === "text_part" && typeof value === "string") {

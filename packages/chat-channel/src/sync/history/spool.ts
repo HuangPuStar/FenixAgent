@@ -14,13 +14,12 @@
 // `RESOURCE_RETIRED` 失败（刻意不返回空字节，否则上层会把缺口当合法内容）。调用方必须先让所有在飞读取结算
 // 再释放（见 import-service.ts / build-dispatch.ts 的失败路径）。
 
-import type { FileHandle } from "node:fs/promises";
-import { mkdir, open, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Clock } from "../clock";
-import type { SyncErrorCode } from "../protocol/errors";
 import { SyncProtocolError } from "../protocol/errors";
 import { assertIdentifier } from "../protocol/identity";
+import { errnoOf, ioFailure, readSegmentSlice, SpoolSegmentWriter, spoolError } from "./spool-io";
 
 /** 暂存目录与三档配额，全部经构造参数注入（模块内不读进程环境）；三项字节数均为正整数。 */
 export interface SpoolConfig {
@@ -54,6 +53,7 @@ export interface SpoolManifest {
 
 /** 任务内部账目：只在暂存器内部流动，不随 `SpoolTask` 暴露，避免调用方绕过配额改字节数。 */
 interface SpoolTaskState {
+  readonly writer: SpoolSegmentWriter;
   readonly loadId: string;
   readonly dir: string;
   readonly segments: SpoolSegment[];
@@ -79,26 +79,6 @@ interface SpoolTaskOps {
 /** 失败诊断文件名：`failTask` 保留它供离线排查；它不是业务真相，也不作恢复输入。 */
 const FAILURE_FILE_NAME = "failure.json";
 const ENOENT = "ENOENT";
-
-function spoolError(code: SyncErrorCode, message: string, cause?: unknown): SyncProtocolError {
-  return new SyncProtocolError(code, cause === undefined ? { message } : { message, cause });
-}
-
-/** 最小范围收窄：Node 的 fs 异常不是导出类型，只取它可移植的 `code` 字段。 */
-function errnoOf(error: unknown): string | null {
-  const { code } = error instanceof Error ? (error as { code?: unknown }) : { code: undefined };
-  return typeof code === "string" ? code : null;
-}
-
-/** 收敛 I/O 异常：已分类的协议错误原样上抛（缺失段不能被降级成暂存失败），其余包成 STAGING_FAILED，message
- * 只带操作名与 errno——绝不回显路径。 */
-function ioFailure(operation: string, error: unknown): SyncProtocolError {
-  if (error instanceof SyncProtocolError) {
-    return error;
-  }
-  const errno = errnoOf(error);
-  return spoolError("STAGING_FAILED", `spool ${operation} failed${errno === null ? "" : ` (${errno})`}`, error);
-}
 
 /** 配置校验是暂存层唯一的启用门禁：`segmentBytes` 超过任务配额必须拒绝而不是夹取，否则单段就能冲破配额。 */
 function assertSpoolConfig(config: SpoolConfig): void {
@@ -134,55 +114,6 @@ function enqueue<T>(state: SpoolTaskState, operation: () => Promise<T>): Promise
     () => undefined,
   );
   return run;
-}
-
-/** 打开段文件；缺失是「暂存字节不完整」而非暂存故障，故单独映射成 IMPORT_INCOMPLETE。 */
-async function openSegmentFile(segment: SpoolSegment, flags: "a" | "r"): Promise<FileHandle> {
-  try {
-    return await open(segment.path, flags);
-  } catch (error) {
-    if (errnoOf(error) === ENOENT) {
-      throw spoolError("IMPORT_INCOMPLETE", `spool segment ${segment.index} is missing`);
-    }
-    throw ioFailure("open", error);
-  }
-}
-
-/** 追加写入单个段文件：短写必须补齐；主路径上的关闭失败视为暂存失败（数据可能未落盘）。 */
-async function appendToSegment(segment: SpoolSegment, chunk: Uint8Array): Promise<void> {
-  const handle = await openSegmentFile(segment, "a");
-  try {
-    let written = 0;
-    while (written < chunk.length) {
-      const result = await handle.write(chunk.subarray(written));
-      // 没有这个出口就是死循环：拿不到进展必须立刻失败，而不是空转到超时。
-      if (result.bytesWritten <= 0) {
-        throw spoolError("STAGING_FAILED", "spool segment write made no progress");
-      }
-      written += result.bytesWritten;
-    }
-  } catch (error) {
-    // 主错误优先：关闭句柄的失败不得掩盖写失败的原因。
-    await handle.close().catch(() => undefined);
-    throw ioFailure("write", error);
-  }
-  await handle.close();
-}
-
-/** 读取段内切片：短读说明暂存字节不完整，一律 IMPORT_INCOMPLETE（调用方只应重试整批，不做局部修补）。 */
-async function readSegmentSlice(segment: SpoolSegment, offset: number, count: number): Promise<Uint8Array> {
-  const handle = await openSegmentFile(segment, "r");
-  const buffer = new Uint8Array(count);
-  try {
-    const { bytesRead } = await handle.read(buffer, 0, count, offset);
-    if (bytesRead !== count) {
-      throw spoolError("IMPORT_INCOMPLETE", `spool segment ${segment.index} returned ${bytesRead} of ${count} bytes`);
-    }
-  } finally {
-    // 读取完成后关闭失败不改变结果，且不得顶替上面更精确的错误。
-    await handle.close().catch(() => undefined);
-  }
-  return buffer;
 }
 
 /** 删除任务目录；失败只留下可被 `cleanupOrphans` 回收的残留，不影响已归还的配额（见文件头的已知边界）。 */
@@ -224,6 +155,7 @@ export class HistorySpool {
       throw new SyncProtocolError("SCOPE_BUSY", { retryable: false, message });
     }
     const state: SpoolTaskState = {
+      writer: new SpoolSegmentWriter(),
       loadId,
       dir: join(this.config.basePath, loadId),
       segments: [],
@@ -253,6 +185,7 @@ export class HistorySpool {
             throw spoolError("RESOURCE_RETIRED", `spool task "${state.loadId}" is released`);
           }
           // 冻结是状态而非动作：重复封存返回同一 manifest。
+          await state.writer.close();
           state.sealed = true;
           return snapshotManifest(state);
         }),
@@ -326,7 +259,11 @@ export class HistorySpool {
     state.closed = true;
     await enqueue(state, async () => {
       // 先归还再落盘：诊断是排查副产品，不能因为写不进去就让额度留在账上（`releaseQuota` 幂等，重试安全）。
-      this.releaseQuota(state);
+      try {
+        await state.writer.close();
+      } finally {
+        this.releaseQuota(state);
+      }
       const payload = JSON.stringify({ loadId, reason, failedAt: this.clock.now() });
       try {
         await writeFile(join(state.dir, FAILURE_FILE_NAME), payload, "utf8");
@@ -399,7 +336,7 @@ export class HistorySpool {
       try {
         await this.writeChunks(state, payload);
       } catch (error) {
-        await this.discardTask(state);
+        await this.discardTask(state).catch(() => undefined);
         throw ioFailure("write", error);
       }
     });
@@ -413,7 +350,7 @@ export class HistorySpool {
       const segment =
         current === undefined || current.bytes >= this.config.segmentBytes ? this.openSegment(state) : current;
       const take = Math.min(this.config.segmentBytes - segment.bytes, payload.length - offset);
-      await appendToSegment(segment, payload.subarray(offset, offset + take));
+      await state.writer.append(segment, payload.subarray(offset, offset + take));
       segment.bytes += take;
       state.bytesWritten += take;
       offset += take;
@@ -460,9 +397,13 @@ export class HistorySpool {
   /** 放弃任务：归还配额、撤出在册、删除段文件；删除失败不回滚前两步——任务已释放，残留由 cleanupOrphans 兜底。 */
   private async discardTask(state: SpoolTaskState): Promise<void> {
     state.closed = true;
-    this.releaseQuota(state);
-    this.tasks.delete(state.loadId);
-    await removeDirectoryQuietly(state.dir);
+    try {
+      await state.writer.close();
+    } finally {
+      this.releaseQuota(state);
+      this.tasks.delete(state.loadId);
+      await removeDirectoryQuietly(state.dir);
+    }
   }
 }
 

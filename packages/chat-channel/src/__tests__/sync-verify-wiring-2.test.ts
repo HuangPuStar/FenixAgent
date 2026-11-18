@@ -18,7 +18,7 @@ import { AdmissionController } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
 import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
 import type { BlockRecordInput, BuiltBlock } from "../sync/history/block-builder";
-import { BlockDispatcher, type BlockRecordSource } from "../sync/history/build-dispatch";
+import { BlockDispatcher, type BlockRecordSource, type StagedBlockRecord } from "../sync/history/build-dispatch";
 import { BlockBuildPool, deriveBuildPoolConfig } from "../sync/history/build-pool";
 import { captureChange } from "../sync/live/change-capture";
 import { createLiveWriter, type LiveInput, type LiveRecordValue, type LiveWriter } from "../sync/live/live-writer";
@@ -739,11 +739,11 @@ function buildPool(historyBuilderWorkers: number, builderTasksMax: number): Pool
 }
 
 /** 编号记录输入：`payload` 由读取缝按 ordinal 现造（分派器会把占位载荷换成读取结果）。 */
-function numberedRecords(count: number): BlockRecordInput[] {
+function numberedRecords(count: number): StagedBlockRecord[] {
   return Array.from({ length: count }, (_, index) => ({
     sourceOrdinal: index + 1,
     kind: "history_object",
-    payload: new Uint8Array(0),
+    payloadBytes: new TextEncoder().encode(`record-${index + 1}`).byteLength,
     entryId: `entry-${index + 1}`,
     entryOrder: index + 1,
     contentSlot: 0,
@@ -751,8 +751,8 @@ function numberedRecords(count: number): BlockRecordInput[] {
   }));
 }
 
-function inGroups(records: readonly BlockRecordInput[], groupSize: number): BlockRecordInput[][] {
-  const groups: BlockRecordInput[][] = [];
+function inGroups(records: readonly StagedBlockRecord[], groupSize: number): StagedBlockRecord[][] {
+  const groups: StagedBlockRecord[][] = [];
   for (let start = 0; start < records.length; start += groupSize) {
     groups.push(records.slice(start, start + groupSize));
   }
@@ -769,7 +769,13 @@ class RecordingSource implements BlockRecordSource {
 
   constructor(private readonly pool: BlockBuildPool) {}
 
-  async readRecord(sourceOrdinal: number): Promise<Uint8Array> {
+  async readRecords(sourceOrdinals: readonly number[]): Promise<Uint8Array[]> {
+    const results: Uint8Array[] = [];
+    for (const sourceOrdinal of sourceOrdinals) results.push(await this.readRecord(sourceOrdinal));
+    return results;
+  }
+
+  private async readRecord(sourceOrdinal: number): Promise<Uint8Array> {
     if (sourceOrdinal === this.failAt) {
       throw new SyncProtocolError("CAPACITY_EXCEEDED", { message: "read failed on purpose" });
     }
@@ -814,6 +820,24 @@ function fakeBlock(generation: string, blockIndex: number, records: readonly Blo
 }
 
 describe("V2 历史导入：分派器的在飞窗口与失败结算", () => {
+  // 批量读入前必须按真实载荷取得额度，零字节占位索引不能绕过内存预算。
+  test("暂存批次读取期间已预留全部载荷额度", async () => {
+    const { pool, admission } = buildPool(1, 2);
+    const records = numberedRecords(2);
+    const dispatcher = new BlockDispatcher(pool, {
+      source: {
+        async readRecords(ordinals) {
+          expect(admission.used("historyBuild")).toBeGreaterThanOrEqual(16);
+          return ordinals.map((ordinal) => new TextEncoder().encode(`record-${ordinal}`));
+        },
+      },
+      buildBlock: ({ blockIndex, records }) => fakeBlock(GENERATION, blockIndex, records),
+      commitBlock: async () => "committed",
+    });
+    await dispatcher.dispatch([records]);
+    expect(admission.used("historyBuild")).toBe(0);
+  });
+
   // 契约（规格 §5.7 背压 + 设计 §15.1 T02）：20,000 对象的零间隔突发是默认形状（700+ 块），生产者必须受
   // 消费者约束——池上限不变、提交不撞满队列；每条记录只被读取一次（续建不得把整组重读一遍）。
   test("两万对象形状：在飞窗口不超过池 worker 数，队列不为负、每条记录只读一次", async () => {

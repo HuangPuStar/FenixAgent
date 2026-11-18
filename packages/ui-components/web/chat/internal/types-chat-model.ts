@@ -90,7 +90,8 @@ export interface ToolCallData {
   status: ToolCallStatus;
   content?: ToolCallContent[];
   rawInput?: Record<string, unknown>;
-  rawOutput?: Record<string, unknown>;
+  /** 引擎结果为不透明 JSON，展示端按实际形状收窄。 */
+  rawOutput?: unknown;
   description?: string;
   /** 引擎提供的 display 元数据，用于前端精确渲染工具调用类型 */
   display?: ToolCallDisplay;

@@ -52,8 +52,10 @@ const SEVEN_BLOCK_OBJECTS = 193;
 const DIRECTORY_LIMIT = DEFAULT_SYNC_CAPACITY.inputs.directoryMaxRefs;
 
 const tempRoots: string[] = [];
+const services: HistoryImportService[] = [];
 
 afterEach(async () => {
+  await Promise.all(services.splice(0).map((service) => service.abort(new Error("test fixture disposed"))));
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -152,6 +154,7 @@ async function createHarness(
     admission,
     ...(options.buildBlock === undefined ? {} : { buildBlock: options.buildBlock }),
   });
+  services.push(service);
   return { store, spool, pool, admission, service };
 }
 

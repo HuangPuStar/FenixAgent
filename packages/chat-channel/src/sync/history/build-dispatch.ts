@@ -16,10 +16,16 @@ import { SyncProtocolError } from "../protocol/errors";
 import type { CommitOutcome } from "../store/types";
 import type { BlockRecordInput, BuiltBlock } from "./block-builder";
 import type { BlockBuildPool } from "./build-pool";
+import type { HistoryRecordMeta, IngestedRecord } from "./ingest";
 
-/** 记录读取缝：只按 ordinal 取保真字节，实现方是暂存流（`HistoryIngest.readRecord`）。 */
+/** 有界构建批次的轻量索引；载荷在取得池额度后才读取。 */
+export interface StagedBlockRecord extends Omit<BlockRecordInput, "payload"> {
+  readonly payloadBytes: number;
+}
+
+/** 一次读取一个有界连续批次，实现方是暂存流。 */
 export interface BlockRecordSource {
-  readRecord(sourceOrdinal: number): Promise<Uint8Array>;
+  readRecords(sourceOrdinals: readonly number[]): Promise<Uint8Array[]>;
 }
 
 /** 分派依赖：构建一块、提交一块。块序号由分派器按构建顺序同步领取，保证同代次内唯一。 */
@@ -51,7 +57,7 @@ export class BlockDispatcher {
   }
 
   /** 在有界在飞窗口内提交全部记录组并等待结算；首个失败在在飞任务全部结清之后抛出。 */
-  async dispatch(groups: readonly (readonly BlockRecordInput[])[]): Promise<void> {
+  async dispatch(groups: readonly (readonly StagedBlockRecord[])[]): Promise<void> {
     const window = Math.max(1, this.pool.workerCount());
     const inFlight: Promise<void>[] = [];
     let failure: unknown = null;
@@ -80,25 +86,24 @@ export class BlockDispatcher {
   }
 
   /** 一组的构建任务：组内可能因硬限拆成多块，每块各占一个谱系槽位。 */
-  private submitGroup(records: readonly BlockRecordInput[]): Promise<void> {
+  private submitGroup(records: readonly StagedBlockRecord[]): Promise<void> {
     const estimateBytes = Math.max(
       1,
-      records.reduce((sum, record) => sum + record.payload.byteLength, 0),
+      records.reduce((sum, record) => sum + record.payloadBytes, 0),
     );
     return this.pool.submitAwaitingCapacity({
       estimateBytes,
       run: async (): Promise<void> => {
+        const payloads = await this.deps.source.readRecords(records.map((record) => record.sourceOrdinal));
+        if (payloads.length !== records.length)
+          throw new SyncProtocolError("IMPORT_INCOMPLETE", { message: "batch read did not cover its records" });
+        const materialized = records.map((record, index) => ({ ...record, payload: payloads[index]! }));
         let offset = 0;
         while (offset < records.length) {
-          const remaining = offset === 0 ? records : records.slice(offset);
-          const materialized: BlockRecordInput[] = [];
-          for (const record of remaining) {
-            const payload = await this.deps.source.readRecord(record.sourceOrdinal);
-            materialized.push({ ...record, payload });
-          }
+          const remaining = offset === 0 ? materialized : materialized.slice(offset);
           const blockIndex = this.nextBlockIndex;
           this.nextBlockIndex += 1;
-          const block = this.buildChunk(materialized, blockIndex, offset > 0);
+          const block = this.buildChunk(remaining, blockIndex, offset > 0);
           if (block.recordCount <= 0 || block.recordCount > remaining.length) {
             // 记录数不推进就会永远转下去；构建器违约必须显式失败，不能靠单调推进兜底。
             throw new SyncProtocolError("MALFORMED_FRAME", {
@@ -131,4 +136,43 @@ export class BlockDispatcher {
       });
     }
   }
+}
+
+/** 按源序号和目标载荷规划有界构建批次，异步完成顺序不改变源顺序。 */
+export function createHistoryBlockInputs(
+  records: readonly IngestedRecord[],
+  metadata: readonly HistoryRecordMeta[],
+  target: number,
+): StagedBlockRecord[][] {
+  const result: StagedBlockRecord[][] = [];
+  let current: StagedBlockRecord[] = [];
+  let currentBytes = 0;
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    const meta = metadata[index];
+    const item: StagedBlockRecord = {
+      sourceOrdinal: record.sourceOrdinal,
+      kind: record.kind,
+      payloadBytes: record.payloadBytes,
+      entryId: meta.entryId ?? `ordinal-${record.sourceOrdinal}`,
+      ...(meta.role === undefined ? {} : { role: meta.role }),
+      entryOrder: meta.entryOrder ?? record.sourceOrdinal,
+      ...(meta.sourceRevision === undefined ? {} : { sourceRevision: meta.sourceRevision }),
+      contentSlot: meta.contentSlot ?? 0,
+      partIndex: meta.partIndex ?? 0,
+    };
+    // 构建前的尺寸只是软分块提示；真正的 payload 在 build task 中从 spool 读取并替换。
+    const estimated = record.payloadBytes;
+    if (current.length > 0 && currentBytes + estimated > target) {
+      result.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(item);
+    currentBytes += estimated;
+  }
+  if (current.length > 0) {
+    result.push(current);
+  }
+  return result;
 }

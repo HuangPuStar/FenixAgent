@@ -29,7 +29,7 @@ const SERVER_STATE_FILES = new Set([
 ]);
 
 /** 包外运行时依赖白名单：新增条目必须同步评估浏览器可用性 */
-const EXTERNAL_ALLOWLIST = new Set(["yjs", "acp-link"]);
+const EXTERNAL_ALLOWLIST = new Set(["yjs", "acp-link", "zod"]);
 
 /** 去掉 // 与块注释（注释文本里可能引用 node:crypto 等字样，必须先剥离再匹配） */
 function stripComments(source: string): string {
@@ -306,6 +306,7 @@ describe("sync-client 子路径浏览器可达面", () => {
       "sync/client/doc-hub.ts",
       "sync/client/index.ts",
       "sync/client/transport.ts",
+      "sync/protocol/content-object-parts.ts",
       "sync/protocol/directory.ts",
       "sync/protocol/errors.ts",
       "sync/protocol/frames.ts",

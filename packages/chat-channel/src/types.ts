@@ -256,7 +256,8 @@ export interface ToolCallMessage {
   status: "running" | "complete" | "error" | "waiting_for_confirmation" | "canceled" | "rejected";
   content: ToolCallContentBlock[];
   rawInput?: Record<string, unknown>;
-  rawOutput?: Record<string, unknown>;
+  /** 引擎结果为不透明 JSON，展示端按实际形状收窄。 */
+  rawOutput?: unknown;
   display?: ToolCallDisplayData;
   permissionRequest?: { requestId: string; options: PermissionOption[] };
   isStandalonePermission?: boolean;

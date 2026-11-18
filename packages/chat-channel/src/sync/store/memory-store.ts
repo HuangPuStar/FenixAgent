@@ -7,6 +7,7 @@ import * as Y from "yjs";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
+import { commitAccountedSets, type MemoryBudget } from "./memory-accounting";
 import {
   type CommitRecord,
   compositeKey,
@@ -56,8 +57,9 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     digest: DigestFn;
     capacity: SyncCapacityProfile;
     lifecycle: StoreLifecycleOptions;
+    memoryBudget?: MemoryBudget;
   }) {
-    super();
+    super(options.memoryBudget);
     this.clock = options.clock;
     this.digest = options.digest;
     this.capacity = options.capacity;
@@ -142,12 +144,13 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       fail("MALFORMED_FRAME", "new document must be an active base snapshot");
     if (doc.dependsOn.length > this.capacity.inputs.dependsOnMax)
       fail("CAPACITY_EXCEEDED", "document dependencies exceed capacity");
+    const snapshot = copyBytes(doc.snapshot);
     this.docs.set(key, {
       ...doc,
       lastSeq: doc.baseSeq,
-      baseSnapshot: copyBytes(doc.snapshot),
+      baseSnapshot: snapshot,
       baseHash: doc.hash,
-      snapshot: copyBytes(doc.snapshot),
+      snapshot,
       dependsOn: [...doc.dependsOn],
       sealedAt: null,
       retiredAt: null,
@@ -254,12 +257,13 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       return { doc, ledger, records, lastSeq: list[list.length - 1].fromSeq };
     });
     const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
-    for (const { doc, ledger, records, lastSeq } of pending) {
-      for (const record of records) ledger.push(record);
-      doc.lastSeq = lastSeq;
-    }
-    for (const ref of refs) this.refs.set(ref.key, ref.value);
-    this.batches.set(batchKey, batch);
+    commitAccountedSets((changes) => {
+      for (const { doc, ledger, records } of pending)
+        changes.push(this.updates.prepare(compositeKey(input.scopeKey, doc.docId), [...ledger, ...records]));
+      for (const ref of refs) changes.push(this.refs.prepare(ref.key, ref.value));
+      changes.push(this.batches.prepare(batchKey, batch));
+    });
+    for (const { doc, lastSeq } of pending) doc.lastSeq = lastSeq;
     return { outcome: "committed", frontiers };
   }
 
@@ -281,12 +285,13 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       fail("DOC_NOT_FOUND", "document generation is not registered");
     if (generation.state === "committed" && this.scopes.get(input.scopeKey)?.currentGeneration !== doc.generation)
       fail("GENERATION_NOT_CURRENT", "document generation is not current");
+    const snapshot = copyBytes(doc.snapshot);
     this.docs.set(key, {
       ...doc,
       lastSeq: doc.finalSeq ?? doc.baseSeq,
-      baseSnapshot: copyBytes(doc.snapshot),
+      baseSnapshot: snapshot,
       baseHash: doc.hash,
-      snapshot: copyBytes(doc.snapshot),
+      snapshot,
       dependsOn: [...doc.dependsOn],
       sealedAt: this.clock.now(),
       retiredAt: null,
@@ -322,11 +327,15 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       input.manifestChange.pointerRevision <= scope.pointerRevision
     )
       fail("POINTER_REVISION_STALE", "manifest pointer revision is not newer");
-    doc.state = "sealed";
-    doc.finalSeq = input.expectedLastSeq;
-    doc.snapshot = copyBytes(input.finalSnapshot);
-    doc.hash = input.finalHash;
-    doc.sealedAt = this.clock.now();
+    const replacement = this.docs.prepare(compositeKey(input.scopeKey, input.docId), {
+      ...doc,
+      state: "sealed",
+      finalSeq: input.expectedLastSeq,
+      snapshot: copyBytes(input.finalSnapshot),
+      hash: input.finalHash,
+      sealedAt: this.clock.now(),
+    });
+    replacement.commit();
     scope.pointerRevision = input.manifestChange.pointerRevision ?? scope.pointerRevision + 1;
     return { outcome: "committed", finalSeq: input.expectedLastSeq };
   }

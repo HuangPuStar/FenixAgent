@@ -815,3 +815,36 @@ describe("有序工具边界标记", () => {
     await fixture.writer.close();
   });
 });
+
+// 权威对象提交完成的回执必须覆盖全部分片，跨 live 封口轮换也保留身份及修订。
+test("完整工具对象跨 live 块提交后才能确认成功", async () => {
+  const fix = await setup();
+  const value = { result: "天气😀".repeat(40000) };
+  await fix.writer.accept({
+    kind: "content-object",
+    turnId: "source",
+    entryId: "callback_tool",
+    contentSlot: "object",
+    contentType: "application/json",
+    object: {
+      value,
+      meta: { kind: "tool_object", entryId: "callback_tool", role: "assistant", entryOrder: 3, sourceRevision: 7 },
+    },
+  });
+  const records = committed(fix)
+    .docs.filter((doc) => doc.kind === "content")
+    .flatMap((doc) => readRecords(fix, doc.docId))
+    .filter((record) => record.kind === "tool_object");
+  expect(records.length).toBeGreaterThan(1);
+  expect(
+    records.every(
+      (record) => record.entryId === "callback_tool" && record.sourceRevision === 7 && record.entryOrder === 3,
+    ),
+  ).toBe(true);
+  const parts = records.map((record) => JSON.parse(textOf(record)));
+  expect(parts.map((part) => part.partIndex)).toEqual(Array.from({ length: parts.length }, (_, index) => index));
+  expect(JSON.parse(Buffer.concat(parts.map((part) => Buffer.from(part.data, "base64"))).toString("utf8"))).toEqual(
+    value,
+  );
+  await fix.writer.close();
+});

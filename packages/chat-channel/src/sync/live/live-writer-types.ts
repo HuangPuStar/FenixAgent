@@ -1,8 +1,10 @@
 // packages/chat-channel/src/sync/live/live-writer-types.ts
 // 实时写者的公开契约（从 live-writer.ts 拆出，导出形状保持不变）。
 
+import type { AdmissionController } from "../capacity/admission";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn, RandomSource } from "../clock";
+import type { HistoryRecordKind, HistoryRecordMeta } from "../history/ingest";
 import type { SyncScope } from "../protocol/identity";
 import type { CommitOutcome, ProjectionStore } from "../store/types";
 import type { RotationControllerOptions } from "./rotation";
@@ -16,7 +18,9 @@ export interface LiveInput {
   readonly entryId: string;
   readonly contentSlot: string;
   readonly contentType: string;
-  readonly kind: "text-delta" | "semantic";
+  readonly kind: "text-delta" | "semantic" | "content-object";
+  /** 已授权源对象；不承载应用视图类型。 */
+  readonly object?: { readonly value: unknown; readonly meta: HistoryRecordMeta };
   readonly delta?: string;
   /** 同 entryId + 内容槽只提交一次；用于用户消息在写者交接/多入口下的幂等。 */
   readonly idempotent?: boolean;
@@ -25,6 +29,7 @@ export interface LiveInput {
 }
 
 export interface LiveWriterOptions {
+  readonly admission?: AdmissionController;
   readonly scope: SyncScope;
   readonly store: ProjectionStore;
   readonly clock: Clock;
@@ -63,7 +68,10 @@ export interface LiveRecordValue {
   readonly contentSlot: string;
   readonly contentType: string;
   readonly partIndex: number;
-  readonly kind: "text" | "final" | "tool_boundary";
+  readonly kind: "text" | "final" | "tool_boundary" | HistoryRecordKind;
+  readonly entryOrder?: number;
+  readonly sourceRevision?: number;
+  readonly role?: HistoryRecordMeta["role"];
   readonly payload: Uint8Array;
 }
 

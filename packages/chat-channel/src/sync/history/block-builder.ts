@@ -51,6 +51,7 @@ export interface BlockRecordInput {
   entryId: string;
   /** 源角色不参与记录身份，原样传给只读展示投影。 */
   role?: HistoryRecordMeta["role"];
+  sourceRevision?: number;
   /** 时间线位置（设计 §4.2：任务完成时间与网络到达时间都不能改变它）。 */
   entryOrder: number;
   /** 同一 entry 内的内容位置。 */
@@ -244,6 +245,7 @@ function toFlatRecord(record: PreparedRecord): FlatRecordValue {
     kind: record.kind,
     payload: record.payload,
     ...(record.role === undefined ? {} : { role: record.role }),
+    ...(record.sourceRevision === undefined ? {} : { sourceRevision: record.sourceRevision }),
   };
 }
 

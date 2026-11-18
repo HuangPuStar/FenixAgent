@@ -44,8 +44,8 @@ async function open(options?: CoreHarnessOptions): Promise<CoreHarness> {
 const TEXT_SLOT = "text";
 /** 设计 §10.2：单内容块的编码状态硬限；由线上数据帧上限反推，必须与容量档案同值。 */
 const BLOCK_HARD_BYTES = 218100;
-/** 设计 §10.2：历史入口的单对象大帧阈值（`capacity.inputs.largeFrameThresholdBytes`）。 */
-const LARGE_FRAME_THRESHOLD_BYTES = 1048576;
+/** 原始对象的 16 MiB 硬限；分片不能绕过原始输入校验。 */
+const MAX_RAW_OBJECT_BYTES = 16777216;
 /** 运行态实体上限（`RUNTIME_DOC_LIMITS.maxEntities`）。 */
 const RUNTIME_MAX_ENTITIES = 256;
 
@@ -315,16 +315,16 @@ describe("T03 大量小对象与少数巨型对象混合", () => {
     expect(await harness.currentGeneration()).not.toBe(before);
   });
 
-  // 超过单对象大帧阈值的历史对象在接收期就被拒：入口没有注入 `frameParse` 额度，明确失败而非静默截断。
-  test("单条超过大帧阈值时接收期明确拒绝且无部分提交", async () => {
+  // 入口已注入大对象额度，但原始输入超过硬限仍须在接收期拒绝。
+  test("单条超过原始对象硬限时明确拒绝且无部分提交", async () => {
     const harness = await open();
     const before = await harness.currentGeneration();
     const docsBefore = harness.allDocs().length;
 
     await harness.beginImport();
     await expectCode(
-      () => harness.acceptHistoryText("x".repeat(LARGE_FRAME_THRESHOLD_BYTES + 1), { entryId: "huge-1" }),
-      "ADMISSION_REJECTED",
+      () => harness.acceptHistoryText("x".repeat(MAX_RAW_OBJECT_BYTES + 1), { entryId: "huge-1" }),
+      "CAPACITY_EXCEEDED",
     );
 
     expect(harness.importStatus()?.state).toBe("failed");

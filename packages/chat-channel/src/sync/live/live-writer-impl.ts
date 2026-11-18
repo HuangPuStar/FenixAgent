@@ -1,7 +1,3 @@
-// packages/chat-channel/src/sync/live/live-writer.ts
-// D 阶段单写者编排（设计 §6.1 / §6.3 / §7；规格 §3.1）：实时事件 → 合并文本 → 语义屏障 → 固定批次 → 全组一次提交 → 封口轮换。
-// 不变量：① 每 scope 最多一个未决批次，批次在**执行前**固定 batchId、updateSeq 区间、摘要与原始字节，之后任何路径（含重试）都重放同一份字节；② 内存 Doc 不是事实来源，字节真相只在已提交边界，失败一律重建「canonical + 连续 tail」；③ 结果未知先查询：同批同摘要 = 成功且不重放输入，确定不存在且写权仍在 = 重放原字节，异摘要/无法判定 = 停写；④ 封口与轮换落成存储事务，「旧版停止写入」由存储拒绝兜底。
-// 已知偏差（影响 + 移除条件）：① 不写块头 meta 与 ordinal 范围、记录不带 `entryOrder`（`LiveInput` 不携带该信息，写者不编造，顺序暂由块 ordinal 表达）；② `partIndex` 是块内局部序号，跨块序号需 ref 索引或 successor 路由；③ 崩溃后发现不了封口产生的 successor，`recover()` 只回到 `entryRefs` 入口；④ 代次入口没有内容块时按 DOC_NOT_FOUND 失败而非自建块，新旧共存额度由装配层调 `reserveCoexistence` 预留。①②③ 移除条件「存储或调用方补齐信息」，④「接线层登记首块并持有 AdmissionController」。
 import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, createBatchId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
@@ -11,6 +7,7 @@ import { captureChange } from "./change-capture";
 import { loadCommittedDoc } from "./committed-doc";
 import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
+import { writeLiveContentObject } from "./live-content-object";
 import {
   type Batch,
   CONTENT_KIND,
@@ -24,7 +21,7 @@ import {
   RUNTIME_KIND,
   type Slice,
 } from "./live-writer-internal";
-import { descriptorOf, entityOf } from "./live-writer-records";
+import { buildLiveRecord, buildNextLiveRecord, descriptorOf, entityOf } from "./live-writer-records";
 import {
   LIVE_COMMIT_MAX_ATTEMPTS,
   LIVE_WRITER_LEASE_TTL_MS,
@@ -98,6 +95,20 @@ export class LiveWriterImpl implements LiveWriter {
   }
   async accept(input: LiveInput): Promise<void> {
     this.assertLive(true);
+    if (input.kind === "content-object") {
+      const object = input.object;
+      if (!object) malformed("content-object input requires an object");
+      return await this.run(() =>
+        writeLiveContentObject({
+          object,
+          capacity: this.options.capacity,
+          digest: this.options.digest,
+          admission: this.options.admission,
+          append: (record) =>
+            this.appendContentRecord(() => ({ ...record, recordId: `rec_${hex(this.options.random, 8)}` })),
+        }),
+      );
+    }
     const { turnId, entryId, contentSlot, contentType } = input;
     if (input.kind !== "text-delta") {
       const semantic = input.semantic;
@@ -188,23 +199,27 @@ export class LiveWriterImpl implements LiveWriter {
       Math.min(chunkLimit, Math.floor(this.options.capacity.inputs.activeHardEncodedBytes / 2)),
     );
     for (const text of splitUtf8(request.text, chunkBytes)) {
-      let cursor = this.cursor(CONTENT_KIND);
-      for (;;) {
-        const record = this.buildRecord(request.key, "text", bytes(text), this.partIndex(cursor, request.key));
-        const slices: Slice[] = [];
-        const hadRecords = (records(cursor.doc)?.length ?? 0) > 0;
-        this.capture(slices, cursor, () => records(cursor.doc, [record]));
-        const overflow = this.overflowOf(slices, record.payload.byteLength);
-        if (overflow === null) {
-          await this.persist(slices);
-          break;
-        }
-        // 试写尚未交给存储；只丢弃本片，已提交前缀从 canonical + tail 恢复，绝不重放整个输入。
-        await this.loadCursor(cursor.docId, cursor.kind);
-        if (!hadRecords) throw this.stop("CAPACITY_EXCEEDED", `record cannot fit an empty doc: ${overflow}`);
-        await this.sealActive(CONTENT_KIND);
-        cursor = this.cursor(CONTENT_KIND);
+      await this.appendContentRecord((cursor) =>
+        buildNextLiveRecord(this.options.random, cursor.doc, request.key, "text", bytes(text)),
+      );
+    }
+  }
+  private async appendContentRecord(build: (cursor: Cursor) => LiveRecordValue): Promise<void> {
+    for (;;) {
+      const cursor = this.cursor(CONTENT_KIND);
+      const record = build(cursor);
+      const slices: Slice[] = [];
+      const hadRecords = (records(cursor.doc)?.length ?? 0) > 0;
+      this.capture(slices, cursor, () => records(cursor.doc, [record]));
+      const overflow = this.overflowOf(slices, record.payload.byteLength);
+      if (overflow === null) {
+        await this.persist(slices);
+        return;
       }
+      // 未提交的试写必须撤销，之后只把当前片写到 successor，已提交前缀不重放。
+      await this.loadCursor(cursor.docId, cursor.kind);
+      if (!hadRecords) throw this.stop("CAPACITY_EXCEEDED", `record cannot fit an empty doc: ${overflow}`);
+      await this.sealActive(CONTENT_KIND);
     }
   }
   private async writeSemantic(semantic: NonNullable<LiveInput["semantic"]>, entryId: string): Promise<void> {
@@ -218,8 +233,7 @@ export class LiveWriterImpl implements LiveWriter {
     const entityId = requireString(semantic.payload, "entityId");
     const terminalEntity =
       semantic.kind !== "final" && semantic.payload.finalDescriptor === undefined && semantic.payload.terminal === true;
-    // 终态事件会在同批写 final 记录，可能触发内容块轮转。轮转必须先于 boundary：
-    // 否则 boundary 落在已封口 Doc，overflowOf 无法再把它当作写目标（DOC_NOT_FOUND）。
+    // 终态可能触发轮转，须先轮转再写 boundary，避免落入已封口 Doc。
     if (terminalEntity) {
       const content = this.cursor(CONTENT_KIND);
       if (Y.encodeStateAsUpdate(content.doc).byteLength >= this.options.limits.softRotateBytes) {
@@ -243,7 +257,7 @@ export class LiveWriterImpl implements LiveWriter {
         const content = this.cursor(CONTENT_KIND);
         const boundaryBytes = boundaryPayload(entityId, ordinal);
         const identity: Identity = { entryId, contentSlot: "boundary", contentType: "tool-boundary" };
-        const record = this.buildRecord(identity, "tool_boundary", boundaryBytes, ordinal);
+        const record = buildLiveRecord(this.options.random, identity, "tool_boundary", boundaryBytes, ordinal);
         this.capture(slices, content, () => records(content.doc, [record]));
         recordBytes = Math.max(recordBytes, boundaryBytes.byteLength);
       }
@@ -253,14 +267,13 @@ export class LiveWriterImpl implements LiveWriter {
       const identity: Identity = { entryId: entityId, contentSlot: "final", contentType: "final-descriptor" };
       const descriptor = bytes(JSON.stringify(descriptorOf(semantic.payload, entityId)));
       const content = this.cursor(CONTENT_KIND);
-      const record = this.buildRecord(identity, "final", descriptor, this.partIndex(content, identity));
+      const record = buildNextLiveRecord(this.options.random, content.doc, identity, "final", descriptor);
       this.capture(slices, content, () => records(content.doc, [record]));
       this.capture(slices, runtime, () => target.removeEntity(entityId));
       recordBytes = Math.max(recordBytes, descriptor.byteLength);
     } else {
       if (terminalEntity) {
-        // 先提交终态描述符/引用，再在同批次移出实体；新投影只承接终态索引，
-        // 工具原始输入输出仍由旧通道承载（见 ingress 已知缺口③）。
+        // 终态描述符和实体移除必须在同一批提交，避免出现不可解析的引用。
         const metadata =
           semantic.payload.metadata === undefined ? {} : requireObject(semantic.payload.metadata, "metadata");
         const terminalContent = bytes(JSON.stringify({ entityId, kind: semantic.kind, metadata }));
@@ -270,7 +283,7 @@ export class LiveWriterImpl implements LiveWriter {
           contentSlot: "final",
           contentType: "final-descriptor",
         };
-        const record = this.buildRecord(identity, "final", terminalContent, this.partIndex(content, identity));
+        const record = buildNextLiveRecord(this.options.random, content.doc, identity, "final", terminalContent);
         const descriptor: FinalEntityDescriptor = {
           entityId,
           kind: semantic.kind,
@@ -280,7 +293,13 @@ export class LiveWriterImpl implements LiveWriter {
           completedAt: this.options.clock.now(),
         };
         const descriptorPayload = bytes(JSON.stringify(descriptor));
-        const descriptorRecord = this.buildRecord(identity, "final", descriptorPayload, record.partIndex + 1);
+        const descriptorRecord = buildLiveRecord(
+          this.options.random,
+          identity,
+          "final",
+          descriptorPayload,
+          record.partIndex + 1,
+        );
         this.capture(slices, content, () => records(content.doc, [record, descriptorRecord]));
         this.capture(slices, runtime, () => target.removeEntity(entityId));
         recordBytes = Math.max(terminalContent.byteLength, descriptorPayload.byteLength);
@@ -338,20 +357,6 @@ export class LiveWriterImpl implements LiveWriter {
     if (update === null) return;
     const used = slices.filter((slice) => slice.docId === cursor.docId).length;
     slices.push({ docId: cursor.docId, fromSeq: cursor.lastSeq + used + 1, bytes: update });
-  }
-  private buildRecord(
-    id: Identity,
-    kind: "text" | "final" | "tool_boundary",
-    payload: Uint8Array,
-    partIndex: number,
-  ): LiveRecordValue {
-    const { entryId, contentSlot, contentType } = id;
-    const recordId = `rec_${hex(this.options.random, 8)}`;
-    return { recordId, entryId, contentSlot, contentType: contentType ?? "", partIndex, kind, payload };
-  }
-  private partIndex(cursor: Cursor, key: { entryId: string; contentSlot: string }): number {
-    const existing = records<LiveRecordValue>(cursor.doc)?.toArray() ?? [];
-    return existing.filter((value) => value.entryId === key.entryId && value.contentSlot === key.contentSlot).length;
   }
   private fixBatch(slices: readonly Slice[]): Batch {
     const raw = concatParts(slices.map((slice) => slice.bytes));
@@ -412,8 +417,7 @@ export class LiveWriterImpl implements LiveWriter {
     }
   }
   private async rebuildFromCommitted(): Promise<void> {
-    // 恢复的语义是「本机未提交输入已经不存在」：丢弃缓冲与未落地的幂等声明，
-    // 重新按已提交记录判定，避免失败后同一用户消息被永久拒绝。
+    // 恢复时丢弃未提交缓冲和幂等声明，避免失败后同一用户消息被永久拒绝。
     this.merge.dispose();
     this.textClaim.reset();
     this.boundaryIndex.reset();
@@ -432,8 +436,7 @@ export class LiveWriterImpl implements LiveWriter {
     await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
     const closureTail = generation.entryRefs.contentDocIds.at(-1);
     if (closureTail === undefined) fail("DOC_NOT_FOUND", "generation has no content block entry");
-    // 历史导入的内容块全部已封口；恢复时必须改用/新建 active 尾块，否则第一次实时写入就会
-    // 被存储以 RESOURCE_RETIRED 拒绝（空基线的入口闭包末位本身就是 active 块）。
+    // 非空历史块均已封口，恢复后必须使用可写尾块；空基线自身已有 active 块。
     const contentDocId = await ensureWritableContentDoc({
       store: this.options.store,
       directory: this.directory,

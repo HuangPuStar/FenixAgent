@@ -44,8 +44,11 @@ const fixedClock: Clock = { now: () => FIXED_NOW };
 
 /** 本文件创建的临时根目录；用例结束整体删除，暂存残留不留进系统临时目录。 */
 const tempRoots: string[] = [];
+const activeSpools: HistorySpool[] = [];
 
 afterEach(async () => {
+  for (const spool of activeSpools.splice(0))
+    await Promise.all([...spool.stats().taskBytes.keys()].map((id) => spool.completeTask(id)));
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -66,7 +69,9 @@ async function createSpool(overrides: Partial<SpoolConfig> = {}): Promise<{ spoo
     processQuotaBytes: 512,
     ...overrides,
   };
-  return { spool: new HistorySpool(config, fixedClock), basePath };
+  const spool = new HistorySpool(config, fixedClock);
+  activeSpools.push(spool);
+  return { spool, basePath };
 }
 
 /** 捕获协议错误：非本层异常原样抛出，避免把断言失败误判成「确实抛了错」。 */

@@ -12,7 +12,7 @@
 // 本实例的接收窗口内参与重复判定，实例释放即消失。
 //
 // 偏差记录（规格未规定的读取缝）：§5.3 只定义写入口，而 §5.7 的 `buildAndCommit` 必须按 ordinal 消费暂存字节，
-// `SpoolTask` 句柄却只在本模块内。故补两个**只读**出口：`readRecord`（按 ordinal 定位）与 `stagedManifest`
+// `SpoolTask` 句柄却只在本模块内。故补两个**只读**出口：`readRecords`（按 ordinal 定位）与 `stagedManifest`
 // （已封存 manifest）。它们不新增写入路径，也不改变任何不变式；若 C2 另有读取方案可整体删除。
 //
 // 暂存布局：保真字节按 ordinal 顺序首尾相接，不加 framing（长度与摘要由 `IngestedRecord` 回给调用方），因此
@@ -23,8 +23,13 @@ import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { asSyncProtocolError, SyncProtocolError, type SyncSafeContext } from "../protocol/errors";
 import { assertIdentifier } from "../protocol/identity";
-import { fidelitySerialize, scanJsonText } from "./fidelity-json";
+import { AdmittedHistoryPayload } from "./object-admission";
+import { identityOf, normalizeMeta } from "./record-identity";
 import type { HistorySpool, SpoolManifest, SpoolTask } from "./spool";
+
+function malformed(message: string): SyncProtocolError {
+  return new SyncProtocolError("MALFORMED_FRAME", { message });
+}
 
 /** 历史记录的三种来源形态：整对象、长文本/长载荷片段、工具对象（设计 §4.2 的扁平记录 kind）。 */
 export type HistoryRecordKind = "history_object" | "text_part" | "tool_object" | "tool_boundary";
@@ -36,7 +41,10 @@ export interface HistoryRecordMeta {
    * 可判定身份，不参与重复对象判定（设计 §5.3：没有稳定源身份就不去重，内容相同的对象都要保留）。 */
   entryId?: string;
   /** 源消息角色；独立于 ID 和去重身份，缺省时沿用写入方的身份契约。 */
-  role?: "user" | "assistant";
+  role?: "user" | "assistant" | "system";
+  /** 源检查点及条目位置在分片间保持稳定。 */
+  sourceRevision?: number;
+  entryOrder?: number;
   /** 同一条消息内的内容槽位；参与重复对象判定（缺省与显式 `0` 视为不同槽位，不替调用方猜语义）。 */
   contentSlot?: number;
   /** 片段序号（长载荷拆成多片时的拼接位置）；参与重复对象判定。 */
@@ -58,14 +66,6 @@ export interface IngestedRecord {
 
 /** 接收窗口状态：`idle` 尚未 begin / `receiving` 窗口内 / `receivingComplete` 边界已冻结（规格 §5.3）。 */
 type IngestState = "idle" | "receiving" | "receivingComplete";
-
-/** 归一化后的记录头：缺省字段收敛成 `null`，重复判定与身份键都不必再做 `undefined` 分叉。 */
-interface NormalizedMeta {
-  kind: HistoryRecordKind;
-  entryId: string | null;
-  contentSlot: number | null;
-  partIndex: number | null;
-}
 
 /** 一个 ordinal 在暂存流中的位置；`length` 恒等于对应 `IngestedRecord.payloadBytes`。 */
 interface StagedRange {
@@ -93,96 +93,12 @@ interface ReceivingAttempt {
   largeFrameInFlight: boolean;
   /** 记录身份 → ordinal：同一身份第二次提交即重复对象（只在本 load 的窗口内有效）。 */
   identities: Map<string, number>;
-  /** ordinal → 暂存字节区间，供 `readRecord` 定位。 */
+  /** ordinal → 暂存字节区间，供 `readRecords` 定位。 */
   ranges: Map<number, StagedRange>;
   /** 冻结回执：`markReceivingComplete` 启动它，`stagedManifest` 等待它；非 `null` 即边界已冻结。 */
   seal: Promise<SpoolManifest> | null;
   /** 撕裂后的失败原因：非 `null` 时所有写入口都以它拒绝（带洞的编号空间不再可能成为完整导入）。 */
   failure: SyncProtocolError | null;
-}
-
-/** canonical 文本解码器：输入字节来自本模块的 `fidelitySerialize`，必然是合法 UTF-8。 */
-const CANONICAL_DECODER = new TextDecoder("utf-8", { fatal: true });
-
-/** 非法输入统一出口：message 只描述字段与违规类型，绝不回显内容。 */
-function malformed(message: string): SyncProtocolError {
-  return new SyncProtocolError("MALFORMED_FRAME", { message });
-}
-
-/** kind 是记录结构的第一分叉：未知 kind 说明调用方与帧格式脱节，必须在写入任何字节之前拒绝。 */
-function assertRecordKind(value: unknown): HistoryRecordKind {
-  switch (value) {
-    case "history_object":
-    case "text_part":
-    case "tool_object":
-    case "tool_boundary":
-      return value;
-    default:
-      throw malformed("unknown history record kind");
-  }
-}
-
-/** `entryId` 是重复判定的唯一来源：给出时必须是合法标识（非空、≤256 字节、无控制字符）。 */
-function requireEntryId(value: unknown): string {
-  if (typeof value !== "string") {
-    throw malformed('record meta "entryId" must be a string');
-  }
-  assertIdentifier(value, "entryId");
-  return value;
-}
-
-/** 槽位与片段号必须是非负安全整数：负数或小数会让「第几片」在重组时不可解释。 */
-function optionalIndex(value: unknown, field: string): number | null {
-  if (value === undefined) {
-    return null;
-  }
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw malformed(`record meta "${field}" must be a non-negative integer`);
-  }
-  return value;
-}
-
-/** 校验并归一化记录头；字段全程可选，但给出即必须合法（缺省字段不猜测语义，见 `identityOf`）。 */
-function normalizeMeta(meta: HistoryRecordMeta): NormalizedMeta {
-  if (typeof meta !== "object" || meta === null) {
-    throw malformed("record meta must be an object");
-  }
-  if (meta.role !== undefined && meta.role !== "user" && meta.role !== "assistant") {
-    throw malformed('record meta "role" must be user or assistant');
-  }
-  return {
-    kind: assertRecordKind(meta.kind),
-    entryId: meta.entryId === undefined ? null : requireEntryId(meta.entryId),
-    contentSlot: optionalIndex(meta.contentSlot, "contentSlot"),
-    partIndex: optionalIndex(meta.partIndex, "partIndex"),
-  };
-}
-
-/**
- * 记录身份 = `kind` + `entryId` + `contentSlot` + `partIndex`。规格里「同一 `sourceOrdinal` 二次提交」与「已接收
- * 对象再提交」在本模块是同一件事：ordinal 由本模块签发，调用方无法自带 ordinal，重复只能表现为「同一身份第二次
- * 提交」；没有 `entryId` 时返回 `null`——没有稳定源身份就不去重（设计 §5.3），内容相同的对象都必须保留。
- */
-function identityOf(meta: NormalizedMeta): string | null {
-  if (meta.entryId === null) {
-    return null;
-  }
-  return JSON.stringify([meta.kind, meta.entryId, meta.contentSlot, meta.partIndex]);
-}
-
-/**
- * 保真序列化 + 解析前的有界扫描（设计 §4.3.4）：只 stringify 一次，字节口径由保真层唯一决定；扫描在 canonical
- * 文本上进行，字节、深度、节点、非有限数字与非法转义都在这里收敛，且都先于占用任何额度与落暂存。字节上限取
- * §10.2 的原始帧上限：canonical 与源帧同量级，超限说明源帧本身超限，应在最早的可控入口失败。
- */
-function serializeRecord(value: unknown, capacity: SyncCapacityProfile): Uint8Array {
-  const bytes = fidelitySerialize(value);
-  scanJsonText(CANONICAL_DECODER.decode(bytes), {
-    maxBytes: capacity.inputs.maxRawAcpFrameBytes,
-    maxDepth: capacity.inputs.jsonMaxDepth,
-    maxNodes: capacity.inputs.jsonMaxNodes,
-  });
-  return bytes;
 }
 
 /**
@@ -268,67 +184,102 @@ export class HistoryIngest {
 
   /** 接收一个完整历史对象：先做有界校验与保真序列化，再占用额度并顺序暂存；返回本次编号结果。 */
   async accept(value: unknown, meta: HistoryRecordMeta): Promise<IngestedRecord> {
+    this.requireReceivingWindow();
+    return this.acceptAdmitted(new AdmittedHistoryPayload(value, this.capacity), meta);
+  }
+
+  /** 未分片对象复用原始接纳证明；分片仍经 accept 独立校验。 */
+  async acceptAdmitted(payload: AdmittedHistoryPayload, meta: HistoryRecordMeta): Promise<IngestedRecord> {
+    return (await this.acceptAdmittedBatch([{ payload, meta }]))[0]!;
+  }
+
+  /** 整批校验后分配连续编号；一次追加不改变逐条摘要、身份和可读边界。 */
+  async acceptAdmittedBatch(
+    inputs: readonly { payload: AdmittedHistoryPayload; meta: HistoryRecordMeta }[],
+  ): Promise<IngestedRecord[]> {
     const attempt = this.requireReceivingWindow();
-    const normalized = normalizeMeta(meta);
-    const identity = identityOf(normalized);
-    if (identity !== null) {
-      const held = attempt.identities.get(identity);
-      if (held !== undefined) {
-        // 同一身份已经收过一次：不覆盖、不追加。去重只在本 load 窗口内成立，重试必须换新 loadId。
-        throw new SyncProtocolError("DUPLICATE_OBJECT", {
-          message: `record identity already accepted at ordinal ${held}`,
-          safeContext: this.context(held),
-        });
+    if (inputs.length === 0) return [];
+    if (inputs.length > 256) throw malformed("history receive batch has too many records");
+    const identities = new Map<string, number>();
+    const prepared = inputs.map(({ payload, meta }, index) => {
+      const normalized = normalizeMeta(meta);
+      const identity = identityOf(normalized);
+      if (identity !== null) {
+        const held = attempt.identities.get(identity) ?? identities.get(identity);
+        if (held !== undefined)
+          throw new SyncProtocolError("DUPLICATE_OBJECT", {
+            message: "record identity already accepted",
+            safeContext: this.context(held),
+          });
+        identities.set(identity, attempt.lastOrdinal + index + 1);
       }
-    }
-    const bytes = serializeRecord(value, this.capacity);
-    const payloadBytes = bytes.byteLength;
-    const digest = this.digest(bytes);
-    const reservation = this.enterLargeFramePath(payloadBytes);
-    // 编号与偏移在任何 await 之前一起分配：并发 accept 的 ordinal 顺序 = 调用顺序 = 追加顺序，
-    // 暂存流因此是一段与编号同构的连续字节。
-    const sourceOrdinal = attempt.lastOrdinal + 1;
-    const offset = attempt.allocatedBytes;
-    attempt.lastOrdinal = sourceOrdinal;
-    attempt.allocatedBytes = offset + payloadBytes;
-    // 身份必须在任何 await 之前登记：并发 accept 会在暂存期间再次进入去重检查，
-    // 若等到落盘后才记账，同一身份的两个请求都能通过检查并各占一个 ordinal。
-    if (identity !== null) {
-      attempt.identities.set(identity, sourceOrdinal);
-    }
-    attempt.inFlight += 1;
+      return { normalized, identity, payload };
+    });
+    const payloadBytes = prepared.reduce((sum, record) => sum + record.payload.byteLength, 0);
+    if (inputs.length > 1 && payloadBytes > Math.max(4096, this.capacity.inputs.historyBlockTargetPayloadBytes))
+      throw malformed("history receive batch exceeds payload budget");
+    const reservation = inputs.length === 1 ? this.enterLargeFramePath(payloadBytes) : null;
+    let batchReservation: Reservation | undefined;
     try {
-      await attempt.task.append(bytes);
-    } catch (error) {
-      // 暂存失败即整批失败：暂存器已归还配额并抛弃任务（spool 的失败分支），这里只标记尝试撕裂——编号空间
-      // 已留下补不齐的洞，继续接收只会写向已删除的目录并把真实原因盖成 RESOURCE_RETIRED。
-      const cause = asSyncProtocolError(error, "STAGING_FAILED");
-      const elapsedMs = this.clock.now() - attempt.startedAt;
-      attempt.failure = new SyncProtocolError(cause.code, {
-        message: `record ${sourceOrdinal} failed to stage after ${elapsedMs}ms of receiving`,
-        safeContext: this.context(sourceOrdinal),
-        cause,
+      if (inputs.length > 1 && !this.admission)
+        throw new SyncProtocolError("ADMISSION_REJECTED", {
+          message: "batch receive requires shared historyBuild admission",
+        });
+      batchReservation = this.admission?.reserve(
+        "historyBuild",
+        payloadBytes * (inputs.length > 1 ? 3 : 2) + inputs.length * 256,
+      );
+      const parts = prepared.map((record) => record.payload.bytesFor(this.capacity));
+      const bytes = parts.length === 1 ? parts[0]! : new Uint8Array(payloadBytes);
+      let byteOffset = 0;
+      const firstOrdinal = attempt.lastOrdinal + 1;
+      const streamOffset = attempt.allocatedBytes;
+      const records = prepared.map((record, index): IngestedRecord => {
+        const part = parts[index]!;
+        if (parts.length > 1) bytes.set(part, byteOffset);
+        byteOffset += part.byteLength;
+        return {
+          loadId: attempt.loadId,
+          generation: attempt.generation,
+          sourceOrdinal: firstOrdinal + index,
+          kind: record.normalized.kind,
+          payloadBytes: part.byteLength,
+          digest: this.digest(part),
+        };
       });
-      throw attempt.failure;
-    } finally {
-      attempt.inFlight -= 1;
-      if (reservation !== null) {
-        attempt.largeFrameInFlight = false;
+      // 校验和预留全部成功后才占编号；同步登记身份保证并发提交不能穿过重复检查。
+      attempt.lastOrdinal += records.length;
+      attempt.allocatedBytes += payloadBytes;
+      prepared.forEach((record, index) => {
+        if (record.identity !== null) attempt.identities.set(record.identity, firstOrdinal + index);
+      });
+      attempt.inFlight += 1;
+      try {
+        await attempt.task.append(bytes);
+      } catch (error) {
+        const cause = asSyncProtocolError(error, "STAGING_FAILED");
+        attempt.failure = new SyncProtocolError(cause.code, {
+          message: `history batch failed to stage after ${this.clock.now() - attempt.startedAt}ms of receiving`,
+          safeContext: this.context(firstOrdinal),
+          cause,
+        });
+        throw attempt.failure;
+      } finally {
+        attempt.inFlight -= 1;
       }
+      let offset = streamOffset;
+      for (const record of records) {
+        attempt.ranges.set(record.sourceOrdinal, { offset, length: record.payloadBytes });
+        offset += record.payloadBytes;
+      }
+      attempt.objectCount += records.length;
+      attempt.totalBytes += payloadBytes;
+      return records;
+    } finally {
+      batchReservation?.release();
+      if (reservation !== null) attempt.largeFrameInFlight = false;
       reservation?.release();
     }
-    // 只有落盘成功才记账（失败路径已在上面抛出并标记撕裂）：两个计数因此始终描述已暂存的字节。
-    attempt.objectCount += 1;
-    attempt.totalBytes += payloadBytes;
-    attempt.ranges.set(sourceOrdinal, { offset, length: payloadBytes });
-    return {
-      loadId: attempt.loadId,
-      generation: attempt.generation,
-      sourceOrdinal,
-      kind: normalized.kind,
-      payloadBytes,
-      digest,
-    };
   }
 
   /** 记录接收边界：load 响应的最后 sourceOrdinal；必须在分派异步构建任务之前调用。 */
@@ -382,28 +333,32 @@ export class HistoryIngest {
   }
 
   /**
-   * 按 `sourceOrdinal` 读回暂存字节（`spool.readRange` + 本模块的编号索引），供块构建消费。未 begin、编号从未
+   * 按连续 `sourceOrdinal` 批量读回暂存字节（`spool.readRange` + 本模块的编号索引），供块构建消费。未 begin、编号从未
    * 被暂存（含撕裂留下的洞）一律 `IMPORT_INCOMPLETE`：缺口必须显式失败，不能返回短读或空字节把「缺块」伪装成
    * 「空内容」。
    */
-  async readRecord(sourceOrdinal: number): Promise<Uint8Array> {
+  async readRecords(sourceOrdinals: readonly number[]): Promise<Uint8Array[]> {
     const attempt = this.attempt;
     if (attempt === null) {
       throw this.incomplete("ingest has no open receiving window");
     }
     const manifest = await this.resolveManifest(attempt);
-    const range = attempt.ranges.get(sourceOrdinal);
-    if (range === undefined) {
-      throw this.incomplete(`ordinal ${sourceOrdinal} was never staged`, sourceOrdinal);
+    const ranges: StagedRange[] = [];
+    for (const [index, ordinal] of sourceOrdinals.entries()) {
+      if (index > 0 && ordinal !== sourceOrdinals[index - 1]! + 1)
+        throw malformed("batch ordinals must be consecutive");
+      const range = attempt.ranges.get(ordinal);
+      if (!range) throw this.incomplete(`ordinal ${ordinal} was never staged`, ordinal);
+      ranges.push(range);
     }
-    return this.spool.readRange(manifest, range.offset, range.length);
+    if (!ranges.length) return [];
+    const start = ranges[0]!.offset;
+    const last = ranges.at(-1)!;
+    const bytes = await this.spool.readRange(manifest, start, last.offset + last.length - start);
+    return ranges.map((range) => bytes.subarray(range.offset - start, range.offset - start + range.length));
   }
 
-  /**
-   * 当前尝试的暂存 manifest（未 `begin` 时为 `null`）：规格 §5.3 没规定这个出口，但 §5.2 要求构建期按 ordinal
-   * 消费暂存字节，而 `SpoolTask` 句柄只在本模块内——调用方需要 manifest 才能调用 `spool.readRange`。只读；
-   * 边界已冻结时返回的是已封存的 manifest。
-   */
+  /** 当前尝试的只读暂存目录；冻结后等待最终 manifest，未开始时返回 null。 */
   async stagedManifest(): Promise<SpoolManifest | null> {
     const attempt = this.attempt;
     if (attempt === null) {

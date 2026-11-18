@@ -76,7 +76,12 @@ function outputText(tool: ToolCallData): string | undefined {
   const contentText = tool.content?.map(textOfContent).find((text) => text !== undefined);
   if (contentText) return contentText;
 
-  const output = tool.rawOutput;
+  const rawOutput = tool.rawOutput;
+  if (typeof rawOutput === "string" && rawOutput.trim() !== "") return rawOutput;
+  const output =
+    typeof rawOutput === "object" && rawOutput !== null && !Array.isArray(rawOutput)
+      ? (rawOutput as Record<string, unknown>)
+      : undefined;
   const direct = readString(output, ["output", "aggregated_output", "content", "text", "result", "message"]);
   if (direct) return direct;
 

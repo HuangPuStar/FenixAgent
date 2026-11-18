@@ -23,6 +23,7 @@ import { AdmissionController } from "../capacity/admission";
 import type { Clock, DigestFn, RandomSource } from "../clock";
 import { BlockBuildPool, deriveBuildPoolConfig } from "../history/build-pool";
 import { type BuildBlockFn, HistoryImportService } from "../history/import-service";
+import type { HistoryRecordMeta } from "../history/ingest";
 import { HistorySpool } from "../history/spool";
 import { createLiveWriter } from "../live/live-writer";
 import { createRotationController, type RotationController } from "../live/rotation";
@@ -66,6 +67,7 @@ export function createSyncHistoryImport(input: {
   readonly random: RandomSource;
   readonly buildBlock?: BuildBlockFn;
   readonly pool?: BlockBuildPool;
+  readonly admission?: AdmissionController;
 }): HistoryImportService {
   const { config } = input;
   const spool = new HistorySpool(
@@ -77,13 +79,9 @@ export function createSyncHistoryImport(input: {
     },
     input.clock,
   );
+  const admission = input.admission ?? new AdmissionController(config.capacity);
   const pool =
-    input.pool ??
-    new BlockBuildPool(
-      deriveBuildPoolConfig(config.capacity.fairness),
-      new AdmissionController(config.capacity),
-      input.clock,
-    );
+    input.pool ?? new BlockBuildPool(deriveBuildPoolConfig(config.capacity.fairness), admission, input.clock);
   return new HistoryImportService({
     store: input.store,
     spool,
@@ -93,6 +91,7 @@ export function createSyncHistoryImport(input: {
     capacity: config.capacity,
     rand: input.random,
     buildBlock: input.buildBlock,
+    admission,
   });
 }
 
@@ -110,6 +109,8 @@ export interface SyncTransportDiagnostics {
 export interface SyncScopeRuntime {
   /** 实时入口：把已规范化的 ACP 事件交给写入层（内部经 ingress 分配 ingress 序号）。 */
   acceptIngress(event: SyncIngressEvent): Promise<void>;
+  /** 权威内容对象经同一个单写者提交。 */
+  acceptContentObject(value: unknown, meta: HistoryRecordMeta): Promise<void>;
   /** 绑定出站传输；同一 scope 只允许一次（重复绑定抛 `ADMISSION_REJECTED`）。 */
   attachTransport(transport: SyncFrameTransport): SyncFrameGateway;
   /** 单条已认证连接上的入站字节（帧解码与派发在网关内）。 */
@@ -179,6 +180,7 @@ export async function createSyncScopeRuntime(input: {
     random,
     capacity: config.capacity,
     merge: config.merge,
+    admission,
     limits: config.limits,
     rotation: config.rotation,
   });
@@ -193,7 +195,7 @@ export async function createSyncScopeRuntime(input: {
   /** 共存额度账目：预留的持有方是轮换控制器，释放路径见 `releaseCoexistence`。 */
   const rotation: RotationController = createRotationController(config.rotation);
   const pool = new BlockBuildPool(deriveBuildPoolConfig(config.capacity.fairness), admission, clock);
-  const history = createSyncHistoryImport({ scope, store, config, clock, digest, random, pool });
+  const history = createSyncHistoryImport({ scope, store, config, clock, digest, random, pool, admission });
 
   let gateway: SyncFrameGateway | null = null;
   let connectionClosed = false;
@@ -345,6 +347,18 @@ export async function createSyncScopeRuntime(input: {
       await ingress.accept(event);
     },
 
+    async acceptContentObject(value, meta): Promise<void> {
+      assertLive();
+      await ensureWriter();
+      await writer.accept({
+        kind: "content-object",
+        turnId: "projection",
+        entryId: meta.entryId ?? "content-object",
+        contentSlot: String(meta.contentSlot ?? 0),
+        contentType: "application/json",
+        object: { value, meta },
+      });
+    },
     attachTransport(transport: SyncFrameTransport): SyncFrameGateway {
       assertLive();
       if (gateway !== null) {

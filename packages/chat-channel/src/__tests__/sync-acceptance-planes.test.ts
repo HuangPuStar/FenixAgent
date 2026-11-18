@@ -212,6 +212,7 @@ describe("T08 load 每个阶段失败后重试", () => {
     });
   });
 
+  // 构建阶段才占满预算，独立验证封存后的构建失败与整轮重试。
   test("构建期失败（构建池额度被外部占满）后重试：不误跳过对象，归还额度后覆盖连续", async () => {
     await withHarness({}, async (harness) => {
       const primary = primaryOf(harness);
@@ -220,11 +221,10 @@ describe("T08 load 每个阶段失败后重试", () => {
       const beforeRevision = await harness.currentPointerRevision();
       const budget = harness.config.capacity.serverPools.historyBuild;
 
-      // 外部预扣吃满整池额度：构建提交必须在这里被拒（跨连接共用同一本账，见 T12）。
-      const held = harness.admission.reserve("historyBuild", budget);
       const attempt = await harness.beginImport();
       await receiveHistory(harness);
       await harness.history().receivingComplete();
+      const held = harness.admission.reserve("historyBuild", budget);
       const rejected = await expectProtocolError(() => harness.history().buildAndCommit(), "ADMISSION_REJECTED");
       expect(rejected.retryable).toBe(true);
 
@@ -969,6 +969,7 @@ describe("T12 两个历史 load 并发与持续实时输出", () => {
     });
   });
 
+  // 接收副本与构建共用预算，其他连接占满池时应在复制前拒绝并支持整轮重试。
   test("全局额度上限生效：构建池被占满时另一条连接的导入被拒，归还后重试成功且额度归零", async () => {
     await withHarness({}, async (harness) => {
       const budget = harness.config.capacity.serverPools.historyBuild;
@@ -984,13 +985,20 @@ describe("T12 两个历史 load 并发与持续实时输出", () => {
         owner: "t12-importer",
         leaseTtlMs,
       });
-      await service.accept("payload", { kind: "text_part", entryId: "h1", contentSlot: 0, partIndex: 0 });
-      await service.receivingComplete();
-      const rejected = await expectProtocolError(() => service.buildAndCommit(), "ADMISSION_REJECTED");
+      const rejected = await expectProtocolError(
+        () =>
+          service.accept("payload", {
+            kind: "text_part",
+            entryId: "h1",
+            contentSlot: 0,
+            partIndex: 0,
+          }),
+        "ADMISSION_REJECTED",
+      );
       expect(rejected.retryable).toBe(true);
       expect(service.status().failure?.code).toBe("ADMISSION_REJECTED");
       expect(await harness.generationState(attempt.generation)).not.toBe("committed");
-      // 被拒的构建不留下额度占用：账目仍是外部预扣的那一份。
+      // 被拒的接收不留下额度占用：账目仍是外部预扣的那一份。
       expect(harness.admission.used("historyBuild")).toBe(budget);
 
       held.release();

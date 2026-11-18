@@ -1,6 +1,13 @@
 import { metrics } from "@opentelemetry/api";
 
 const meter = metrics.getMeter("@fenix/chat-channel");
+/** 缓存指标只使用固定结果/阶段标签，不携带会话身份或正文。 */
+export const projectionCacheRequests = meter.createCounter("fenix.chat.projection.cache.requests");
+export const projectionCacheEvictions = meter.createCounter("fenix.chat.projection.cache.evictions");
+export const projectionSourceScans = meter.createCounter("fenix.chat.projection.source.scans");
+export const projectionResidentBytes = meter.createUpDownCounter("fenix.chat.projection.resident.bytes", {
+  unit: "By",
+});
 
 /** 秒级同步耗时：覆盖亚秒 ACK/快照与分钟级恢复。 */
 export const SYNC_SECONDS_HISTOGRAM_BUCKETS = [

@@ -1,46 +1,25 @@
-// packages/chat-channel/src/sync/history/import-service.ts
-// C2 历史导入编排（规格 §5.7）：接收边界、有限构建、已提交目录校验与原子换代。
-//
-// 导入尝试是一次性的：失败后必须释放本次 load 的资源，重试由调用方重新调用 begin，取得新的
-// loadId/generation，避免把带洞的暂存流继续追加到旧目录。存储只通过 ProjectionStore 的已提交
-// 读取出口回答完整性；本服务不缓存「可能已经提交」的事实。
-//
-// 构建阶段的次序由 `BlockDispatcher` 承担（有界在飞窗口、一组多块的续建、失败先结清在飞任务再抛出）：
-// 本服务只负责把块的字节与元数据装配成构建入参、把提交结局折算成台账。三条不变式与缺陷记录见
-// build-dispatch.ts 文件头与 `.peri/plans/chat-sync-runtime-profile-result.md` §4。
-
-import * as Y from "yjs";
+// 历史导入编排：接收、有限构建、目录校验与原子换代。
 
 import type { AdmissionController } from "../capacity/admission";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn, RandomSource } from "../clock";
-import {
-  buildDirectoryPageSnapshot,
-  buildDirectoryRootSnapshot,
-  directoryRootDocId,
-  planDirectoryPages,
-} from "../protocol/directory";
+import { directoryRootDocId } from "../protocol/directory";
 import { asSyncProtocolError, type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { createGenerationId, createLoadId, type SyncScope, scopeKey } from "../protocol/identity";
 import type {
   CommitOutcome,
   GenerationEntryRefs,
   ProjectionStore,
-  SyncDocRecord,
   SyncGenerationRecord,
   WriterLease,
 } from "../store/types";
-import {
-  type BlockRecordInput,
-  type BuildContentBlockInput,
-  type BuiltBlock,
-  buildContentBlock,
-} from "./block-builder";
-import { BlockDispatcher } from "./build-dispatch";
+import { type BuildContentBlockInput, type BuiltBlock, buildContentBlock } from "./block-builder";
+import { BlockDispatcher, createHistoryBlockInputs } from "./build-dispatch";
 import type { BlockBuildPool } from "./build-pool";
 import { type CommittedBlockRef, HistoryCommitter } from "./committer";
+import { ImportEntryDocuments } from "./import-entry-documents";
+import { HistoryImportReceiver, type HistoryInputRecord } from "./import-receiver";
 import { HistoryIngest, type HistoryRecordMeta, type IngestedRecord } from "./ingest";
-import { planHistoryParts } from "./object-parts";
 import type { HistorySpool } from "./spool";
 
 /** 导入状态；`importComplete` 只表示完整性验证已通过，原子换代仍由 `finalize` 完成。 */
@@ -70,6 +49,7 @@ interface ImportAttempt {
   generation: string;
   loadId: string;
   ingest: HistoryIngest;
+  receiver: HistoryImportReceiver;
   state: ImportState;
   receivedOrdinal: number;
   records: IngestedRecord[];
@@ -107,6 +87,8 @@ export class HistoryImportService {
   private readonly rand: RandomSource;
   private readonly buildBlock: BuildBlockFn;
   private attempt: ImportAttempt | null = null;
+  private readonly admission: AdmissionController | undefined;
+  private readonly entryDocuments: ImportEntryDocuments;
 
   constructor(deps: ImportDependencies) {
     this.store = deps.store;
@@ -115,6 +97,8 @@ export class HistoryImportService {
     this.clock = deps.clock;
     this.digest = deps.digest;
     this.capacity = deps.capacity;
+    this.admission = deps.admission;
+    this.entryDocuments = new ImportEntryDocuments(deps.store, deps.capacity, deps.digest);
     this.rand = deps.rand;
     this.buildBlock = deps.buildBlock ?? buildContentBlock;
   }
@@ -138,7 +122,7 @@ export class HistoryImportService {
       clock: this.clock,
       digest: this.digest,
       capacity: this.capacity,
-      admission: undefined,
+      admission: this.admission,
     });
     try {
       await ingest.begin({ scopeKey: key, generation, loadId });
@@ -152,7 +136,7 @@ export class HistoryImportService {
           loadId,
           state: "staging",
           importEndOrdinal: null,
-          entryRefs: this.initialEntryClosure(generation),
+          entryRefs: this.entryDocuments.initialEntryClosure(generation),
           createdAt: this.clock.now(),
         },
       });
@@ -168,7 +152,18 @@ export class HistoryImportService {
       await this.releaseAttemptResources(loadId, lease);
       throw error;
     }
-    this.attempt = {
+    const attempt: ImportAttempt = {
+      receiver: new HistoryImportReceiver({
+        ingest,
+        capacity: this.capacity,
+        admission: this.admission,
+        digest: this.digest,
+        onAccepted(record, meta) {
+          attempt.records.push(record);
+          attempt.metadata.push(meta);
+          attempt.receivedOrdinal = record.sourceOrdinal;
+        },
+      }),
       scope: input.scope,
       scopeKey: key,
       acpSessionId: input.acpSessionId,
@@ -188,36 +183,33 @@ export class HistoryImportService {
       cleaned: false,
       finalResult: null,
     };
+    this.attempt = attempt;
     return { loadId, generation };
   }
 
   /** 接收一条对象并保留构建所需的轻量元数据；超大对象按记录预算拆成多条物理记录。 */
   async accept(value: unknown, meta: HistoryRecordMeta): Promise<IngestedRecord> {
     const attempt = this.requireAttempt();
-    if (attempt.state !== "receiving") {
+    if (attempt.state !== "receiving" || attempt.receiver.receivingBatch) {
       throw this.incomplete("receiving boundary is frozen");
     }
     try {
-      const parts = planHistoryParts({
-        value,
-        meta,
-        // 单条记录的可传输预算按 Doc 硬限扣掉 Yjs/记录头余量；块目标只决定分组，不触发拆分。
-        recordBudgetBytes: Math.max(1, this.capacity.inputs.historyBlockHardBytes - 4096),
-        largeFrameThresholdBytes: this.capacity.inputs.largeFrameThresholdBytes,
-        digest: this.digest,
-      });
-      let last: IngestedRecord | null = null;
-      for (const part of parts) {
-        const record = await attempt.ingest.accept(part.value, part.meta);
-        attempt.records.push(record);
-        attempt.metadata.push(part.meta);
-        attempt.receivedOrdinal = record.sourceOrdinal;
-        last = record;
-      }
-      if (last === null) throw this.incomplete("history object produced no record");
-      return last;
+      return await attempt.receiver.accept(value, meta);
     } catch (error) {
-      await this.fail(error);
+      await this.fail(error, attempt);
+      throw error;
+    }
+  }
+
+  /** 顺序消费导入源，在既有构建预算内合并小对象写入。 */
+  async acceptRecords(records: Iterable<HistoryInputRecord> | AsyncIterable<HistoryInputRecord>): Promise<void> {
+    const attempt = this.requireAttempt();
+    if (attempt.state !== "receiving" || attempt.receiver.receivingBatch)
+      throw this.incomplete("receiving boundary is frozen");
+    try {
+      await attempt.receiver.acceptRecords(records);
+    } catch (error) {
+      await this.fail(error, attempt);
       throw error;
     }
   }
@@ -225,6 +217,7 @@ export class HistoryImportService {
   /** 先同步冻结接收状态，再等待暂存器封口；冻结后任何新对象都被拒绝。 */
   async receivingComplete(): Promise<void> {
     const attempt = this.requireAttempt();
+    if (attempt.receiver.receivingBatch) throw this.incomplete("history source is still receiving");
     if (attempt.state === "receivingComplete" || attempt.state === "building" || attempt.state === "importComplete") {
       return;
     }
@@ -236,7 +229,7 @@ export class HistoryImportService {
       await attempt.ingest.stagedManifest();
       attempt.state = "receivingComplete";
     } catch (error) {
-      await this.fail(error);
+      await this.fail(error, attempt);
       throw error;
     }
   }
@@ -259,12 +252,15 @@ export class HistoryImportService {
         lease: attempt.lease,
         digest: this.digest,
       });
-      const blocks = this.makeBlockInputs(attempt);
+      const blocks = createHistoryBlockInputs(
+        attempt.records,
+        attempt.metadata,
+        this.capacity.inputs.historyBlockTargetPayloadBytes,
+      );
       const dispatcher = this.makeDispatcher(attempt, committer);
       await dispatcher.dispatch(blocks);
       attempt.committedBlocks = dispatcher.committedBlocks();
       await this.pool.drain();
-      // 目录按 limit 分页：单页只保证有界读取，完整性必须覆盖整个代次，不能把第一页当成全部。
       const pageSize = this.capacity.inputs.directoryMaxRefs;
       const committedRefs: CommittedBlockRef[] = [];
       let afterOrdinal: number | undefined;
@@ -272,12 +268,10 @@ export class HistoryImportService {
       for (;;) {
         const page = await committer.listDirectory(pageSize, afterOrdinal);
         committedRefs.push(...page.blocks);
-        // gaps / complete 是整个代次的性质；任一分页返回的结论相同，取最后一页即可。
         attempt.gaps = page.gaps;
         complete = page.complete;
         if (page.blocks.length < pageSize) break;
         const last = page.blocks[page.blocks.length - 1];
-        // 游标必须严格前进：存储返回满页却回退/停滞时继续循环会永远读不完。
         if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
           throw new SyncProtocolError("MALFORMED_FRAME", {
             message: "directory cursor did not advance",
@@ -290,7 +284,7 @@ export class HistoryImportService {
       this.assertComplete(attempt, committedRefs, complete);
       attempt.state = "importComplete";
     } catch (error) {
-      await this.fail(error);
+      await this.fail(error, attempt);
       throw error;
     }
   }
@@ -303,21 +297,21 @@ export class HistoryImportService {
     }
     if (attempt.state !== "importComplete") {
       const error = attempt.failure ?? this.incomplete("import is not complete");
-      await this.fail(error);
+      await this.fail(error, attempt);
       throw error;
     }
     try {
       const pointer = await this.store.readScopePointer(attempt.scopeKey);
       const expectedCurrent = pointer?.currentGeneration ?? null;
       const expectedPointerRevision = pointer?.pointerRevision ?? 0;
-      const contentDocIds = await this.readCommittedContentDocIds(attempt);
-      // 入口 Doc（控制/运行态/分页目录）必须在 MANIFEST 引用它们之前可读：否则客户端订阅
-      // `directoryDocId` 会直接 DOC_NOT_FOUND，历史导入完成的代次永远无法交付。
-      await this.createEntryDocuments(attempt, contentDocIds);
+      const contentDocIds = await this.entryDocuments.readCommittedContentDocIds(attempt);
+      // 入口闭包必须先可读，再发布引用它们的 MANIFEST。
+      attempt.lease = await this.store.renewWriter(attempt.lease, attempt.leaseTtlMs);
+      await this.entryDocuments.createEntryDocuments(attempt, contentDocIds);
       const entryClosure: GenerationEntryRefs = {
-        controlDocId: this.controlDocId(attempt.generation),
+        controlDocId: this.entryDocuments.controlDocId(attempt.generation),
         directoryDocId: directoryRootDocId(attempt.generation),
-        runtimeDocId: this.runtimeDocId(attempt.generation),
+        runtimeDocId: this.entryDocuments.runtimeDocId(attempt.generation),
         contentDocIds,
       };
       const record: SyncGenerationRecord = {
@@ -360,9 +354,15 @@ export class HistoryImportService {
       await this.cleanup(attempt);
       return finalResult;
     } catch (error) {
-      await this.fail(error);
+      await this.fail(error, attempt);
       throw error;
     }
+  }
+
+  /** 源迭代等外层失败同样必须释放导入租约与暂存。 */
+  async abort(error: unknown, loadId?: string): Promise<void> {
+    if (loadId !== undefined && this.attempt?.loadId !== loadId) return;
+    await this.fail(error);
   }
 
   /** 返回独立状态快照；失败状态只保留稳定码与 retryable。 */
@@ -406,7 +406,7 @@ export class HistoryImportService {
     return new BlockDispatcher(
       this.pool,
       {
-        source: { readRecord: (sourceOrdinal) => attempt.ingest.readRecord(sourceOrdinal) },
+        source: { readRecords: (sourceOrdinals) => attempt.ingest.readRecords(sourceOrdinals) },
         buildBlock: ({ blockIndex, records }) =>
           this.buildBlock({
             generation: attempt.generation,
@@ -424,41 +424,6 @@ export class HistoryImportService {
       },
       { scope: attempt.scopeKey, generation: attempt.generation },
     );
-  }
-
-  private makeBlockInputs(attempt: ImportAttempt): BlockRecordInput[][] {
-    const result: BlockRecordInput[][] = [];
-    const target = this.capacity.inputs.historyBlockTargetPayloadBytes;
-    let current: BlockRecordInput[] = [];
-    let currentBytes = 0;
-    for (let index = 0; index < attempt.records.length; index += 1) {
-      const record = attempt.records[index];
-      const meta = attempt.metadata[index];
-      const payload = new Uint8Array(0);
-      const item: BlockRecordInput = {
-        sourceOrdinal: record.sourceOrdinal,
-        kind: record.kind,
-        payload,
-        entryId: meta.entryId ?? `ordinal-${record.sourceOrdinal}`,
-        ...(meta.role === undefined ? {} : { role: meta.role }),
-        entryOrder: record.sourceOrdinal,
-        contentSlot: meta.contentSlot ?? 0,
-        partIndex: meta.partIndex ?? 0,
-      };
-      // 构建前的尺寸只是软分块提示；真正的 payload 在 build task 中从 spool 读取并替换。
-      const estimated = record.payloadBytes;
-      if (current.length > 0 && currentBytes + estimated > target) {
-        result.push(current);
-        current = [];
-        currentBytes = 0;
-      }
-      current.push(item);
-      currentBytes += estimated;
-    }
-    if (current.length > 0) {
-      result.push(current);
-    }
-    return result;
   }
 
   private assertComplete(
@@ -484,131 +449,7 @@ export class HistoryImportService {
     }
   }
 
-  private controlDocId(generation: string): string {
-    return `sync/control/${generation}/0/control`;
-  }
-
-  private runtimeDocId(generation: string): string {
-    return `sync/runtime/${generation}/0/runtime`;
-  }
-
-  /**
-   * 已提交目录中的内容块（按 ordinal 升序）。
-   *
-   * 目录即权威：不从接收列表推断，也不缓存「可能已提交」的块；读取按容量档案的
-   * `directoryMaxRefs` 分页，逐页累加直到目录结束，避免大目录只取到第一页就丢掉内容块。
-   */
-  private async readCommittedContentDocIds(attempt: ImportAttempt): Promise<string[]> {
-    const pageSize = this.capacity.inputs.directoryMaxRefs;
-    if (!Number.isSafeInteger(pageSize) || pageSize <= 0) {
-      throw new SyncProtocolError("MALFORMED_FRAME", {
-        message: "directory limit must be a positive safe integer",
-        safeContext: { generation: attempt.generation },
-      });
-    }
-    const docIds: string[] = [];
-    let afterOrdinal: number | undefined;
-    for (;;) {
-      const page = await this.store.readDirectory({
-        generation: attempt.generation,
-        afterOrdinal,
-        limit: pageSize,
-      });
-      for (const entry of page.entries) {
-        if (entry.sealed) docIds.push(entry.docId);
-      }
-      if (page.entries.length < pageSize) break;
-      const last = page.entries[page.entries.length - 1];
-      // 与构建阶段同一防御：游标不前进会让分页循环永不停。
-      if (last.ordinalEnd <= (afterOrdinal ?? -1)) {
-        throw new SyncProtocolError("MALFORMED_FRAME", {
-          message: "directory cursor did not advance",
-          safeContext: { generation: attempt.generation, ordinal: last.ordinalEnd },
-        });
-      }
-      afterOrdinal = last.ordinalEnd;
-    }
-    return docIds;
-  }
-
-  /**
-   * 创建 MANIFEST 会引用的入口 Doc：控制、运行态、根目录与全部目录页。
-   *
-   * 导入此前只提交内容块，MANIFEST 的 `directoryDocId` 在 store 中不可读，客户端订阅直接
-   * DOC_NOT_FOUND。入口 Doc 必须在 `commitGeneration` 之前落地，否则切换后的代次无法交付。
-   * 页 Doc ID 由 generation + 页号确定，重试同内容时 `createDoc` 返回 `already-committed`。
-   */
-  private async createEntryDocuments(attempt: ImportAttempt, contentDocIds: readonly string[]): Promise<void> {
-    // 长时间导入可能已越过初始租约：先用同一租约续期，再执行 createDoc。
-    attempt.lease = await this.store.renewWriter(attempt.lease, attempt.leaseTtlMs);
-    const plan = planDirectoryPages(attempt.generation, contentDocIds);
-    const emptySnapshot = Y.encodeStateAsUpdate(new Y.Doc());
-    const docs: SyncDocRecord[] = [
-      this.entryDocRecord(attempt, this.controlDocId(attempt.generation), "control", emptySnapshot, null),
-      this.entryDocRecord(attempt, this.runtimeDocId(attempt.generation), "runtime", emptySnapshot, null),
-      this.entryDocRecord(attempt, plan.rootDocId, "directory", buildDirectoryRootSnapshot(plan.latestPageId), null),
-      ...plan.pages.map((page) =>
-        this.entryDocRecord(
-          attempt,
-          page.pageDocId,
-          "directory",
-          buildDirectoryPageSnapshot(page.contentDocIds, page.previousPageId),
-          page.pageNumber,
-        ),
-      ),
-    ];
-    for (const doc of docs) {
-      const created = await this.store.createDoc({ scopeKey: attempt.scopeKey, epoch: attempt.lease.epoch, doc });
-      if (created.outcome === "conflict") {
-        throw new SyncProtocolError("DIGEST_CONFLICT", {
-          message: "import entry document conflicts with committed bytes",
-          safeContext: { generation: attempt.generation, docId: doc.docId },
-        });
-      }
-      if (created.outcome === "unknown") {
-        throw new SyncProtocolError("COMMIT_OUTCOME_UNKNOWN", {
-          message: "import entry document outcome is unknown",
-          safeContext: { generation: attempt.generation, docId: doc.docId },
-        });
-      }
-    }
-  }
-
-  private entryDocRecord(
-    attempt: ImportAttempt,
-    docId: string,
-    kind: SyncDocRecord["kind"],
-    snapshot: Uint8Array,
-    blockIndex: number | null,
-  ): SyncDocRecord {
-    return {
-      scopeKey: attempt.scopeKey,
-      generation: attempt.generation,
-      docId,
-      kind,
-      state: "active",
-      snapshot,
-      hash: this.digest(snapshot),
-      baseSeq: 0,
-      finalSeq: null,
-      blockIndex,
-      ordinalStart: null,
-      ordinalEnd: null,
-      dependsOn: [],
-    };
-  }
-
-  private initialEntryClosure(generation: string): GenerationEntryRefs {
-    return {
-      controlDocId: this.controlDocId(generation),
-      directoryDocId: directoryRootDocId(generation),
-      runtimeDocId: this.runtimeDocId(generation),
-      contentDocIds: [],
-    };
-  }
-
-  private async fail(error: unknown): Promise<void> {
-    const attempt = this.attempt;
+  private async fail(error: unknown, attempt = this.attempt): Promise<void> {
     if (attempt === null || attempt.cleaned) {
       return;
     }
@@ -623,6 +464,7 @@ export class HistoryImportService {
       return;
     }
     attempt.cleaned = true;
+    attempt.receiver.abort();
     try {
       await this.spool.completeTask(attempt.loadId);
     } catch {

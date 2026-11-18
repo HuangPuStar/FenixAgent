@@ -1,5 +1,6 @@
 // 内存 adapter 的状态与快照复制；业务写入校验仍由 memory-store.ts 持有。
 import { SyncProtocolError } from "../protocol/errors";
+import { AccountedMap, indexBytes, type MemoryBudget } from "./memory-accounting";
 import type {
   DirectoryPage,
   DirectoryQuery,
@@ -74,10 +75,11 @@ export function sameRefs(left: GenerationEntryRefs, right: GenerationEntryRefs):
   );
 }
 function copyDoc(doc: StoredDoc): StoredDoc {
+  const snapshot = copyBytes(doc.snapshot);
   return {
     ...doc,
-    snapshot: copyBytes(doc.snapshot),
-    baseSnapshot: copyBytes(doc.baseSnapshot),
+    snapshot,
+    baseSnapshot: doc.baseSnapshot === doc.snapshot ? snapshot : copyBytes(doc.baseSnapshot),
     dependsOn: [...doc.dependsOn],
   };
 }
@@ -96,15 +98,47 @@ export function copyRef(value: SyncRefRecord): SyncRefRecord {
 
 /** 仅供内存 adapter 使用的状态容器，不提供业务写入入口。 */
 export class MemoryStoreState {
-  protected readonly scopes = new Map<string, SyncScopeRow>();
-  protected readonly generations = new Map<string, StoredGeneration>();
-  protected readonly docs = new Map<string, StoredDoc>();
-  protected readonly updates = new Map<string, SyncUpdateRecord[]>();
-  protected readonly refs = new Map<string, SyncRefRecord>();
-  protected readonly batches = new Map<string, BatchRecord>();
-  protected readonly successors = new Map<string, SuccessorRoute>();
-  protected readonly commits = new Map<string, CommitRecord>();
+  protected readonly scopes: AccountedMap<string, SyncScopeRow>;
+  protected readonly generations: AccountedMap<string, StoredGeneration>;
+  protected readonly docs: AccountedMap<string, StoredDoc>;
+  protected readonly updates: AccountedMap<string, SyncUpdateRecord[]>;
+  protected readonly refs: AccountedMap<string, SyncRefRecord>;
+  protected readonly batches: AccountedMap<string, BatchRecord>;
+  protected readonly successors: AccountedMap<string, SuccessorRoute>;
+  protected readonly commits: AccountedMap<string, CommitRecord>;
   protected readonly retireTombstones = new Set<string>();
+
+  constructor(budget?: MemoryBudget) {
+    const metadata = (key: string, value: unknown) => ({ controlIndex: key.length * 2 + indexBytes(value) });
+    this.scopes = new AccountedMap<string, SyncScopeRow>(budget, metadata);
+    this.generations = new AccountedMap<string, StoredGeneration>(budget, metadata);
+    this.docs = new AccountedMap(budget, (key, doc) => ({
+      // 导入后两条读取边界共用同一只读快照；封口后的不同前沿仍分别计费。
+      transportCache: doc.snapshot.byteLength + (doc.baseSnapshot === doc.snapshot ? 0 : doc.baseSnapshot.byteLength),
+      controlIndex: metadata(key, { ...doc, snapshot: null, baseSnapshot: null }).controlIndex,
+    }));
+    this.updates = new AccountedMap(budget, (key, records) => ({
+      hotDocLive: records.reduce((sum, record) => sum + record.bytes.byteLength * 2, 0),
+      controlIndex:
+        128 + key.length * 2 + records.reduce((sum, record) => sum + indexBytes({ ...record, bytes: null }), 0),
+    }));
+    this.refs = new AccountedMap<string, SyncRefRecord>(budget, metadata);
+    this.batches = new AccountedMap<string, BatchRecord>(budget, metadata);
+    this.successors = new AccountedMap<string, SuccessorRoute>(budget, metadata);
+    this.commits = new AccountedMap<string, CommitRecord>(budget, metadata);
+  }
+  /** 逐出时释放全部编码副本及索引额度。 */
+  dispose(): void {
+    this.scopes.clear();
+    this.generations.clear();
+    this.docs.clear();
+    this.updates.clear();
+    this.refs.clear();
+    this.batches.clear();
+    this.successors.clear();
+    this.commits.clear();
+    this.retireTombstones.clear();
+  }
 
   // 读取契约尚无 scope 参数：写入拒绝跨 scope 同名 ID；恢复异常快照时也不得任选一行。
   protected findDoc(docId: string): StoredDoc | undefined {

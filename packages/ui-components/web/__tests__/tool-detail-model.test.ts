@@ -14,6 +14,15 @@ function tool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 describe("工具行行内详情", () => {
+  // 引擎直接返回文本时仍须能展开结果，不能只接受对象中的 output 字段。
+  test("直接展开字符串工具结果", () => {
+    expect(buildToolDetail(tool({ kind: "bash", rawOutput: "执行成功" }))).toMatchObject({
+      type: "text",
+      text: "执行成功",
+      truncated: false,
+    });
+  });
+
   // 同一调用同时带 diff 与文本时，diff 是用户最关心的变更内容。
   test("diff 块优先于内容文本", () => {
     const detail = buildToolDetail(
