@@ -6,6 +6,8 @@ import { loadCommittedDoc } from "../sync/live/committed-doc";
 import { createLiveWriter, type LiveInput, type LiveRecordValue } from "../sync/live/live-writer";
 import { RUNTIME_DOC_LIMITS } from "../sync/live/runtime-doc";
 import { records } from "../sync/live/writer-support";
+import { directoryRootDocId } from "../sync/protocol/directory";
+import { SyncProtocolError } from "../sync/protocol/errors";
 import { buildDocId, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { AppendUpdatesInput, SyncDocRecord } from "../sync/store/types";
@@ -15,7 +17,8 @@ export async function fixture() {
   const scope = { organizationId: "org_cursor", rcsSessionId: "rcs_cursor" };
   const key = scopeKey(scope);
   const generation = "gen_cursor";
-  const clock = { now: () => 1000 };
+  let now = 1000;
+  const clock = { now: () => now };
   const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
   const store = new MemoryProjectionStore({
     clock,
@@ -82,17 +85,61 @@ export async function fixture() {
     writeError: null as unknown,
     rejectOnAppend: 0,
     hold: null as Reservation | null,
+    afterLocate: null as (() => Promise<void> | void) | null,
+    afterPointer: null as (() => Promise<void> | void) | null,
+    failSeal: false,
+    failDirectoryRoot: false,
+    failDirectoryCreate: null as "root" | "page" | null,
   };
   const readError = new Error("reload unavailable");
   const replyError = new Error("commit reply lost");
   const wrapped = new Proxy(store, {
     get(target, property) {
+      if (property === "createDoc")
+        return (input: Parameters<MemoryProjectionStore["createDoc"]>[0]) => {
+          if (
+            input.doc.kind === "directory" &&
+            faults.failDirectoryCreate === (input.doc.blockIndex === null ? "root" : "page")
+          )
+            return Promise.reject(
+              new SyncProtocolError("ADMISSION_REJECTED", { message: "test directory registration unavailable" }),
+            );
+          return target.createDoc(input);
+        };
+      if (property === "readScopePointer")
+        return async (...args: Parameters<MemoryProjectionStore["readScopePointer"]>) => {
+          const result = await target.readScopePointer(...args);
+          const hook = faults.afterPointer;
+          faults.afterPointer = null;
+          await hook?.();
+          return result;
+        };
+      if (property === "sealDoc")
+        return (...args: Parameters<MemoryProjectionStore["sealDoc"]>) =>
+          faults.failSeal
+            ? Promise.reject(new SyncProtocolError("ADMISSION_REJECTED", { message: "test seal unavailable" }))
+            : target.sealDoc(...args);
+      if (property === "locateRefs")
+        return async (...args: Parameters<MemoryProjectionStore["locateRefs"]>) => {
+          const result = await target.locateRefs(...args);
+          const hook = faults.afterLocate;
+          faults.afterLocate = null;
+          await hook?.();
+          return result;
+        };
       if (property === "readDocStateAt")
         return (...args: Parameters<MemoryProjectionStore["readDocStateAt"]>) =>
           faults.failReads ? Promise.reject(readError) : target.readDocStateAt(...args);
       if (property === "appendUpdates")
         return async (input: AppendUpdatesInput) => {
           faults.appendCalls++;
+          if (
+            faults.failDirectoryRoot &&
+            input.updates.some((update) => update.docId === directoryRootDocId(generation))
+          )
+            throw new SyncProtocolError("ADMISSION_REJECTED", {
+              message: "test directory root publication unavailable",
+            });
           if (faults.appendCalls === faults.rejectOnAppend)
             faults.hold = admission.reserve("hotDocLive", admission.available("hotDocLive"));
           try {
@@ -143,6 +190,10 @@ export async function fixture() {
     }
   };
   return {
+    scope,
+    advance(ms: number) {
+      now += ms;
+    },
     store,
     get writer() {
       return writer;

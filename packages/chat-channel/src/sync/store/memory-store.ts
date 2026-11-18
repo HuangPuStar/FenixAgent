@@ -242,23 +242,26 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       }));
       // 便宜上界能证明安全时不重建；临界区按真实 Yjs 编码检查，整批提交前失败不污染任何 Doc。
       const bound =
-        doc.baseSnapshot.byteLength + [...ledger, ...records].reduce((sum, item) => sum + item.bytes.byteLength, 0);
+        doc.baseSnapshot.byteLength +
+        ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0) +
+        records.reduce((sum, item) => sum + item.bytes.byteLength, 0);
       if (bound > MAX_DOC_SNAPSHOT_BYTES) {
         const projection = new Y.Doc();
         try {
           Y.applyUpdate(projection, doc.baseSnapshot);
-          for (const item of [...ledger, ...records]) Y.applyUpdate(projection, item.bytes);
+          for (const item of ledger) Y.applyUpdate(projection, item.bytes);
+          for (const item of records) Y.applyUpdate(projection, item.bytes);
           this.assertSnapshotSize(Y.encodeStateAsUpdate(projection));
         } finally {
           projection.destroy();
         }
       }
-      return { doc, ledger, records, lastSeq: list[list.length - 1].fromSeq };
+      return { doc, records, lastSeq: list[list.length - 1].fromSeq };
     });
     const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
     commitAccountedSets((changes) => {
-      for (const { doc, ledger, records } of pending)
-        changes.push(this.updates.prepare(compositeKey(input.scopeKey, doc.docId), [...ledger, ...records]));
+      for (const { doc, records } of pending)
+        changes.push(this.updates.prepareAppend(compositeKey(input.scopeKey, doc.docId), records));
       for (const ref of refs) changes.push(this.refs.prepare(ref.key, ref.value));
       changes.push(this.batches.prepare(batchKey, batch));
     });

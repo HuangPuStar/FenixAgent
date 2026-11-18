@@ -22,6 +22,21 @@ const RUNTIME_ENTITY_KINDS: ReadonlySet<string> = new Set<RuntimeEntityKind>(["t
 
 const UTF8_ENCODER = new TextEncoder();
 
+/** 活动实体先进入后继基线，再发布路由，避免封口后另行搬运留下空后继。 */
+export function buildRuntimeSuccessorState(previous: Y.Doc, limits: RuntimeDocLimits): Uint8Array {
+  const doc = new Y.Doc();
+  try {
+    const target = createRuntimeDoc("runtime", limits, doc);
+    for (const record of createRuntimeDoc("runtime", limits, previous).exportForRotation()) target.upsertEntity(record);
+    const snapshot = Y.encodeStateAsUpdate(doc);
+    if (snapshot.byteLength > limits.hardLimitBytes)
+      throw new SyncProtocolError("CAPACITY_EXCEEDED", { message: "runtime successor exceeds the hard limit" });
+    return snapshot;
+  } finally {
+    doc.destroy();
+  }
+}
+
 export interface RuntimeEntityRecord {
   readonly entityId: string;
   readonly kind: RuntimeEntityKind;

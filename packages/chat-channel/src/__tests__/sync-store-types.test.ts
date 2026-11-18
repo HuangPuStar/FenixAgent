@@ -50,6 +50,7 @@ const PROJECTION_STORE_METHODS = [
   "createGeneration",
   "createDoc",
   "registerSuccessor",
+  "readSuccessor",
   "appendUpdates",
   "putSealedIfAbsent",
   "sealDoc",
@@ -74,6 +75,7 @@ const METHOD_ARITIES: Record<ProjectionStoreMethodName, number> = {
   createGeneration: 1,
   createDoc: 1,
   registerSuccessor: 1,
+  readSuccessor: 2,
   appendUpdates: 1,
   putSealedIfAbsent: 1,
   sealDoc: 1,
@@ -145,6 +147,9 @@ const stub = {
   },
   async readScopePointer(scopeKey: string): Promise<SyncScopeRow | null> {
     return stubCall("readScopePointer", scopeKey);
+  },
+  async readSuccessor(scopeKey: string, docId: string): ReturnType<ProjectionStore["readSuccessor"]> {
+    return stubCall("readSuccessor", scopeKey, docId);
   },
   async readGeneration(scopeKey: string, generation: string): Promise<SyncGenerationRecord | null> {
     return stubCall("readGeneration", scopeKey, generation);

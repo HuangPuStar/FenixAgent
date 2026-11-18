@@ -287,8 +287,8 @@ test("轮换目录登记被拒绝后禁止继续写入 successor", async () => {
   }
 });
 
-// 搬运失败后的空 successor 不能冒充已恢复状态，否则未结束的已提交实体会消失。
-test("runtime 实体搬运被拒绝后禁止继续写入空 successor", async () => {
+// 后继基线登记被拒时必须停写，活动实体仍由未完成封口的前代持有。
+test("runtime 后继基线登记被拒绝后禁止继续写入", async () => {
   const f = await fixture();
   const input: LiveInput = {
     kind: "semantic",
@@ -299,7 +299,7 @@ test("runtime 实体搬运被拒绝后禁止继续写入空 successor", async ()
     semantic: { kind: "tool", payload: { entityId: "tool-one", metadata: { title: "tool" } } },
   };
   await f.writer.accept(input);
-  const hold = f.admission.reserve("hotDocLive", f.admission.available("hotDocLive"));
+  const hold = f.admission.reserve("transportCache", f.admission.available("transportCache"));
   try {
     await expect(f.writer.rotateRuntime()).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
     hold.release();

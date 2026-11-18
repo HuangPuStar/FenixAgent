@@ -4,10 +4,11 @@ import { buildDocId, type DocKind, parseDocId, scopeKey } from "../protocol/iden
 import type { CommitOutcome, SyncRefRecord, WriterLease } from "../store/types";
 import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
 import { captureSlice } from "./change-capture";
-import { loadCommittedDoc, openLiveCursor, probeCommittedBatch } from "./committed-doc";
+import { appendCommittedBatch, loadCommittedDoc, openLiveCursor } from "./committed-doc";
 import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
 import { type ContentObjectRef, writeLiveContentObject } from "./live-content-object";
+import { recoverLiveSuccessors } from "./live-successor";
 import {
   type Batch,
   CONTENT_KIND,
@@ -22,7 +23,6 @@ import {
 } from "./live-writer-internal";
 import { buildLiveRecord, buildNextLiveRecord, descriptorOf, entityOf } from "./live-writer-records";
 import {
-  LIVE_COMMIT_MAX_ATTEMPTS,
   LIVE_WRITER_LEASE_TTL_MS,
   type LiveInput,
   type LiveRecordValue,
@@ -32,20 +32,10 @@ import {
 } from "./live-writer-types";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
-import { createRuntimeDoc, type FinalEntityDescriptor } from "./runtime-doc";
+import { buildRuntimeSuccessorState, createRuntimeDoc, type FinalEntityDescriptor } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
 import { createTextClaim, type TextClaim } from "./text-claim";
-import {
-  applyFrontiers,
-  buildPendingBatch,
-  bytes,
-  expectedFrontiers,
-  hex,
-  records,
-  requireObject,
-  requireString,
-  splitLiveText,
-} from "./writer-support";
+import { buildPendingBatch, bytes, hex, records, requireObject, requireString, splitLiveText } from "./writer-support";
 export class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
   private readonly owner: string;
@@ -106,6 +96,8 @@ export class LiveWriterImpl implements LiveWriter {
           store: this.options.store,
           scopeKey: this.scopeKey,
           generation: this.requireGeneration(),
+          verifyOwnership: () => this.renewLease(),
+          clock: this.options.clock,
           append: (record, ref) =>
             this.appendContentRecord(
               () => ({ ...record, recordId: record.recordId ?? `rec_${hex(this.options.random, 8)}` }),
@@ -313,13 +305,13 @@ export class LiveWriterImpl implements LiveWriter {
     await this.persist(slices);
     this.rotation.onTransaction(slices.reduce((sum, slice) => sum + slice.bytes.byteLength, 0));
   }
-  private async sealActive(kind: DocKind): Promise<SealResult> {
+  private async sealActive(kind: DocKind, initialState?: Uint8Array): Promise<SealResult> {
     try {
       const current = this.cursor(kind);
       const blockIndex = parseDocId(current.docId).blockIndex + (kind === CONTENT_KIND ? 1 : 0);
       const nonce = hex(this.options.random, 8);
       const successorDocId = buildDocId({ kind, generation: this.requireGeneration(), blockIndex, nonce });
-      const successorInitialState = Y.encodeStateAsUpdate(new Y.Doc());
+      const successorInitialState = initialState ?? Y.encodeStateAsUpdate(new Y.Doc());
       const result = await this.sealing.seal({
         scope: this.options.scope,
         oldDocId: current.docId,
@@ -342,27 +334,45 @@ export class LiveWriterImpl implements LiveWriter {
   private async rotateRuntimeDoc(): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
     try {
       const previous = this.cursor(RUNTIME_KIND);
-      const carried = createRuntimeDoc(RUNTIME_KIND, this.options.limits, previous.doc).exportForRotation();
-      await this.sealActive(RUNTIME_KIND);
-      const successor = this.cursor(RUNTIME_KIND);
-      if (carried.length > 0) {
-        const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, successor.doc);
-        const slices: Slice[] = [];
-        captureSlice(slices, successor, () => {
-          for (const record of carried) target.upsertEntity(record);
-        });
-        const overflow = this.overflowOf(slices);
-        if (overflow !== null)
-          throw this.stop("CAPACITY_EXCEEDED", `rotation copy exceeds the hard limit: ${overflow}`);
-        await this.persist(slices);
-      }
+      const initialState = buildRuntimeSuccessorState(previous.doc, this.options.limits);
+      await this.sealActive(RUNTIME_KIND, initialState);
       this.rotation.reset();
-      return { oldDocId: previous.docId, newDocId: successor.docId, requiredBaseSeq: 0 };
+      return { oldDocId: previous.docId, newDocId: this.cursor(RUNTIME_KIND).docId, requiredBaseSeq: 0 };
     } catch (error) {
-      // 已封口前代的活动实体必须完成搬运，不能在空 successor 上继续确认新事件。
       this.failure = error;
       throw error;
     }
+  }
+  /** 仅在首次更新前补齐实体交接；已有后续事件的后继不得重新搬运前代。 */
+  private async restoreRuntimeCarry(previousId: string, nextId: string): Promise<void> {
+    await this.loadCursor(previousId, RUNTIME_KIND);
+    const carried = createRuntimeDoc(
+      RUNTIME_KIND,
+      this.options.limits,
+      this.cursor(RUNTIME_KIND).doc,
+    ).exportForRotation();
+    await this.loadCursor(nextId, RUNTIME_KIND);
+    const next = this.cursor(RUNTIME_KIND);
+    if (next.lastSeq !== 0) return;
+    const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, next.doc);
+    const existing = target.exportForRotation();
+    if (existing.length > 0) {
+      const byId = new Map(existing.map((record) => [record.entityId, JSON.stringify(record)]));
+      if (
+        existing.length !== carried.length ||
+        carried.some((record) => byId.get(record.entityId) !== JSON.stringify(record))
+      )
+        throw this.stop("DIGEST_CONFLICT", "runtime successor base differs from its transfer");
+      return;
+    }
+    if (carried.length === 0) return;
+    const slices: Slice[] = [];
+    captureSlice(slices, next, () => {
+      for (const record of carried) target.upsertEntity(record);
+    });
+    const overflow = this.overflowOf(slices);
+    if (overflow !== null) throw this.stop("CAPACITY_EXCEEDED", "runtime successor transfer exceeds the hard limit");
+    await this.persist(slices);
   }
   private async persist(slices: readonly Slice[], refs?: SyncRefRecord[]): Promise<void> {
     if (slices.length === 0) return;
@@ -374,7 +384,14 @@ export class LiveWriterImpl implements LiveWriter {
   /** 拒绝后必须先恢复权威前沿；否则下一批会依赖尚未提交的 Yjs struct。 */
   private async executeBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
     try {
-      return await this.appendBatch(batch, cursors);
+      return await appendCommittedBatch({
+        store: this.options.store,
+        scopeKey: this.scopeKey,
+        batch,
+        cursors,
+        renew: () => this.renewLease(),
+        stop: (code, message) => this.stop(code, message),
+      });
     } catch (error) {
       try {
         for (const cursor of cursors.values()) await this.loadCursor(cursor.docId, cursor.kind);
@@ -384,35 +401,6 @@ export class LiveWriterImpl implements LiveWriter {
         this.failure = new AggregateError([error, reloadError], "live writer cursor recovery failed");
       }
       throw error;
-    }
-  }
-  /** 执行批次：全组一次 `appendUpdates`（不得部分写入后重试），按回执推进游标；`unknown` 先查询，只有结论为「确定不存在且写权仍在」才允许重放原字节。 */
-  private async appendBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
-    for (let attempt = 1; ; attempt += 1) {
-      const lease = await this.renewLease();
-      const result = await this.options.store.appendUpdates({
-        scopeKey: this.scopeKey,
-        epoch: lease.epoch,
-        owner: lease.owner,
-        batchId: batch.batchId,
-        digest: batch.digest,
-        expectedFrontiers: expectedFrontiers(batch.slices),
-        updates: batch.slices.map((slice) => ({ docId: slice.docId, fromSeq: slice.fromSeq, bytes: slice.bytes })),
-        refs: batch.refs,
-      });
-      // 同幂等键异内容：本机不得覆盖已提交字节，也无从「重试」出另一个结果，只能停写。
-      if (result.outcome === "conflict") throw this.stop("DIGEST_CONFLICT", `committed batch ${batch.batchId} differs`);
-      if (result.outcome !== "unknown") {
-        applyFrontiers(cursors, result.frontiers);
-        return result.outcome;
-      }
-      const probe = await probeCommittedBatch(this.options.store, batch);
-      if (probe.status === "committed") {
-        applyFrontiers(cursors, probe.frontiers);
-        return "already-committed";
-      }
-      if (probe.status === "absent" && attempt < LIVE_COMMIT_MAX_ATTEMPTS) continue;
-      throw this.stop("COMMIT_OUTCOME_UNKNOWN", `batch ${batch.batchId} is undecided after ${attempt} attempts`);
     }
   }
   /** 续租同时复核 fencing：epoch 被顶替或租约过期时立即停写（在途通知撤不回，只能先停）。 */
@@ -441,13 +429,25 @@ export class LiveWriterImpl implements LiveWriter {
     this.generation = generation.generation;
     // 只有导入过历史的代次才需要跨块判重；空基线的入口闭包只是一个空活跃块。
     this.historyContentDocIds = (generation.importEndOrdinal ?? 0) > 0 ? generation.entryRefs.contentDocIds : [];
-    await this.loadCursor(generation.entryRefs.runtimeDocId, RUNTIME_KIND);
+    const succession = {
+      store: this.options.store,
+      scope: this.options.scope,
+      lease: this.requireLease(),
+      sealing: this.sealing,
+      admission: this.options.admission,
+    };
+    const runtimeDocId = await recoverLiveSuccessors({
+      ...succession,
+      startDocId: generation.entryRefs.runtimeDocId,
+      onSuccessor: (previous, next) => this.restoreRuntimeCarry(previous, next),
+    });
+    await this.loadCursor(runtimeDocId, RUNTIME_KIND);
     await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
     const closureTail = generation.entryRefs.contentDocIds.at(-1);
     if (closureTail === undefined) fail("DOC_NOT_FOUND", "generation has no content block entry");
     // 非空历史块均已封口，恢复后必须使用可写尾块；空基线自身已有 active 块。
     const contentDocId = await ensureWritableContentDoc({
-      store: this.options.store,
+      ...succession,
       directory: this.directory,
       scopeKey: this.scopeKey,
       generation: generation.generation,

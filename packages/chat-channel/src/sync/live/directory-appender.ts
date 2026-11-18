@@ -133,11 +133,11 @@ class DirectoryAppenderImpl implements DirectoryAppender {
     // 同一份字节必须同时用于落库与本地游标：分别编码会得到不同 clientID 的 snapshot，
     // 后续增量在读取方成为悬空 struct，目录更新看似成功却永远不可见。
     const snapshot = buildDirectoryPageSnapshot([docId], null);
-    await this.createPageDoc(lease, pageDocId, 1, snapshot);
+    const prepared = await this.createPageDoc(lease, pageDocId, 1, snapshot);
     await this.pointRootAt(lease, pageDocId);
-    this.pageDoc = this.newDocFromSnapshot(pageDocId, snapshot);
+    this.pageDoc = this.newDocFromSnapshot(pageDocId, prepared.snapshot);
     this.pageDocId = pageDocId;
-    this.pageLastSeq = 0;
+    this.pageLastSeq = prepared.lastSeq;
   }
 
   /** 当前页已满：新建下一页（只含新块），再原子地把根目录指过去。 */
@@ -148,40 +148,39 @@ class DirectoryAppenderImpl implements DirectoryAppender {
     const nextNumber = parseDocId(previousPageId).blockIndex + 1;
     const pageDocId = directoryPageDocId(generation, nextNumber);
     const snapshot = buildDirectoryPageSnapshot([docId], previousPageId);
-    await this.createPageDoc(lease, pageDocId, nextNumber, snapshot);
+    const prepared = await this.createPageDoc(lease, pageDocId, nextNumber, snapshot);
     await this.pointRootAt(lease, pageDocId);
     this.pageDoc?.destroy();
-    this.pageDoc = this.newDocFromSnapshot(pageDocId, snapshot);
+    this.pageDoc = this.newDocFromSnapshot(pageDocId, prepared.snapshot);
     this.pageDocId = pageDocId;
-    this.pageLastSeq = 0;
+    this.pageLastSeq = prepared.lastSeq;
   }
 
   /** 根目录缺失（历史数据/测试种子）：按入口闭包一次性补齐根与全部页。 */
   private async provision(lease: WriterLease, generation: string, contentDocIds: readonly string[]): Promise<void> {
     const plan = planDirectoryPages(generation, contentDocIds);
-    // 每个 Doc 的 canonical 字节只编码一次：落库与本地游标共用同一份 snapshot。
-    const rootSnapshot = buildDirectoryRootSnapshot(plan.latestPageId);
-    await this.createDoc(lease, plan.rootDocId, "directory", rootSnapshot, null);
-    const pageSnapshots = new Map<string, Uint8Array>();
+    const pages = new Map<string, { snapshot: Uint8Array; lastSeq: number }>();
     for (const page of plan.pages) {
       const snapshot = buildDirectoryPageSnapshot(page.contentDocIds, page.previousPageId);
-      pageSnapshots.set(page.pageDocId, snapshot);
-      await this.createDoc(lease, page.pageDocId, "directory", snapshot, page.pageNumber);
+      pages.set(page.pageDocId, await this.createPageDoc(lease, page.pageDocId, page.pageNumber, snapshot));
     }
+    // 根是发布入口，全部页就绪后才登记；失败重开时复用已登记页的 canonical 身份。
+    const rootSnapshot = buildDirectoryRootSnapshot(plan.latestPageId);
+    await this.createDoc(lease, plan.rootDocId, "directory", rootSnapshot, null);
     this.rootDoc = this.newDocFromSnapshot(plan.rootDocId, rootSnapshot);
     this.rootDocId = plan.rootDocId;
     this.rootLastSeq = 0;
     const latest = plan.pages.at(-1);
-    const latestSnapshot = latest === undefined ? undefined : pageSnapshots.get(latest.pageDocId);
-    if (latest === undefined || latestSnapshot === undefined) {
+    const prepared = latest === undefined ? undefined : pages.get(latest.pageDocId);
+    if (latest === undefined || prepared === undefined) {
       this.pageDoc = null;
       this.pageDocId = null;
       this.pageLastSeq = 0;
       return;
     }
-    this.pageDoc = this.newDocFromSnapshot(latest.pageDocId, latestSnapshot);
+    this.pageDoc = this.newDocFromSnapshot(latest.pageDocId, prepared.snapshot);
     this.pageDocId = latest.pageDocId;
-    this.pageLastSeq = 0;
+    this.pageLastSeq = prepared.lastSeq;
   }
 
   private async pointRootAt(lease: WriterLease, pageDocId: string): Promise<void> {
@@ -199,13 +198,39 @@ class DirectoryAppenderImpl implements DirectoryAppender {
     this.rootLastSeq += 1;
   }
 
+  /** 重试复用已登记的 Yjs 身份，逻辑内容不同则拒绝继续发布。 */
   private async createPageDoc(
     lease: WriterLease,
     docId: string,
     pageNumber: number,
     snapshot: Uint8Array,
-  ): Promise<void> {
-    await this.createDoc(lease, docId, "directory", snapshot, pageNumber);
+  ): Promise<{ snapshot: Uint8Array; lastSeq: number }> {
+    const metadata = await this.options.store.readSuccessor(this.options.scopeKey, docId);
+    if (metadata === null) {
+      await this.createDoc(lease, docId, "directory", snapshot, pageNumber);
+      return { snapshot, lastSeq: 0 };
+    }
+    if (
+      metadata.scopeKey !== this.options.scopeKey ||
+      metadata.generation !== this.requireGeneration() ||
+      metadata.kind !== "directory" ||
+      metadata.state !== "active"
+    )
+      fail("GENERATION_MISMATCH", "directory page is not active in its expected scope");
+    const committed = await loadCommittedDoc(this.options.store, docId);
+    if (!committed) fail("DOC_NOT_FOUND", "registered directory page has no committed state");
+    try {
+      const expected = this.newDocFromSnapshot(docId, snapshot);
+      try {
+        if (JSON.stringify(readDirectoryPage(expected)) !== JSON.stringify(readDirectoryPage(committed.doc)))
+          fail("DIGEST_CONFLICT", "registered directory page differs from its publication");
+      } finally {
+        expected.destroy();
+      }
+      return { snapshot: Y.encodeStateAsUpdate(committed.doc), lastSeq: committed.lastSeq };
+    } finally {
+      committed.doc.destroy();
+    }
   }
 
   private async createDoc(

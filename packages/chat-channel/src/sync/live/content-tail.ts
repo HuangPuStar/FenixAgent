@@ -5,23 +5,27 @@
 // 新建 active 尾块。新建使用确定性 nonce，崩溃后重试命中同一 docId（`createDoc` 的
 // `docId + hash` 幂等），不会为同一次恢复留下多份空块。
 //
-// 已知限制：若进程在「封口旧块」与「目录页追加 successor」之间崩溃，目录末位仍是已封口块且
-// 存储没有读取 active Doc 的出口；此时恢复会写到封口块并由存储拒绝（显式失败，不伪造可写）。
-// 移除条件：`ProjectionStore` 提供写入入口/active Doc 的读取能力。
+// 封口与目录交接之间中断时，恢复沿已登记路由先完成交接，再返回 active 尾块。
 
 import * as Y from "yjs";
 
+import type { AdmissionController } from "../capacity/admission";
 import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
-import { buildDocId, parseDocId } from "../protocol/identity";
+import { buildDocId, parseDocId, type SyncScope } from "../protocol/identity";
 import type { ProjectionStore, SyncDocRecord, WriterLease } from "../store/types";
 import type { DirectoryAppender } from "./directory-appender";
+import { recoverLiveSuccessors } from "./live-successor";
+import type { SealingMachine } from "./sealing";
 
 const CONTENT_KIND = "content";
 /** 确定性 nonce：同一代次的恢复重试必须命中同一个 Doc，而不是每次新建一份空块。 */
 const LIVE_TAIL_NONCE = "live-tail";
 
 interface EnsureWritableContentDocInput {
+  readonly scope: SyncScope;
+  readonly sealing: SealingMachine;
+  readonly admission?: AdmissionController;
   readonly store: ProjectionStore;
   readonly directory: DirectoryAppender;
   readonly scopeKey: string;
@@ -44,7 +48,12 @@ export async function ensureWritableContentDoc(input: EnsureWritableContentDocIn
   const directoryTail = input.directory.tailContentDocId();
   const needsLiveTail =
     input.importEndOrdinal > 0 && (directoryTail === null || directoryTail === input.closureTailDocId);
-  if (!needsLiveTail) return directoryTail ?? input.closureTailDocId;
+  if (!needsLiveTail)
+    return await recoverLiveSuccessors({
+      ...input,
+      startDocId: directoryTail ?? input.closureTailDocId,
+      onSuccessor: async (_previous, next) => input.directory.appendContentDoc(input.lease, next),
+    });
 
   const blockIndex = parseDocId(input.closureTailDocId).blockIndex + 1;
   const docId = buildDocId({ kind: CONTENT_KIND, generation: input.generation, blockIndex, nonce: LIVE_TAIL_NONCE });

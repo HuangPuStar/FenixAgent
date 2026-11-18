@@ -1,6 +1,12 @@
 // 内存 adapter 的状态与快照复制；业务写入校验仍由 memory-store.ts 持有。
 import { SyncProtocolError } from "../protocol/errors";
-import { AccountedMap, commitAccountedSets, indexBytes, type MemoryBudget } from "./memory-accounting";
+import {
+  AccountedArrayMap,
+  AccountedMap,
+  commitAccountedSets,
+  indexBytes,
+  type MemoryBudget,
+} from "./memory-accounting";
 import type {
   CommitGenerationInput,
   DirectoryPage,
@@ -12,6 +18,7 @@ import type {
   SyncGenerationRecord,
   SyncRefRecord,
   SyncScopeRow,
+  SyncSuccessorState,
   SyncUpdateRecord,
 } from "./types";
 
@@ -102,7 +109,7 @@ export class MemoryStoreState {
   protected readonly scopes: AccountedMap<string, SyncScopeRow>;
   protected readonly generations: AccountedMap<string, StoredGeneration>;
   protected readonly docs: AccountedMap<string, StoredDoc>;
-  protected readonly updates: AccountedMap<string, SyncUpdateRecord[]>;
+  protected readonly updates: AccountedArrayMap<string, SyncUpdateRecord>;
   protected readonly refs: AccountedMap<string, SyncRefRecord>;
   protected readonly batches: AccountedMap<string, BatchRecord>;
   protected readonly successors: AccountedMap<string, SuccessorRoute>;
@@ -118,7 +125,7 @@ export class MemoryStoreState {
       transportCache: doc.snapshot.byteLength + (doc.baseSnapshot === doc.snapshot ? 0 : doc.baseSnapshot.byteLength),
       controlIndex: metadata(key, { ...doc, snapshot: null, baseSnapshot: null }).controlIndex,
     }));
-    this.updates = new AccountedMap(budget, (key, records) => ({
+    this.updates = new AccountedArrayMap(budget, (key, records) => ({
       hotDocLive: records.reduce((sum, record) => sum + record.bytes.byteLength * 2, 0),
       controlIndex:
         128 + key.length * 2 + records.reduce((sum, record) => sum + indexBytes({ ...record, bytes: null }), 0),
@@ -202,6 +209,20 @@ export class MemoryStoreState {
   }
 
   /** 只返回指定边界的已提交快照，不能以更晚的状态替代。 */
+  async readSuccessor(scopeKey: string, docId: string): Promise<SyncSuccessorState | null> {
+    const doc = this.docs.get(compositeKey(scopeKey, docId));
+    if (!doc || doc.state === "retired") return null;
+    const route = this.successors.get(compositeKey(scopeKey, docId));
+    return {
+      scopeKey,
+      docId,
+      generation: doc.generation,
+      kind: doc.kind,
+      state: doc.state,
+      route: route ? { ...route } : null,
+    };
+  }
+
   async readDocStateAt(docId: string, seq: number): Promise<DocStateSnapshot | null> {
     const doc = this.findDoc(docId);
     if (doc === undefined || doc.state === "retired") return null;
