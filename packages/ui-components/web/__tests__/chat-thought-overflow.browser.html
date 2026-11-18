@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thought wrapping regression</title>
+  <!-- 在 packages/ui-components 运行 bun run dev，打开 /web/__tests__/chat-thought-overflow.browser.html。 -->
+  <main id="root" class="grid max-w-full"></main>
+  <pre id="result" role="status">Running…</pre>
+  <script type="module">
+    import { createInstance } from "i18next";
+    import { createElement, useState } from "react";
+    import { createRoot } from "react-dom/client";
+    import { I18nextProvider, initReactI18next } from "react-i18next";
+    import { AssistantBubble } from "../chat/view/MessageBubble";
+    import { ACPMain } from "../chat/shell/ACPMain";
+    import { useMockChatSession } from "../chat/mocks/mock-chat-store";
+    import zh from "../i18n/locales/zh/uiComponents.json";
+    import { UI_COMPONENTS_NS } from "../i18n/namespace";
+    import "../styles/theme.css";
+
+    const samples = [
+      "The user wants me to echo the same content: " + "d".repeat(1600),
+      "https://example.com/" + "a1b2c3".repeat(240),
+      "请检查这段混合文本🙂".repeat(40),
+      "Ordinary English prose should wrap at word boundaries and remain readable. ".repeat(20),
+    ];
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+
+    async function waitFor(read) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const value = read();
+        if (value) return value;
+        await new Promise(requestAnimationFrame);
+      }
+      throw new Error("Timed out waiting for thought content");
+    }
+
+    // ?flow 使用真实输入岛、时间线和折叠容器；只以现有 mock store 替代 Agent 传输。
+    function ChatFlow() {
+      const session = useMockChatSession({ stepDelayMs: 800 });
+      const [prompt, setPrompt] = useState("");
+      return createElement(ACPMain, {
+        agentId: "thought-overflow-e2e",
+        chatState: session.chatState,
+        sessionState: session.sessionState,
+        connectionState: session.connectionState,
+        detailSessionId: session.chatState.activeSessionId,
+        sidebarOpen: false,
+        onSidebarOpenChange: () => {},
+        projectEntries: (messages) => session.projectEntries(messages).map((entry) =>
+          entry.type === "assistant_message" && prompt ? {
+            ...entry, chunks: entry.chunks.map((chunk) => chunk.type === "thought"
+              ? { ...chunk, text: "Checking the exact long text: " + prompt.repeat(3) }
+              : chunk),
+          } : entry),
+        onSendPrompt: (blocks) => {
+          setPrompt(blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n"));
+          return session.sendPrompt(blocks);
+        },
+        onCancel: session.cancel,
+        onCreateSession: session.createSession,
+        onRespondPermission: session.respondPermission,
+        onRespondQuestion: session.respondQuestion,
+        supportsLoadSession: true,
+        onLoadSession: (id) => { session.selectSession(id); return true; },
+      });
+    }
+
+    if (new URLSearchParams(location.search).has("flow")) {
+      const i18n = createInstance();
+      await i18n.use(initReactI18next).init({
+        lng: "zh", ns: [UI_COMPONENTS_NS], resources: { zh: { [UI_COMPONENTS_NS]: zh } },
+      });
+      const host = document.getElementById("root");
+      host.style.height = "100vh";
+      createRoot(host).render(createElement(I18nextProvider, { i18n }, createElement(ChatFlow)));
+      document.getElementById("result").hidden = true;
+    } else {
+    try {
+      const i18n = createInstance();
+      await i18n.use(initReactI18next).init({
+        lng: "zh", ns: [UI_COMPONENTS_NS], resources: { zh: { [UI_COMPONENTS_NS]: zh } },
+      });
+      const host = document.getElementById("root");
+      const root = createRoot(host);
+      let cases = 0;
+
+      // 同时验证文字的实际边界与父级宽度，避免只裁掉溢出内容也能通过。
+      for (const width of [1000, 356]) {
+        host.style.width = `${width}px`;
+        for (const [index, text] of samples.entries()) {
+          for (const isStreaming of [true, false]) {
+            const label = `${width}px sample ${index} streaming=${isStreaming}`;
+            const entry = {
+              type: "assistant_message", id: label,
+              chunks: [{ type: "thought", text }, { type: "message", text: "后续正文" }],
+            };
+            const previousTrigger = host.querySelector(".chat-thought-trigger");
+            root.render(createElement(I18nextProvider, { i18n },
+              createElement(AssistantBubble, { key: label, entry, isStreaming })));
+            const trigger = await waitFor(() => {
+              const node = host.querySelector(".chat-thought-trigger");
+              return node !== previousTrigger && node;
+            });
+            if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+            const viewport = await waitFor(() => {
+              const content = document.getElementById(trigger.getAttribute("aria-controls"));
+              return content?.textContent === text && content.firstElementChild;
+            });
+            await new Promise(requestAnimationFrame);
+
+            const bounds = host.getBoundingClientRect();
+            const thoughtBounds = viewport.getBoundingClientRect();
+            assert(thoughtBounds.left >= bounds.left && thoughtBounds.right <= bounds.right + 1,
+              `${label}: thought stretches conversation`);
+            assert(viewport.scrollWidth <= viewport.clientWidth + 1, `${label}: thought scrolls horizontally`);
+            const range = document.createRange();
+            range.selectNodeContents(viewport);
+            const lines = [...range.getClientRects()];
+            assert(lines.length > 1, `${label}: long thought does not wrap`);
+            assert(lines.every((line) => line.left >= thoughtBounds.left && line.right <= thoughtBounds.right + 1),
+              `${label}: text leaves thought viewport`);
+            assert(viewport.textContent === text, `${label}: thought text is truncated`);
+            assert(viewport.scrollHeight > viewport.clientHeight, `${label}: long thought cannot scroll vertically`);
+            assert(viewport.clientHeight <= 120, `${label}: thought grows beyond its height limit`);
+            if (isStreaming) {
+              assert(viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1,
+                `${label}: streaming thought does not follow latest text`);
+            }
+
+            viewport.scrollTop = 0;
+            assert(viewport.scrollTop === 0, `${label}: earlier thought text is inaccessible`);
+            if (!isStreaming) {
+              trigger.click();
+              await waitFor(() => trigger.getAttribute("aria-expanded") === "false");
+              trigger.click();
+              await waitFor(() => trigger.getAttribute("aria-expanded") === "true");
+            }
+            assert(host.scrollWidth <= host.clientWidth + 1, `${label}: conversation overflows after reopening`);
+            cases++;
+          }
+        }
+      }
+      document.documentElement.dataset.result = "pass";
+      document.getElementById("result").textContent = `PASS: ${cases} thought layouts wrap, scroll and reopen at 1000px and 356px`;
+    } catch (error) {
+      document.documentElement.dataset.result = "fail";
+      document.getElementById("result").textContent = `FAIL: ${error.message}`;
+      console.error(error);
+    }
+    }
+  </script>
+</html>
