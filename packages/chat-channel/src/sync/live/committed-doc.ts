@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import type { DocKind } from "../protocol/identity";
-import type { CommitOutcome, DocFrontier, ProjectionStore, WriterLease } from "../store/types";
+import type { AppendUpdatesResult, CommitOutcome, DocFrontier, ProjectionStore, WriterLease } from "../store/types";
 import type { Batch, Cursor, Probe } from "./live-writer-internal";
 import { LIVE_COMMIT_MAX_ATTEMPTS } from "./live-writer-types";
 import { applyFrontiers, expectedFrontiers } from "./writer-support";
@@ -69,24 +69,32 @@ export async function appendCommittedBatch(input: {
   readonly stop: (code: SyncErrorCode, message: string, cause?: unknown) => SyncProtocolError;
 }): Promise<CommitOutcome> {
   const { batch, cursors } = input;
+  let unresolved = false;
   for (let attempt = 1; ; attempt += 1) {
-    const lease = await input.renew();
-    const result = await input.store.appendUpdates({
-      scopeKey: input.scopeKey,
-      epoch: lease.epoch,
-      owner: lease.owner,
-      batchId: batch.batchId,
-      digest: batch.digest,
-      expectedFrontiers: expectedFrontiers(batch.slices),
-      updates: batch.slices.map((slice) => ({ docId: slice.docId, fromSeq: slice.fromSeq, bytes: slice.bytes })),
-      refs: batch.refs,
-    });
+    let result: AppendUpdatesResult;
+    try {
+      const lease = await input.renew();
+      result = await input.store.appendUpdates({
+        scopeKey: input.scopeKey,
+        epoch: lease.epoch,
+        owner: lease.owner,
+        batchId: batch.batchId,
+        digest: batch.digest,
+        expectedFrontiers: expectedFrontiers(batch.slices),
+        updates: batch.slices.map((slice) => ({ docId: slice.docId, fromSeq: slice.fromSeq, bytes: slice.bytes })),
+        refs: batch.refs,
+      });
+    } catch (error) {
+      if (unresolved) throw input.stop("COMMIT_OUTCOME_UNKNOWN", `batch ${batch.batchId} retry failed`, error);
+      throw error;
+    }
     // 同幂等键异内容：本机不得覆盖已提交字节，也无从「重试」出另一个结果，只能停写。
     if (result.outcome === "conflict") throw input.stop("DIGEST_CONFLICT", `committed batch ${batch.batchId} differs`);
     if (result.outcome !== "unknown") {
       applyFrontiers(cursors, result.frontiers);
       return result.outcome;
     }
+    unresolved = true;
     let probe: Probe;
     try {
       probe = await probeCommittedBatch(input.store, batch);

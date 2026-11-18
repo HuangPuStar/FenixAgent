@@ -68,6 +68,9 @@ test("对象重试在 Store 确认前租约过期后可重新接管", async () =
     await f.writer.accept(object("same"));
     f.faults.beforeConfirm = () => f.advance(31000);
     await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+    await f.writer.acquire();
+    await f.writer.accept(object("after-confirm"));
+    expect(await f.readAll()).toHaveLength(2);
   } finally {
     await f.close();
   }

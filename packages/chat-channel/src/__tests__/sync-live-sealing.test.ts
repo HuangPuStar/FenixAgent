@@ -225,10 +225,10 @@ async function expectCode(action: Promise<unknown>, code: SyncProtocolError["cod
 }
 
 /**
- * 故障注入委托：`createDoc` 的前 N 次按注入抛 `CAPACITY_EXCEEDED`，其余调用全部转交真实
+ * 故障注入委托：原子 `registerSuccessor` 的前 N 次抛 `CAPACITY_EXCEEDED`，其余调用全部转交真实
  * `MemoryProjectionStore`（不伪造任何结局）。重试次数无法从最终状态观察，只能注入可控失败并计数。
  */
-function failingStore(target: ProjectionStore, failFirstCreateDocCalls: number, counts: Map<string, number>) {
+function failingStore(target: ProjectionStore, failFirstRouteCalls: number, counts: Map<string, number>) {
   return new Proxy(target, {
     get(source, property, receiver) {
       const value: unknown = Reflect.get(source, property, receiver);
@@ -238,7 +238,7 @@ function failingStore(target: ProjectionStore, failFirstCreateDocCalls: number, 
         const key = String(property);
         const seen = (counts.get(key) ?? 0) + 1;
         counts.set(key, seen);
-        if (key === "createDoc" && seen <= failFirstCreateDocCalls) {
+        if (key === "registerSuccessor" && seen <= failFirstRouteCalls) {
           throw new SyncProtocolError("CAPACITY_EXCEEDED", { message: "injected over-capacity failure" });
         }
         return method.apply(source, args);
@@ -296,10 +296,7 @@ describe("createSealingMachine", () => {
     expect(machine.phase).toBe("failed");
     // 未封口：截止序号处没有已提交的 canonical 状态。
     expect(await fixture.store.readDocStateAt(fixture.predecessorDocId, 1)).toBeNull();
-    // 预分配的后继没有被任何路由引用，因此可以被回收（提交删除本身即证明它此刻不可达）。
-    const reclaimed = await fixture.store.retireAndCollect(SCOPE_KEY, { kind: "doc", docId: fixture.successorDocId });
-    expect(reclaimed.outcome).toBe("committed");
-    expect(reclaimed.deletedDocIds).toEqual([fixture.successorDocId]);
+    // 路由与后继一并登记，前沿拒绝时后继初始字节也没有提交。
     expect(await fixture.store.readDocStateAt(fixture.successorDocId, 0)).toBeNull();
     // 路由从未登记：此刻仍可登记为唯一后继，说明失败尝试没有留下半步路由。
     expect(await fixture.store.registerSuccessor(routeInput(fixture))).toEqual({ outcome: "committed" });
@@ -384,7 +381,7 @@ describe("createSealingMachine", () => {
     const result = await machine.seal(sealRequest(fixture));
 
     expect(result.snapshotDigest).toBe(sha256Digest(replay(fixture.base, fixture.updates)));
-    expect(counts.get("createDoc")).toBe(3);
+    expect(counts.get("registerSuccessor")).toBe(3);
     expect(machine.phase).toBe("sealed");
   });
 
@@ -396,7 +393,7 @@ describe("createSealingMachine", () => {
 
     await expectCode(machine.seal(sealRequest(fixture)), "CAPACITY_EXCEEDED");
 
-    expect(counts.get("createDoc")).toBe(SEAL_MAX_ATTEMPTS);
+    expect(counts.get("registerSuccessor")).toBe(SEAL_MAX_ATTEMPTS);
     expect(machine.phase).toBe("failed");
     expect(await fixture.store.readDocStateAt(fixture.predecessorDocId, fixture.finalUpdateSeq)).toBeNull();
     expect(await fixture.store.registerSuccessor(routeInput(fixture))).toEqual({ outcome: "committed" });
@@ -434,8 +431,9 @@ describe("createSealingMachine", () => {
 
     const stale = machineFor(fixture.store);
     await expectCode(stale.seal(sealRequest(fixture, { finalUpdateSeq: fixture.finalUpdateSeq + 1 })), "SEQUENCE_GAP");
-    await expectCode(stale.seal(sealRequest(fixture)), "MALFORMED_FRAME");
-    expect(stale.phase).toBe("failed");
+    expect(stale.phase).toBe("active");
+    expect((await stale.seal(sealRequest(fixture))).finalUpdateSeq).toBe(fixture.finalUpdateSeq);
+    expect(stale.phase).toBe("sealed");
   });
 
   // 崩溃恢复：只在已提交字节上重建，不读旧写者的内存；重建出的摘要必须与封口路径产出的摘要一致。

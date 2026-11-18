@@ -82,6 +82,8 @@ export async function fixture() {
     failReads: false,
     throwAfterWrite: false,
     appendCalls: 0,
+    throwOnAppend: 0,
+    pendingAppend: null as AppendUpdatesInput | null,
     writeError: null as unknown,
     rejectOnAppend: 0,
     hold: null as Reservation | null,
@@ -89,6 +91,7 @@ export async function fixture() {
     beforeConfirm: null as ((lease: WriterLease, generation: string) => Promise<void> | void) | null,
     unknownAppendOnce: false,
     failProbeReadOnce: false,
+    failProbeDocOnce: null as string | null,
     failSeal: false,
     failDirectoryRoot: false,
     failDirectoryCreate: null as "root" | "page" | null,
@@ -118,6 +121,10 @@ export async function fixture() {
         };
       if (property === "readUpdatesAfter")
         return (...args: Parameters<MemoryProjectionStore["readUpdatesAfter"]>) => {
+          if (args[0] === faults.failProbeDocOnce) {
+            faults.failProbeDocOnce = null;
+            return Promise.reject(probeError);
+          }
           if (faults.failProbeReadOnce) {
             faults.failProbeReadOnce = false;
             return Promise.reject(probeError);
@@ -145,8 +152,10 @@ export async function fixture() {
           faults.appendCalls++;
           if (faults.unknownAppendOnce) {
             faults.unknownAppendOnce = false;
+            faults.pendingAppend = input;
             return { outcome: "unknown" as const, frontiers: [] };
           }
+          if (faults.appendCalls === faults.throwOnAppend) throw replyError;
           if (
             faults.failDirectoryRoot &&
             input.updates.some((update) => update.docId === directoryRootDocId(generation))

@@ -1,6 +1,29 @@
 import { expect, test } from "bun:test";
 import { fixture, contentObjectInput as object } from "./sync-live-admission-fixture";
 
+// 探测时尚未落地不等于请求已结束，重试异常后不得在旧批次结果不明时接受新工作。
+test("未知批次探测为空后重试异常停写并保留迟到提交", async () => {
+  const f = await fixture();
+  try {
+    f.faults.unknownAppendOnce = true;
+    f.faults.throwOnAppend = f.faults.appendCalls + 2;
+    await expect(f.writer.accept(object("pending"))).rejects.toMatchObject({
+      code: "COMMIT_OUTCOME_UNKNOWN",
+      cause: f.replyError,
+    });
+    const pending = f.faults.pendingAppend;
+    if (!pending) throw new Error("Missing undecided request");
+    await f.store.appendUpdates(pending);
+    expect(await f.readAll()).toHaveLength(1);
+    const calls = f.faults.appendCalls;
+    await expect(f.writer.accept(object("later"))).rejects.toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
+    expect(f.faults.appendCalls).toBe(calls);
+    expect(await f.readAll()).toHaveLength(1);
+  } finally {
+    await f.close();
+  }
+});
+
 // 未知回执后的探测失败必须停写，游标重载成功不能冒充批次已经判定。
 test("未知批次探测失败后禁止继续对象写入并保留原因", async () => {
   const f = await fixture();

@@ -52,7 +52,7 @@ export const PLANE_CAPACITY: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY;
  *
  * 这是夹具必须满足的不变量：**连接窗口 > 单帧上界**，否则 `emit` 的 `outstanding + 帧字节 ≤ 窗口`
  * 永远不成立，该帧永远发不出去而会话反复重试（T09/T10 的窗口类用例全部失效）。生产档位
- * （512KiB 窗口 / 128KiB 合并）有 3 倍余量；`tightenWindow` 按同一比例缩放。
+ * （512KiB 窗口 / 128KiB 合并）满足此约束；收紧窗口后仍须计入固定的帧头预算。
  */
 export function maxSingleTailFrameBytes(capacity: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY): number {
   const payload = capacity.inputs.activeSoftPayloadBytes;
@@ -119,18 +119,14 @@ export function committedStateOf(store: ProjectionStore): CommittedStateView {
 /**
  * 收紧连接窗口与 tail 合并预算（窗口与 socket 水位必须同值，否则装配期校验直接拒绝）。
  *
- * tail 合并预算（`inputs.activeSoftPayloadBytes`）按窗口等比缩放，比例取生产档位的 4:1
- * （512KiB 窗口 / 128KiB 合并）。这一步不是「调参让用例通过」：单帧字节上限由它决定，而
- * `emit` 的窗口判定是 `outstanding + 单帧字节 ≤ 窗口`——若合并预算超过窗口，任何一次
- * tail 追赶都会产出一帧永远发不出去的内容，连接停在「反复重试同一帧」上，客户端再也拿不到
- * 后续内容（窗口小于单帧上限时的死锁；生产档位由 512KiB > 288KiB 帧上限避开，但没有断言守护）。
- * 因此夹具必须保持「窗口 > 单帧上限」，缩放后仍留 4 倍余量。
+ * 合并预算沿用生产档位的窗口 1/4；固定帧头不随之缩小，返回前必须验证完整帧上界严格小于窗口，
+ * 否则 tail 永远无法通过 `outstanding + 帧字节 ≤ 窗口` 的发送检查。
  */
 export function tightenWindow(
   windowBytes: number,
   base: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY,
 ): SyncCapacityProfile {
-  return {
+  const capacity: SyncCapacityProfile = {
     ...base,
     concurrency: {
       ...base.concurrency,
@@ -139,6 +135,11 @@ export function tightenWindow(
     },
     inputs: { ...base.inputs, activeSoftPayloadBytes: Math.floor(windowBytes / 4) },
   };
+  const frameBytes = maxSingleTailFrameBytes(capacity);
+  if (windowBytes <= frameBytes) {
+    throw new Error(`oracle: connection window ${windowBytes} must exceed single tail frame bound ${frameBytes}`);
+  }
+  return capacity;
 }
 
 // ------------------------------------------------------------------ 故障注入 store（T08）
@@ -186,6 +187,10 @@ export class FaultyProjectionStore implements ProjectionStore {
   acquireWriter(key: string, owner: string, ttlMs: number): Promise<WriterLease> {
     return this.base.acquireWriter(key, owner, ttlMs);
   }
+  /** 保留支持主动释放的底层 Store 的即时写权交接。 */
+  releaseWriter(lease: WriterLease): Promise<void> {
+    return this.base.releaseWriter?.(lease) ?? Promise.resolve();
+  }
   /** 保留 {@link ProjectionStore.renewWriter} 的底层契约。 */
   renewWriter(lease: WriterLease, ttlMs: number): Promise<WriterLease> {
     return this.base.renewWriter(lease, ttlMs);
@@ -200,7 +205,7 @@ export class FaultyProjectionStore implements ProjectionStore {
     return this.base.createGeneration(input);
   }
   /** 保留 {@link ProjectionStore.createDoc} 的底层契约。 */
-  createDoc(input: CreateDocInput): Promise<RegistrationResult> {
+  async createDoc(input: CreateDocInput): Promise<RegistrationResult> {
     this.maybeFail("createDoc");
     return this.base.createDoc(input);
   }
@@ -214,12 +219,12 @@ export class FaultyProjectionStore implements ProjectionStore {
     return this.base.readSuccessor(scopeKey, docId);
   }
   /** 保留 {@link ProjectionStore.appendUpdates} 的底层契约。 */
-  appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
+  async appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
     this.maybeFail("appendUpdates");
     return this.base.appendUpdates(input);
   }
   /** 保留 {@link ProjectionStore.putSealedIfAbsent} 的底层契约。 */
-  putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
+  async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
     this.maybeFail("putSealedIfAbsent");
     return this.base.putSealedIfAbsent(input);
   }
@@ -228,7 +233,7 @@ export class FaultyProjectionStore implements ProjectionStore {
     return this.base.sealDoc(input);
   }
   /** 保留 {@link ProjectionStore.commitGeneration} 的底层契约。 */
-  commitGeneration(input: CommitGenerationInput): Promise<CommitGenerationResult> {
+  async commitGeneration(input: CommitGenerationInput): Promise<CommitGenerationResult> {
     this.maybeFail("commitGeneration");
     return this.base.commitGeneration(input);
   }

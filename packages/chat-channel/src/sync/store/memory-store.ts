@@ -8,6 +8,7 @@ import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { commitAccountedSets, type MemoryBudget } from "./memory-accounting";
+import { prepareActiveDocument, sameSuccessorBase } from "./memory-store-documents";
 import {
   type CommitRecord,
   compositeKey,
@@ -146,21 +147,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     const generation = this.generations.get(compositeKey(input.scopeKey, doc.generation));
     if (generation === undefined || !["staging", "committed"].includes(generation.state))
       fail("DOC_NOT_FOUND", "document generation is not registered");
-    if (doc.state !== "active" || doc.baseSeq !== 0 || this.digest(doc.snapshot) !== doc.hash)
-      fail("MALFORMED_FRAME", "new document must be an active base snapshot");
-    if (doc.dependsOn.length > this.capacity.inputs.dependsOnMax)
-      fail("CAPACITY_EXCEEDED", "document dependencies exceed capacity");
-    const snapshot = copyBytes(doc.snapshot);
-    this.registerDocument(key, {
-      ...doc,
-      lastSeq: doc.baseSeq,
-      baseSnapshot: snapshot,
-      baseHash: doc.hash,
-      snapshot,
-      dependsOn: [...doc.dependsOn],
-      sealedAt: null,
-      retiredAt: null,
-    });
+    this.registerDocument(key, prepareActiveDocument(doc, this.digest, this.capacity.inputs.dependsOnMax));
     return { outcome: "committed" };
   }
 
@@ -177,17 +164,26 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       return existing.successorDocId === input.successorDocId && existing.expectedLastSeq === input.expectedLastSeq
         ? { outcome: "already-committed" }
         : { outcome: "conflict" };
-    this.successors.set(key, {
-      successorDocId: input.successorDocId,
-      expectedLastSeq: input.expectedLastSeq,
-    });
-    // 设计 §7 第 2 步：路由登记的同一事务把前驱钉到 `sealing(finalSeq)`，停止旧 Doc 新写入——本事务成功后
-    // `appendUpdates` 的 `state !== "active"` 判定即拒绝任何续写，前沿不可能再越过这里登记的截止序号。
-    // 已是 `sealed` 的 Doc 不降级：`putSealedIfAbsent` 落地的谱系没有路由，重复登记不得把它退回可写态。
-    if (predecessor.state === "active") {
-      predecessor.state = "sealing";
-      predecessor.finalSeq = input.expectedLastSeq;
+    let successor: StoredDoc | undefined;
+    if (input.successorDoc) {
+      this.assertWritableDoc(input.scopeKey, input.predecessorDocId);
+      const doc = input.successorDoc;
+      if (
+        doc.scopeKey !== input.scopeKey ||
+        doc.docId !== input.successorDocId ||
+        doc.docId === predecessor.docId ||
+        doc.generation !== predecessor.generation ||
+        doc.kind !== predecessor.kind
+      )
+        fail("GENERATION_MISMATCH", "successor identity differs from predecessor");
+      successor = prepareActiveDocument(doc, this.digest, this.capacity.inputs.dependsOnMax);
+      const target = this.docs.get(compositeKey(input.scopeKey, input.successorDocId));
+      if (target) {
+        if (!sameSuccessorBase(target, successor)) return { outcome: "conflict" };
+        successor = undefined;
+      } else if (this.findDoc(input.successorDocId)) return { outcome: "conflict" };
     }
+    this.registerDocumentRoute(input, predecessor, successor);
     return { outcome: "committed" };
   }
 
@@ -337,16 +333,20 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       input.manifestChange.pointerRevision <= scope.pointerRevision
     )
       fail("POINTER_REVISION_STALE", "manifest pointer revision is not newer");
-    const replacement = this.docs.prepare(compositeKey(input.scopeKey, input.docId), {
-      ...doc,
-      state: "sealed",
-      finalSeq: input.expectedLastSeq,
-      snapshot: copyBytes(input.finalSnapshot),
-      hash: input.finalHash,
-      sealedAt: this.clock.now(),
-    });
-    replacement.commit();
-    scope.pointerRevision = input.manifestChange.pointerRevision ?? scope.pointerRevision + 1;
+    this.publishSealedDocument(
+      {
+        ...doc,
+        state: "sealed",
+        finalSeq: input.expectedLastSeq,
+        snapshot: copyBytes(input.finalSnapshot),
+        hash: input.finalHash,
+        sealedAt: this.clock.now(),
+      },
+      {
+        ...scope,
+        pointerRevision: input.manifestChange.pointerRevision ?? scope.pointerRevision + 1,
+      },
+    );
     return { outcome: "committed", finalSeq: input.expectedLastSeq };
   }
 

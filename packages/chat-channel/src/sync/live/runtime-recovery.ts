@@ -17,6 +17,12 @@ export async function restoreRuntimeSuccessor(input: {
   readonly stop: (code: SyncErrorCode, message: string, cause?: unknown) => SyncProtocolError;
 }): Promise<void> {
   const { options, previousId, nextId } = input;
+  const firstUpdate = (await options.store.readUpdatesAfter(nextId, 0, 1))[0];
+  if (firstUpdate) {
+    if (firstUpdate.updateSeq !== 1)
+      throw new SyncProtocolError("SEQUENCE_GAP", { message: "runtime successor tail does not start at one" });
+    return;
+  }
   const previous = await loadCommittedDoc(options.store, previousId);
   if (!previous) throw new SyncProtocolError("DOC_NOT_FOUND", { message: "runtime predecessor is unavailable" });
   let carried: readonly RuntimeEntityRecord[];

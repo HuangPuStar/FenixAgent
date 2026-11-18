@@ -107,8 +107,6 @@ interface SealAttempt {
   readonly successorInitialState: Uint8Array;
   /** 路由事务已提交：截止序号与摘要自此被钉死，异值重试必须失败而不是改写谱系。 */
   routeCommitted: boolean;
-  /** 本次尝试首次登记了 successor（此前不存在）：只有这种 Doc 才确定未被既有路由引用。 */
-  successorRegistered: boolean;
   invalidPinnedRequest?: boolean;
   lineage?: Lineage;
   sealed?: SealedSnapshot;
@@ -207,7 +205,6 @@ class SealingMachineImpl implements SealingMachine {
       finalUpdateSeq: request.finalUpdateSeq,
       successorInitialState: new Uint8Array(request.successorInitialState), // 复制一份：调用方改写缓冲不得改变已登记状态
       routeCommitted: false,
-      successorRegistered: false,
     };
   }
 
@@ -227,7 +224,6 @@ class SealingMachineImpl implements SealingMachine {
   }
 
   private async runSteps(attempt: SealAttempt): Promise<SealResult> {
-    const lineage = await this.readLineage(attempt);
     const committed = await this.store.readSuccessor(attempt.scopeKey, attempt.docId);
     if (committed?.state === "sealed" && committed.route) {
       const anotherSuccessor = committed.route.successorDocId !== attempt.successorDocId;
@@ -243,10 +239,9 @@ class SealingMachineImpl implements SealingMachine {
       }
       // 后继可能已再次封口；已完成的谱系不重登记其初始字节，租约仍由 sealDoc 复核。
       attempt.routeCommitted = true;
-    } else {
-      await this.registerSuccessorDoc(attempt);
-      await this.registerRoute(attempt);
     }
+    const lineage = await this.readLineage(attempt);
+    await this.registerRoute(attempt);
     const sealed = this.encodeSeal(attempt, lineage);
     return await this.commitSeal(attempt, sealed, lineage);
   }
@@ -304,16 +299,9 @@ class SealingMachineImpl implements SealingMachine {
     return { updates, lastSeq: cursor };
   }
 
-  /**
-   * 第 2 步的新身份登记：successor 以 `docId + hash` create-if-absent 落库。
-   * 预分配必须早于路由提交（路由只记录「谁是 successor」），否则路由先落地而 successor 还没有字节时，按持久路由
-   * 选出的写入入口不可写。因此本步到路由提交之间崩溃只留下一个**未被任何路由引用**的孤儿：它不构成可恢复谱系
-   * （`recover` 返回 null），字节由代次退役时的回收兜底。
-   * 只登记能从请求推出的事实：身份、初始状态与初始摘要；内容块的 ordinal 范围属调用方的分配结果（`SealRequest`
-   * 不携带），调用方可先用同 docId、同初始字节登记更完整的记录，本步随后看到 `already-committed` 且不改动它。
-   */
-  private async registerSuccessorDoc(attempt: SealAttempt): Promise<void> {
-    if (attempt.successorRegistered) return;
+  /** 后继、初始 ledger 与唯一路由同事务登记；确定失败无孤儿，结果未知按同键重试且不回收。 */
+  private async registerRoute(attempt: SealAttempt): Promise<void> {
+    if (attempt.routeCommitted) return;
     const doc: SyncDocRecord = {
       scopeKey: attempt.scopeKey,
       generation: attempt.generation,
@@ -329,28 +317,13 @@ class SealingMachineImpl implements SealingMachine {
       ordinalEnd: null,
       dependsOn: [],
     };
-    const settled = await this.store.createDoc({ scopeKey: attempt.scopeKey, epoch: attempt.epoch, doc });
-    if (settled.outcome === "conflict") fail("DIGEST_CONFLICT", "successor holds other bytes", { docId: doc.docId });
-    if (settled.outcome === "unknown") {
-      fail("COMMIT_OUTCOME_UNKNOWN", "successor registration unknown", { docId: doc.docId });
-    }
-    // committed：本次首次登记。既有路由只可能引用它自己那轮登记过的 Doc，故它此刻必未被引用。
-    if (settled.outcome === "committed") attempt.successorRegistered = true;
-  }
-
-  /**
-   * 存储内的当前前沿必须匹配截止序号，早先读取的前沿只能用于计划。
-   * 冲突时只申请回收本次新登记的 successor，最终可达性由存储判定；既有目标可能仍被其他路由引用。
-   * 异常不能证明路由未落地，预分配 Doc 留待代次退役回收，不能推测失败后删除。
-   */
-  private async registerRoute(attempt: SealAttempt): Promise<void> {
-    if (attempt.routeCommitted) return;
     const settled = await this.store.registerSuccessor({
       scopeKey: attempt.scopeKey,
       epoch: attempt.epoch,
       predecessorDocId: attempt.docId,
       successorDocId: attempt.successorDocId,
       expectedLastSeq: attempt.finalUpdateSeq,
+      successorDoc: doc,
     });
     if (settled.outcome === "committed" || settled.outcome === "already-committed") {
       attempt.routeCommitted = true;
@@ -360,19 +333,10 @@ class SealingMachineImpl implements SealingMachine {
       // 无法排除路由已指向本 successor：不得回收，按同键重试让存储给出确定答复。
       fail("COMMIT_OUTCOME_UNKNOWN", "successor route unknown", { docId: attempt.docId });
     }
-    const conflict = new SyncProtocolError("DUPLICATE_OBJECT", {
+    throw new SyncProtocolError("DUPLICATE_OBJECT", {
       message: "predecessor already routes to another successor",
       safeContext: { docId: attempt.docId },
     });
-    if (attempt.successorRegistered) {
-      try {
-        await this.store.retireAndCollect(attempt.scopeKey, { kind: "doc", docId: attempt.successorDocId });
-      } catch (cleanupError) {
-        // 回收失败不得掩盖主失败：两者一并抛出，调用方仍可从主失败的错误码追溯原始原因。
-        throw new AggregateError([conflict, cleanupError], "sealing conflict and orphan reclamation failed");
-      }
-    }
-    throw conflict;
   }
 
   /**

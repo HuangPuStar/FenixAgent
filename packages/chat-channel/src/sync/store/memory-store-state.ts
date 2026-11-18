@@ -14,6 +14,7 @@ import type {
   DocStateSnapshot,
   GenerationEntryRefs,
   RefQuery,
+  RegisterSuccessorInput,
   SyncDocRecord,
   SyncGenerationRecord,
   SyncRefRecord,
@@ -141,6 +142,39 @@ export class MemoryStoreState {
     commitAccountedSets((pending) => {
       pending.push(this.docs.prepare(key, doc));
       pending.push(this.updates.prepare(key, []));
+    });
+  }
+
+  /** 新后继、ledger 与路由一并取得额度；确定拒绝时前驱和所有索引均保持原状。 */
+  protected registerDocumentRoute(input: RegisterSuccessorInput, predecessor: StoredDoc, successor?: StoredDoc): void {
+    commitAccountedSets((pending) => {
+      if (successor) {
+        const key = compositeKey(input.scopeKey, successor.docId);
+        pending.push(this.docs.prepare(key, successor));
+        pending.push(this.updates.prepare(key, []));
+      }
+      pending.push(
+        this.successors.prepare(compositeKey(input.scopeKey, input.predecessorDocId), {
+          successorDocId: input.successorDocId,
+          expectedLastSeq: input.expectedLastSeq,
+        }),
+      );
+      if (predecessor.state === "active")
+        pending.push(
+          this.docs.prepareSharing(
+            compositeKey(input.scopeKey, predecessor.docId),
+            { ...predecessor, state: "sealing", finalSeq: input.expectedLastSeq },
+            ["transportCache"],
+          ),
+        );
+    });
+  }
+
+  /** 封口保留原 base 缓冲的 transport charge，final 字节与全部新元数据先取得额度再发布。 */
+  protected publishSealedDocument(doc: StoredDoc, scope: SyncScopeRow): void {
+    commitAccountedSets((pending) => {
+      pending.push(this.docs.prepareSharing(compositeKey(doc.scopeKey, doc.docId), doc, ["transportCache"]));
+      pending.push(this.scopes.prepare(scope.scopeKey, scope));
     });
   }
 

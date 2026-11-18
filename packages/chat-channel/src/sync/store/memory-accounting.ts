@@ -28,7 +28,13 @@ export class AccountedMap<K, V> extends Map<K, V> {
   }
   /** 完整替换先预留全部新值，提交后才归还旧值的额度。 */
   prepare(key: K, value: V): PreparedSet {
-    return this.prepareValue(key, value, this.budget ? this.estimate(key, value) : {}, false);
+    return this.prepareValue(key, value, this.budget ? this.estimate(key, value) : {}, new Set());
+  }
+  /** 指定池的旧分配必须原样共享；仅预留其增量，其余池仍先取得完整替换额度。 */
+  prepareSharing(key: K, value: V, pools: readonly ServerPoolName[]): PreparedSet {
+    const estimate = this.budget ? this.estimate(key, value) : {};
+    for (const pool of pools) estimate[pool] = (estimate[pool] ?? 0) - (this.accounting.get(key)?.totals[pool] ?? 0);
+    return this.prepareValue(key, value, estimate, new Set(pools));
   }
   /** 无预算时不做估算；有预算时返回已提交值的累计池用量。 */
   accountedBytes(key: K, pool: ServerPoolName): number | undefined {
@@ -38,10 +44,11 @@ export class AccountedMap<K, V> extends Map<K, V> {
   protected prepareRetaining(key: K, value: V, additions: PoolBytes): PreparedSet {
     return this.prepareValue(key, value, additions, true);
   }
-  private prepareValue(key: K, value: V, estimate: PoolBytes, retain: boolean): PreparedSet {
+  private prepareValue(key: K, value: V, estimate: PoolBytes, retain: true | ReadonlySet<ServerPoolName>): PreparedSet {
     const reservations: Reservation[] = [];
     const old = this.accounting.get(key);
-    const totals: PoolBytes = retain ? { ...old?.totals } : {};
+    const totals: PoolBytes = retain === true ? { ...old?.totals } : {};
+    if (retain !== true) for (const pool of retain) totals[pool] = old?.totals[pool] ?? 0;
     try {
       if (this.budget)
         for (const [name, bytes] of Object.entries(estimate)) {
@@ -59,10 +66,14 @@ export class AccountedMap<K, V> extends Map<K, V> {
       commit: () => {
         if (settled) return;
         settled = true;
-        if (!retain) this.release(key);
+        if (retain !== true)
+          for (const charge of old?.reservations ?? []) if (!retain.has(charge.pool)) charge.release();
         super.set(key, value);
         if (this.budget) {
-          const charges = retain ? (old?.reservations ?? []) : [];
+          const charges =
+            retain === true
+              ? (old?.reservations ?? [])
+              : (old?.reservations.filter((charge) => retain.has(charge.pool)) ?? []);
           charges.push(...reservations);
           this.accounting.set(key, { totals, reservations: charges });
         }

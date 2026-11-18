@@ -349,6 +349,8 @@ export interface RegisterSuccessorInput {
   predecessorDocId: string;
   successorDocId: string;
   expectedLastSeq: number;
+  /** 提供时将后继初始文档、空账本与路由整批登记；拒绝不得留下部分状态。 */
+  successorDoc?: SyncDocRecord;
 }
 
 /** 登记类原语的统一结果：`committed` 新写入、`already-committed` 同键同内容重试、`conflict` 同键异内容。 */
@@ -384,7 +386,10 @@ export interface ProjectionStore {
    * 成功返回延长后的租约。续租不改变 epoch，也不可能复活已过期的租约。
    */
   renewWriter(lease: WriterLease, ttlMs: number): Promise<WriterLease>;
-  /** 在与换代/写权交接串行的 Store 点复核 owner、epoch、到期时间与当前代；不改写正文。 */
+  /**
+   * 在与换代/写权交接串行的 Store 点复核 owner、epoch、到期时间与当前代；不改写正文。
+   * 租约过期抛 LEASE_EXPIRED；owner/epoch 失配抛 WRITER_EPOCH_LOST；当前代改变抛 GENERATION_MISMATCH。
+   */
   confirmWriter(lease: WriterLease, generation: string): Promise<void>;
 
   /**
@@ -407,6 +412,7 @@ export interface ProjectionStore {
    *
    * 同一提交把前驱推进到 `sealing` 并钉死 `finalSeq = expectedLastSeq`（设计 §7 第 2 步），这是
    * 「停止旧 Doc 新写入」的唯一承载物：提交后该 Doc 的追加一律被拒，前沿不再越过登记的截止序号。
+   * 提供 successorDoc 时，新文档、空更新账本与路由在同一次原子提交内取得额度并发布；拒绝不得留下孤立文档。
    */
   registerSuccessor(input: RegisterSuccessorInput): Promise<RegistrationResult>;
   /** 已知文档返回元数据（无后继时 route 为 null）；未知、退役或其他 scope 返回 null。 */
