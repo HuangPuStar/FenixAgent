@@ -99,13 +99,18 @@ test("全命中重试确认使用已经续租的当前租约", async () => {
 // 后台续租可先清理过期句柄，正在等待的重试失败后仍须允许同一 writer 重新接管。
 test("后台续租清理过期租约后不会永久锁死正在重试的 writer", async () => {
   const f = await fixture();
+  let expiry: unknown;
   try {
     await f.writer.accept(object("same"));
     f.faults.afterLocate = async () => {
       f.advance(31000);
-      await expect(f.writer.renew()).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+      expiry = await f.writer.renew().catch((error: unknown) => error);
+      expect(expiry).toMatchObject({ code: "LEASE_EXPIRED" });
     };
-    await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "WRITER_EPOCH_LOST" });
+    const failure = await f.writer.accept(object("same")).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
+    expect(failure).toBe(expiry);
+    expect(await f.readAll()).toHaveLength(1);
     await f.writer.acquire();
     await f.writer.accept(object("after"));
     expect(await f.readAll()).toHaveLength(2);

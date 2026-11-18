@@ -1,13 +1,13 @@
+import { appendMemoryUpdates } from "./memory-append-updates";
 // packages/chat-channel/src/sync/store/memory-store.ts
 // B 阶段内存 adapter：以同步临界区模拟事务，保留 fencing、幂等和已提交读取边界。
 // lifecycle 必须由装配方显式提供；宽限期没有冻结数值，不能在 adapter 内隐藏默认值。
 // export/restore 只用于测试「已提交快照 + 连续 tail」恢复，不替代 PostgreSQL adapter。
 
-import * as Y from "yjs";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
-import { commitAccountedSets, type MemoryBudget } from "./memory-accounting";
+import type { MemoryBudget } from "./memory-accounting";
 import { commitMemoryContentBatch } from "./memory-live-content-batch";
 import { prepareActiveDocument, sameSuccessorBase } from "./memory-store-documents";
 import {
@@ -15,7 +15,6 @@ import {
   compositeKey,
   copyBytes,
   copyGeneration,
-  copyRef,
   copyRefs,
   fail,
   MemoryStoreState,
@@ -193,90 +192,15 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   }
 
   async appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
-    this.requireLease(input.scopeKey, input.epoch, input.owner);
-    const batchKey = compositeKey(input.scopeKey, input.batchId);
-    const prior = this.batches.get(batchKey);
-    if (prior !== undefined)
-      return prior.digest === input.digest
-        ? { outcome: "already-committed", frontiers: prior.frontiers.map((item) => ({ ...item })) }
-        : { outcome: "conflict", frontiers: [] };
-    const expected = new Map(input.expectedFrontiers.map((item) => [item.docId, item.lastSeq]));
-    if (expected.size !== input.expectedFrontiers.length) fail("MALFORMED_FRAME", "duplicate document frontier");
-    if (input.updates.length > this.capacity.inputs.maxRecordsPerDoc)
-      fail("CAPACITY_EXCEEDED", "update batch exceeds record capacity");
-    const grouped = new Map<string, typeof input.updates>();
-    for (const update of input.updates) {
-      const doc = this.assertWritableDoc(input.scopeKey, update.docId);
-      if (!expected.has(update.docId)) fail("SEQUENCE_GAP", "missing expected frontier");
-      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealing or sealed document cannot receive updates");
-      const list = grouped.get(update.docId) ?? [];
-      list.push(update);
-      grouped.set(update.docId, list);
-    }
-    const frontiers: { docId: string; lastSeq: number }[] = [];
-    for (const frontier of input.expectedFrontiers) {
-      const doc = this.assertWritableDoc(input.scopeKey, frontier.docId);
-      if (doc.state !== "active") fail("RESOURCE_RETIRED", "sealing or sealed document cannot receive updates");
-      if (doc.lastSeq !== frontier.lastSeq) fail("SEQUENCE_GAP", "document frontier is stale");
-      let next = doc.lastSeq + 1;
-      for (const update of grouped.get(doc.docId) ?? []) {
-        if (update.fromSeq !== next) fail("SEQUENCE_GAP", "update sequence is not contiguous");
-        next += 1;
-      }
-      frontiers.push({ docId: doc.docId, lastSeq: next - 1 });
-    }
-    // 先验证整批索引及 ledger 并复制字节，提交段不再执行可能失败的输入校验。
-    const refs = (input.refs ?? []).map((ref) => {
-      const doc = this.docs.get(compositeKey(input.scopeKey, ref.docId));
-      if (ref.scopeKey !== input.scopeKey || doc === undefined || ref.generation !== doc.generation)
-        fail("DOC_NOT_FOUND", "reference target is unknown");
-      this.assertWritableDoc(input.scopeKey, ref.docId);
-      return { key: this.refKey(ref), value: copyRef(ref) };
+    const { scopeKey, epoch, owner } = input;
+    this.requireLease(scopeKey, epoch, owner);
+    return appendMemoryUpdates(input, this.contentBatchState(), {
+      capacity: this.capacity,
+      assertLease: () => {
+        this.requireLease(scopeKey, epoch, owner);
+      },
+      assertWritableDoc: (key, docId) => this.assertWritableDoc(key, docId),
     });
-    const pending = [...grouped].map(([docId, list]) => {
-      const key = compositeKey(input.scopeKey, docId);
-      const ledger = this.updates.get(key);
-      const doc = this.docs.get(key);
-      if (ledger === undefined || doc === undefined) fail("DOC_NOT_FOUND", "document update ledger is unknown");
-      const records = list.map((update) => ({
-        scopeKey: input.scopeKey,
-        generation: doc.generation,
-        docId,
-        updateSeq: update.fromSeq,
-        bytes: copyBytes(update.bytes),
-        batchId: input.batchId,
-        digest: input.digest,
-      }));
-      // 便宜上界能证明安全时不重建；临界区按真实 Yjs 编码检查，整批提交前失败不污染任何 Doc。
-      const accountedBytes = this.updates.accountedBytes(key, "hotDocLive");
-      const bound =
-        doc.baseSnapshot.byteLength +
-        (accountedBytes === undefined
-          ? ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0)
-          : accountedBytes / 2) +
-        records.reduce((sum, item) => sum + item.bytes.byteLength, 0);
-      if (bound > MAX_DOC_SNAPSHOT_BYTES) {
-        const projection = new Y.Doc();
-        try {
-          Y.applyUpdate(projection, doc.baseSnapshot);
-          for (const item of ledger) Y.applyUpdate(projection, item.bytes);
-          for (const item of records) Y.applyUpdate(projection, item.bytes);
-          this.assertSnapshotSize(Y.encodeStateAsUpdate(projection));
-        } finally {
-          projection.destroy();
-        }
-      }
-      return { doc, records, lastSeq: list[list.length - 1].fromSeq };
-    });
-    const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
-    commitAccountedSets((changes) => {
-      for (const { doc, records } of pending)
-        changes.push(this.updates.prepareAppend(compositeKey(input.scopeKey, doc.docId), records));
-      for (const ref of refs) changes.push(this.refs.prepare(ref.key, ref.value));
-      changes.push(this.batches.prepare(batchKey, batch));
-    });
-    for (const { doc, lastSeq } of pending) doc.lastSeq = lastSeq;
-    return { outcome: "committed", frontiers };
   }
   /** 正文与必要的封口、后继和目录共用一个提交点。 */
   async commitContentBatch(input: CommitContentBatchInput): Promise<AppendUpdatesResult> {

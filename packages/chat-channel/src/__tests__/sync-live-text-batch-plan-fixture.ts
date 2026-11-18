@@ -5,13 +5,18 @@ import { deterministicRandomSource, sha256Digest } from "../sync/clock";
 import { loadCommittedDoc, openLiveCursor } from "../sync/live/committed-doc";
 import { createDirectoryAppender } from "../sync/live/directory-appender";
 import type { MergeFlushRequest } from "../sync/live/merge-buffer";
-import { buildDocId } from "../sync/protocol/identity";
-import { MemoryProjectionStore } from "../sync/store/memory-store";
+import { buildDocId, scopeKey as scopeKeyOf } from "../sync/protocol/identity";
+import { type CommittedStateSnapshot, MemoryProjectionStore } from "../sync/store/memory-store";
 import type { SyncDocRecord } from "../sync/store/types";
 
-/** 使用真实存储与目录恢复，只把输入文本和内容硬限作为测试边界。 */
-export async function textBatchFixture(capacity: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY, directoryCount = 1) {
-  const scopeKey = "planner-org/planner-session";
+/** 使用真实存储/目录，可在新profile下恢复同夹具的已提交快照以覆盖容量收紧。 */
+export async function textBatchFixture(
+  capacity: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY,
+  directoryCount = 1,
+  committed?: CommittedStateSnapshot,
+) {
+  const scope = { organizationId: "planner-org", rcsSessionId: "planner-session" };
+  const scopeKey = scopeKeyOf(scope);
   const generation = "planner-generation";
   const store = new MemoryProjectionStore({
     clock: { now: () => 1000 },
@@ -20,6 +25,7 @@ export async function textBatchFixture(capacity: SyncCapacityProfile = DEFAULT_S
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
   });
   const random = deterministicRandomSource("text-batch-plan");
+  if (committed) store.restoreFromCommittedState(committed);
   const lease = await store.acquireWriter(scopeKey, "planner-writer", 30000);
   const contentId = buildDocId({ kind: "content", generation, blockIndex: directoryCount - 1, nonce: "seed" });
   const contentDocIds = Array.from({ length: directoryCount }, (_, index) =>
@@ -41,16 +47,18 @@ export async function textBatchFixture(capacity: SyncCapacityProfile = DEFAULT_S
     entryRefs,
     createdAt: 1000,
   };
-  await store.createGeneration({ scopeKey, epoch: lease.epoch, generation: record });
-  await store.commitGeneration({
-    scopeKey,
-    epoch: lease.epoch,
-    expectedCurrent: null,
-    expectedPointerRevision: 0,
-    newGeneration: record,
-    retired: [],
-    entryClosure: entryRefs,
-  });
+  if (!committed) {
+    await store.createGeneration({ scopeKey, epoch: lease.epoch, generation: record });
+    await store.commitGeneration({
+      scopeKey,
+      epoch: lease.epoch,
+      expectedCurrent: null,
+      expectedPointerRevision: 0,
+      newGeneration: record,
+      retired: [],
+      entryClosure: entryRefs,
+    });
+  }
   const doc = new Y.Doc({ guid: contentId });
   const snapshot = Y.encodeStateAsUpdate(doc);
   doc.destroy();
@@ -69,13 +77,18 @@ export async function textBatchFixture(capacity: SyncCapacityProfile = DEFAULT_S
     ordinalEnd: null,
     dependsOn: [],
   };
-  await store.createDoc({ scopeKey, epoch: lease.epoch, doc: initial });
+  if (!committed) await store.createDoc({ scopeKey, epoch: lease.epoch, doc: initial });
   const directory = createDirectoryAppender({ store, scopeKey, digest: sha256Digest, random });
   await directory.load(lease, generation, entryRefs);
-  const cursor = openLiveCursor(contentId, "content", snapshot);
+  const restored = committed ? await loadCommittedDoc(store, contentId) : null;
+  if (committed && !restored) throw new Error("fixture snapshot has no committed content");
+  const cursor = restored
+    ? { docId: contentId, kind: "content" as const, doc: restored.doc, lastSeq: restored.lastSeq }
+    : openLiveCursor(contentId, "content", snapshot);
   const admission = new AdmissionController(capacity);
   return {
     store,
+    scope,
     directory,
     cursor,
     admission,

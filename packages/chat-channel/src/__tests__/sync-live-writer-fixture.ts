@@ -197,7 +197,7 @@ export async function seed(
   if (options.orphanRecords !== undefined) {
     await putSealed(docIdFor("content", 0, "orphan"), options.orphanRecords);
   }
-  // 引导租约到期：写者才能以新的 epoch 取得写权（存储不提供主动释放）。
+  // 推进引导租约期限以覆盖过期后重新取得 epoch 的路径。
   time.advance(BOOTSTRAP_TTL_MS + 1);
 }
 
@@ -327,9 +327,22 @@ export function rebuild(runtime: Runtime, docId: string): Y.Doc {
   const stored = docOf(runtime, docId);
   if (stored === undefined) throw new Error(`document ${docId} is not committed`);
   const doc = new Y.Doc({ guid: docId });
-  Y.applyUpdate(doc, stored.baseSnapshot);
-  for (const update of updatesOf(runtime, docId)) Y.applyUpdate(doc, update.bytes);
-  return doc;
+  try {
+    Y.applyUpdate(doc, stored.baseSnapshot);
+    let seq = stored.baseSeq;
+    for (const update of updatesOf(runtime, docId)
+      .filter((update) => update.updateSeq > seq)
+      .sort((a, b) => a.updateSeq - b.updateSeq)) {
+      if (update.updateSeq !== seq + 1) throw new Error("fixture recovery tail is not contiguous");
+      Y.applyUpdate(doc, update.bytes);
+      seq = update.updateSeq;
+    }
+    if (seq !== stored.lastSeq) throw new Error("fixture recovery does not reach its committed frontier");
+    return doc;
+  } catch (error) {
+    doc.destroy();
+    throw error;
+  }
 }
 
 /** 从 canonical 和连续 tail 重建正文记录。 */

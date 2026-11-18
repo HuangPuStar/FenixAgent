@@ -12,15 +12,14 @@ import * as Y from "yjs";
 import type { AdmissionController } from "../capacity/admission";
 import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
-import { buildDocId, parseDocId, type SyncScope } from "../protocol/identity";
+import { parseDocId, type SyncScope } from "../protocol/identity";
 import type { ProjectionStore, SyncDocRecord, WriterLease } from "../store/types";
+import { liveContentTailDocId } from "./content-tail-identity";
 import type { DirectoryAppender } from "./directory-appender";
 import { recoverLiveSuccessors } from "./live-successor";
 import type { SealingMachine } from "./sealing";
 
 const CONTENT_KIND = "content";
-/** 确定性 nonce：同一代次的恢复重试必须命中同一个 Doc，而不是每次新建一份空块。 */
-const LIVE_TAIL_NONCE = "live-tail";
 
 interface EnsureWritableContentDocInput {
   readonly scope: SyncScope;
@@ -56,7 +55,7 @@ export async function ensureWritableContentDoc(input: EnsureWritableContentDocIn
     });
 
   const blockIndex = parseDocId(input.closureTailDocId).blockIndex + 1;
-  const docId = buildDocId({ kind: CONTENT_KIND, generation: input.generation, blockIndex, nonce: LIVE_TAIL_NONCE });
+  const docId = liveContentTailDocId(input.closureTailDocId);
   const snapshot = Y.encodeStateAsUpdate(new Y.Doc());
   const doc: SyncDocRecord = {
     scopeKey: input.scopeKey,

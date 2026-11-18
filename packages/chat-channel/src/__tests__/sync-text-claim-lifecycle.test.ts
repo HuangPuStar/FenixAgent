@@ -5,8 +5,13 @@ import { sha256Digest } from "../sync/clock";
 import { createTextClaim } from "../sync/live/text-claim";
 import { records } from "../sync/live/writer-support";
 import { SyncProtocolError } from "../sync/protocol/errors";
+import { buildDocId } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { DocStateSnapshot } from "../sync/store/types";
+
+const generation = "claim-generation";
+const activeDocId = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "active" });
+const scopeKey = "claim-org/claim-session";
 
 /** 在历史读取边界控制完成顺序，保留真实的声明状态机和 Yjs 历史解析。 */
 function fixture() {
@@ -16,7 +21,7 @@ function fixture() {
     capacity: DEFAULT_SYNC_CAPACITY,
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
   });
-  const activeDoc = new Y.Doc({ guid: "content_active" });
+  const activeDoc = new Y.Doc({ guid: activeDocId });
   const pending: {
     docId: string;
     resolve: (value: DocStateSnapshot | null) => void;
@@ -26,13 +31,36 @@ function fixture() {
     new Promise((resolve, reject) => {
       pending.push({ docId, resolve, reject });
     });
-  const claims = createTextClaim(store);
+  store.readGeneration = async () => ({
+    scopeKey,
+    generation,
+    acpSessionId: "claim-acp",
+    loadId: "claim-load",
+    state: "committed",
+    importEndOrdinal: 0,
+    createdAt: 1000,
+    entryRefs: {
+      controlDocId: "control",
+      directoryDocId: "directory",
+      runtimeDocId: "runtime",
+      contentDocIds: [activeDocId],
+    },
+  });
+  store.readSuccessor = async () => ({
+    scopeKey,
+    generation,
+    docId: activeDocId,
+    kind: "content",
+    state: "active",
+    route: null,
+  });
+  const claims = createTextClaim({ store, scopeKey, digest: sha256Digest });
   return {
     claims,
     activeDoc,
     pending,
     claim(entryId: string, historyDocIds: readonly string[], contentSlot = "text") {
-      return claims.claim({ entryId, contentSlot, activeDoc, historyDocIds });
+      return claims.claim({ generation, entryId, contentSlot, activeDoc, historyDocIds });
     },
     read(index: number) {
       const read = pending[index];
@@ -77,7 +105,7 @@ function expectInvalidated(result: Awaited<ReturnType<typeof outcome>>, cause?: 
   expect(result.error).toMatchObject({
     code: "GENERATION_MISMATCH",
     retryable: true,
-    safeContext: { docId: "content_active" },
+    safeContext: { docId: activeDocId },
   });
   if (cause !== undefined) expect(result.error).toHaveProperty("cause", cause);
 }

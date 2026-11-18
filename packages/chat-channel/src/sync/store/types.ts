@@ -429,7 +429,7 @@ export interface ProjectionStore {
    * `fromSeq ≠ lastSeq + 1` 抛 `SEQUENCE_GAP`；无法确认是否落地时返回 `unknown`，不得猜 `committed`。
    */
   appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult>;
-  /** 同一文本冲刷的更新、新块、封口、路由和目录全组原子发布；失败不留下已提交前缀。 */
+  /** 整组正文原子发布；只有确定未写才可抛错，结果不明或提交后回执失败必须返回 unknown。 */
   commitContentBatch(input: CommitContentBatchInput): Promise<AppendUpdatesResult>;
 
   /**

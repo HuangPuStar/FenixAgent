@@ -1,66 +1,120 @@
-// packages/chat-channel/src/sync/live/text-claim.ts
-// 用户消息幂等的已提交判据：当前活跃内容块 + 当前代次的历史导入块。
-//
-// 为什么不能只看活跃块：历史导入的文本记录在已封口块里，且旧协议用数字槽位 0，而实时用户消息用
-// "text" 槽位。两者等价性只能由 entryId 表达（entryId 已含 turnId），按 entryId（而不是正文）判重，
-// 既不会漏掉历史消息，也不会把不同轮次的相同文本误判成重复。
-
 import * as Y from "yjs";
-
+import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
+import { parseDocId } from "../protocol/identity";
 import type { ProjectionStore } from "../store/types";
+import { loadCommittedDoc } from "./committed-doc";
+import type { LiveRecordValue } from "./live-writer-types";
+import { legacyLiveTextClaims, type StoredTextRecord, textClaimKey } from "./text-claim-history";
+import { type TextClaimIdentity, textClaimLookupId } from "./text-claim-identity";
+import { createTextClaimLineage, type TextClaimLineage } from "./text-claim-lineage";
 import { records } from "./writer-support";
 
-/** 记录数组里的最小读取面：历史记录是 `text_part` + 数字槽位，实时记录是 `text` + 字符串槽位。 */
-interface StoredTextRecord {
-  readonly entryId?: unknown;
-  readonly contentSlot?: unknown;
-  readonly kind?: unknown;
-}
-
-export interface TextClaim {
-  /**
-   * 返回 true 表示本次输入尚未提交；false 表示同一 entryId + 槽位已存在，或本写者已接收过。
-   *
-   * `historyDocIds` 必须来自当前代次的入口闭包；`readDocStateAt` 对退役块返回 `null`，
-   * 因此不可达块不会把新消息误判成“已存在”。
-   * 读取期间重建会以可重试的 GENERATION_MISMATCH 拒绝，调用方须在新代次重新判定。
-   */
-  claim(input: {
-    readonly entryId: string;
-    readonly contentSlot: string;
-    readonly activeDoc: Y.Doc;
-    readonly historyDocIds: readonly string[];
-  }): Promise<boolean>;
-  /** 重建后丢弃声明与历史缓存，并使尚未完成的旧代次判定失效。 */
-  reset(): void;
-}
-
-/** 建立单写者的消息声明；代次令牌隔离重建前尚未完成的历史读取。 */
-export function createTextClaim(store: ProjectionStore): TextClaim {
-  const claimed = new Set<string>();
-  let historicalEntries: ReadonlySet<string> | null = null;
-  let historyLoad: Promise<ReadonlySet<string>> | null = null;
-  let epoch = Symbol();
-
-  /** 旧判定不能当作重复或接纳；只暴露服务端文档身份，原始读取错误保留在本地 cause。 */
-  function invalidated(activeDocId: string, cause?: unknown): SyncProtocolError {
-    return new SyncProtocolError("GENERATION_MISMATCH", {
+/** 仅本声明生命周期的失效可重新判定，其他同码错误不提供安全重试证据。 */
+class TextClaimInvalidatedError extends SyncProtocolError {
+  constructor(activeDocId: string, cause?: unknown) {
+    super("GENERATION_MISMATCH", {
       retryable: true,
       safeContext: { docId: activeDocId },
       message: "text claim invalidated by writer state rebuild",
       ...(cause === undefined ? {} : { cause }),
     });
   }
+}
 
-  function keyOf(entryId: string, contentSlot: string): string {
-    return `${entryId}\u0000${contentSlot}`;
+/** 识别由本地重建直接证明的旧声明失效，供写者限定同代次重新判定。 */
+export function isTextClaimInvalidated(error: unknown): error is SyncProtocolError {
+  return error instanceof TextClaimInvalidatedError;
+}
+
+/** 单写者的暂存声明与当前代次的已提交文本判重入口。 */
+export interface TextClaim {
+  /** false 表示同 entryId + 槽位已提交或本写者已接收；失败不会留下新占位。 */
+  claim(input: {
+    readonly generation: string;
+    readonly entryId: string;
+    readonly contentSlot: string;
+    readonly activeDoc: Y.Doc;
+    readonly historyDocIds: readonly string[];
+  }): Promise<boolean>;
+  /** 只有已证明未进入存储的冲刷才能释放对应占位。 */
+  release(entryId: string, contentSlot: string): void;
+  /** 重建后丢弃声明与旧数据缓存，使在途旧声明失效。 */
+  reset(): void;
+}
+
+/** 索引命中仍核对 canonical + 连续 tail；损坏引用不能冒充已提交事实。 */
+async function indexedTextExists(
+  store: ProjectionStore,
+  digest: DigestFn,
+  identity: TextClaimIdentity,
+  lineage: TextClaimLineage,
+  activeDocId: string,
+): Promise<boolean> {
+  const lookupId = textClaimLookupId(digest, identity);
+  const [ref] = await store.locateRefs({
+    generation: identity.generation,
+    lookupKind: "live-text",
+    lookupId,
+    contentSlot: 0,
+    partIndex: 0,
+    limit: 1,
+  });
+  if (!ref) return false;
+  if (
+    ref.scopeKey !== identity.scopeKey ||
+    ref.generation !== identity.generation ||
+    ref.lookupKind !== "live-text" ||
+    ref.lookupId !== lookupId ||
+    ref.contentSlot !== 0 ||
+    ref.partIndex !== 0
+  )
+    throw new SyncProtocolError("GENERATION_MISMATCH", { message: "text claim reference crosses its identity" });
+  const reachable = await lineage.read(identity.generation, activeDocId);
+  if (!reachable.has(ref.docId))
+    throw new SyncProtocolError("MALFORMED_FRAME", { message: "text claim reference is outside its live lineage" });
+  const loaded = await loadCommittedDoc(store, ref.docId);
+  if (!loaded) throw new SyncProtocolError("DOC_NOT_FOUND", { message: "text claim reference has no committed state" });
+  try {
+    const record = records<LiveRecordValue>(loaded.doc)
+      ?.toArray()
+      .find((item) => item.recordId === ref.recordId);
+    if (
+      record?.kind !== "text" ||
+      record.entryId !== identity.entryId ||
+      record.contentSlot !== identity.contentSlot ||
+      !(record.payload instanceof Uint8Array) ||
+      ref.byteStart !== 0 ||
+      ref.byteEnd !== record.payload.byteLength ||
+      ref.orderStart !== 0 ||
+      ref.orderEnd !== 0
+    )
+      throw new SyncProtocolError("MALFORMED_FRAME", { message: "text claim reference differs from committed record" });
+    return true;
+  } finally {
+    loaded.doc.destroy();
   }
+}
+
+/** 建立消息声明：新写入走持久索引；索引前旧 live 块只沿当前代次权威链逐 Doc 读取一次。 */
+export function createTextClaim(options: {
+  readonly store: ProjectionStore;
+  readonly scopeKey: string;
+  readonly digest: DigestFn;
+}): TextClaim {
+  const { store } = options;
+  const claimed = new Set<string>();
+  let historicalEntries: ReadonlySet<string> | null = null;
+  let historyLoad: Promise<ReadonlySet<string>> | null = null;
+  let legacyEntries: ReadonlySet<string> | null = null;
+  let legacyLoad: Promise<ReadonlySet<string>> | null = null;
+  let generation: string | null = null;
+  let epoch = Symbol();
+  let lineage = createTextClaimLineage(store, options.scopeKey);
 
   async function loadHistoricalEntries(docIds: readonly string[], activeDocId: string): Promise<ReadonlySet<string>> {
     const entries = new Set<string>();
     for (const docId of docIds) {
-      // 活跃块由实时记录判重；这里只补它看不到的已封口块，同一份记录不读两次。
       if (docId === activeDocId) continue;
       const state = await store.readDocStateAt(docId, 0);
       if (state === null) continue;
@@ -68,6 +122,7 @@ export function createTextClaim(store: ProjectionStore): TextClaim {
       try {
         Y.applyUpdate(doc, state.snapshot);
         for (const record of records<StoredTextRecord>(doc)?.toArray() ?? []) {
+          // 导入 text_part 使用数字槽位；保持按 entryId 对齐实时用户消息的既有契约。
           if (record.kind === "text_part" && typeof record.entryId === "string") entries.add(record.entryId);
         }
       } finally {
@@ -77,53 +132,88 @@ export function createTextClaim(store: ProjectionStore): TextClaim {
     return entries;
   }
 
-  /** 历史块只扫描一次；失败不缓存，下一次 claim 重新读取。 */
-  async function historicalEntriesFor(
-    docIds: readonly string[],
-    activeDocId: string,
-    claimEpoch: symbol,
-  ): Promise<ReadonlySet<string>> {
-    if (historicalEntries !== null) return historicalEntries;
-    if (historyLoad === null) {
-      historyLoad = loadHistoricalEntries(docIds, activeDocId).catch((error: unknown) => {
-        if (claimEpoch === epoch) historyLoad = null;
-        throw error;
-      });
-    }
-    const entries = await historyLoad;
-    if (claimEpoch === epoch) historicalEntries = entries;
-    return entries;
-  }
-
   return {
     async claim(input) {
       const claimEpoch = epoch;
-      const key = keyOf(input.entryId, input.contentSlot);
+      const claimLineage = lineage;
+      const activeIdentity = parseDocId(input.activeDoc.guid);
+      if (
+        activeIdentity.kind !== "content" ||
+        activeIdentity.generation !== input.generation ||
+        (generation !== null && generation !== input.generation)
+      )
+        throw new SyncProtocolError("GENERATION_MISMATCH", {
+          message: "text claim differs from its writer generation",
+        });
+      generation = input.generation;
+      const key = textClaimKey(input.entryId, input.contentSlot);
       if (claimed.has(key)) return false;
-      // 先占位再读历史：两个并发的同键输入不能在异步窗口内都通过检查。
       claimed.add(key);
-      let entries: ReadonlySet<string>;
       try {
         const active = records<StoredTextRecord>(input.activeDoc)?.toArray() ?? [];
-        if (active.some((record) => record.entryId === input.entryId && record.contentSlot === input.contentSlot)) {
-          return false;
+        let exists = active.some(
+          (record) =>
+            record.kind === "text" && record.entryId === input.entryId && record.contentSlot === input.contentSlot,
+        );
+        if (!exists && input.historyDocIds.length > 0) {
+          if (historicalEntries === null) {
+            historyLoad ??= loadHistoricalEntries(input.historyDocIds, input.activeDoc.guid);
+            const entries = await historyLoad;
+            if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+            historicalEntries = entries;
+          }
+          exists = historicalEntries.has(input.entryId);
         }
-        if (input.historyDocIds.length === 0) return true;
-        entries = await historicalEntriesFor(input.historyDocIds, input.activeDoc.guid, claimEpoch);
+        if (!exists) {
+          exists = await indexedTextExists(
+            store,
+            options.digest,
+            { ...options, ...input },
+            claimLineage,
+            input.activeDoc.guid,
+          );
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+        }
+        if (!exists) {
+          if (legacyEntries === null) {
+            legacyLoad ??= claimLineage.read(input.generation, input.activeDoc.guid).then((docIds) =>
+              legacyLiveTextClaims({
+                store,
+                activeDocId: input.activeDoc.guid,
+                docIds,
+              }),
+            );
+            const entries = await legacyLoad;
+            if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+            legacyEntries = entries;
+          }
+          exists = legacyEntries.has(key);
+        }
+        if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+        return !exists;
       } catch (error) {
-        if (claimEpoch !== epoch) throw invalidated(input.activeDoc.guid, error);
-        // 读取失败不能把消息永久判成已写：释放占位，调用方重试时重新判定。
+        if (claimEpoch !== epoch) {
+          if (isTextClaimInvalidated(error)) throw error;
+          throw new TextClaimInvalidatedError(input.activeDoc.guid, error);
+        }
         claimed.delete(key);
+        if (historicalEntries === null) historyLoad = null;
+        if (legacyEntries === null) legacyLoad = null;
         throw error;
       }
-      if (claimEpoch !== epoch) throw invalidated(input.activeDoc.guid);
-      return !entries.has(input.entryId);
+    },
+    release(entryId, contentSlot) {
+      claimed.delete(textClaimKey(entryId, contentSlot));
     },
     reset() {
       epoch = Symbol();
       claimed.clear();
       historicalEntries = null;
       historyLoad = null;
+      legacyEntries = null;
+      legacyLoad = null;
+      generation = null;
+      lineage = createTextClaimLineage(store, options.scopeKey);
     },
   };
 }

@@ -60,6 +60,7 @@ export async function rebuildLiveProjection(input: {
       digest: options.digest,
     });
     await load(contentDocId, CONTENT_KIND);
+    await options.store.confirmWriter(lease, generation.generation);
     return {
       generation: generation.generation,
       historyContentDocIds: (generation.importEndOrdinal ?? 0) > 0 ? generation.entryRefs.contentDocIds : [],

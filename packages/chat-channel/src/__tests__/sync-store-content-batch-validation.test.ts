@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { sha256Digest } from "../sync/clock";
+import { loadCommittedDoc } from "../sync/live/committed-doc";
+import type { LiveRecordValue } from "../sync/live/live-writer-types";
+import { records } from "../sync/live/writer-support";
+import { readDirectoryPage } from "../sync/protocol/directory";
 import type { CommitContentBatchInput } from "../sync/store/types";
 import { contentBatchFixture } from "./sync-store-content-batch-fixture";
 
@@ -72,9 +76,12 @@ for (const item of cases) {
     try {
       const before = f.store.exportCommittedState();
       const usage = f.usage();
+      const original = structuredClone(f.input);
       await expect(f.store.commitContentBatch(item.change(f.input))).rejects.toMatchObject({ code: item.code });
+      expect(f.input).toEqual(original);
       expect(f.store.exportCommittedState()).toEqual(before);
       expect(f.usage()).toEqual(usage);
+      expect((await f.store.commitContentBatch(f.input)).outcome).toBe("committed");
     } finally {
       f.store.dispose();
     }
@@ -100,6 +107,28 @@ test("原子文本批次允许零更新的旧尾块封口", async () => {
       state: "sealed",
       route: { successorDocId: f.ids[1], expectedLastSeq: 0 },
     });
+    for (const [index, docId] of f.ids.slice(1).entries()) {
+      const updates = await f.store.readUpdatesAfter(docId, 0, 4);
+      expect(updates).toHaveLength(1);
+      expect(updates[0]).toMatchObject({ updateSeq: 1, batchId: f.input.batchId });
+      expect(updates[0]!.bytes).toEqual(f.input.updates.find((update) => update.docId === docId)!.bytes);
+      const committed = await loadCommittedDoc(f.store, docId);
+      try {
+        expect(
+          (records<LiveRecordValue>(committed!.doc)?.toArray() ?? [])
+            .map((record) => new TextDecoder().decode(record.payload))
+            .join(""),
+        ).toBe(index === 0 ? "middle" : "after");
+      } finally {
+        committed?.doc.destroy();
+      }
+    }
+    const directory = await loadCommittedDoc(f.store, f.pageId);
+    try {
+      expect(readDirectoryPage(directory!.doc).contentDocIds).toEqual(f.ids);
+    } finally {
+      directory?.doc.destroy();
+    }
   } finally {
     f.store.dispose();
   }

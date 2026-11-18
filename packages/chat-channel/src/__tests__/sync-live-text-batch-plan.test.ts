@@ -123,7 +123,7 @@ describe("offline live text batch planning", () => {
       expect(plan.finalCursor.docId).toBe(f.cursor.docId);
       expect(plan.newDocs).toHaveLength(0);
       expect(plan.seals).toHaveLength(0);
-      expect(plan.slices).toHaveLength(1);
+      expect(plan.slices).toHaveLength(4);
       expect(
         replayText(plan, f.cursor.docId)
           .map((record) => decoder.decode(record.payload))
@@ -160,7 +160,7 @@ describe("offline live text batch planning", () => {
   });
 
   // 若按片提交或错用本次片序号，跨块文本会丢失、重复，或同槽 partIndex 不能从块内前沿推进。
-  test("coalesces each document into one update while preserving text and block-local part indices", async () => {
+  test("keeps each text piece as one continuous update and preserves block-local part indices", async () => {
     const capacity = {
       ...DEFAULT_SYNC_CAPACITY,
       inputs: {
@@ -175,9 +175,14 @@ describe("offline live text batch planning", () => {
     const text = "汉🙂".repeat(100);
     const plan = await planLiveTextBatch({ ...f, request: f.request(text) });
     try {
-      const counts = new Map<string, number>();
-      for (const slice of plan.slices) counts.set(slice.docId, (counts.get(slice.docId) ?? 0) + 1);
-      expect([...counts.values()].every((count) => count === 1)).toBe(true);
+      for (const cursor of plan.cursors.values()) {
+        if (cursor.kind !== "content") continue;
+        const updates = plan.slices.filter((slice) => slice.docId === cursor.docId);
+        expect(updates.map((slice) => slice.fromSeq)).toEqual([1, 2]);
+        expect(updates.every((slice) => slice.bytes.byteLength <= 100 + capacity.inputs.recordHeaderMaxBytes)).toBe(
+          true,
+        );
+      }
       const content = replayText(plan, f.cursor.docId);
       expect(content.map((record) => decoder.decode(record.payload)).join("")).toBe(text);
       expect(content.map((record) => record.partIndex)).toEqual([0, 1, 0, 1, 0, 1, 0, 1]);

@@ -1,5 +1,6 @@
 import { AdmissionController, type Reservation, type ServerPoolName } from "../capacity/admission";
 import { DIRECTORY_PAGE_SIZE } from "../protocol/directory";
+import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { MAX_IDENTIFIER_BYTES } from "../protocol/identity";
 import type { TextBatchPlanOptions } from "./text-batch-plan-types";
 
@@ -33,6 +34,7 @@ export function reserveTextBatchBudget(options: TextBatchPlanOptions): TextBatch
   );
   // 非末片至多因下一个四字节码点浪费3B；先界定切片数组，再取得实际片数的记录头额度。
   const chunkCountBound = Math.ceil(request.bytes / Math.max(1, chunkBytes - 3));
+  // 旧current可能来自更宽的写入配置；克隆/封口额度按传输硬限保留，不随新active阈值缩小。
   try {
     // live池承担UTF-16源/切片、记录payload和解码Y.Doc；不包含下方独立编码buffer。
     reserve(
@@ -43,17 +45,14 @@ export function reserveTextBatchBudget(options: TextBatchPlanOptions): TextBatch
           request.bytes * 6 +
           chunkCountBound * CHUNK_METADATA_BYTES +
           DOCUMENT_METADATA_BYTES * 2 +
-          capacity.inputs.activeHardEncodedBytes * 4 +
+          MAX_DOC_SNAPSHOT_BYTES * 4 +
           capacity.inputs.directoryHardBytes * 2,
       ),
     );
     // 四类不同编码：待提交update、final snapshot、试写checkpoint和候选编码临时输出。
     reserve(
       "persistSeal",
-      Math.max(
-        1,
-        request.bytes * 4 + capacity.inputs.activeHardEncodedBytes * 4 + capacity.inputs.directoryHardBytes * 2,
-      ),
+      Math.max(1, request.bytes * 4 + MAX_DOC_SNAPSHOT_BYTES * 4 + capacity.inputs.directoryHardBytes * 2),
     );
   } catch (error) {
     release();

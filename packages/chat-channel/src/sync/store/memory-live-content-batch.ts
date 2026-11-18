@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { contentDocOverflow, contentRecordIds } from "../capacity/content-doc-limits";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import {
@@ -52,11 +53,17 @@ function currentScope(input: CommitContentBatchInput, state: MemoryContentBatchS
 }
 
 /** 只重放本次触及的 Doc；现存 base 与 ledger 字节保持共享。 */
-function projection(doc: StoredDoc, prior: readonly SyncUpdateRecord[], added: readonly SyncUpdateRecord[]): Y.Doc {
+function projection(
+  doc: StoredDoc,
+  prior: readonly SyncUpdateRecord[],
+  added: readonly SyncUpdateRecord[],
+  beforeAdd?: (doc: Y.Doc) => void,
+): Y.Doc {
   const value = new Y.Doc({ guid: doc.docId });
   try {
     Y.applyUpdate(value, doc.baseSnapshot);
     for (const update of prior) Y.applyUpdate(value, update.bytes);
+    beforeAdd?.(value);
     for (const update of added) Y.applyUpdate(value, update.bytes);
     return value;
   } catch (error) {
@@ -142,6 +149,7 @@ function validateDirectory(
       fail("MALFORMED_FRAME", "new directory pages are not linked to the current tail");
     const page = pages.get(pageId);
     if (!page) fail("MALFORMED_FRAME", "new directory page is missing its final state");
+    if (page.contentDocIds.length === 0) fail("MALFORMED_FRAME", "new directory page cannot be empty");
     appendedPages.push(page);
     pageId = page.previousPageId;
   }
@@ -190,10 +198,18 @@ function validateDirectory(
 
 /** 一次准备全部新增额度，然后以同步提交段发布整条正文链。 */
 export function commitMemoryContentBatch(
-  input: CommitContentBatchInput,
+  raw: CommitContentBatchInput,
   state: MemoryContentBatchState,
   deps: { readonly clock: Clock; readonly digest: DigestFn; readonly capacity: SyncCapacityProfile },
 ): AppendUpdatesResult {
+  const input: CommitContentBatchInput = {
+    ...raw,
+    expectedFrontiers: raw.expectedFrontiers.map((v) => ({ ...v })),
+    updates: raw.updates.map((v) => ({ ...v })),
+    newDocs: raw.newDocs.map((v) => ({ ...v })),
+    seals: raw.seals.map((v) => ({ ...v })),
+    refs: raw.refs?.map(copyRef),
+  };
   const scope = currentScope(input, state, deps.clock);
   const batchKey = compositeKey(input.scopeKey, input.batchId);
   const priorBatch = state.batches.get(batchKey);
@@ -255,9 +271,9 @@ export function commitMemoryContentBatch(
     if (
       newIds.has(id) &&
       doc.kind === "content" &&
-      (list.length !== 1 || doc.baseSnapshot.length !== 2 || doc.baseSnapshot[0] !== 0 || doc.baseSnapshot[1] !== 0)
+      (list.length === 0 || doc.baseSnapshot.length !== 2 || doc.baseSnapshot[0] !== 0 || doc.baseSnapshot[1] !== 0)
     )
-      fail("MALFORMED_FRAME", "new content block requires an empty base and one update");
+      fail("MALFORMED_FRAME", "new content block requires an empty base and contiguous updates");
   }
   const headId = validateChain(input, docs, newIds);
   const seals = new Map(input.seals.map((seal) => [seal.docId, seal]));
@@ -271,32 +287,46 @@ export function commitMemoryContentBatch(
   const directoryPages = new Map<string, DirectoryPageState>();
   let latestPage: string | null | undefined;
   const finalDocs = new Map<string, StoredDoc>();
+  const writtenRecords = new Map<string, ReadonlySet<string>>();
   for (const [id, doc] of docs) {
     const key = compositeKey(input.scopeKey, id);
     const list = additions.get(id) ?? [];
     const lastSeq = doc.lastSeq + list.length;
-    if (lastSeq - doc.baseSeq > deps.capacity.inputs.maxTransactionsPerDoc)
-      fail("CAPACITY_EXCEEDED", "content batch exceeds document transaction capacity");
-    const value = projection(doc, newIds.has(id) ? [] : (state.updates.get(key) ?? []), list);
+    let beforeRecords: ReadonlySet<string> = new Set();
+    const checkRefs = (input.refs ?? []).some((ref) => ref.docId === id);
+    const value = projection(
+      doc,
+      newIds.has(id) ? [] : (state.updates.get(key) ?? []),
+      list,
+      checkRefs
+        ? (value) => {
+            beforeRecords = contentRecordIds(value);
+          }
+        : undefined,
+    );
     try {
       const snapshot = Y.encodeStateAsUpdate(value);
-      const hardLimit = Math.min(
-        MAX_DOC_SNAPSHOT_BYTES,
-        doc.kind === "content" ? deps.capacity.inputs.activeHardEncodedBytes : deps.capacity.inputs.directoryHardBytes,
-      );
-      if (snapshot.byteLength > hardLimit) fail("CAPACITY_EXCEEDED", "content batch snapshot exceeds hard limit");
-      const values = value.getMap("root").get("records");
-      if (doc.kind === "content" && values instanceof Y.Array) {
-        if (values.length > deps.capacity.inputs.maxRecordsPerDoc)
-          fail("CAPACITY_EXCEEDED", "content block exceeds record capacity");
-        for (const record of values.toArray()) {
-          if (
-            record.payload instanceof Uint8Array &&
-            record.payload.byteLength > deps.capacity.inputs.payloadChunkMaxBytes
-          )
-            fail("CAPACITY_EXCEEDED", "content record exceeds payload capacity");
-        }
-      }
+      if (doc.kind === "content" && list.length > 0) {
+        const overflow = contentDocOverflow({
+          doc: value,
+          capacity: deps.capacity,
+          lastSeq,
+          baseSeq: doc.baseSeq,
+          snapshot,
+        });
+        if (overflow) fail("CAPACITY_EXCEEDED", overflow);
+      } else if (
+        snapshot.byteLength >
+        (doc.kind === "directory"
+          ? Math.min(MAX_DOC_SNAPSHOT_BYTES, deps.capacity.inputs.directoryHardBytes)
+          : MAX_DOC_SNAPSHOT_BYTES)
+      )
+        fail("CAPACITY_EXCEEDED", "content batch snapshot exceeds transport limit");
+      if (checkRefs)
+        writtenRecords.set(
+          id,
+          new Set([...contentRecordIds(value)].filter((recordId) => !beforeRecords.has(recordId))),
+        );
       if (doc.kind === "directory" && parseDocId(id).blockIndex > 0) {
         const page = readDirectoryPage(value);
         if (page.contentDocIds.length > DIRECTORY_PAGE_SIZE)
@@ -337,11 +367,17 @@ export function commitMemoryContentBatch(
   const refs = (input.refs ?? []).map((ref) => {
     if (ref.scopeKey !== input.scopeKey || ref.generation !== input.generation || !docs.has(ref.docId))
       fail("DOC_NOT_FOUND", "content batch reference target differs");
+    if (docs.get(ref.docId)?.kind !== "content" || !writtenRecords.get(ref.docId)?.has(ref.recordId))
+      fail("MALFORMED_FRAME", "reference has no canonical record written by this batch");
     const key = [ref.scopeKey, ref.generation, ref.lookupKind, ref.lookupId, ref.contentSlot, ref.partIndex].join(
       "\u0000",
     );
     return { key, value: copyRef(ref) };
   });
+  const updateHashes = new Map(
+    [...additions.values()].flatMap((list) => list.map((record) => [record, deps.digest(record.bytes)] as const)),
+  );
+  const nextScope = { ...scope, pointerRevision: scope.pointerRevision + input.seals.length };
   commitAccountedSets((pending) => {
     for (const [id, doc] of finalDocs) {
       const key = compositeKey(input.scopeKey, id);
@@ -363,10 +399,9 @@ export function commitMemoryContentBatch(
     pending.push(
       state.batches.prepare(batchKey, { digest: input.digest, frontiers: frontiers.map((value) => ({ ...value })) }),
     );
-    pending.push(
-      state.scopes.prepare(input.scopeKey, { ...scope, pointerRevision: scope.pointerRevision + input.seals.length }),
-    );
-    currentScope(input, state, deps.clock);
+    pending.push(state.scopes.prepare(input.scopeKey, nextScope));
+    const verifiedScope = currentScope(input, state, deps.clock);
+    nextScope.leaseExpiresAt = verifiedScope.leaseExpiresAt;
     if (state.scopes.get(input.scopeKey) !== scope || scope.pointerRevision !== input.expectedPointerRevision)
       fail("POINTER_REVISION_STALE", "content batch pointer changed during admission");
     for (const [id, before] of preimages) {
@@ -387,10 +422,18 @@ export function commitMemoryContentBatch(
       if (!newIds.has(id) && state.docs.get(compositeKey(input.scopeKey, id))?.lastSeq !== lastSeq)
         fail("SEQUENCE_GAP", "content batch frontier changed during admission");
     // 计划由写者独占；先取得最终存储额度再隔离正文，复制失败仍处于可整组撤销的准备阶段。
-    for (const list of additions.values()) for (const record of list) record.bytes = copyBytes(record.bytes);
+    for (const list of additions.values())
+      for (const record of list) {
+        const copied = copyBytes(record.bytes);
+        if (deps.digest(copied) !== updateHashes.get(record))
+          fail("DIGEST_CONFLICT", "update bytes changed during admission");
+        record.bytes = copied;
+      }
     for (const seal of input.seals) {
       const doc = finalDocs.get(seal.docId)!;
-      doc.snapshot = copyBytes(doc.snapshot);
+      const copied = copyBytes(doc.snapshot);
+      if (deps.digest(copied) !== doc.hash) fail("DIGEST_CONFLICT", "seal bytes changed during admission");
+      doc.snapshot = copied;
     }
   });
   return { outcome: "committed", frontiers };

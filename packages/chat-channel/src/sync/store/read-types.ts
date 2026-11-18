@@ -1,7 +1,7 @@
 import type { DocKind, DocState } from "../protocol/identity";
 
 /** 派生索引的查找类别：条目、工具调用与最终描述各自独立定位（设计 §4.4）。 */
-export type RefLookupKind = "entry" | "tool" | "final" | "live-object";
+export type RefLookupKind = "entry" | "tool" | "final" | "live-object" | "live-text";
 
 /**
  * 某 Doc 在某个应用层序号处的已提交状态：`baseSeq` 是快照自身序号，`lastSeq` 是该处可见的连续前沿。

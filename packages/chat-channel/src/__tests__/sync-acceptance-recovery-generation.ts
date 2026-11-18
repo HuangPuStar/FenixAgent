@@ -2,7 +2,7 @@ import * as Y from "yjs";
 import { sha256Digest } from "../sync/clock";
 import { buildDocId, parseDocId } from "../sync/protocol/identity";
 import type { MemoryProjectionStore } from "../sync/store/memory-store";
-import type { GenerationEntryRefs, SyncDocRecord, WriterLease } from "../sync/store/types";
+import type { CommitOutcome, GenerationEntryRefs, SyncDocRecord, WriterLease } from "../sync/store/types";
 
 /** 空 Y.Doc 的 canonical 字节：夹具用它登记「尚无内容」的入口 Doc。 */
 export function emptyDocBytes(): Uint8Array {
@@ -61,11 +61,20 @@ export async function seedCommittedGeneration(input: {
   retired?: readonly string[];
 }): Promise<SeededGeneration> {
   const { store, scopeKey: key, generation } = input;
+  /** 拒绝不确定或冲突的准备步骤，诊断只引用Store实际已提交指针。 */
+  async function requireCommitted(outcome: CommitOutcome, operation: string): Promise<void> {
+    if (outcome === "committed" || outcome === "already-committed") return;
+    const actual = await store.readScopePointer(key);
+    throw new Error(
+      `recovery seed ${operation} ${outcome}; requestedGeneration=${generation}; ` +
+        `actualGeneration=${actual?.currentGeneration ?? "null"}; pointerRevision=${actual?.pointerRevision ?? 0}`,
+    );
+  }
   const lease = await store.acquireWriter(key, input.owner, input.leaseTtlMs);
   const docIds = seededDocIdsFor(generation);
   const omitted = input.omitContentDoc === true;
   const contentClosure = omitted ? [] : [docIds.content, ...(input.extraContentDocIds ?? [])];
-  await store.createGeneration({
+  const registered = await store.createGeneration({
     scopeKey: key,
     epoch: lease.epoch,
     generation: {
@@ -84,6 +93,7 @@ export async function seedCommittedGeneration(input: {
       createdAt: 0,
     },
   });
+  await requireCommitted(registered.outcome, "createGeneration");
   const empty = emptyDocBytes();
   const hash = sha256Digest(empty);
   const kinds: readonly { docId: string; kind: SyncDocRecord["kind"] }[] = [
@@ -94,7 +104,7 @@ export async function seedCommittedGeneration(input: {
     ...(omitted ? [] : (input.extraContentDocIds ?? []).map((docId) => ({ docId, kind: "content" as const }))),
   ];
   for (const entry of kinds) {
-    await store.createDoc({
+    const created = await store.createDoc({
       scopeKey: key,
       epoch: lease.epoch,
       doc: {
@@ -113,6 +123,7 @@ export async function seedCommittedGeneration(input: {
         dependsOn: [],
       },
     });
+    await requireCommitted(created.outcome, `createDoc(${entry.docId})`);
   }
   const entryRefs: GenerationEntryRefs = {
     controlDocId: docIds.control,
@@ -120,7 +131,7 @@ export async function seedCommittedGeneration(input: {
     runtimeDocId: docIds.runtime,
     contentDocIds: contentClosure,
   };
-  await store.commitGeneration({
+  const committed = await store.commitGeneration({
     scopeKey: key,
     epoch: lease.epoch,
     expectedCurrent: input.expectedCurrent ?? null,
@@ -138,5 +149,6 @@ export async function seedCommittedGeneration(input: {
     entryClosure: entryRefs,
     expectedPointerRevision: input.expectedPointerRevision ?? 0,
   });
+  await requireCommitted(committed.outcome, "commitGeneration");
   return { generation, docIds, entryRefs, lease };
 }

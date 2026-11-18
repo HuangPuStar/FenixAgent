@@ -27,20 +27,15 @@ import {
   descriptorOf,
   entityOf,
 } from "./live-writer-records";
-import {
-  LIVE_WRITER_LEASE_TTL_MS,
-  type LiveInput,
-  type LiveRecordValue,
-  type LiveWriter,
-  type LiveWriterOptions,
-  type PendingBatch,
-} from "./live-writer-types";
+import type { LiveInput, LiveRecordValue, LiveWriter, LiveWriterOptions, PendingBatch } from "./live-writer-types";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
 import { buildRuntimeSuccessorState, createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
+import { admitText, isRetryableTextRefusal, type TextAdmissionSnapshot } from "./text-admission";
 import { writeAtomicText } from "./text-batch-commit";
 import { createTextClaim, type TextClaim } from "./text-claim";
+import { WriterAuthority, type WriterAuthorityToken } from "./writer-authority";
 import { retainWriterFailure } from "./writer-failure";
 import { buildPendingBatch, bytes, hex, records, requireObject, requireString } from "./writer-support";
 export class LiveWriterImpl implements LiveWriter {
@@ -49,13 +44,11 @@ export class LiveWriterImpl implements LiveWriter {
   private readonly rotation: RotationController;
   private sealing: SealingMachine;
   private merge: MergeBuffer;
-  private queue: Promise<unknown> = Promise.resolve();
   private failure: unknown = null;
   /** 只认封口已证明未发布路由的那次错误，外围冲刷仍保留它供写入观测。 */
   private reacquirableFailure: SyncProtocolError | null = null;
   private lastFlush: Promise<void> | null = null;
-  private lease: WriterLease | null = null;
-  private generation: string | null = null;
+  private readonly authority: WriterAuthority;
   private readonly cursors = new Map<DocKind, Cursor>();
   /** 工具边界 occurrence 索引，轮转沿用，恢复时覆盖当前代次全部可达块。 */
   private readonly boundaryIndex = new BoundaryIndex();
@@ -64,7 +57,6 @@ export class LiveWriterImpl implements LiveWriter {
   private readonly textClaim: TextClaim;
   /** 当前代次的入口闭包（历史导入块）；为空表示没有可对照的历史。 */
   private historyContentDocIds: readonly string[] = [];
-  private closed = false;
   constructor(private readonly options: LiveWriterOptions) {
     const { store, digest, random } = options;
     this.scopeKey = scopeKey(options.scope);
@@ -72,41 +64,30 @@ export class LiveWriterImpl implements LiveWriter {
     this.rotation = createRotationController(options.rotation);
     this.sealing = createSealingMachine(options);
     this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
-    this.textClaim = createTextClaim(store);
+    this.authority = new WriterAuthority(
+      store,
+      () => this.failure,
+      () => this.merge.dispose(),
+    );
+    this.textClaim = createTextClaim({ store, scopeKey: this.scopeKey, digest });
     this.merge = this.newMerge();
   }
   async acquire(): Promise<void> {
     this.assertLive(false);
-    // 旧租约排队输入须先按原错结清，清错不能使它们跨租约或跨代次复活。
-    if (this.reacquirableFailure !== null) await this.queue;
-    this.assertLive(false);
-    // 租约被占或已过期时存储直接拒绝（SCOPE_BUSY）；本层不排队等待，等待会让「谁在写」不可判定。
-    const lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
-    if (this.closed) {
-      await this.options.store.releaseWriter?.(lease);
+    await this.authority.rebuild(async () => {
+      // 所有旧任务先结清；公开 renew 发现过期也不能跳过仍在规划的冲刷。
+      await this.authority.drain();
       this.assertLive(false);
-    }
-    this.lease = lease;
-    try {
+      await this.authority.acquire(this.scopeKey, this.owner);
       await this.rebuildFromCommitted();
-    } catch (error) {
-      if (this.closed)
-        throw new SyncProtocolError("RESOURCE_RETIRED", { message: "live writer is closed", cause: error });
-      throw error;
-    }
-    this.assertLive(false);
-    if (this.failure === this.reacquirableFailure) this.failure = null;
-    this.reacquirableFailure = null;
+      this.assertLive(false);
+      if (this.failure === this.reacquirableFailure) this.failure = null;
+      this.reacquirableFailure = null;
+    });
   }
   async renew(): Promise<void> {
     this.assertLive(true);
-    try {
-      this.lease = await this.options.store.renewWriter(this.requireLease(), LIVE_WRITER_LEASE_TTL_MS);
-    } catch (error) {
-      // 空闲过期是常规状态迁移：保留错误给调用方观测，但不能把它记成永久停写原因。
-      this.lease = null;
-      throw error;
-    }
+    await this.authority.renew();
   }
   async accept(input: LiveInput): Promise<void> {
     this.assertLive(true);
@@ -121,7 +102,7 @@ export class LiveWriterImpl implements LiveWriter {
           admission: this.options.admission,
           store: this.options.store,
           scopeKey: this.scopeKey,
-          generation: this.requireGeneration(),
+          generation: this.authority.generation(),
           confirmOwnership: (generation) => this.confirmOwnership(generation),
           append: (record, ref) =>
             this.appendContentRecord(
@@ -139,30 +120,39 @@ export class LiveWriterImpl implements LiveWriter {
     }
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
+    const identity = { turnId, entryId, contentSlot, contentType };
     if (input.idempotent === true) {
-      const merge = this.merge;
-      const accepted = await this.textClaim.claim({
+      return await admitText({
+        claim: this.textClaim,
+        authority: this.authority,
         entryId,
         contentSlot,
-        activeDoc: this.cursor(CONTENT_KIND).doc,
-        historyDocIds: this.historyContentDocIds,
+        snapshot: () => this.textSnapshot(),
+        admit: ({ generation }) => this.pushText(identity, delta, generation),
       });
-      this.assertLive(true);
-      if (merge !== this.merge)
-        throw new SyncProtocolError("WRITER_EPOCH_LOST", {
-          message: "text admission outlived writer rebuild",
-          retryable: true,
-        });
-      if (!accepted) return;
     }
-    const key: MergeKey = { generation: this.requireGeneration(), turnId, entryId, contentSlot, contentType };
+    await this.pushText(identity, delta, this.authority.generation());
+  }
+  /** 声明读取面与捕获的投影身份保持一致。 */
+  private textSnapshot(): TextAdmissionSnapshot {
+    this.assertLive(true);
+    return {
+      token: this.authority.capture(),
+      generation: this.authority.generation(),
+      activeDoc: this.cursor(CONTENT_KIND).doc,
+      historyDocIds: this.historyContentDocIds,
+    };
+  }
+  /** 同步接纳到当前 merge 后捕获本次冲刷回执，后续 await 不重新读取投影。 */
+  private pushText(identity: Omit<MergeKey, "generation">, delta: string, generation: string): Promise<void> | null {
+    const key: MergeKey = { generation, ...identity };
     this.lastFlush = null;
     this.merge.push(key, delta);
-    if (this.lastFlush !== null) await this.lastFlush;
+    return this.lastFlush;
   }
   async commit(pending: PendingBatch): Promise<CommitOutcome> {
     this.assertLive(true);
-    return await this.enqueue(async () => {
+    return await this.authority.enqueue(async () => {
       if (pending.ordinalEnd !== pending.ordinalStart) malformed("a slice carries exactly one update");
       if (this.options.digest(pending.payload) !== pending.digest) fail("DIGEST_CONFLICT", "batch digest mismatch");
       const cursor = this.cursorOf(pending.docId);
@@ -182,16 +172,15 @@ export class LiveWriterImpl implements LiveWriter {
   }
   async recover(): Promise<void> {
     this.assertLive(true);
-    await this.enqueue(() => this.rebuildFromCommitted());
+    await this.authority.rebuild(async () => {
+      await this.authority.drain();
+      this.authority.replace();
+      await this.rebuildFromCommitted();
+    });
   }
   async close(): Promise<void> {
-    if (this.closed) return;
-    this.closed = true;
     this.merge.dispose();
-    const lease = this.lease;
-    this.lease = null;
-    // 主动让出写权：共享 store 下重连/换标签页必须在旧连接关闭后立即接管，而不是等租约 TTL。
-    if (lease !== null) await this.options.store.releaseWriter?.(lease);
+    await this.authority.close();
   }
   /** 带屏障的公共动作：复核写者仍活着 → 冲刷已接收文本并等它落地（设计 §6.1「之前已接收的文本先完成写入」）→ 排队执行。 */
   private async run<T>(task: () => Promise<T>): Promise<T> {
@@ -199,7 +188,8 @@ export class LiveWriterImpl implements LiveWriter {
     this.lastFlush = null;
     this.merge.barrier();
     if (this.lastFlush !== null) await this.lastFlush;
-    return await this.enqueue(task);
+    this.assertLive(true);
+    return await this.authority.enqueue(task);
   }
   private newMerge(): MergeBuffer {
     const { clock, merge } = this.options;
@@ -207,40 +197,43 @@ export class LiveWriterImpl implements LiveWriter {
   }
   /** 只记录实际执行冲刷的首错；队列门禁的延迟拒绝不得回写已恢复的状态，后台错误仍供后续输入观测。 */
   private scheduleText(request: MergeFlushRequest): void {
-    const task = this.enqueue(() =>
-      this.writeText(request).catch((error: unknown) => {
-        this.failure ??= error;
+    const token = this.authority.captureTask();
+    const task = this.authority.enqueue(() =>
+      this.writeText(request, token).catch((error: unknown) => {
+        if (this.authority.isCurrent(token) && !isRetryableTextRefusal(error)) this.failure ??= error;
         throw error;
       }),
     );
     this.lastFlush = task;
     void task.catch(NOOP);
   }
-  private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(() => (this.failure === null ? task() : Promise.reject(this.failure)));
-    this.queue = run.then(NOOP, NOOP);
-    return run;
-  }
   /** 同一次合并冲刷的正文、跨块封口和目录在一个提交点生效，失败不留下前缀。 */
-  private async writeText(request: MergeFlushRequest): Promise<void> {
+  private async writeText(request: MergeFlushRequest, token: WriterAuthorityToken): Promise<void> {
     try {
+      this.authority.assertCurrent(token);
       const cursor = await writeAtomicText({
         options: this.options,
         scopeKey: this.scopeKey,
-        generation: this.requireGeneration(),
+        generation: request.key.generation,
         request,
         cursor: this.cursor(CONTENT_KIND),
         directory: this.directory,
-        renew: () => this.renewLease(),
-        stop: (code, message, cause) => this.stop(code, message, cause),
+        renew: () => this.renewLease(token),
+        stop: (code, message, cause) => this.stop(code, message, cause, token),
       });
+      if (!this.authority.isCurrent(token)) {
+        cursor.doc.destroy();
+        return;
+      }
       this.cursors.get(CONTENT_KIND)?.doc.destroy();
       this.cursors.set(CONTENT_KIND, cursor);
     } catch (error) {
-      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
+      if (this.authority.isCurrent(token) && isRetryableTextRefusal(error))
+        this.textClaim.release(request.key.entryId, request.key.contentSlot);
+      if (this.authority.isCurrent(token) && error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
         this.failure = error;
         this.reacquirableFailure = error;
-        this.lease = null;
+        this.authority.clear(token);
       }
       throw error;
     }
@@ -287,7 +280,7 @@ export class LiveWriterImpl implements LiveWriter {
         await seedBoundaryIndexFromDocs(
           this.boundaryIndex,
           this.options.store,
-          this.requireGeneration(),
+          this.authority.generation(),
           this.historyContentDocIds,
           this.cursor(CONTENT_KIND),
         );
@@ -345,19 +338,19 @@ export class LiveWriterImpl implements LiveWriter {
       const current = this.cursor(kind);
       const blockIndex = parseDocId(current.docId).blockIndex + (kind === CONTENT_KIND ? 1 : 0);
       const nonce = hex(this.options.random, 8);
-      const successorDocId = buildDocId({ kind, generation: this.requireGeneration(), blockIndex, nonce });
+      const successorDocId = buildDocId({ kind, generation: this.authority.generation(), blockIndex, nonce });
       const successorInitialState = initialState ?? Y.encodeStateAsUpdate(new Y.Doc());
       const result = await this.sealing.seal({
         scope: this.options.scope,
         oldDocId: current.docId,
-        lease: this.requireLease(),
+        lease: this.authority.lease(),
         finalUpdateSeq: current.lastSeq,
         successorDocId,
         successorInitialState,
       });
       this.cursors.set(kind, openLiveCursor(successorDocId, kind, successorInitialState));
       // 内容轮换后新块必须立刻出现在目录里，否则客户端永远发现不了轮换后的 live 内容。
-      if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
+      if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.authority.lease(), successorDocId);
       return result;
     } catch (error) {
       this.failure = error;
@@ -367,7 +360,7 @@ export class LiveWriterImpl implements LiveWriter {
         error.code === "LEASE_EXPIRED" &&
         this.sealing.routeOutcome === "absent"
       ) {
-        this.lease = null;
+        this.authority.clear();
         this.reacquirableFailure = error;
       }
       throw error;
@@ -411,14 +404,12 @@ export class LiveWriterImpl implements LiveWriter {
     }
   }
   /** 续租同时复核 fencing：epoch 被顶替或租约过期时立即停写（在途通知撤不回，只能先停）。 */
-  private async renewLease(): Promise<WriterLease> {
-    const current = this.requireLease();
+  private async renewLease(token = this.authority.captureTask()): Promise<WriterLease> {
     try {
-      this.lease = await this.options.store.renewWriter(current, LIVE_WRITER_LEASE_TTL_MS);
-      return this.lease;
+      return await this.authority.renew(token);
     } catch (error) {
-      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") this.lease = null;
-      else this.failure = error;
+      if (this.authority.isCurrent(token) && !(error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED"))
+        this.failure = error;
       throw error;
     }
   }
@@ -426,37 +417,38 @@ export class LiveWriterImpl implements LiveWriter {
     try {
       await this.options.store.confirmWriter(await this.renewLease(), generation);
     } catch (error) {
-      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") this.lease = null;
+      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") this.authority.clear();
       throw error;
     }
   }
   private async rebuildFromCommitted(): Promise<void> {
+    const token = this.authority.captureTask();
     if (this.sealing.phase === "failed") this.sealing = createSealingMachine(this.options);
-    // 恢复时丢弃未提交缓冲和幂等声明，避免失败后同一用户消息被永久拒绝。
-    this.merge.dispose();
-    this.textClaim.reset();
+    // gate 已停输入与旧 timer，旧队列已结清；新 claim 等投影全部安装。
     this.boundaryIndex.reset();
     this.boundarySeeded = false;
-    this.merge = this.newMerge();
     const projection = await rebuildLiveProjection({
       options: this.options,
       scopeKey: this.scopeKey,
-      lease: this.requireLease(),
+      lease: token.lease,
       sealing: this.sealing,
       directory: this.directory,
-      renew: () => this.renewLease(),
-      stop: (code, message, cause) => this.stop(code, message, cause),
+      renew: () => this.renewLease(token),
+      stop: (code, message, cause) => this.stop(code, message, cause, token),
     });
-    if (this.closed) {
+    try {
+      this.authority.install(token, projection.generation);
+    } catch (error) {
       for (const cursor of projection.cursors.values()) cursor.doc.destroy();
-      this.assertLive(false);
+      throw error;
     }
-    this.generation = projection.generation;
     this.historyContentDocIds = projection.historyContentDocIds;
     for (const [kind, cursor] of projection.cursors) {
       this.cursors.get(kind)?.doc.destroy();
       this.cursors.set(kind, cursor);
     }
+    this.textClaim.reset();
+    this.merge = this.newMerge();
     this.rotation.reset();
   }
   private async loadCursor(docId: string, kind: DocKind): Promise<void> {
@@ -472,12 +464,6 @@ export class LiveWriterImpl implements LiveWriter {
     const found = [...this.cursors.values()].find((entry) => entry.docId === docId);
     return found ?? fail("DOC_NOT_FOUND", `document ${docId} is not a write target of this writer`);
   }
-  private requireGeneration(): string {
-    return this.generation ?? fail("GENERATION_MISMATCH", "live writer has no resolved generation");
-  }
-  private requireLease(): WriterLease {
-    return this.lease ?? fail("WRITER_EPOCH_LOST", "live writer has not acquired the write lease");
-  }
   private overflowOf(slices: readonly Slice[], recordBytes = 0): string | null {
     return overflowOfSlices({
       slices,
@@ -487,14 +473,19 @@ export class LiveWriterImpl implements LiveWriter {
       cursorOf: (docId) => this.cursorOf(docId),
     });
   }
-  private stop(code: SyncErrorCode, message: string, cause?: unknown): SyncProtocolError {
+  private stop(
+    code: SyncErrorCode,
+    message: string,
+    cause?: unknown,
+    token = this.authority.captureTask(),
+  ): SyncProtocolError {
     const error = new SyncProtocolError(code, { message, cause });
-    this.failure = error;
+    if (this.authority.isCurrent(token)) this.failure = error;
     return error;
   }
   private assertLive(needLease: boolean): void {
-    if (this.closed) fail("RESOURCE_RETIRED", "live writer is closed");
+    this.authority.assertOpen();
     if (this.failure !== null && (needLease || this.failure !== this.reacquirableFailure)) throw this.failure;
-    if (needLease && this.lease === null) fail("WRITER_EPOCH_LOST", "live writer has not acquired the write lease");
+    if (needLease) this.authority.capture();
   }
 }

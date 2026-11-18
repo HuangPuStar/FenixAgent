@@ -43,6 +43,7 @@ test("跨三块文本批次一次发布全部前沿与目录", async () => {
 // 即使在最后一个额度申请处失败，也不能留下已写正文、孤立后继、目录或幂等标记。
 test("跨块批次在每个额度拒绝点保持完整写前像", async () => {
   let succeeded = false;
+  let rejected = 0;
   for (let cutoff = 0; cutoff < 64 && !succeeded; cutoff++) {
     const f = await contentBatchFixture();
     try {
@@ -50,10 +51,11 @@ test("跨块批次在每个额度拒绝点保持完整写前像", async () => {
       const usage = f.usage();
       f.admission.remaining = cutoff;
       try {
-        await f.store.commitContentBatch(f.input);
+        expect((await f.store.commitContentBatch(f.input)).outcome).toBe("committed");
         succeeded = true;
       } catch (error) {
         expect(error).toMatchObject({ code: "ADMISSION_REJECTED" });
+        rejected++;
         expect(f.store.exportCommittedState()).toEqual(before);
         expect(f.usage()).toEqual(usage);
         f.admission.remaining = null;
@@ -64,6 +66,7 @@ test("跨块批次在每个额度拒绝点保持完整写前像", async () => {
     }
   }
   expect(succeeded).toBe(true);
+  expect(rejected).toBeGreaterThan(0);
 });
 
 // 规划后的过期不得发布任何片段；重新取权后可按原计划完整重试。

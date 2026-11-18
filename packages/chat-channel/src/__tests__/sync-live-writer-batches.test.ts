@@ -45,12 +45,19 @@ function wrapStore(
 }
 
 /** 只统计并发度：提交前后各留一次事件循环，未串行的批次会在这里暴露重叠。 */
-function countingStore(target: ProjectionStore, counters: { inFlight: number; maxInFlight: number; calls: number }) {
+function countingStore(
+  target: ProjectionStore,
+  counters: { inFlight: number; maxInFlight: number; calls: number },
+  first?: { entered: () => void; released: Promise<void> },
+) {
   return wrapStore(target, async (input, commit) => {
     counters.calls += 1;
     counters.inFlight += 1;
     counters.maxInFlight = Math.max(counters.maxInFlight, counters.inFlight);
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    if (counters.calls === 1 && first) {
+      first.entered();
+      await first.released;
+    }
     try {
       return await commit(input);
     } finally {
@@ -75,7 +82,7 @@ function unknownWithoutWrite(target: ProjectionStore, seen: AppendUpdatesInput[]
   let attempts = 0;
   return wrapStore(target, async (input, commit) => {
     attempts += 1;
-    seen.push(input);
+    seen.push(structuredClone(input));
     if (attempts > 1) return await commit(input);
     return { outcome: "unknown", frontiers: [] };
   });
@@ -136,17 +143,44 @@ test("commit 拒绝异摘要、不连续序号与多片区间", async () => {
 // 每 scope 最多一个未决批次：并发接收的写入必须串行提交，任何时刻都不得有两个批次同时在飞。
 test("并发写入串行提交，任一时刻只有一个未决批次", async () => {
   const counters = { inFlight: 0, maxInFlight: 0, calls: 0 };
-  const fix = await setup({ wrap: (runtime) => countingStore(runtime.store, counters) });
-  await fix.writer.accept(textDelta("entry-1", "a"));
-  await fix.writer.accept(textDelta("entry-2", "b"));
-  await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
-  expect(counters.maxInFlight).toBe(1);
-  expect(counters.calls).toBe(3);
-  expect(readRecords(fix, fix.contentId).map((record) => [record.entryId, textOf(record)])).toEqual([
-    ["entry-1", "a"],
-    ["entry-2", "b"],
-  ]);
-  await fix.writer.close();
+  let enter = () => {},
+    release = () => {};
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fix = await setup({ wrap: (runtime) => countingStore(runtime.store, counters, { entered: enter, released }) });
+  const pending: Promise<unknown>[] = [];
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await fix.writer.accept(textDelta("entry-1", "a"));
+    pending.push(fix.writer.accept(textDelta("entry-2", "b")));
+    await Promise.race([
+      entered,
+      new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("first commit did not reach its gate")), 1000);
+      }),
+    ]);
+    pending.push(fix.writer.accept(semantic("tool", { entityId: "tool-1" })));
+    await Promise.resolve();
+    expect(counters.calls).toBe(1);
+    expect(counters.inFlight).toBe(1);
+    release();
+    await Promise.all(pending);
+    expect(counters.maxInFlight).toBe(1);
+    expect(counters.calls).toBe(3);
+    expect(readRecords(fix, fix.contentId).map((record) => [record.entryId, textOf(record)])).toEqual([
+      ["entry-1", "a"],
+      ["entry-2", "b"],
+    ]);
+  } finally {
+    clearTimeout(deadline);
+    release();
+    await Promise.allSettled(pending);
+    await fix.writer.close();
+  }
 });
 
 // 结果未知时先查询：同批同摘要已在存储里 = 成功，不得再执行一次输入（重放副作用无法回滚）。
@@ -201,7 +235,8 @@ test("正文按记录预算拆分且复用仍有空间的块", async () => {
   const text = "x".repeat(200);
   await fix.writer.accept(textDelta("entry-1", text));
   await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
-  expect(updatesOf(fix, fix.contentId)).toHaveLength(1);
+  expect(updatesOf(fix, fix.contentId).map((update) => update.updateSeq)).toEqual([1, 2, 3, 4]);
+  expect(new Set(updatesOf(fix, fix.contentId).map((update) => update.batchId)).size).toBe(1);
   expect(docOf(fix, fix.contentId)?.state).toBe("active");
   const pieces = readRecords(fix, fix.contentId);
   expect(pieces).toHaveLength(4);

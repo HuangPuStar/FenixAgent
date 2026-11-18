@@ -10,6 +10,7 @@ import {
   type AppendUpdatesInput,
   type AppendUpdatesResult,
   COMMIT_OUTCOMES,
+  type CommitContentBatchInput,
   type CommitGenerationInput,
   type CommitGenerationResult,
   type CommitOutcome,
@@ -54,6 +55,7 @@ const PROJECTION_STORE_METHODS = [
   "registerSuccessor",
   "readSuccessor",
   "appendUpdates",
+  "commitContentBatch",
   "putSealedIfAbsent",
   "sealDoc",
   "commitGeneration",
@@ -80,6 +82,7 @@ const METHOD_ARITIES: Record<ProjectionStoreMethodName, number> = {
   registerSuccessor: 1,
   readSuccessor: 2,
   appendUpdates: 1,
+  commitContentBatch: 1,
   putSealedIfAbsent: 1,
   sealDoc: 1,
   commitGeneration: 1,
@@ -132,6 +135,9 @@ const stub = {
   },
   async appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
     return stubCall("appendUpdates", input);
+  },
+  async commitContentBatch(input: CommitContentBatchInput): Promise<AppendUpdatesResult> {
+    return stubCall("commitContentBatch", input);
   },
   async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
     return stubCall("putSealedIfAbsent", input);

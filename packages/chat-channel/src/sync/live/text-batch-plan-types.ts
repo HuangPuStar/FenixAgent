@@ -25,6 +25,7 @@ export interface TextBatchPlanOptions {
 
 /** 字节、封口及目录发现性在同一存储事务落地后，调用 commit 安装目录缓存并接管 finalCursor。 */
 export interface TextBatchPlan {
+  /** 每个正文piece一条有界更新，同Doc的fromSeq连续；整个数组只提交一次。 */
   readonly slices: readonly Slice[];
   readonly newDocs: readonly SyncDocRecord[];
   readonly seals: readonly ContentBatchSeal[];
