@@ -186,7 +186,9 @@ export class MemoryStoreState {
     if (matches.length > 1) fail("MALFORMED_FRAME", "document identity is ambiguous without scope");
     return matches[0];
   }
-  protected refKey(ref: SyncRefRecord): string {
+  protected refKey(
+    ref: Pick<SyncRefRecord, "scopeKey" | "generation" | "lookupKind" | "lookupId" | "contentSlot" | "partIndex">,
+  ): string {
     return [ref.scopeKey, ref.generation, ref.lookupKind, ref.lookupId, ref.contentSlot, ref.partIndex].join("\u0000");
   }
   protected deleteDoc(scopeKey: string, docId: string): void {
@@ -292,6 +294,18 @@ export class MemoryStoreState {
     if (!Number.isSafeInteger(query.limit) || query.limit < 0)
       fail("MALFORMED_FRAME", "reference limit must be non-negative");
     const generation = this.findGeneration(query.generation);
+    if (query.limit === 0 || generation === undefined) return [];
+    if (query.contentSlot !== undefined && query.partIndex !== undefined) {
+      const ref = this.refs.get(
+        this.refKey({
+          ...query,
+          scopeKey: generation.scopeKey,
+          contentSlot: query.contentSlot,
+          partIndex: query.partIndex,
+        }),
+      );
+      return ref && ref.partIndex > (query.afterPartIndex ?? -1) ? [copyRef(ref)] : [];
+    }
     return [...this.refs.values()]
       .filter(
         (ref) =>
@@ -300,6 +314,7 @@ export class MemoryStoreState {
           ref.lookupKind === query.lookupKind &&
           ref.lookupId === query.lookupId &&
           (query.contentSlot === undefined || ref.contentSlot === query.contentSlot) &&
+          (query.partIndex === undefined || ref.partIndex === query.partIndex) &&
           ref.partIndex > (query.afterPartIndex ?? -1),
       )
       .sort((left, right) => left.contentSlot - right.contentSlot || left.partIndex - right.partIndex)

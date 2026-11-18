@@ -1,13 +1,13 @@
 import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
-import type { CommitOutcome, WriterLease } from "../store/types";
+import type { CommitOutcome, SyncRefRecord, WriterLease } from "../store/types";
 import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
 import { captureSlice } from "./change-capture";
 import { loadCommittedDoc, openLiveCursor, probeCommittedBatch } from "./committed-doc";
 import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
-import { writeLiveContentObject } from "./live-content-object";
+import { type ContentObjectRef, writeLiveContentObject } from "./live-content-object";
 import {
   type Batch,
   CONTENT_KIND,
@@ -44,7 +44,7 @@ import {
   records,
   requireObject,
   requireString,
-  splitUtf8,
+  splitLiveText,
 } from "./writer-support";
 export class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
@@ -103,8 +103,14 @@ export class LiveWriterImpl implements LiveWriter {
           capacity: this.options.capacity,
           digest: this.options.digest,
           admission: this.options.admission,
-          append: (record) =>
-            this.appendContentRecord(() => ({ ...record, recordId: `rec_${hex(this.options.random, 8)}` })),
+          store: this.options.store,
+          scopeKey: this.scopeKey,
+          generation: this.requireGeneration(),
+          append: (record, ref) =>
+            this.appendContentRecord(
+              () => ({ ...record, recordId: record.recordId ?? `rec_${hex(this.options.random, 8)}` }),
+              ref,
+            ),
         }),
       );
     }
@@ -192,18 +198,13 @@ export class LiveWriterImpl implements LiveWriter {
   }
   /** 输入按目录块序和块内记录序提交；每片固定批次重试，已提交前缀不重放，未知结果仍走 fencing 失败出口。 */
   private async writeText(request: MergeFlushRequest): Promise<void> {
-    const chunkLimit = this.options.capacity.inputs.payloadChunkMaxBytes;
-    const chunkBytes = Math.max(
-      1,
-      Math.min(chunkLimit, Math.floor(this.options.capacity.inputs.activeHardEncodedBytes / 2)),
-    );
-    for (const text of splitUtf8(request.text, chunkBytes)) {
+    for (const text of splitLiveText(request.text, this.options.capacity)) {
       await this.appendContentRecord((cursor) =>
         buildNextLiveRecord(this.options.random, cursor.doc, request.key, "text", bytes(text)),
       );
     }
   }
-  private async appendContentRecord(build: (cursor: Cursor) => LiveRecordValue): Promise<void> {
+  private async appendContentRecord(build: (cursor: Cursor) => LiveRecordValue, ref?: ContentObjectRef): Promise<void> {
     for (;;) {
       const cursor = this.cursor(CONTENT_KIND);
       const record = build(cursor);
@@ -212,7 +213,7 @@ export class LiveWriterImpl implements LiveWriter {
       captureSlice(slices, cursor, () => records(cursor.doc, [record]));
       const overflow = this.overflowOf(slices, record.payload.byteLength);
       if (overflow === null) {
-        await this.persist(slices);
+        await this.persist(slices, ref ? [{ ...ref, docId: cursor.docId, recordId: record.recordId }] : undefined);
         return;
       }
       // 未提交的试写必须撤销，之后只把当前片写到 successor，已提交前缀不重放。
@@ -363,10 +364,10 @@ export class LiveWriterImpl implements LiveWriter {
       throw error;
     }
   }
-  private async persist(slices: readonly Slice[]): Promise<void> {
+  private async persist(slices: readonly Slice[], refs?: SyncRefRecord[]): Promise<void> {
     if (slices.length === 0) return;
     await this.executeBatch(
-      buildPendingBatch(slices, this.options.random, this.options.digest),
+      buildPendingBatch(slices, this.options.random, this.options.digest, refs),
       new Map(slices.map((slice) => [slice.docId, this.cursorOf(slice.docId)])),
     );
   }
@@ -397,6 +398,7 @@ export class LiveWriterImpl implements LiveWriter {
         digest: batch.digest,
         expectedFrontiers: expectedFrontiers(batch.slices),
         updates: batch.slices.map((slice) => ({ docId: slice.docId, fromSeq: slice.fromSeq, bytes: slice.bytes })),
+        refs: batch.refs,
       });
       // 同幂等键异内容：本机不得覆盖已提交字节，也无从「重试」出另一个结果，只能停写。
       if (result.outcome === "conflict") throw this.stop("DIGEST_CONFLICT", `committed batch ${batch.batchId} differs`);
@@ -457,13 +459,11 @@ export class LiveWriterImpl implements LiveWriter {
     await this.loadCursor(contentDocId, CONTENT_KIND);
     this.rotation.reset();
   }
-  private async loadCursor(docId: string, kind: DocKind): Promise<Cursor> {
+  private async loadCursor(docId: string, kind: DocKind): Promise<void> {
     const loaded = await loadCommittedDoc(this.options.store, docId);
     if (loaded === null) fail("DOC_NOT_FOUND", `document ${docId} has no committed base state`);
-    const cursor = { docId, kind, ...loaded };
     this.cursors.get(kind)?.doc.destroy();
-    this.cursors.set(kind, cursor);
-    return cursor;
+    this.cursors.set(kind, { docId, kind, ...loaded });
   }
   private cursor(kind: DocKind): Cursor {
     return this.cursors.get(kind) ?? fail("DOC_NOT_FOUND", `live writer has no active ${kind} doc`);

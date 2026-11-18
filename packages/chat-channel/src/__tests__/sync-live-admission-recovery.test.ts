@@ -1,163 +1,12 @@
 import { expect, test } from "bun:test";
 import * as Y from "yjs";
-import { AdmissionController } from "../sync/capacity/admission";
-import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
-import { deterministicRandomSource, sha256Digest } from "../sync/clock";
+import { sha256Digest } from "../sync/clock";
 import { loadCommittedDoc } from "../sync/live/committed-doc";
-import { createLiveWriter, type LiveInput, type LiveRecordValue } from "../sync/live/live-writer";
+import type { LiveInput, LiveRecordValue } from "../sync/live/live-writer";
 import { createRuntimeDoc, RUNTIME_DOC_LIMITS } from "../sync/live/runtime-doc";
 import { records } from "../sync/live/writer-support";
-import { buildDocId, scopeKey } from "../sync/protocol/identity";
-import { MemoryProjectionStore } from "../sync/store/memory-store";
-import type { AppendUpdatesInput, SyncDocRecord } from "../sync/store/types";
+import { fixture, contentObjectInput as object } from "./sync-live-admission-fixture";
 
-/** 完整 Store、真实额度和真实 Yjs，只在存储边界注入读失败或回执丢失。 */
-async function fixture() {
-  const scope = { organizationId: "org_cursor", rcsSessionId: "rcs_cursor" };
-  const key = scopeKey(scope);
-  const generation = "gen_cursor";
-  const clock = { now: () => 1000 };
-  const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
-  const store = new MemoryProjectionStore({
-    clock,
-    digest: sha256Digest,
-    capacity: DEFAULT_SYNC_CAPACITY,
-    lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
-    memoryBudget: admission,
-  });
-  const id = (kind: "control" | "directory" | "runtime" | "content") =>
-    buildDocId({ kind, generation, blockIndex: 0, nonce: kind });
-  const entryRefs = {
-    controlDocId: id("control"),
-    directoryDocId: id("directory"),
-    runtimeDocId: id("runtime"),
-    contentDocIds: [id("content")],
-  };
-  const lease = await store.acquireWriter(key, "bootstrap", 1000);
-  const row = {
-    scopeKey: key,
-    generation,
-    acpSessionId: "ses_cursor",
-    loadId: "load",
-    state: "staging" as const,
-    importEndOrdinal: null,
-    createdAt: 1000,
-    entryRefs,
-  };
-  await store.createGeneration({ scopeKey: key, epoch: lease.epoch, generation: row });
-  await store.commitGeneration({
-    scopeKey: key,
-    epoch: lease.epoch,
-    newGeneration: row,
-    entryClosure: entryRefs,
-    expectedCurrent: null,
-    expectedPointerRevision: 0,
-    retired: [],
-  });
-  for (const kind of ["runtime", "content"] as const) {
-    const doc = new Y.Doc();
-    const snapshot = Y.encodeStateAsUpdate(doc);
-    doc.destroy();
-    const record: SyncDocRecord = {
-      scopeKey: key,
-      generation,
-      docId: id(kind),
-      kind,
-      state: "active",
-      snapshot,
-      hash: sha256Digest(snapshot),
-      baseSeq: 0,
-      finalSeq: null,
-      blockIndex: 0,
-      ordinalStart: null,
-      ordinalEnd: null,
-      dependsOn: [],
-    };
-    await store.createDoc({ scopeKey: key, epoch: lease.epoch, doc: record });
-  }
-  await store.releaseWriter(lease);
-  const faults = { failReads: false, throwAfterWrite: false, appendCalls: 0, writeError: null as unknown };
-  const readError = new Error("reload unavailable");
-  const replyError = new Error("commit reply lost");
-  const wrapped = new Proxy(store, {
-    get(target, property) {
-      if (property === "readDocStateAt")
-        return (...args: Parameters<MemoryProjectionStore["readDocStateAt"]>) =>
-          faults.failReads ? Promise.reject(readError) : target.readDocStateAt(...args);
-      if (property === "appendUpdates")
-        return async (input: AppendUpdatesInput) => {
-          faults.appendCalls++;
-          try {
-            const result = await target.appendUpdates(input);
-            if (faults.throwAfterWrite) {
-              faults.throwAfterWrite = false;
-              throw replyError;
-            }
-            return result;
-          } catch (error) {
-            faults.writeError = error;
-            throw error;
-          }
-        };
-      const value: unknown = Reflect.get(target, property);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-  const writer = createLiveWriter({
-    scope,
-    store: wrapped,
-    clock,
-    digest: sha256Digest,
-    random: deterministicRandomSource("cursor"),
-    capacity: DEFAULT_SYNC_CAPACITY,
-    admission,
-    merge: { maxDelayMs: 600000, maxBytes: 1 << 20 },
-    limits: RUNTIME_DOC_LIMITS,
-    rotation: {
-      clock,
-      random: deterministicRandomSource("rotate"),
-      limits: RUNTIME_DOC_LIMITS,
-      maxResidentMs: 600000,
-      maxTransactions: 1000,
-    },
-  });
-  await writer.acquire();
-  const read = async () => {
-    const committed = await loadCommittedDoc(store, id("content"));
-    if (!committed) throw new Error("Missing committed content");
-    try {
-      return records<LiveRecordValue>(committed.doc)?.toArray() ?? [];
-    } finally {
-      committed.doc.destroy();
-    }
-  };
-  return {
-    store,
-    writer,
-    admission,
-    faults,
-    replyError,
-    read,
-    contentId: id("content"),
-    runtimeId: id("runtime"),
-    async close() {
-      await writer.close();
-      store.dispose();
-    },
-  };
-}
-
-/** 小对象直接落内容块，能够观察拒绝后的 Yjs 依赖是否被污染。 */
-function object(value: string): LiveInput {
-  return {
-    kind: "content-object",
-    turnId: "turn",
-    entryId: value,
-    contentSlot: "object",
-    contentType: "application/json",
-    object: { value: { value }, meta: { kind: "history_object", entryId: value } },
-  };
-}
 const payload = (record: LiveRecordValue) => JSON.parse(new TextDecoder().decode(record.payload));
 
 // 已提交前缀必须保留，拒绝记录不能污染下一次 update 的 Yjs 依赖。
@@ -173,6 +22,135 @@ test("额度拒绝后继续写入仍能从已提交字节完整重建", async ()
     expect((await f.read()).map(payload)).toEqual([{ value: "before" }, { value: "after" }]);
   } finally {
     hold.release();
+    await f.close();
+  }
+});
+
+for (const recovery of ["same", "recover", "reopen"] as const) {
+  // 已提交的前片即使跨块并重开 writer，也只能保留一次；重试只补未提交片。
+  test(`多片对象部分拒绝后 ${recovery} 重试不重复前缀`, async () => {
+    const f = await fixture();
+    const value = { text: "x".repeat(2 * 1024 * 1024) };
+    const input: LiveInput = {
+      ...object("large"),
+      object: { value, meta: { kind: "history_object", entryId: "large", sourceRevision: 1 } },
+    };
+    try {
+      f.faults.rejectOnAppend = 2;
+      await expect(f.writer.accept(input)).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
+      expect(await f.readAll()).toHaveLength(1);
+      expect(f.store.exportCommittedState().refs).toHaveLength(1);
+      f.faults.hold?.release();
+      await f.writer.seal();
+      if (recovery === "recover") await f.writer.recover();
+      if (recovery === "reopen") await f.reopen();
+      await f.writer.accept(input);
+      const saved = await f.readAll();
+      const parts = saved.map(payload);
+      expect(saved).toHaveLength(parts[0].partCount);
+      expect(new Set(saved.map((record) => record.partIndex)).size).toBe(saved.length);
+      expect(JSON.parse(Buffer.concat(parts.map((part) => Buffer.from(part.data, "base64"))).toString())).toEqual(
+        value,
+      );
+      await f.writer.accept(input);
+      expect(await f.readAll()).toHaveLength(saved.length);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+// 已提交但丢回执的片也有权威定位；重试不能把这一片重复追加。
+test("对象分片回执丢失后重试只补未提交片", async () => {
+  const f = await fixture();
+  const value = { text: "x".repeat(512 * 1024) };
+  const input: LiveInput = {
+    ...object("reply"),
+    object: { value, meta: { kind: "history_object", entryId: "reply" } },
+  };
+  try {
+    f.faults.throwAfterWrite = true;
+    await expect(f.writer.accept(input)).rejects.toBe(f.replyError);
+    await f.writer.accept(input);
+    const saved = await f.readAll();
+    expect(saved).toHaveLength(payload(saved[0]).partCount);
+  } finally {
+    await f.close();
+  }
+});
+
+// 缺省槽位与显式零保留原始身份，不同 entry 的同文对象也不能被合并。
+test("对象定位保留缺省槽位与独立消息身份", async () => {
+  const f = await fixture();
+  const value = { text: "same" };
+  try {
+    for (const meta of [
+      { kind: "history_object" as const, entryId: "one" },
+      { kind: "history_object" as const, entryId: "one", contentSlot: 0 },
+      { kind: "history_object" as const, entryId: "two" },
+    ])
+      await f.writer.accept({ ...object("identity"), object: { value, meta } });
+    expect(await f.readAll()).toHaveLength(3);
+    expect(f.store.exportCommittedState().refs).toHaveLength(3);
+  } finally {
+    await f.close();
+  }
+});
+
+// 索引不能替代正文校验；读取失败应保留原错，之后仍可重新确认已提交事实。
+test("对象定位命中但正文读取失败时不冒充重试成功", async () => {
+  const f = await fixture();
+  const input = object("read-failure");
+  try {
+    await f.writer.accept(input);
+    f.faults.failReads = true;
+    await expect(f.writer.accept(input)).rejects.toThrow("reload unavailable");
+    f.faults.failReads = false;
+    await f.writer.accept(input);
+    expect(await f.readAll()).toHaveLength(1);
+  } finally {
+    await f.close();
+  }
+});
+
+// 稳定身份不能在同一修订下换正文，新修订仍可正常写入。
+test("对象同身份异正文拒绝但新修订可提交", async () => {
+  const f = await fixture();
+  const first: LiveInput = {
+    ...object("one"),
+    object: { value: { text: "one" }, meta: { kind: "history_object", entryId: "one", sourceRevision: 1 } },
+  };
+  const changed = { ...first, object: { ...first.object!, value: { text: "changed" } } };
+  try {
+    await f.writer.accept(first);
+    await expect(f.writer.accept(changed)).rejects.toMatchObject({ code: "DIGEST_CONFLICT" });
+    expect(await f.readAll()).toHaveLength(1);
+    await f.writer.accept({
+      ...changed,
+      object: { ...changed.object, meta: { ...changed.object.meta, sourceRevision: 2 } },
+    });
+    expect((await f.readAll()).map(payload)).toEqual([{ text: "one" }, { text: "changed" }]);
+  } finally {
+    await f.close();
+  }
+});
+
+// 无来源身份的独立小对象保留两份，多片对象必须在提交前获得可重试的稳定身份。
+test("匿名对象不按正文去重且多片匿名输入在写入前拒绝", async () => {
+  const f = await fixture();
+  const input: LiveInput = {
+    ...object("anonymous"),
+    object: { value: { text: "same" }, meta: { kind: "history_object" } },
+  };
+  try {
+    await f.writer.accept(input);
+    await f.writer.accept(input);
+    expect(await f.readAll()).toHaveLength(2);
+    await expect(
+      f.writer.accept({ ...input, object: { ...input.object!, value: { text: "x".repeat(512 * 1024) } } }),
+    ).rejects.toMatchObject({ code: "MALFORMED_FRAME" });
+    expect(await f.readAll()).toHaveLength(2);
+  } finally {
     await f.close();
   }
 });

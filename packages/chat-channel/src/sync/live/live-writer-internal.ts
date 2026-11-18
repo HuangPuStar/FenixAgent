@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import type { DocKind } from "../protocol/identity";
-import type { DocFrontier } from "../store/types";
+import type { DocFrontier, SyncRefRecord } from "../store/types";
 
 export const CONTENT_KIND: DocKind = "content";
 export const RUNTIME_KIND: DocKind = "runtime";
@@ -21,7 +21,12 @@ export const malformed: (message: string) => never = (message) => fail("MALFORME
 export type Identity = { readonly entryId: string; readonly contentSlot: string; readonly contentType?: string };
 export type Cursor = { readonly docId: string; readonly kind: DocKind; doc: Y.Doc; lastSeq: number };
 export type Slice = { readonly docId: string; readonly fromSeq: number; readonly bytes: Uint8Array };
-export type Batch = { readonly batchId: string; readonly digest: string; readonly slices: readonly Slice[] };
+export type Batch = {
+  readonly batchId: string;
+  readonly digest: string;
+  readonly slices: readonly Slice[];
+  readonly refs?: SyncRefRecord[];
+};
 export type Probe =
   | { readonly status: "committed"; readonly frontiers: DocFrontier[] }
   | { readonly status: "absent" | "ambiguous" };

@@ -4,10 +4,11 @@
 
 import * as Y from "yjs";
 
+import type { SyncCapacityProfile } from "../capacity/profile";
 import type { DigestFn, RandomSource } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { createBatchId } from "../protocol/identity";
-import type { DocFrontier } from "../store/types";
+import type { DocFrontier, SyncRefRecord } from "../store/types";
 import type { Batch, Slice } from "./live-writer-internal";
 
 const UTF8 = new TextEncoder();
@@ -71,6 +72,15 @@ export function splitUtf8(text: string, maxBytes: number): string[] {
   return chunks;
 }
 
+/** 实时正文片同时满足单记录预算与活跃块硬限，保留一半空间给 Yjs 编码。 */
+export function splitLiveText(text: string, capacity: SyncCapacityProfile): string[] {
+  const chunkBytes = Math.max(
+    1,
+    Math.min(capacity.inputs.payloadChunkMaxBytes, Math.floor(capacity.inputs.activeHardEncodedBytes / 2)),
+  );
+  return splitUtf8(text, chunkBytes);
+}
+
 export function concatParts(parts: readonly Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0));
   let offset = 0;
@@ -82,8 +92,18 @@ export function concatParts(parts: readonly Uint8Array[]): Uint8Array {
 }
 
 /** 批次身份、摘要和原始切片只生成一次，结果未知时沿用同一份输入。 */
-export function buildPendingBatch(slices: readonly Slice[], random: RandomSource, digest: DigestFn): Batch {
-  return { batchId: createBatchId(random), digest: digest(concatParts(slices.map((slice) => slice.bytes))), slices };
+export function buildPendingBatch(
+  slices: readonly Slice[],
+  random: RandomSource,
+  digest: DigestFn,
+  refs?: SyncRefRecord[],
+): Batch {
+  return {
+    batchId: createBatchId(random),
+    digest: digest(concatParts(slices.map((slice) => slice.bytes))),
+    slices,
+    refs,
+  };
 }
 
 export function expectedFrontiers(

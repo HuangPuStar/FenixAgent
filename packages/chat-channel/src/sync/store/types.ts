@@ -131,7 +131,7 @@ export interface SyncUpdateRecord {
 }
 
 /** 派生索引的查找类别：条目、工具调用与最终描述各自独立定位（设计 §4.4）。 */
-export type RefLookupKind = "entry" | "tool" | "final";
+export type RefLookupKind = "entry" | "tool" | "final" | "live-object";
 
 /**
  * 一条范围定位索引；唯一键是 `(scopeKey, generation, lookupKind, lookupId, contentSlot, partIndex)`。
@@ -333,6 +333,8 @@ export interface RefQuery {
   lookupKind: RefLookupKind;
   lookupId: string;
   contentSlot?: number;
+  /** 与 contentSlot 一起给出时按完整定位键查询，不扫描其他引用。 */
+  partIndex?: number;
   afterPartIndex?: number;
   limit: number;
 }
