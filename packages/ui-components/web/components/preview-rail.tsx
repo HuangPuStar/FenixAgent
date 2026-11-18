@@ -44,7 +44,7 @@ export interface PreviewRailProps {
 
 function DefaultPreview({ item }: { item: PreviewRailItem }) {
   return (
-    <div data-slot="preview-rail-card" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div data-slot="preview-rail-card" className="rounded-2xl border border-border bg-card p-4 shadow-sm wrap-anywhere">
       <p data-slot="preview-rail-title" className="font-medium text-card-foreground">
         {item.label}
       </p>

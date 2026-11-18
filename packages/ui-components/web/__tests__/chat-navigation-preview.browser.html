@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prompt preview wrapping regression</title>
+  <!-- 在 packages/ui-components 运行 bun run dev，打开 /web/__tests__/chat-navigation-preview.browser.html。 -->
+  <main id="root" class="h-96 max-w-full"></main>
+  <pre id="result" role="status">Running…</pre>
+  <script type="module">
+    import { createInstance } from "i18next";
+    import { MotionConfig } from "motion/react";
+    import { createElement } from "react";
+    import { createRoot } from "react-dom/client";
+    import { I18nextProvider, initReactI18next } from "react-i18next";
+    import { Conversation } from "../chat/primitives/conversation";
+    import { PromptJumpRail } from "../chat/view/chat-navigation-aids";
+    import zh from "../i18n/locales/zh/uiComponents.json";
+    import { UI_COMPONENTS_NS } from "../i18n/namespace";
+    import "../styles/theme.css";
+
+    const prompts = [
+      "从下面文字中统计出a,b,c各自出现的次数：" + "aaaaaaaabbbbbbbbbbbccccccccabcabc".repeat(4),
+      "https://example.com/" + "a1b2c3".repeat(30),
+      "请检查这段混合文本🙂".repeat(30),
+      "This preview should wrap long words while keeping ordinary words readable. ".repeat(4),
+    ];
+    const entries = prompts.map((content, index) => ({ type: "user_message", id: `prompt-${index}`, content }));
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    async function waitFor(read) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const value = read();
+        if (value) return value;
+        await new Promise(requestAnimationFrame);
+      }
+      throw new Error("Timed out waiting for preview");
+    }
+
+    try {
+      const i18n = createInstance();
+      await i18n.use(initReactI18next).init({
+        lng: "zh", ns: [UI_COMPONENTS_NS], resources: { zh: { [UI_COMPONENTS_NS]: zh } },
+      });
+      const host = document.getElementById("root");
+      createRoot(host).render(createElement(I18nextProvider, { i18n },
+        createElement(MotionConfig, { reducedMotion: "always" },
+          createElement(Conversation, { className: "h-full", initial: false },
+            createElement(PromptJumpRail, { entries })))));
+      await waitFor(() => document.querySelector('[data-slot="preview-rail-item"]'));
+
+      // 字符数截断不能约束长单词的渲染宽度；检查实际文字边界，避免仅裁切溢出内容也能通过。
+      for (const width of [1000, 356]) {
+        host.style.width = `${width}px`;
+        const ticks = [...document.querySelectorAll('[data-slot="preview-rail-item"]')];
+        for (const [index, tick] of ticks.entries()) {
+          tick.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse", pointerId: 1 }));
+          const description = await waitFor(() => {
+            const node = document.querySelector('[data-slot="preview-rail-description"]');
+            return node?.textContent.startsWith(prompts[index].slice(0, 20)) && node;
+          });
+          await new Promise(requestAnimationFrame);
+          const card = description.closest('[data-slot="preview-rail-card"]');
+          const bounds = card.getBoundingClientRect();
+          assert(description.scrollWidth <= description.clientWidth + 1, `${width}px prompt ${index}: text overflows`);
+          const range = document.createRange();
+          range.selectNodeContents(description);
+          const lines = [...range.getClientRects()];
+          assert(lines.length > 1, `${width}px prompt ${index}: long preview did not wrap`);
+          assert(lines.every((line) => line.left >= bounds.left && line.right <= bounds.right
+            && line.top >= bounds.top && line.bottom <= bounds.bottom), `${width}px prompt ${index}: text leaves card`);
+          const hostBounds = host.getBoundingClientRect();
+          assert(bounds.left >= hostBounds.left && bounds.right <= hostBounds.right, `${width}px: card leaves conversation`);
+          assert(tick.getAttribute("aria-label").includes(prompts[index].trim()), "Full accessible prompt was truncated");
+        }
+      }
+      document.documentElement.dataset.result = "pass";
+      document.getElementById("result").textContent = "PASS: long tokens, URLs, mixed text and prose stay inside previews at 1000px and 356px";
+    } catch (error) {
+      document.documentElement.dataset.result = "fail";
+      document.getElementById("result").textContent = `FAIL: ${error.message}`;
+      console.error(error);
+    }
+  </script>
+</html>
