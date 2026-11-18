@@ -65,8 +65,8 @@ test("runtime 后继已有提交时不依赖两代快照并保留实体终态", 
   }
 });
 
-// 第一段恢复完成后第二段失败，重试从旧入口重走不能重复复制前段实体或追加搬运更新。
-test("多段 runtime 交接中途失败后重试不重复先前完成的交接", async () => {
+// 多段后继已有实体基线与更新，恢复中断后从旧入口重试仍保留原前沿，不重放历史实体。
+test("多段 runtime 恢复中途失败后重试保留已有实体和更新前沿", async () => {
   const f = await fixture();
   const event = (entityId: string) => ({
     kind: "semantic" as const,

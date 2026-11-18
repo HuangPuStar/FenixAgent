@@ -20,6 +20,7 @@ import {
 } from "../protocol/errors";
 import { assertMonotonicSeq, type DocKind, parseDocId, type SyncScope, scopeKey } from "../protocol/identity";
 import type { ProjectionStore, SyncDocRecord, SyncUpdateRecord, WriterLease } from "../store/types";
+import { type SealingRouteOutcome, SealingRouteProgress } from "./sealing-route-progress";
 
 export type SealingPhase = "active" | "sealing" | "sealed" | "failed";
 
@@ -51,6 +52,8 @@ export interface SealResult {
 
 export interface SealingMachine {
   readonly phase: SealingPhase;
+  /** 最近一次有效封口计划的路由结果，决定失败后能否重新取得写权。 */
+  readonly routeOutcome: SealingRouteOutcome;
   /** 按设计 §7 的 1–4 步推进；可恢复失败有限重试，用尽或不可重试时转 failed。 */
   seal(request: SealRequest): Promise<SealResult>;
   /** 崩溃后凭已提交 tail 重建同谱系（设计 §7 第 3 步）；无可重建谱系时为 null。 */
@@ -107,6 +110,7 @@ interface SealAttempt {
   readonly successorInitialState: Uint8Array;
   /** 路由事务已提交：截止序号与摘要自此被钉死，异值重试必须失败而不是改写谱系。 */
   routeCommitted: boolean;
+  readonly routeProgress: SealingRouteProgress;
   invalidPinnedRequest?: boolean;
   lineage?: Lineage;
   sealed?: SealedSnapshot;
@@ -116,6 +120,7 @@ class SealingMachineImpl implements SealingMachine {
   private readonly store: ProjectionStore;
   private readonly digest: DigestFn;
   private currentPhase: SealingPhase = "active";
+  private routeProgress = new SealingRouteProgress();
 
   constructor(deps: SealingDeps) {
     this.store = deps.store;
@@ -126,8 +131,14 @@ class SealingMachineImpl implements SealingMachine {
     return this.currentPhase;
   }
 
+  /** 当前计划的提交证据来自存储回执，不能以最后一次错误码代替。 */
+  get routeOutcome(): SealingRouteOutcome {
+    return this.routeProgress.outcome;
+  }
+
   async seal(request: SealRequest): Promise<SealResult> {
     const attempt = this.plan(request);
+    this.routeProgress = attempt.routeProgress;
     const previousPhase = this.currentPhase;
     this.currentPhase = "sealing";
     try {
@@ -137,7 +148,7 @@ class SealingMachineImpl implements SealingMachine {
     } catch (error) {
       // 已提交计划的参数冲突没有进入写入；其余未收敛失败仍是停止写入的终态。
       this.currentPhase = attempt.invalidPinnedRequest ? previousPhase : "failed";
-      throw error;
+      throw attempt.routeProgress.failure(error);
     }
   }
 
@@ -205,6 +216,7 @@ class SealingMachineImpl implements SealingMachine {
       finalUpdateSeq: request.finalUpdateSeq,
       successorInitialState: new Uint8Array(request.successorInitialState), // 复制一份：调用方改写缓冲不得改变已登记状态
       routeCommitted: false,
+      routeProgress: new SealingRouteProgress(),
     };
   }
 
@@ -225,6 +237,7 @@ class SealingMachineImpl implements SealingMachine {
 
   private async runSteps(attempt: SealAttempt): Promise<SealResult> {
     const committed = await this.store.readSuccessor(attempt.scopeKey, attempt.docId);
+    attempt.routeProgress.observe(committed);
     if (committed?.state === "sealed" && committed.route) {
       const anotherSuccessor = committed.route.successorDocId !== attempt.successorDocId;
       if (anotherSuccessor || committed.route.expectedLastSeq !== attempt.finalUpdateSeq) {
@@ -317,14 +330,16 @@ class SealingMachineImpl implements SealingMachine {
       ordinalEnd: null,
       dependsOn: [],
     };
-    const settled = await this.store.registerSuccessor({
-      scopeKey: attempt.scopeKey,
-      epoch: attempt.epoch,
-      predecessorDocId: attempt.docId,
-      successorDocId: attempt.successorDocId,
-      expectedLastSeq: attempt.finalUpdateSeq,
-      successorDoc: doc,
-    });
+    const settled = await attempt.routeProgress.register(() =>
+      this.store.registerSuccessor({
+        scopeKey: attempt.scopeKey,
+        epoch: attempt.epoch,
+        predecessorDocId: attempt.docId,
+        successorDocId: attempt.successorDocId,
+        expectedLastSeq: attempt.finalUpdateSeq,
+        successorDoc: doc,
+      }),
+    );
     if (settled.outcome === "committed" || settled.outcome === "already-committed") {
       attempt.routeCommitted = true;
       return;

@@ -36,6 +36,7 @@ import { buildRuntimeSuccessorState, createRuntimeDoc, type FinalEntityDescripto
 import { restoreRuntimeSuccessor } from "./runtime-recovery";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
 import { createTextClaim, type TextClaim } from "./text-claim";
+import { retainWriterFailure } from "./writer-failure";
 import { buildPendingBatch, bytes, hex, records, requireObject, requireString, splitLiveText } from "./writer-support";
 export class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
@@ -45,6 +46,8 @@ export class LiveWriterImpl implements LiveWriter {
   private merge: MergeBuffer;
   private queue: Promise<unknown> = Promise.resolve();
   private failure: unknown = null;
+  /** 只认封口已证明未发布路由的那次错误，外围冲刷仍保留它供写入观测。 */
+  private reacquirableFailure: SyncProtocolError | null = null;
   private lastFlush: Promise<void> | null = null;
   private lease: WriterLease | null = null;
   private generation: string | null = null;
@@ -72,6 +75,8 @@ export class LiveWriterImpl implements LiveWriter {
     // 租约被占或已过期时存储直接拒绝（SCOPE_BUSY）；本层不排队等待，等待会让「谁在写」不可判定。
     this.lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
     await this.rebuildFromCommitted();
+    if (this.failure === this.reacquirableFailure) this.failure = null;
+    this.reacquirableFailure = null;
   }
   async renew(): Promise<void> {
     this.assertLive(true);
@@ -325,23 +330,25 @@ export class LiveWriterImpl implements LiveWriter {
       if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
       return result;
     } catch (error) {
-      // 轮换已可能发布一部分状态；不能把未完成目录交接的 successor 当作可写入口。
-      this.failure = error;
+      // 只有确认路由未提交的正常过期可重新竞争写权；目录交接失败仍持有 committed 事实。
+      if (
+        error instanceof SyncProtocolError &&
+        error.code === "LEASE_EXPIRED" &&
+        this.sealing.routeOutcome === "absent"
+      ) {
+        this.lease = null;
+        this.reacquirableFailure = error;
+      } else this.failure = error;
       throw error;
     }
   }
   /** 运行态轮换（设计 §6.3）：先取出未结束与交接未完成的实体，再封口使旧版不可写；`requiredBaseSeq` 是新块自身的基线序号。 */
   private async rotateRuntimeDoc(): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
-    try {
-      const previous = this.cursor(RUNTIME_KIND);
-      const initialState = buildRuntimeSuccessorState(previous.doc, this.options.limits);
-      await this.sealActive(RUNTIME_KIND, initialState);
-      this.rotation.reset();
-      return { oldDocId: previous.docId, newDocId: this.cursor(RUNTIME_KIND).docId, requiredBaseSeq: 0 };
-    } catch (error) {
-      this.failure = error;
-      throw error;
-    }
+    const previous = this.cursor(RUNTIME_KIND);
+    const initialState = buildRuntimeSuccessorState(previous.doc, this.options.limits);
+    await this.sealActive(RUNTIME_KIND, initialState);
+    this.rotation.reset();
+    return { oldDocId: previous.docId, newDocId: this.cursor(RUNTIME_KIND).docId, requiredBaseSeq: 0 };
   }
   private async persist(slices: readonly Slice[], refs?: SyncRefRecord[]): Promise<void> {
     if (slices.length === 0) return;
@@ -367,7 +374,7 @@ export class LiveWriterImpl implements LiveWriter {
         this.boundaryIndex.reset();
         this.boundarySeeded = false;
       } catch (reloadError) {
-        this.failure = new AggregateError([error, reloadError], "live writer cursor recovery failed");
+        this.failure = retainWriterFailure(this.failure ?? error, reloadError);
       }
       throw error;
     }
@@ -481,7 +488,7 @@ export class LiveWriterImpl implements LiveWriter {
   }
   private assertLive(needLease: boolean): void {
     if (this.closed) fail("RESOURCE_RETIRED", "live writer is closed");
-    if (this.failure !== null) throw this.failure;
+    if (this.failure !== null && (needLease || this.failure !== this.reacquirableFailure)) throw this.failure;
     if (needLease && this.lease === null) fail("WRITER_EPOCH_LOST", "live writer has not acquired the write lease");
   }
 }

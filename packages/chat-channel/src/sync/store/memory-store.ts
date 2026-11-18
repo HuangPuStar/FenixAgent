@@ -160,10 +160,11 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     if (predecessor.lastSeq !== input.expectedLastSeq)
       fail("SEQUENCE_GAP", "successor route expected frontier is stale");
     const existing = this.successors.get(key);
-    if (existing !== undefined)
-      return existing.successorDocId === input.successorDocId && existing.expectedLastSeq === input.expectedLastSeq
-        ? { outcome: "already-committed" }
-        : { outcome: "conflict" };
+    if (
+      existing &&
+      (existing.successorDocId !== input.successorDocId || existing.expectedLastSeq !== input.expectedLastSeq)
+    )
+      return { outcome: "conflict" };
     let successor: StoredDoc | undefined;
     if (input.successorDoc) {
       this.assertWritableDoc(input.scopeKey, input.predecessorDocId);
@@ -179,9 +180,14 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       successor = prepareActiveDocument(doc, this.digest, this.capacity.inputs.dependsOnMax);
       const target = this.docs.get(compositeKey(input.scopeKey, input.successorDocId));
       if (target) {
-        if (!sameSuccessorBase(target, successor)) return { outcome: "conflict" };
+        if (!sameSuccessorBase(target, successor, existing !== undefined)) return { outcome: "conflict" };
         successor = undefined;
       } else if (this.findDoc(input.successorDocId)) return { outcome: "conflict" };
+    }
+    if (existing) {
+      // 纯路由可先提交；带初始文档的重放只有在目标与空 ledger 都落地后才算完成。
+      if (successor) this.registerDocument(compositeKey(input.scopeKey, successor.docId), successor);
+      return { outcome: "already-committed" };
     }
     this.registerDocumentRoute(input, predecessor, successor);
     return { outcome: "committed" };

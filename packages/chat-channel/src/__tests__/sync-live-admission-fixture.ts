@@ -121,7 +121,7 @@ export async function fixture() {
         };
       if (property === "readUpdatesAfter")
         return (...args: Parameters<MemoryProjectionStore["readUpdatesAfter"]>) => {
-          if (args[0] === faults.failProbeDocOnce) {
+          if (args[0] === faults.failProbeDocOnce && args[1] === 0 && args[2] === 1) {
             faults.failProbeDocOnce = null;
             return Promise.reject(probeError);
           }

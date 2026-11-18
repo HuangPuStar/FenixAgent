@@ -136,7 +136,7 @@ export function tightenWindow(
     inputs: { ...base.inputs, activeSoftPayloadBytes: Math.floor(windowBytes / 4) },
   };
   const frameBytes = maxSingleTailFrameBytes(capacity);
-  if (windowBytes <= frameBytes) {
+  if (!(windowBytes > frameBytes)) {
     throw new Error(`oracle: connection window ${windowBytes} must exceed single tail frame bound ${frameBytes}`);
   }
   return capacity;

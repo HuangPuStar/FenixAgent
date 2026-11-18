@@ -20,6 +20,7 @@ interface AccountingEntry {
 /** 预留成功后才替换；可先为整批准备再原子提交，防止部分写入。 */
 export class AccountedMap<K, V> extends Map<K, V> {
   private readonly accounting = new Map<K, AccountingEntry>();
+  private readonly pendingKeys = new Set<K>();
   constructor(
     protected readonly budget: MemoryBudget | undefined,
     private readonly estimate: (key: K, value: V) => PoolBytes,
@@ -28,13 +29,17 @@ export class AccountedMap<K, V> extends Map<K, V> {
   }
   /** 完整替换先预留全部新值，提交后才归还旧值的额度。 */
   prepare(key: K, value: V): PreparedSet {
-    return this.prepareValue(key, value, this.budget ? this.estimate(key, value) : {}, new Set());
+    return this.prepareExclusive(key, () =>
+      this.prepareValue(key, value, this.budget ? this.estimate(key, value) : {}, new Set()),
+    );
   }
   /** 指定池的旧分配必须原样共享；仅预留其增量，其余池仍先取得完整替换额度。 */
   prepareSharing(key: K, value: V, pools: readonly ServerPoolName[]): PreparedSet {
-    const estimate = this.budget ? this.estimate(key, value) : {};
-    for (const pool of pools) estimate[pool] = (estimate[pool] ?? 0) - (this.accounting.get(key)?.totals[pool] ?? 0);
-    return this.prepareValue(key, value, estimate, new Set(pools));
+    return this.prepareExclusive(key, () => {
+      const estimate = this.budget ? this.estimate(key, value) : {};
+      for (const pool of pools) estimate[pool] = (estimate[pool] ?? 0) - (this.accounting.get(key)?.totals[pool] ?? 0);
+      return this.prepareValue(key, value, estimate, new Set(pools));
+    });
   }
   /** 无预算时不做估算；有预算时返回已提交值的累计池用量。 */
   accountedBytes(key: K, pool: ServerPoolName): number | undefined {
@@ -43,6 +48,28 @@ export class AccountedMap<K, V> extends Map<K, V> {
   /** 仅供数组追加使用：旧值的所有对象、缓冲与计费归属都继续保留。 */
   protected prepareRetaining(key: K, value: V, additions: PoolBytes): PreparedSet {
     return this.prepareValue(key, value, additions, true);
+  }
+  /** 估算与预留也可能同步重入；同键只能持有一份写前像，结算或准备失败后再开放。 */
+  protected prepareExclusive(key: K, prepare: () => PreparedSet): PreparedSet {
+    if (this.pendingKeys.has(key)) throw new Error("accounted map key already has a pending preparation");
+    this.pendingKeys.add(key);
+    try {
+      const change = prepare();
+      let settled = false;
+      const settle = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        try {
+          action();
+        } finally {
+          this.pendingKeys.delete(key);
+        }
+      };
+      return { commit: () => settle(change.commit), abort: () => settle(change.abort) };
+    } catch (error) {
+      this.pendingKeys.delete(key);
+      throw error;
+    }
   }
   private prepareValue(key: K, value: V, estimate: PoolBytes, retain: true | ReadonlySet<ServerPoolName>): PreparedSet {
     const reservations: Reservation[] = [];
@@ -113,34 +140,36 @@ export class AccountedArrayMap<K, T> extends AccountedMap<K, T[]> {
   }
   /** 旧前缀原样共享；失败只归还新增与临时额度，旧值和计费保持不变。 */
   prepareAppend(key: K, additions: readonly T[]): PreparedSet {
-    const previous = this.get(key) ?? [];
-    const temporary = this.budget?.reserve("controlIndex", 128 + previous.length * 8);
-    try {
-      const additionsEstimate = this.budget ? this.estimateArray(key, additions) : {};
-      if (this.budget && this.has(key)) {
-        // 空账本给出每 key 的固定基数；后续追加只为新增记录计费。
-        for (const [name, bytes] of Object.entries(this.estimateArray(key, []))) {
-          const pool = name as ServerPoolName;
-          additionsEstimate[pool] = (additionsEstimate[pool] ?? 0) - bytes;
+    return this.prepareExclusive(key, () => {
+      const previous = this.get(key) ?? [];
+      const temporary = this.budget?.reserve("controlIndex", 128 + previous.length * 8);
+      try {
+        const additionsEstimate = this.budget ? this.estimateArray(key, additions) : {};
+        if (this.budget && this.has(key)) {
+          // 空账本给出每 key 的固定基数；后续追加只为新增记录计费。
+          for (const [name, bytes] of Object.entries(this.estimateArray(key, []))) {
+            const pool = name as ServerPoolName;
+            additionsEstimate[pool] = (additionsEstimate[pool] ?? 0) - bytes;
+          }
         }
+        // 临时数组先取得额度；旧记录对象和 bytes 不复制，也不重复取得其存量额度。
+        const value = [...previous, ...additions];
+        const prepared = this.prepareRetaining(key, value, additionsEstimate);
+        return {
+          commit() {
+            prepared.commit();
+            temporary?.release();
+          },
+          abort() {
+            prepared.abort();
+            temporary?.release();
+          },
+        };
+      } catch (error) {
+        temporary?.release();
+        throw error;
       }
-      // 临时数组先取得额度；旧记录对象和 bytes 不复制，也不重复取得其存量额度。
-      const value = [...previous, ...additions];
-      const prepared = this.prepareRetaining(key, value, additionsEstimate);
-      return {
-        commit() {
-          prepared.commit();
-          temporary?.release();
-        },
-        abort() {
-          prepared.abort();
-          temporary?.release();
-        },
-      };
-    } catch (error) {
-      temporary?.release();
-      throw error;
-    }
+    });
   }
 }
 /** 一次同步提交中的所有 Map 更新先取得额度；失败时不改变任何索引。 */

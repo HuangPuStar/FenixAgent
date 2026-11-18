@@ -310,7 +310,7 @@ test("已封口后错误 cutoff 不改变 phase，正确 cutoff 可重试且仍�
   expectReleased(f.admission);
 });
 
-for (const mismatch of ["kind", "blockIndex", "state", "used", "base"] as const) {
+for (const mismatch of ["kind", "state", "used", "base"] as const) {
   // 摘要相同也不代表目标身份或生命周期可复用，冲突不得发布路由或修改旧计费。
   test(`原子后继登记拒绝复用不匹配的既有目标：${mismatch}`, async () => {
     const f = await fixture();
@@ -318,7 +318,6 @@ for (const mismatch of ["kind", "blockIndex", "state", "used", "base"] as const)
     const target = {
       ...candidate,
       ...(mismatch === "kind" ? { kind: "content" as const } : {}),
-      ...(mismatch === "blockIndex" ? { blockIndex: 1 } : {}),
       ...(mismatch === "base"
         ? { snapshot: new Uint8Array([0, 0, 0]), hash: sha256Digest(new Uint8Array([0, 0, 0])) }
         : {}),

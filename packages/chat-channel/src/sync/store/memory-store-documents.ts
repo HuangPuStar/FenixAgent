@@ -22,22 +22,19 @@ export function prepareActiveDocument(doc: SyncDocRecord, digest: DigestFn, depe
   };
 }
 
-/** 新路由只能复用未使用的同谱系目标，不能因摘要相同把另一身份或已写入文档接为后继。 */
-export function sameSuccessorBase(existing: StoredDoc, candidate: StoredDoc): boolean {
+/** 比较身份与不可变初始字节；新路由仅复用未使用目标，已提交路由允许后继继续演进。 */
+export function sameSuccessorBase(existing: StoredDoc, candidate: StoredDoc, routeCommitted: boolean): boolean {
   return (
     existing.scopeKey === candidate.scopeKey &&
     existing.docId === candidate.docId &&
     existing.generation === candidate.generation &&
     existing.kind === candidate.kind &&
-    existing.state === "active" &&
+    (routeCommitted
+      ? existing.state !== "retired"
+      : existing.state === "active" && existing.lastSeq === candidate.baseSeq && existing.finalSeq === null) &&
     existing.baseSeq === candidate.baseSeq &&
-    existing.lastSeq === candidate.baseSeq &&
-    existing.finalSeq === null &&
-    existing.blockIndex === candidate.blockIndex &&
-    existing.ordinalStart === candidate.ordinalStart &&
-    existing.ordinalEnd === candidate.ordinalEnd &&
-    existing.dependsOn.length === candidate.dependsOn.length &&
-    existing.dependsOn.every((id, index) => id === candidate.dependsOn[index]) &&
+    (existing.kind !== "content" || existing.blockIndex === candidate.blockIndex) &&
+    // SealRequest 不表达非内容行索引、范围与依赖；这些元数据保留既有值，身份由 docId 约束。
     existing.baseHash === candidate.baseHash &&
     existing.baseSnapshot.byteLength === candidate.baseSnapshot.byteLength &&
     existing.baseSnapshot.every((byte, index) => byte === candidate.baseSnapshot[index])

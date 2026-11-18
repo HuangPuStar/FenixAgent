@@ -88,6 +88,8 @@ async function prepareWrite(
 test("收紧窗口拒绝容不下单个 tail 帧的容量档位", () => {
   expect(() => tightenWindow(4096)).toThrow();
   expect(() => tightenWindow(6144)).toThrow();
+  expect(() => tightenWindow(Number.NaN)).toThrow();
+  expect(() => tightenWindow(Number.POSITIVE_INFINITY)).toThrow();
 });
 
 // 合法窗口保留原有缩放结果，包含刚超过实际帧上界的临界档位。
@@ -135,7 +137,7 @@ for (const method of ["createDoc", "appendUpdates", "putSealedIfAbsent", "commit
       const before = f.base.exportCommittedState();
       const rejected = write();
       expect(rejected).toBeInstanceOf(Promise);
-      await expect(rejected.catch((error: unknown) => error)).resolves.toBe(f.fault);
+      await expect(rejected).rejects.toBe(f.fault);
       expect(f.store.didFire()).toBe(true);
       expect(f.base.exportCommittedState()).toEqual(before);
       expect((await write()).outcome).toBe("committed");
