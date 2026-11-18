@@ -214,10 +214,12 @@ describe("chat history performance comparison", () => {
 
   // 样本数和配对身份必须完整，不能挑选或重复较好的轮次。
   test("missing or duplicate pairs are rejected", () => {
-    expect(compareLoadSamples(samples(), samples().slice(1)).pass).toBe(false);
-    const duplicate = samples();
+    const passing = samples({ firstVisibleMs: 90, interactiveMs: 180 });
+    expect(compareLoadSamples(samples(), passing).pass).toBe(true);
+    expect(compareLoadSamples(samples(), passing.slice(1)).groups[0]?.issues).toContain("unpaired-samples");
+    const duplicate = [...passing];
     duplicate[19] = duplicate[0]!;
-    expect(compareLoadSamples(samples(), duplicate).pass).toBe(false);
+    expect(compareLoadSamples(samples(), duplicate).groups[0]?.issues).toContain("duplicate-pair");
     expect(compareLoadSamples([], []).pass).toBe(false);
     expect(compareLoadSamples(samples().slice(0, 5), samples().slice(0, 5)).pass).toBe(false);
   });
@@ -226,17 +228,28 @@ describe("chat history performance comparison", () => {
   test("each cache and history group must pass independently", () => {
     const baseline = [...samples(), ...samples({ cacheState: "cold-restart" })];
     const candidate = [
-      ...samples({ interactiveMs: 10 }),
-      ...samples({ cacheState: "cold-restart", interactiveMs: 201 }),
+      ...samples({ firstVisibleMs: 90, interactiveMs: 10 }),
+      ...samples({ cacheState: "cold-restart", firstVisibleMs: 90, interactiveMs: 201 }),
     ];
-    expect(compareLoadSamples(baseline, candidate).pass).toBe(false);
+    const result = compareLoadSamples(baseline, candidate);
+    expect(result.groups.find((group) => JSON.parse(group.key)[2] === "hot")?.pass).toBe(true);
+    expect(result.groups.find((group) => JSON.parse(group.key)[2] === "cold-restart")?.issues).toContain(
+      "interactiveMs:regressed",
+    );
+    expect(result.pass).toBe(false);
     expect(compareLoadSamples(baseline, samples()).pass).toBe(false);
   });
 
   // 内容不同或缺少工具时，即便更快也不是同一行为的性能比较。
   test("fixture mismatch and incomplete visible content fail", () => {
-    expect(compareLoadSamples(samples(), samples({ fixtureDigest: "different" })).pass).toBe(false);
-    expect(compareLoadSamples(samples(), samples({ contentVerified: false })).pass).toBe(false);
+    const passing = { firstVisibleMs: 90, interactiveMs: 180 };
+    expect(compareLoadSamples(samples(), samples(passing)).pass).toBe(true);
+    expect(
+      compareLoadSamples(samples(), samples({ ...passing, fixtureDigest: "different" })).groups[0]?.issues,
+    ).toContain("fixture-mismatch");
+    expect(compareLoadSamples(samples(), samples({ ...passing, contentVerified: false })).groups[0]?.issues).toContain(
+      "incomplete-content-or-timing",
+    );
   });
 
   // 样式缺失或面板宽度不同会改变换行与布局成本，不能作为同条件的性能对照。
@@ -249,8 +262,9 @@ describe("chat history performance comparison", () => {
 
   // 无效计时不能被排序或 JSON 序列化掩盖成正常样本。
   test("invalid durations cannot pass", () => {
+    expect(compareLoadSamples(samples(), samples({ firstVisibleMs: 90, interactiveMs: 180 })).pass).toBe(true);
     for (const interactiveMs of [Number.NaN, Number.POSITIVE_INFINITY, -1, null]) {
-      expect(compareLoadSamples(samples(), samples({ interactiveMs })).pass).toBe(false);
+      expect(compareLoadSamples(samples(), samples({ firstVisibleMs: 90, interactiveMs })).pass).toBe(false);
     }
   });
 });

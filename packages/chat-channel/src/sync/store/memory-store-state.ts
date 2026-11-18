@@ -1,7 +1,8 @@
 // 内存 adapter 的状态与快照复制；业务写入校验仍由 memory-store.ts 持有。
 import { SyncProtocolError } from "../protocol/errors";
-import { AccountedMap, indexBytes, type MemoryBudget } from "./memory-accounting";
+import { AccountedMap, commitAccountedSets, indexBytes, type MemoryBudget } from "./memory-accounting";
 import type {
+  CommitGenerationInput,
   DirectoryPage,
   DirectoryQuery,
   DocStateSnapshot,
@@ -126,6 +127,45 @@ export class MemoryStoreState {
     this.batches = new AccountedMap<string, BatchRecord>(budget, metadata);
     this.successors = new AccountedMap<string, SuccessorRoute>(budget, metadata);
     this.commits = new AccountedMap<string, CommitRecord>(budget, metadata);
+  }
+
+  /** 文档与更新账本必须同时取得额度，拒绝时不留下可被误判为已登记的文档。 */
+  protected registerDocument(key: string, doc: StoredDoc): void {
+    commitAccountedSets((pending) => {
+      pending.push(this.docs.prepare(key, doc));
+      pending.push(this.updates.prepare(key, []));
+    });
+  }
+
+  /** 发布、退休、指针与幂等记录共用一次额度准备，提交段不再执行可拒绝的写入。 */
+  protected publishGeneration(input: CommitGenerationInput, scope: SyncScopeRow, now: number): void {
+    const key = compositeKey(input.scopeKey, input.newGeneration.generation);
+    const generation = this.generations.get(key)!;
+    const next: StoredGeneration = {
+      ...generation,
+      state: "committed",
+      entryRefs: copyRefs(input.entryClosure),
+      acpSessionId: input.newGeneration.acpSessionId,
+      loadId: input.newGeneration.loadId,
+      importEndOrdinal: input.newGeneration.importEndOrdinal,
+      createdAt: input.newGeneration.createdAt,
+    };
+    const record: CommitRecord = {
+      expectedCurrent: input.expectedCurrent,
+      expectedPointerRevision: input.expectedPointerRevision,
+      entryClosure: copyRefs(input.entryClosure),
+      retired: [...input.retired],
+    };
+    commitAccountedSets((pending) => {
+      pending.push(this.generations.prepare(key, next));
+      for (const retired of input.retired) {
+        const retiredKey = compositeKey(input.scopeKey, retired);
+        const old = this.generations.get(retiredKey)!;
+        pending.push(this.generations.prepare(retiredKey, { ...old, state: "retired", retiredAt: now }));
+      }
+      pending.push(this.scopes.prepare(input.scopeKey, scope));
+      pending.push(this.commits.prepare(key, record));
+    });
   }
   /** 逐出时释放全部编码副本及索引额度。 */
   dispose(): void {
@@ -311,13 +351,18 @@ export class MemoryStoreState {
     for (const row of snapshot.scopes) this.scopes.set(row.scopeKey, { ...row, writerOwner: null, leaseExpiresAt: 0 });
     for (const value of snapshot.generations)
       this.generations.set(compositeKey(value.scopeKey, value.generation), copyGeneration(value));
+    const ledgers = new Map<string, SyncUpdateRecord[]>();
+    for (const update of snapshot.updates) {
+      const key = compositeKey(update.scopeKey, update.docId);
+      const ledger = ledgers.get(key) ?? [];
+      ledger.push(copyUpdate(update));
+      ledgers.set(key, ledger);
+    }
     for (const doc of snapshot.docs) {
       const key = compositeKey(doc.scopeKey, doc.docId);
       this.docs.set(key, copyDoc(doc));
-      this.updates.set(key, []);
+      this.updates.set(key, ledgers.get(key) ?? []);
     }
-    for (const update of snapshot.updates)
-      this.updates.get(compositeKey(update.scopeKey, update.docId))?.push(copyUpdate(update));
     for (const ref of snapshot.refs) this.refs.set(this.refKey(ref), copyRef(ref));
     for (const batch of snapshot.batches)
       this.batches.set(compositeKey(batch.scopeKey, batch.batchId), {

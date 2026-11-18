@@ -145,9 +145,18 @@ export async function createSyncScopeRuntime(input: {
   // 启用前的一次性校验（设计 §10.1）：自相矛盾的档案若不在装配期拦下，会变成请求路径上的帧错误。
   validateSyncRuntimeConfig(config);
 
-  const store =
-    input.store ?? new MemoryProjectionStore({ clock, digest, capacity: config.capacity, lifecycle: config.lifecycle });
   const admission = input.admission ?? new AdmissionController(config.capacity);
+  const ownedStore =
+    input.store === undefined
+      ? new MemoryProjectionStore({
+          clock,
+          digest,
+          capacity: config.capacity,
+          lifecycle: config.lifecycle,
+          memoryBudget: admission,
+        })
+      : null;
+  const store = input.store ?? ownedStore!;
 
   // 额度账本与 ACK 账本共用同一个 QuotaController：ACK 归还的字节必须回到当初计费的那本账。
   const quota = createQuotaController({ ...config.quota });
@@ -428,7 +437,18 @@ export async function createSyncScopeRuntime(input: {
       // 关连接会经 `onConnectionClosed` 触发清账；未绑定传输时没有该通知，故下面再调一次（幂等）。
       gateway?.close(DISPOSED_REASON);
       convergeClosedConnection();
-      await writer.close();
+      try {
+        await writer.close();
+      } finally {
+        if (ownedStore) {
+          try {
+            await history.abort(new SyncProtocolError("RESOURCE_RETIRED", { message: DISPOSED_REASON }));
+            await pool.drain();
+          } finally {
+            ownedStore.dispose();
+          }
+        }
+      }
     },
   };
 }

@@ -145,7 +145,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     if (doc.dependsOn.length > this.capacity.inputs.dependsOnMax)
       fail("CAPACITY_EXCEEDED", "document dependencies exceed capacity");
     const snapshot = copyBytes(doc.snapshot);
-    this.docs.set(key, {
+    this.registerDocument(key, {
       ...doc,
       lastSeq: doc.baseSeq,
       baseSnapshot: snapshot,
@@ -155,7 +155,6 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       sealedAt: null,
       retiredAt: null,
     });
-    this.updates.set(key, []);
     return { outcome: "committed" };
   }
 
@@ -286,7 +285,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     if (generation.state === "committed" && this.scopes.get(input.scopeKey)?.currentGeneration !== doc.generation)
       fail("GENERATION_NOT_CURRENT", "document generation is not current");
     const snapshot = copyBytes(doc.snapshot);
-    this.docs.set(key, {
+    this.registerDocument(key, {
       ...doc,
       lastSeq: doc.finalSeq ?? doc.baseSeq,
       baseSnapshot: snapshot,
@@ -296,7 +295,6 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       sealedAt: this.clock.now(),
       retiredAt: null,
     });
-    this.updates.set(key, []);
     return { outcome: "committed", hash: doc.hash };
   }
 
@@ -374,34 +372,20 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
       if (old === undefined || retired === input.newGeneration.generation)
         fail("GENERATION_MISMATCH", "retired generation is unknown");
     }
-    generation.state = "committed";
-    generation.entryRefs = copyRefs(input.entryClosure);
-    // 提交记录是代次的权威终值：导入在 staging 后才知道的结尾序号必须随提交落定，
-    // 否则恢复路径无法区分「已导入代次」与「空基线」，会在每次启动时重扫历史。
-    generation.acpSessionId = input.newGeneration.acpSessionId;
-    generation.loadId = input.newGeneration.loadId;
-    generation.importEndOrdinal = input.newGeneration.importEndOrdinal;
-    generation.createdAt = input.newGeneration.createdAt;
-    const now = this.clock.now();
-    for (const retired of input.retired) {
-      const old = this.generations.get(compositeKey(input.scopeKey, retired));
-      if (old !== undefined) {
-        old.state = "retired";
-        old.retiredAt = now;
-      }
-    }
-    scope.currentGeneration = input.newGeneration.generation;
-    scope.pointerRevision += 1;
-    this.commits.set(commitKey, {
-      expectedCurrent: input.expectedCurrent,
-      expectedPointerRevision: input.expectedPointerRevision,
-      entryClosure: copyRefs(input.entryClosure),
-      retired: [...input.retired],
-    });
+    const pointerRevision = scope.pointerRevision + 1;
+    this.publishGeneration(
+      input,
+      {
+        ...scope,
+        currentGeneration: input.newGeneration.generation,
+        pointerRevision,
+      },
+      this.clock.now(),
+    );
     return {
       outcome: "committed",
       currentGeneration: input.newGeneration.generation,
-      pointerRevision: scope.pointerRevision,
+      pointerRevision,
     };
   }
 

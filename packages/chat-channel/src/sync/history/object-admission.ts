@@ -46,11 +46,16 @@ export function admitHistoryObject(
   readonly reservation: Reservation | null;
 } {
   const payload = new AdmittedHistoryPayload(value, capacity);
-  const bytes = payload.bytesFor(capacity);
-  if (bytes.byteLength <= capacity.inputs.largeFrameThresholdBytes) return { bytes, payload, reservation: null };
-  if (!admission)
+  const large = payload.byteLength > capacity.inputs.largeFrameThresholdBytes;
+  if (large && !admission)
     throw new SyncProtocolError("ADMISSION_REJECTED", {
       message: "large history objects require frameParse admission",
     });
-  return { bytes, payload, reservation: admission.reserve("frameParse", bytes.byteLength) };
+  const reservation = large ? admission!.reserve("frameParse", payload.byteLength) : null;
+  try {
+    return { bytes: payload.bytesFor(capacity), payload, reservation };
+  } catch (error) {
+    reservation?.release();
+    throw error;
+  }
 }

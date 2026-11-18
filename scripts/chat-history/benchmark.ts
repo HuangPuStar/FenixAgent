@@ -57,24 +57,27 @@ async function attachPage(browser: BenchmarkBrowser, baseUrl: string) {
   const address = await browser.run(["get", "cdp-url"]);
   if (typeof address.cdpUrl !== "string") throw new Error("Missing browser debugging endpoint");
   const cdp = await CdpConnection.connect(address.cdpUrl);
-  const targets = await cdp.command("Target.getTargets");
-  const infos = z
-    .array(z.object({ type: z.string(), url: z.string(), targetId: z.string() }))
-    .parse(targets.targetInfos);
-  const target = infos.find((info) => info.type === "page" && info.url.startsWith(baseUrl));
-  if (!target) {
+  try {
+    const targets = await cdp.command("Target.getTargets");
+    const infos = z
+      .array(z.object({ type: z.string(), url: z.string(), targetId: z.string() }))
+      .parse(targets.targetInfos);
+    const target = infos.find((info) => info.type === "page" && info.url.startsWith(baseUrl));
+    if (!target) {
+      throw new Error("Missing benchmark page");
+    }
+    const attached = await cdp.command("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+    if (typeof attached.sessionId !== "string") {
+      throw new Error("Missing page debugging session");
+    }
+    const sessionId = attached.sessionId;
+    await cdp.command("Network.enable", {}, sessionId);
+    await cdp.command("Page.enable", {}, sessionId);
+    return { cdp, sessionId };
+  } catch (error) {
     cdp.close();
-    throw new Error("Missing benchmark page");
+    throw error;
   }
-  const attached = await cdp.command("Target.attachToTarget", { targetId: target.targetId, flatten: true });
-  if (typeof attached.sessionId !== "string") {
-    cdp.close();
-    throw new Error("Missing page debugging session");
-  }
-  const sessionId = attached.sessionId;
-  await cdp.command("Network.enable", {}, sessionId);
-  await cdp.command("Page.enable", {}, sessionId);
-  return { cdp, sessionId };
 }
 
 async function waitForInteractive(browser: BenchmarkBrowser) {
@@ -89,7 +92,8 @@ async function waitForInteractive(browser: BenchmarkBrowser) {
   return observation;
 }
 
-async function measure(
+/** 测量单次完整加载及翻页，所有晚到错误都必须进入样本失败统计。 */
+export async function measure(
   endpoint: Endpoint,
   fixture: z.infer<typeof fixtureSchema>,
   pair: number,
@@ -208,15 +212,20 @@ async function measure(
       return sample;
     }
     const earlierDeadline = Date.now() + 15000;
+    let finalObservation = observation;
     while (Date.now() < earlierDeadline) {
       const current = observationSchema.parse(await endpoint.browser.evaluate("window.__chatHistoryBench.snapshot()"));
+      finalObservation = current;
       if (current.earlierMs !== null) {
         sample.earlierMs = current.earlierMs;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    if (sample.earlierMs === null) sample.failure = "timeout";
+    sample.counters.browserErrors = finalObservation.browserErrors;
+    sample.counters.protocolErrors = Number(protocolError);
+    if (finalObservation.browserErrors || protocolError) sample.failure = "browser-error";
+    else if (sample.earlierMs === null) sample.failure ??= "timeout";
     return sample;
   } catch {
     sample.failure = "measurement-error";

@@ -831,8 +831,13 @@ test("完整工具对象跨 live 块提交后才能确认成功", async () => {
       meta: { kind: "tool_object", entryId: "callback_tool", role: "assistant", entryOrder: 3, sourceRevision: 7 },
     },
   });
-  const records = committed(fix)
-    .docs.filter((doc) => doc.kind === "content")
+  const contentDocs = committed(fix)
+    .docs.filter(
+      (doc) => doc.kind === "content" && readRecords(fix, doc.docId).some((record) => record.kind === "tool_object"),
+    )
+    .sort((left, right) => (left.blockIndex ?? 0) - (right.blockIndex ?? 0));
+  expect(contentDocs.length).toBeGreaterThan(1);
+  const records = contentDocs
     .flatMap((doc) => readRecords(fix, doc.docId))
     .filter((record) => record.kind === "tool_object");
   expect(records.length).toBeGreaterThan(1);

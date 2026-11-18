@@ -72,7 +72,8 @@ export class HistoryImportReceiver {
       for await (const record of records) {
         if (this.cancelled)
           throw new SyncProtocolError("IMPORT_INCOMPLETE", { message: "history receive was cancelled" });
-        const accepted = admitHistoryObject(record.value, this.deps.capacity, this.deps.admission);
+        const value = record.value;
+        const accepted = admitHistoryObject(value, this.deps.capacity, this.deps.admission);
         if (
           accepted.bytes.byteLength > this.recordBudgetBytes ||
           accepted.reservation !== null ||
@@ -84,7 +85,7 @@ export class HistoryImportReceiver {
             accepted.reservation?.release();
             throw error;
           }
-          await this.acceptPrepared(record.value, record.meta, accepted);
+          await this.acceptPrepared(value, record.meta, accepted);
           continue;
         }
         if (pending.length >= 256 || bytes + accepted.bytes.byteLength > this.recordBudgetBytes) await flush();
@@ -93,7 +94,7 @@ export class HistoryImportReceiver {
         // 私有 canonical 字节和接纳副本同时存在；合并及写盘副本由 ingest 另行预留。
         reservations.push(this.deps.admission.reserve("historyBuild", accepted.bytes.byteLength * 2 + 256));
         const part = planHistoryParts({
-          value: record.value,
+          value,
           meta: record.meta,
           serializedBytes: accepted.bytes,
           recordBudgetBytes: this.recordBudgetBytes,
@@ -141,10 +142,14 @@ export class HistoryImportReceiver {
       });
       let last: IngestedRecord | null = null;
       for (const part of parts) {
+        if (this.cancelled)
+          throw new SyncProtocolError("IMPORT_INCOMPLETE", { message: "history receive was cancelled" });
         last =
           accepted.bytes.byteLength <= this.recordBudgetBytes
             ? await this.deps.ingest.acceptAdmitted(accepted.payload, part.meta)
             : await this.deps.ingest.accept(part.value, part.meta);
+        if (this.cancelled)
+          throw new SyncProtocolError("IMPORT_INCOMPLETE", { message: "history receive was cancelled" });
         this.deps.onAccepted(last, part.meta);
       }
       if (!last) throw new SyncProtocolError("IMPORT_INCOMPLETE", { message: "history object produced no record" });
