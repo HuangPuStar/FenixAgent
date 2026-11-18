@@ -145,7 +145,12 @@ export function tightenWindow(
 // ------------------------------------------------------------------ 故障注入 store（T08）
 
 /** 可注入失败的存储方法（T08 的提交期与 finalize 失败必须落在真实路径上）。 */
-export type FaultyStoreMethod = "putSealedIfAbsent" | "commitGeneration" | "appendUpdates" | "createDoc";
+export type FaultyStoreMethod =
+  | "putSealedIfAbsent"
+  | "commitGeneration"
+  | "appendUpdates"
+  | "createDoc"
+  | "commitContentBatch";
 
 /**
  * 逐调用委托给真实存储，只在指定方法第 `afterCalls + 1` 次调用上抛一次错。
@@ -222,6 +227,11 @@ export class FaultyProjectionStore implements ProjectionStore {
   async appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
     this.maybeFail("appendUpdates");
     return this.base.appendUpdates(input);
+  }
+  /** 故障仅发生在整批调用之前，真实原子提交语义由底层保留。 */
+  async commitContentBatch(input: Parameters<ProjectionStore["commitContentBatch"]>[0]): Promise<AppendUpdatesResult> {
+    this.maybeFail("commitContentBatch");
+    return this.base.commitContentBatch(input);
   }
   /** 保留 {@link ProjectionStore.putSealedIfAbsent} 的底层契约。 */
   async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {

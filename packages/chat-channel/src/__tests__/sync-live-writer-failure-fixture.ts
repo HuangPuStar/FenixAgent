@@ -3,7 +3,13 @@ import { deterministicRandomSource, sha256Digest } from "../sync/clock";
 import { createLiveWriter } from "../sync/live/live-writer";
 import { RUNTIME_DOC_LIMITS } from "../sync/live/runtime-doc";
 import { parseDocId } from "../sync/protocol/identity";
-import type { AppendUpdatesInput, RegisterSuccessorInput, RegistrationResult } from "../sync/store/types";
+import type {
+  AppendUpdatesInput,
+  AppendUpdatesResult,
+  CommitContentBatchInput,
+  RegisterSuccessorInput,
+  RegistrationResult,
+} from "../sync/store/types";
 import { fixture } from "./sync-live-admission-fixture";
 
 /** 保留真实路由、租约和目录事务，只在事务边界控制时钟或回执。 */
@@ -21,8 +27,16 @@ export async function writerFailureFixture(
     afterRoute: null as (() => void) | null,
     beforeDirectoryAppend: null as (() => void) | null,
     failRouteRead: false,
+    beforeTextBatch: null as
+      | ((input: CommitContentBatchInput) => Promise<AppendUpdatesResult | undefined> | AppendUpdatesResult | undefined)
+      | null,
+    afterTextBatch: null as
+      | ((input: CommitContentBatchInput) => Promise<AppendUpdatesResult | undefined> | AppendUpdatesResult | undefined)
+      | null,
+    failTextBatchProbe: false,
   };
   const readError = new Error("route boundary unavailable");
+  const textProbeError = new Error("text batch outcome unavailable");
   const wrapped = new Proxy(base.store, {
     get(target, property) {
       if (property === "registerSuccessor")
@@ -40,6 +54,20 @@ export async function writerFailureFixture(
       if (property === "readSuccessor")
         return (...args: Parameters<typeof target.readSuccessor>) =>
           faults.failRouteRead ? Promise.reject(readError) : target.readSuccessor(...args);
+      if (property === "readUpdatesAfter")
+        return (...args: Parameters<typeof target.readUpdatesAfter>) =>
+          faults.failTextBatchProbe ? Promise.reject(textProbeError) : target.readUpdatesAfter(...args);
+      if (property === "commitContentBatch")
+        return async (input: CommitContentBatchInput) => {
+          const before = faults.beforeTextBatch;
+          faults.beforeTextBatch = null;
+          const replacement = await before?.(input);
+          if (replacement) return replacement;
+          const result = await target.commitContentBatch(input);
+          const after = faults.afterTextBatch;
+          faults.afterTextBatch = null;
+          return (await after?.(input)) ?? result;
+        };
       if (property === "appendUpdates")
         return async (input: AppendUpdatesInput) => {
           if (input.updates.some((update) => parseDocId(update.docId).kind === "directory")) {
@@ -82,6 +110,7 @@ export async function writerFailureFixture(
     writer,
     faults,
     readError,
+    textProbeError,
     advance(ms: number) {
       now += ms;
       base.advance(ms);

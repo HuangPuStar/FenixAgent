@@ -7,6 +7,7 @@
 
 import * as Y from "yjs";
 
+import { SyncProtocolError } from "../protocol/errors";
 import type { ProjectionStore } from "../store/types";
 import { records } from "./writer-support";
 
@@ -23,6 +24,7 @@ export interface TextClaim {
    *
    * `historyDocIds` 必须来自当前代次的入口闭包；`readDocStateAt` 对退役块返回 `null`，
    * 因此不可达块不会把新消息误判成“已存在”。
+   * 读取期间重建会以可重试的 GENERATION_MISMATCH 拒绝，调用方须在新代次重新判定。
    */
   claim(input: {
     readonly entryId: string;
@@ -30,14 +32,26 @@ export interface TextClaim {
     readonly activeDoc: Y.Doc;
     readonly historyDocIds: readonly string[];
   }): Promise<boolean>;
-  /** 重建后丢弃本机未落地的声明与历史缓存：已提交事实必须重新读取。 */
+  /** 重建后丢弃声明与历史缓存，并使尚未完成的旧代次判定失效。 */
   reset(): void;
 }
 
+/** 建立单写者的消息声明；代次令牌隔离重建前尚未完成的历史读取。 */
 export function createTextClaim(store: ProjectionStore): TextClaim {
   const claimed = new Set<string>();
   let historicalEntries: ReadonlySet<string> | null = null;
   let historyLoad: Promise<ReadonlySet<string>> | null = null;
+  let epoch = Symbol();
+
+  /** 旧判定不能当作重复或接纳；只暴露服务端文档身份，原始读取错误保留在本地 cause。 */
+  function invalidated(activeDocId: string, cause?: unknown): SyncProtocolError {
+    return new SyncProtocolError("GENERATION_MISMATCH", {
+      retryable: true,
+      safeContext: { docId: activeDocId },
+      message: "text claim invalidated by writer state rebuild",
+      ...(cause === undefined ? {} : { cause }),
+    });
+  }
 
   function keyOf(entryId: string, contentSlot: string): string {
     return `${entryId}\u0000${contentSlot}`;
@@ -64,39 +78,49 @@ export function createTextClaim(store: ProjectionStore): TextClaim {
   }
 
   /** 历史块只扫描一次；失败不缓存，下一次 claim 重新读取。 */
-  async function historicalEntriesFor(docIds: readonly string[], activeDocId: string): Promise<ReadonlySet<string>> {
+  async function historicalEntriesFor(
+    docIds: readonly string[],
+    activeDocId: string,
+    claimEpoch: symbol,
+  ): Promise<ReadonlySet<string>> {
     if (historicalEntries !== null) return historicalEntries;
     if (historyLoad === null) {
       historyLoad = loadHistoricalEntries(docIds, activeDocId).catch((error: unknown) => {
-        historyLoad = null;
+        if (claimEpoch === epoch) historyLoad = null;
         throw error;
       });
     }
-    historicalEntries = await historyLoad;
-    return historicalEntries;
+    const entries = await historyLoad;
+    if (claimEpoch === epoch) historicalEntries = entries;
+    return entries;
   }
 
   return {
     async claim(input) {
+      const claimEpoch = epoch;
       const key = keyOf(input.entryId, input.contentSlot);
       if (claimed.has(key)) return false;
       // 先占位再读历史：两个并发的同键输入不能在异步窗口内都通过检查。
       claimed.add(key);
+      let entries: ReadonlySet<string>;
       try {
         const active = records<StoredTextRecord>(input.activeDoc)?.toArray() ?? [];
         if (active.some((record) => record.entryId === input.entryId && record.contentSlot === input.contentSlot)) {
           return false;
         }
         if (input.historyDocIds.length === 0) return true;
-        const entries = await historicalEntriesFor(input.historyDocIds, input.activeDoc.guid);
-        return !entries.has(input.entryId);
+        entries = await historicalEntriesFor(input.historyDocIds, input.activeDoc.guid, claimEpoch);
       } catch (error) {
+        if (claimEpoch !== epoch) throw invalidated(input.activeDoc.guid, error);
         // 读取失败不能把消息永久判成已写：释放占位，调用方重试时重新判定。
         claimed.delete(key);
         throw error;
       }
+      if (claimEpoch !== epoch) throw invalidated(input.activeDoc.guid);
+      return !entries.has(input.entryId);
     },
     reset() {
+      epoch = Symbol();
       claimed.clear();
       historicalEntries = null;
       historyLoad = null;

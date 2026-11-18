@@ -5,10 +5,8 @@ import type { CommitOutcome, SyncRefRecord, WriterLease } from "../store/types";
 import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
 import { captureSlice } from "./change-capture";
 import { appendCommittedBatch, loadCommittedDoc, openLiveCursor } from "./committed-doc";
-import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
 import { type ContentObjectRef, writeLiveContentObject } from "./live-content-object";
-import { recoverLiveSuccessors } from "./live-successor";
 import {
   type Batch,
   CONTENT_KIND,
@@ -21,7 +19,14 @@ import {
   RUNTIME_KIND,
   type Slice,
 } from "./live-writer-internal";
-import { buildLiveRecord, buildNextLiveRecord, descriptorOf, entityOf } from "./live-writer-records";
+import { rebuildLiveProjection } from "./live-writer-rebuild";
+import {
+  buildLiveRecord,
+  buildNextLiveRecord,
+  buildTerminalRecords,
+  descriptorOf,
+  entityOf,
+} from "./live-writer-records";
 import {
   LIVE_WRITER_LEASE_TTL_MS,
   type LiveInput,
@@ -32,12 +37,12 @@ import {
 } from "./live-writer-types";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
-import { buildRuntimeSuccessorState, createRuntimeDoc, type FinalEntityDescriptor } from "./runtime-doc";
-import { restoreRuntimeSuccessor } from "./runtime-recovery";
+import { buildRuntimeSuccessorState, createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
+import { writeAtomicText } from "./text-batch-commit";
 import { createTextClaim, type TextClaim } from "./text-claim";
 import { retainWriterFailure } from "./writer-failure";
-import { buildPendingBatch, bytes, hex, records, requireObject, requireString, splitLiveText } from "./writer-support";
+import { buildPendingBatch, bytes, hex, records, requireObject, requireString } from "./writer-support";
 export class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
   private readonly owner: string;
@@ -76,8 +81,20 @@ export class LiveWriterImpl implements LiveWriter {
     if (this.reacquirableFailure !== null) await this.queue;
     this.assertLive(false);
     // 租约被占或已过期时存储直接拒绝（SCOPE_BUSY）；本层不排队等待，等待会让「谁在写」不可判定。
-    this.lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
-    await this.rebuildFromCommitted();
+    const lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
+    if (this.closed) {
+      await this.options.store.releaseWriter?.(lease);
+      this.assertLive(false);
+    }
+    this.lease = lease;
+    try {
+      await this.rebuildFromCommitted();
+    } catch (error) {
+      if (this.closed)
+        throw new SyncProtocolError("RESOURCE_RETIRED", { message: "live writer is closed", cause: error });
+      throw error;
+    }
+    this.assertLive(false);
     if (this.failure === this.reacquirableFailure) this.failure = null;
     this.reacquirableFailure = null;
   }
@@ -122,16 +139,22 @@ export class LiveWriterImpl implements LiveWriter {
     }
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
-    if (
-      input.idempotent === true &&
-      !(await this.textClaim.claim({
+    if (input.idempotent === true) {
+      const merge = this.merge;
+      const accepted = await this.textClaim.claim({
         entryId,
         contentSlot,
         activeDoc: this.cursor(CONTENT_KIND).doc,
         historyDocIds: this.historyContentDocIds,
-      }))
-    )
-      return;
+      });
+      this.assertLive(true);
+      if (merge !== this.merge)
+        throw new SyncProtocolError("WRITER_EPOCH_LOST", {
+          message: "text admission outlived writer rebuild",
+          retryable: true,
+        });
+      if (!accepted) return;
+    }
     const key: MergeKey = { generation: this.requireGeneration(), turnId, entryId, contentSlot, contentType };
     this.lastFlush = null;
     this.merge.push(key, delta);
@@ -198,12 +221,28 @@ export class LiveWriterImpl implements LiveWriter {
     this.queue = run.then(NOOP, NOOP);
     return run;
   }
-  /** 输入按目录块序和块内记录序提交；每片固定批次重试，已提交前缀不重放，未知结果仍走 fencing 失败出口。 */
+  /** 同一次合并冲刷的正文、跨块封口和目录在一个提交点生效，失败不留下前缀。 */
   private async writeText(request: MergeFlushRequest): Promise<void> {
-    for (const text of splitLiveText(request.text, this.options.capacity)) {
-      await this.appendContentRecord((cursor) =>
-        buildNextLiveRecord(this.options.random, cursor.doc, request.key, "text", bytes(text)),
-      );
+    try {
+      const cursor = await writeAtomicText({
+        options: this.options,
+        scopeKey: this.scopeKey,
+        generation: this.requireGeneration(),
+        request,
+        cursor: this.cursor(CONTENT_KIND),
+        directory: this.directory,
+        renew: () => this.renewLease(),
+        stop: (code, message, cause) => this.stop(code, message, cause),
+      });
+      this.cursors.get(CONTENT_KIND)?.doc.destroy();
+      this.cursors.set(CONTENT_KIND, cursor);
+    } catch (error) {
+      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
+        this.failure = error;
+        this.reacquirableFailure = error;
+        this.lease = null;
+      }
+      throw error;
     }
   }
   private async appendContentRecord(build: (cursor: Cursor) => LiveRecordValue, ref?: ContentObjectRef): Promise<void> {
@@ -278,33 +317,19 @@ export class LiveWriterImpl implements LiveWriter {
         // 终态描述符和实体移除必须在同一批提交，避免出现不可解析的引用。
         const metadata =
           semantic.payload.metadata === undefined ? {} : requireObject(semantic.payload.metadata, "metadata");
-        const terminalContent = bytes(JSON.stringify({ entityId, kind: semantic.kind, metadata }));
         const content = this.cursor(CONTENT_KIND);
-        const identity: Identity = {
-          entryId: `${entityId}:final`,
-          contentSlot: "final",
-          contentType: "final-descriptor",
-        };
-        const record = buildNextLiveRecord(this.options.random, content.doc, identity, "final", terminalContent);
-        const descriptor: FinalEntityDescriptor = {
+        const terminalRecords = buildTerminalRecords({
+          random: this.options.random,
+          digest: this.options.digest,
+          doc: content.doc,
           entityId,
           kind: semantic.kind,
-          contentRef: record.recordId,
-          digest: this.options.digest(terminalContent),
-          byteLength: terminalContent.byteLength,
+          metadata,
           completedAt: this.options.clock.now(),
-        };
-        const descriptorPayload = bytes(JSON.stringify(descriptor));
-        const descriptorRecord = buildLiveRecord(
-          this.options.random,
-          identity,
-          "final",
-          descriptorPayload,
-          record.partIndex + 1,
-        );
-        captureSlice(slices, content, () => records(content.doc, [record, descriptorRecord]));
+        });
+        captureSlice(slices, content, () => records(content.doc, terminalRecords));
         captureSlice(slices, runtime, () => target.removeEntity(entityId));
-        recordBytes = Math.max(terminalContent.byteLength, descriptorPayload.byteLength);
+        recordBytes = Math.max(...terminalRecords.map((record) => record.payload.byteLength));
       } else {
         const record = entityOf(semantic.kind, semantic.payload);
         captureSlice(slices, runtime, () => target.upsertEntity(record));
@@ -413,50 +438,25 @@ export class LiveWriterImpl implements LiveWriter {
     this.boundaryIndex.reset();
     this.boundarySeeded = false;
     this.merge = this.newMerge();
-    const pointer = await this.options.store.readScopePointer(this.scopeKey);
-    const generationId = pointer?.currentGeneration ?? null;
-    if (generationId === null) fail("GENERATION_MISMATCH", "scope has no current generation");
-    const generation = await this.options.store.readGeneration(this.scopeKey, generationId);
-    if (generation === null) fail("GENERATION_MISMATCH", "current generation record is missing");
-    if (["retired", "failed"].includes(generation.state)) fail("RESOURCE_RETIRED", generationId);
-    this.generation = generation.generation;
-    // 只有导入过历史的代次才需要跨块判重；空基线的入口闭包只是一个空活跃块。
-    this.historyContentDocIds = (generation.importEndOrdinal ?? 0) > 0 ? generation.entryRefs.contentDocIds : [];
-    const succession = {
-      store: this.options.store,
-      scope: this.options.scope,
+    const projection = await rebuildLiveProjection({
+      options: this.options,
+      scopeKey: this.scopeKey,
       lease: this.requireLease(),
       sealing: this.sealing,
-      admission: this.options.admission,
-    };
-    const runtimeDocId = await recoverLiveSuccessors({
-      ...succession,
-      startDocId: generation.entryRefs.runtimeDocId,
-      onSuccessor: (previousId, nextId) =>
-        restoreRuntimeSuccessor({
-          options: this.options,
-          previousId,
-          nextId,
-          renew: () => this.renewLease(),
-          stop: (code, message, cause) => this.stop(code, message, cause),
-        }),
-    });
-    await this.loadCursor(runtimeDocId, RUNTIME_KIND);
-    await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
-    const closureTail = generation.entryRefs.contentDocIds.at(-1);
-    if (closureTail === undefined) fail("DOC_NOT_FOUND", "generation has no content block entry");
-    // 非空历史块均已封口，恢复后必须使用可写尾块；空基线自身已有 active 块。
-    const contentDocId = await ensureWritableContentDoc({
-      ...succession,
       directory: this.directory,
-      scopeKey: this.scopeKey,
-      generation: generation.generation,
-      importEndOrdinal: generation.importEndOrdinal ?? 0,
-      closureTailDocId: closureTail,
-      lease: this.requireLease(),
-      digest: this.options.digest,
+      renew: () => this.renewLease(),
+      stop: (code, message, cause) => this.stop(code, message, cause),
     });
-    await this.loadCursor(contentDocId, CONTENT_KIND);
+    if (this.closed) {
+      for (const cursor of projection.cursors.values()) cursor.doc.destroy();
+      this.assertLive(false);
+    }
+    this.generation = projection.generation;
+    this.historyContentDocIds = projection.historyContentDocIds;
+    for (const [kind, cursor] of projection.cursors) {
+      this.cursors.get(kind)?.doc.destroy();
+      this.cursors.set(kind, cursor);
+    }
     this.rotation.reset();
   }
   private async loadCursor(docId: string, kind: DocKind): Promise<void> {

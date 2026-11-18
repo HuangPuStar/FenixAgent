@@ -10,7 +10,7 @@ const narrowCapacity = {
   inputs: { ...DEFAULT_SYNC_CAPACITY.inputs, activeHardEncodedBytes: 2000 },
 };
 
-/** 稳定来源身份让重试仅补回被拒的文本，保留已提交对象。 */
+/** 被拒的原子文本冲刷可完整重试，先前已提交对象保持不变。 */
 function bufferedText() {
   return {
     kind: "text-delta" as const,
@@ -102,18 +102,22 @@ test("目录交接期间租约过期保持停写", async () => {
   }
 });
 
-// 屏障先冲刷文本，自动轮换的未提交过期不能被外围冲刷 catch 重新标成永久停写。
-test("屏障冲刷触发自动轮换后正常过期仍可接管并重试文本", async () => {
+// 屏障先冲刷文本，整批提交前过期不得留下文本或后继，也不能被外围 catch 永久停写。
+test("屏障文本批次提交前过期仍可接管并完整重试", async () => {
   const f = await writerFailureFixture({ capacity: narrowCapacity });
   try {
     await fillContent(f);
     await f.writer.accept(bufferedText());
-    f.faults.beforeRoute = () => {
+    f.faults.beforeTextBatch = (input) => {
+      expect(input.seals).toHaveLength(1);
       f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
       return;
     };
     await expect(f.writer.seal()).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
     expect(await f.store.readSuccessor(scopeKey(f.scope), f.contentId)).toMatchObject({ state: "active", route: null });
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+      JSON.stringify({ value: "x".repeat(1000) }),
+    ]);
     await f.writer.acquire();
     await f.writer.accept(object("after"));
     await f.writer.accept(bufferedText());
@@ -129,30 +133,32 @@ test("屏障冲刷触发自动轮换后正常过期仍可接管并重试文本",
 });
 
 // 定时器没有同步调用方接住异常，下一次写入仍须暴露原错，而重新竞争写权允许恢复。
-test("后台冲刷的路由前过期保留原错且允许重新接管", async () => {
+test("后台文本批次提交前过期保留原错且允许重新接管", async () => {
   const f = await writerFailureFixture({ capacity: narrowCapacity, maxDelayMs: 1 });
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
     await fillContent(f);
     let entered: () => void = () => {};
-    const routeEntered = new Promise<void>((resolve, reject) => {
-      deadline = setTimeout(() => reject(new Error("background flush did not reach route registration")), 1000);
+    const batchEntered = new Promise<void>((resolve, reject) => {
+      deadline = setTimeout(() => reject(new Error("background flush did not reach atomic text commit")), 1000);
       entered = () => {
         clearTimeout(deadline);
         resolve();
       };
     });
-    f.faults.beforeRoute = () => {
+    f.faults.beforeTextBatch = (input) => {
+      expect(input.seals).toHaveLength(1);
       f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
       entered();
       return;
     };
     await f.writer.accept(bufferedText());
-    await routeEntered;
+    await batchEntered;
     const pending = f.writer.seal();
     await expect(pending).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
     const failure: unknown = await pending.catch((error: unknown) => error);
     await expect(f.writer.accept(object("observe"))).rejects.toBe(failure);
+    expect(await f.store.readSuccessor(scopeKey(f.scope), f.contentId)).toMatchObject({ state: "active", route: null });
     await f.writer.acquire();
     await f.writer.accept(object("after"));
     expect(await f.readAll()).toHaveLength(2);
@@ -168,7 +174,7 @@ test("冲刷过期后接管被占用仍保留原错直到成功重建", async ()
   try {
     await fillContent(f);
     await f.writer.accept(bufferedText());
-    f.faults.beforeRoute = () => {
+    f.faults.beforeTextBatch = () => {
       f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
       return;
     };
@@ -190,30 +196,49 @@ test("冲刷过期后接管被占用仍保留原错直到成功重建", async ()
   }
 });
 
-for (const phase of ["route", "directory", "unknown"] as const) {
-  // 自动轮换的提交或不确定事实不能被可恢复过期例外放行，外围 catch 同样必须保持停写。
-  test(`缓冲自动轮换在 ${phase} 阶段失去写权后禁止重新接管`, async () => {
+for (const { phase, committed, failProbe } of [
+  { phase: "未提交回执未知后失权", committed: false, failProbe: false },
+  { phase: "未提交且探测失败", committed: false, failProbe: true },
+  { phase: "已提交但探测失败", committed: true, failProbe: true },
+]) {
+  // 原子批次只能整批存在或不存在；结果未收敛时禁止接管，不能凭相同过期码假定没有副作用。
+  test(`文本整批${phase}时保持未知结果停写`, async () => {
     const f = await writerFailureFixture({ capacity: narrowCapacity });
     try {
       await fillContent(f);
       await f.writer.accept(bufferedText());
       const expire = () => f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
-      if (phase === "route") f.faults.afterRoute = expire;
-      else if (phase === "directory") f.faults.beforeDirectoryAppend = expire;
-      else
-        f.faults.beforeRoute = () => {
+      f.faults.beforeTextBatch = (input) => {
+        expect(input.seals).toHaveLength(1);
+        if (!committed) {
+          f.faults.failTextBatchProbe = failProbe;
           expire();
-          return { outcome: "unknown" };
+          return { outcome: "unknown", frontiers: [] };
+        }
+        return;
+      };
+      if (committed)
+        f.faults.afterTextBatch = () => {
+          f.faults.failTextBatchProbe = failProbe;
+          expire();
+          return { outcome: "unknown", frontiers: [] };
         };
       const pending = f.writer.seal();
-      await expect(pending).rejects.toMatchObject({
-        code: phase === "unknown" ? "COMMIT_OUTCOME_UNKNOWN" : "LEASE_EXPIRED",
-      });
+      await expect(pending).rejects.toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
       const failure: unknown = await pending.catch((error: unknown) => error);
+      if (failProbe) expect(failure).toHaveProperty("cause", f.textProbeError);
+      f.faults.failTextBatchProbe = false;
       await expect(f.writer.acquire()).rejects.toBe(failure);
       await expect(f.writer.accept(object("blocked"))).rejects.toBe(failure);
-      expect(await f.readAll()).toHaveLength(1);
+      const state = await f.store.readSuccessor(scopeKey(f.scope), f.contentId);
+      if (committed) expect(state).toMatchObject({ state: "sealed" });
+      else expect(state).toMatchObject({ state: "active", route: null });
+      expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+        JSON.stringify({ value: "x".repeat(1000) }),
+        ...(committed ? ["y".repeat(1000)] : []),
+      ]);
     } finally {
+      f.faults.failTextBatchProbe = false;
       await f.close();
     }
   });

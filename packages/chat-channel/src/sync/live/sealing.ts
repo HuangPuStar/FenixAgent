@@ -238,29 +238,27 @@ class SealingMachineImpl implements SealingMachine {
   private async runSteps(attempt: SealAttempt): Promise<SealResult> {
     const committed = await this.store.readSuccessor(attempt.scopeKey, attempt.docId);
     attempt.routeProgress.observe(committed);
-    if (committed?.state === "sealed" && committed.route) {
+    if (committed?.route) {
       const anotherSuccessor = committed.route.successorDocId !== attempt.successorDocId;
       if (anotherSuccessor || committed.route.expectedLastSeq !== attempt.finalUpdateSeq) {
         attempt.invalidPinnedRequest = true;
-        fail(
-          anotherSuccessor ? "DIGEST_CONFLICT" : "SEQUENCE_GAP",
-          "sealed predecessor differs from its pinned route",
-          {
-            docId: attempt.docId,
-          },
-        );
+        fail(anotherSuccessor ? "DIGEST_CONFLICT" : "SEQUENCE_GAP", "predecessor differs from its pinned route", {
+          docId: attempt.docId,
+        });
       }
       const base = await this.store.readDocStateAt(attempt.successorDocId, BASE_SEQ);
-      if (!base) fail("DOC_NOT_FOUND", "sealed route successor has no initial base", { docId: attempt.successorDocId });
+      if (!base && committed.state === "sealed")
+        fail("DOC_NOT_FOUND", "sealed route successor has no initial base", { docId: attempt.successorDocId });
       if (
-        base.snapshot.byteLength !== attempt.successorInitialState.byteLength ||
-        base.snapshot.some((byte, index) => byte !== attempt.successorInitialState[index])
+        base &&
+        (base.snapshot.byteLength !== attempt.successorInitialState.byteLength ||
+          base.snapshot.some((byte, index) => byte !== attempt.successorInitialState[index]))
       ) {
         attempt.invalidPinnedRequest = true;
         fail("DIGEST_CONFLICT", "sealed route successor initial base differs", { docId: attempt.successorDocId });
       }
       // 后继可能已再次封口；已完成的谱系不重登记其初始字节，租约仍由 sealDoc 复核。
-      attempt.routeCommitted = true;
+      attempt.routeCommitted = committed.state === "sealed";
     }
     const lineage = await this.readLineage(attempt);
     await this.registerRoute(attempt);

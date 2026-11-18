@@ -284,7 +284,14 @@ test("排队冲刷过期在 SCOPE_BUSY 和重建期间保持原错", async () =>
       return readPointer(key);
     };
     const acquired = f.writer.acquire();
-    await withinDeadline(rebuilding.entered);
+    await withinDeadline(
+      Promise.race([
+        rebuilding.entered,
+        acquired.then(() => {
+          throw new Error("acquisition completed before rebuild gate");
+        }),
+      ]),
+    );
     await expect(f.writer.accept(object("rebuilding"))).rejects.toBe(failure);
     rebuilding.release();
     await acquired;
@@ -299,15 +306,14 @@ test("排队冲刷过期在 SCOPE_BUSY 和重建期间保持原错", async () =>
   }
 });
 
-// 冲刷回执晚于游标恢复失败，不能用原始拒绝值覆盖已形成的停写诊断；调用方仍收到原始拒绝。
-test("冲刷延迟拒绝保留已有停写错误及恢复诊断", async () => {
+// 对象追加回执晚于游标恢复失败，不能用原始拒绝值覆盖已形成的停写诊断。
+test("对象追加拒绝保留已有停写错误及恢复诊断", async () => {
   const f = await writerFailureFixture();
   const appendError = { reason: "append unavailable" };
   const reloadError = new Error("cursor reload unavailable");
   try {
     f.store.appendUpdates = () => Promise.reject(appendError);
     f.store.readDocStateAt = () => Promise.reject(reloadError);
-    await f.writer.accept(text("queued"));
     expect(await rejection(f.writer.accept(object("barrier")))).toBe(appendError);
     const failure = await rejection(f.writer.accept(object("observe")));
     expect(failure).toBeInstanceOf(AggregateError);
@@ -353,3 +359,21 @@ for (const phase of ["route", "directory", "unknown"] as const) {
     }
   });
 }
+
+// 文本使用离线游标，明确事务拒绝不触发无意义重载，正文全无并保留首错供后续输入观测。
+test("文本整批拒绝不发布正文且保留原始停写错误", async () => {
+  const f = await writerFailureFixture();
+  const failure = { reason: "text batch unavailable" };
+  try {
+    f.faults.beforeTextBatch = () => {
+      throw failure;
+    };
+    await f.writer.accept(text("queued"));
+    expect(await rejection(f.writer.accept(object("barrier")))).toBe(failure);
+    expect(await f.readAll()).toEqual([]);
+    await expect(f.writer.acquire()).rejects.toBe(failure);
+    await expect(f.writer.accept(object("observe"))).rejects.toBe(failure);
+  } finally {
+    await f.close();
+  }
+});

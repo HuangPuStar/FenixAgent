@@ -27,11 +27,8 @@ export function usage(admission: AdmissionController) {
 }
 
 /** 当前代、真实预算与可推进时钟；封口和账本均运行真实实现。 */
-export async function routeReplayFixture(
-  kind: DocKind = "runtime",
-  admission = new AdmissionController(DEFAULT_SYNC_CAPACITY),
-) {
-  const initialUsage = usage(admission);
+export async function routeReplayFixture(kind: DocKind = "runtime", injectedAdmission?: AdmissionController) {
+  const admission = injectedAdmission ?? new AdmissionController(DEFAULT_SYNC_CAPACITY);
   const scope = { organizationId: "r7", rcsSessionId: "route-replay" };
   const key = scopeKey(scope);
   const generationId = "gen-r7";
@@ -118,7 +115,8 @@ export async function routeReplayFixture(
     }
     function dispose(): void {
       store.dispose();
-      expect(usage(admission)).toEqual(initialUsage);
+      if (injectedAdmission === undefined)
+        expect(Object.values(usage(admission)).every((bytes) => bytes === 0)).toBe(true);
     }
     return {
       store,

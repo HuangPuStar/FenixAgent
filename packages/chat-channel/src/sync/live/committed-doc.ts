@@ -1,7 +1,14 @@
 import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import type { DocKind } from "../protocol/identity";
-import type { AppendUpdatesResult, CommitOutcome, DocFrontier, ProjectionStore, WriterLease } from "../store/types";
+import type {
+  AppendUpdatesInput,
+  AppendUpdatesResult,
+  CommitOutcome,
+  DocFrontier,
+  ProjectionStore,
+  WriterLease,
+} from "../store/types";
 import type { Batch, Cursor, Probe } from "./live-writer-internal";
 import { LIVE_COMMIT_MAX_ATTEMPTS } from "./live-writer-types";
 import { applyFrontiers, expectedFrontiers } from "./writer-support";
@@ -66,6 +73,7 @@ export async function appendCommittedBatch(input: {
   readonly batch: Batch;
   readonly cursors: ReadonlyMap<string, Cursor>;
   readonly renew: () => Promise<WriterLease>;
+  readonly append?: (input: AppendUpdatesInput) => Promise<AppendUpdatesResult>;
   readonly stop: (code: SyncErrorCode, message: string, cause?: unknown) => SyncProtocolError;
 }): Promise<CommitOutcome> {
   const { batch, cursors } = input;
@@ -74,7 +82,7 @@ export async function appendCommittedBatch(input: {
     let result: AppendUpdatesResult;
     try {
       const lease = await input.renew();
-      result = await input.store.appendUpdates({
+      result = await (input.append ?? input.store.appendUpdates.bind(input.store))({
         scopeKey: input.scopeKey,
         epoch: lease.epoch,
         owner: lease.owner,

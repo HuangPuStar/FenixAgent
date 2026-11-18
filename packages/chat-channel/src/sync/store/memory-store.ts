@@ -8,6 +8,7 @@ import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { commitAccountedSets, type MemoryBudget } from "./memory-accounting";
+import { commitMemoryContentBatch } from "./memory-live-content-batch";
 import { prepareActiveDocument, sameSuccessorBase } from "./memory-store-documents";
 import {
   type CommitRecord,
@@ -27,6 +28,7 @@ export type { CommittedStateSnapshot } from "./memory-store-state";
 import type {
   AppendUpdatesInput,
   AppendUpdatesResult,
+  CommitContentBatchInput,
   CommitGenerationInput,
   CommitGenerationResult,
   CreateDocInput,
@@ -70,7 +72,6 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   private assertSnapshotSize(snapshot: Uint8Array): void {
     if (snapshot.byteLength > MAX_DOC_SNAPSHOT_BYTES) fail("CAPACITY_EXCEEDED", "snapshot exceeds transport budget");
   }
-
   async acquireWriter(scopeKey: string, owner: string, ttlMs: number): Promise<WriterLease> {
     this.assertTtl(ttlMs);
     const now = this.clock.now();
@@ -91,7 +92,6 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     this.scopes.set(scopeKey, row);
     return this.lease(row);
   }
-
   async renewWriter(lease: WriterLease, ttlMs: number): Promise<WriterLease> {
     this.assertTtl(ttlMs);
     const row = this.scopes.get(lease.scopeKey);
@@ -112,7 +112,6 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     row.writerOwner = null;
     row.leaseExpiresAt = 0;
   }
-
   /** 在同一同步临界区确认写者仍拥有当前代，供无写入操作建立确认边界。 */
   async confirmWriter(lease: WriterLease, generation: string): Promise<void> {
     const scope = this.requireLease(lease.scopeKey, lease.epoch, lease.owner);
@@ -279,7 +278,14 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     for (const { doc, lastSeq } of pending) doc.lastSeq = lastSeq;
     return { outcome: "committed", frontiers };
   }
-
+  /** 正文与必要的封口、后继和目录共用一个提交点。 */
+  async commitContentBatch(input: CommitContentBatchInput): Promise<AppendUpdatesResult> {
+    return commitMemoryContentBatch(input, this.contentBatchState(), {
+      clock: this.clock,
+      digest: this.digest,
+      capacity: this.capacity,
+    });
+  }
   async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
     this.requireLease(input.scopeKey, input.epoch);
     const doc = input.doc;

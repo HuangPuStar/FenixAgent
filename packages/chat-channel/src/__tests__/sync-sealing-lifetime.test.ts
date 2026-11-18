@@ -273,3 +273,70 @@ for (const committed of [false, true]) {
     }
   });
 }
+
+for (const mismatch of ["successor", "cutoff"] as const) {
+  // 固定路由尚未封口时，畸形重放不能毒化协议机，之后仍能完成同一固定路由。
+  test(`sealing 路由拒绝错误 ${mismatch} 后仍能完成原计划`, async () => {
+    const f = await fixture();
+    try {
+      await f.store.createDoc({
+        scopeKey: f.key,
+        epoch: f.lease.epoch,
+        doc: { ...f.store.exportCommittedState().docs.find((doc) => doc.docId === f.a)!, docId: f.b },
+      });
+      await f.store.registerSuccessor({
+        scopeKey: f.key,
+        epoch: f.lease.epoch,
+        predecessorDocId: f.a,
+        successorDocId: f.b,
+        expectedLastSeq: 1,
+      });
+      const machine = f.machine();
+      const invalid = mismatch === "successor" ? f.request(f.a, f.c) : { ...f.request(), finalUpdateSeq: 0 };
+      const before = f.store.exportCommittedState();
+      await expect(machine.seal(invalid)).rejects.toMatchObject({
+        code: mismatch === "successor" ? "DIGEST_CONFLICT" : "SEQUENCE_GAP",
+      });
+      expect(machine.phase).toBe("active");
+      expect(f.store.exportCommittedState()).toEqual(before);
+      expect(await machine.seal(f.request())).toMatchObject({ docId: f.a, finalUpdateSeq: 1 });
+    } finally {
+      f.store.dispose();
+    }
+  });
+}
+
+for (const fresh of [false, true]) {
+  // 同长度不同内容必须逐字节校验，不能只比较编码长度或污染可继续重放的阶段。
+  test(`等长后继基线的不同字节被拒绝，fresh=${fresh}`, async () => {
+    const f = await fixture();
+    const snapshots = ["a", "b"].map((text) => {
+      const doc = new Y.Doc();
+      try {
+        doc.clientID = 123;
+        doc.getText("body").insert(0, text);
+        return Y.encodeStateAsUpdate(doc);
+      } finally {
+        doc.destroy();
+      }
+    });
+    try {
+      const [firstBase, otherBase] = snapshots;
+      expect(firstBase.byteLength).toBe(otherBase.byteLength);
+      expect(firstBase).not.toEqual(otherBase);
+      const machine = f.machine();
+      const original = { ...f.request(), successorInitialState: firstBase };
+      const result = await machine.seal(original);
+      const replay = fresh ? f.machine() : machine;
+      const before = f.store.exportCommittedState();
+      await expect(replay.seal({ ...original, successorInitialState: otherBase })).rejects.toMatchObject({
+        code: "DIGEST_CONFLICT",
+      });
+      expect(replay.phase).toBe(fresh ? "active" : "sealed");
+      expect(f.store.exportCommittedState()).toEqual(before);
+      expect(await replay.seal(original)).toEqual(result);
+    } finally {
+      f.store.dispose();
+    }
+  });
+}

@@ -38,3 +38,18 @@ test("路由重放夹具关闭后保留调用者的既有预留", async () => {
   }
   expect(Object.values(usage(admission)).every((bytes) => bytes === 0)).toBe(true);
 });
+
+// 调用者可提前归还外部额度，夹具不得把 setup 时的池用量当作自己的清理基线。
+test("共享控制器外部预留提前释放后夹具仍能正常关闭", async () => {
+  const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+  const outside = admission.reserve("controlIndex", 37);
+  const f = await routeReplayFixture("runtime", admission);
+  try {
+    outside.release();
+    f.dispose();
+    expect(Object.values(usage(admission)).every((bytes) => bytes === 0)).toBe(true);
+  } finally {
+    outside.release();
+    f.store.dispose();
+  }
+});

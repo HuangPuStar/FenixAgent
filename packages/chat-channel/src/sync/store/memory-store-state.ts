@@ -7,6 +7,7 @@ import {
   indexBytes,
   type MemoryBudget,
 } from "./memory-accounting";
+import type { MemoryContentBatchState } from "./memory-live-content-batch";
 import type {
   CommitGenerationInput,
   DirectoryPage,
@@ -135,6 +136,19 @@ export class MemoryStoreState {
     this.batches = new AccountedMap<string, BatchRecord>(budget, metadata);
     this.successors = new AccountedMap<string, SuccessorRoute>(budget, metadata);
     this.commits = new AccountedMap<string, CommitRecord>(budget, metadata);
+  }
+
+  /** 正文专用原子提交复用现有行集合和额度原语。 */
+  protected contentBatchState(): MemoryContentBatchState {
+    return {
+      scopes: this.scopes,
+      generations: this.generations,
+      docs: this.docs,
+      updates: this.updates,
+      refs: this.refs,
+      batches: this.batches,
+      successors: this.successors,
+    };
   }
 
   /** 文档与更新账本必须同时取得额度，拒绝时不留下可被误判为已登记的文档。 */

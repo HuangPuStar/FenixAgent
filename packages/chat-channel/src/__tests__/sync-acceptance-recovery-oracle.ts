@@ -1,16 +1,6 @@
-// packages/chat-channel/src/__tests__/sync-acceptance-recovery-oracle.ts
-// B 交付（T13–T24 故障与边界验收）的**独立夹具与 oracle**：不复用被测的分片/拼接/投影函数，
-// 也不与 A 的 `sync-acceptance-*` 文件共享任何实现（设计 §15.1 要求 oracle 独立生成）。
-//
-// 独立性做法：
-// 1. 线上帧是 JSON 文本：本文件只用 `JSON.parse` 读帧字段，不调用 `decodeSyncFrame`；
-// 2. base64 解码、记录提取、按 entryId/contentSlot 拼接、文本→字节全部由本文件自行实现；
-// 3. 内容重建只用 Yjs 原语（`Y.applyUpdate`）按**到达顺序**重放真实帧字节，再读 `root.records`。
-//
-// 夹具侧（进程内传输端口 + 真实 runtime + 真实 client transport）：
-// - 服务端 `SyncFrameTransport.send` 同步投递给客户端 `onFrame`，`close` 只记录理由；
-// - 客户端 `options.send` 进入 outbox，由 `flushClientFrames()` 显式交给 `runtime.onInboundBytes`；
-// - 时间一律来自注入的 `RecoveryClock`（真实定时器只用于 merge buffer 的兜底回调）。
+// T13–T24 的独立 oracle 与进程内端到端夹具。
+// 帧解析、记录提取和字节拼接不复用生产投影函数；重建只使用 Yjs 原语。
+// 真实 runtime/client 经进程内端口传递帧，期限由 RecoveryClock 显式推进。
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,7 +10,7 @@ import type { SyncCapacityProfile } from "../sync/capacity/profile";
 import { createSyncClientTransport, type SyncClientTransport } from "../sync/client/transport";
 import { type Clock, deterministicRandomSource, type RandomSource, sha256Digest } from "../sync/clock";
 import type { SyncFrame } from "../sync/protocol/frames";
-import { buildDocId, createGenerationId, type SyncScope, scopeKey } from "../sync/protocol/identity";
+import { createGenerationId, type SyncScope, scopeKey } from "../sync/protocol/identity";
 import {
   resolveSyncRuntimeConfig,
   type SyncRuntimeConfig,
@@ -29,7 +19,22 @@ import {
 import type { SyncFrameTransport } from "../sync/runtime/egress";
 import { createSyncScopeRuntime, type SyncScopeRuntime } from "../sync/runtime/scope-runtime";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
-import type { GenerationEntryRefs, SyncDocRecord, WriterLease } from "../sync/store/types";
+
+import {
+  extraContentDocIdsFor,
+  type SeededDocIds,
+  seedCommittedGeneration,
+  seededDocIdsFor,
+} from "./sync-acceptance-recovery-generation";
+
+export {
+  emptyDocBytes,
+  extraContentDocIdsFor,
+  type SeededDocIds,
+  type SeededGeneration,
+  seedCommittedGeneration,
+  seededDocIdsFor,
+} from "./sync-acceptance-recovery-generation";
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
@@ -258,143 +263,6 @@ export function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
     if (left[index] !== right[index]) return false;
   }
   return true;
-}
-
-/** 空 Y.Doc 的 canonical 字节：夹具用它登记「尚无内容」的入口 Doc。 */
-export function emptyDocBytes(): Uint8Array {
-  return Y.encodeStateAsUpdate(new Y.Doc());
-}
-
-export interface SeededDocIds {
-  readonly control: string;
-  readonly runtime: string;
-  readonly directory: string;
-  readonly content: string;
-}
-
-export interface SeededGeneration {
-  readonly generation: string;
-  readonly docIds: SeededDocIds;
-  readonly entryRefs: GenerationEntryRefs;
-  readonly lease: WriterLease;
-}
-
-/**
- * 登记一个已提交代次（夹具扮演宿主接线层：代次入口四类 Doc 由宿主登记首块）。
- *
- * 这是 live-writer 头部偏差④明示的宿主职责（「接线层登记首块」），不是对被测代码的改写：
- * 全部走真实 `ProjectionStore` 原语，字节与摘要由本 fixture 自行生成。
- */
-/** 代次入口四类 Doc 的确定性 id（只依赖代次字符串，重连夹具可据此复原同一集合）。 */
-export function seededDocIdsFor(generation: string): SeededDocIds {
-  return {
-    control: buildDocId({ kind: "control", generation, blockIndex: 0, nonce: "control" }),
-    runtime: buildDocId({ kind: "runtime", generation, blockIndex: 0, nonce: "runtime" }),
-    directory: buildDocId({ kind: "directory", generation, blockIndex: 0, nonce: "directory" }),
-    content: buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "blk0" }),
-  };
-}
-
-/** 额外空内容块的确定性 id 列表（与 `seedExtraContentDocs` 的数量一一对应）。 */
-export function extraContentDocIdsFor(generation: string, count: number): readonly string[] {
-  return Array.from({ length: count }, (_value, index) =>
-    buildDocId({ kind: "content", generation, blockIndex: index + 1, nonce: `blk${index + 1}` }),
-  );
-}
-
-export async function seedCommittedGeneration(input: {
-  store: MemoryProjectionStore;
-  scopeKey: string;
-  generation: string;
-  owner: string;
-  leaseTtlMs: number;
-  extraContentDocIds?: readonly string[];
-  /** 登记一个**没有内容块**的代次（live-writer 偏差④：写入层按 DOC_NOT_FOUND 失败而非自建块）。 */
-  omitContentDoc?: boolean;
-  /** 换代场景：提交时的期望当前代次与指针修订（默认「首个代次 + 修订 0」）。 */
-  expectedCurrent?: string | null;
-  expectedPointerRevision?: number;
-  retired?: readonly string[];
-}): Promise<SeededGeneration> {
-  const { store, scopeKey: key, generation } = input;
-  const lease = await store.acquireWriter(key, input.owner, input.leaseTtlMs);
-  const docIds = seededDocIdsFor(generation);
-  const omitted = input.omitContentDoc === true;
-  const contentClosure = omitted ? [] : [docIds.content, ...(input.extraContentDocIds ?? [])];
-  await store.createGeneration({
-    scopeKey: key,
-    epoch: lease.epoch,
-    generation: {
-      scopeKey: key,
-      generation,
-      acpSessionId: "ses_acceptance_recovery",
-      loadId: `load_${generation}`,
-      state: "staging",
-      importEndOrdinal: null,
-      entryRefs: {
-        controlDocId: docIds.control,
-        directoryDocId: docIds.directory,
-        runtimeDocId: docIds.runtime,
-        contentDocIds: [],
-      },
-      createdAt: 0,
-    },
-  });
-  const empty = emptyDocBytes();
-  const hash = sha256Digest(empty);
-  const kinds: readonly { docId: string; kind: SyncDocRecord["kind"] }[] = [
-    { docId: docIds.control, kind: "control" },
-    { docId: docIds.runtime, kind: "runtime" },
-    { docId: docIds.directory, kind: "directory" },
-    ...(omitted ? [] : [{ docId: docIds.content, kind: "content" as const }]),
-    ...(omitted ? [] : (input.extraContentDocIds ?? []).map((docId) => ({ docId, kind: "content" as const }))),
-  ];
-  for (const entry of kinds) {
-    await store.createDoc({
-      scopeKey: key,
-      epoch: lease.epoch,
-      doc: {
-        scopeKey: key,
-        generation,
-        docId: entry.docId,
-        kind: entry.kind,
-        state: "active",
-        snapshot: empty,
-        hash,
-        baseSeq: 0,
-        finalSeq: null,
-        blockIndex: entry.kind === "content" ? 0 : null,
-        ordinalStart: null,
-        ordinalEnd: null,
-        dependsOn: [],
-      },
-    });
-  }
-  const entryRefs: GenerationEntryRefs = {
-    controlDocId: docIds.control,
-    directoryDocId: docIds.directory,
-    runtimeDocId: docIds.runtime,
-    contentDocIds: contentClosure,
-  };
-  await store.commitGeneration({
-    scopeKey: key,
-    epoch: lease.epoch,
-    expectedCurrent: input.expectedCurrent ?? null,
-    newGeneration: {
-      scopeKey: key,
-      generation,
-      acpSessionId: "ses_acceptance_recovery",
-      loadId: `load_${generation}`,
-      state: "staging",
-      importEndOrdinal: 0,
-      entryRefs,
-      createdAt: 0,
-    },
-    retired: [...(input.retired ?? [])],
-    entryClosure: entryRefs,
-    expectedPointerRevision: input.expectedPointerRevision ?? 0,
-  });
-  return { generation, docIds, entryRefs, lease };
 }
 
 export interface RecoveryHarnessOptions {

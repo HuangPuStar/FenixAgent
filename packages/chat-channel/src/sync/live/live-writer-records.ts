@@ -2,12 +2,12 @@
 // 实时写者的语义实体/终态描述符构造（从 live-writer.ts 拆出，纯函数）。
 
 import type * as Y from "yjs";
-import type { RandomSource } from "../clock";
+import type { DigestFn, RandomSource } from "../clock";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import type { Identity } from "./live-writer-internal";
 import type { BarrierKind, LiveRecordValue } from "./live-writer-types";
 import type { FinalEntityDescriptor, RuntimeEntityRecord } from "./runtime-doc";
-import { hex, records, requireObject, requireString } from "./writer-support";
+import { bytes, hex, records, requireObject, requireString } from "./writer-support";
 
 const ENTITY_KINDS: ReadonlySet<string> = new Set(["tool", "permission", "error", "cancel"]);
 
@@ -71,4 +71,35 @@ export function buildNextLiveRecord(
   payload: Uint8Array,
 ): LiveRecordValue {
   return buildLiveRecord(random, id, kind, payload, nextContentPartIndex(doc, id));
+}
+
+/** 构造终态内容与引用描述符，调用方须与运行态实体移除一同提交。 */
+export function buildTerminalRecords(input: {
+  readonly random: RandomSource;
+  readonly digest: DigestFn;
+  readonly doc: Y.Doc;
+  readonly entityId: string;
+  readonly kind: Exclude<BarrierKind, "final">;
+  readonly metadata: Record<string, unknown>;
+  readonly completedAt: number;
+}): readonly [LiveRecordValue, LiveRecordValue] {
+  const identity: Identity = {
+    entryId: `${input.entityId}:final`,
+    contentSlot: "final",
+    contentType: "final-descriptor",
+  };
+  const payload = bytes(JSON.stringify({ entityId: input.entityId, kind: input.kind, metadata: input.metadata }));
+  const record = buildNextLiveRecord(input.random, input.doc, identity, "final", payload);
+  const descriptor: FinalEntityDescriptor = {
+    entityId: input.entityId,
+    kind: input.kind,
+    contentRef: record.recordId,
+    digest: input.digest(payload),
+    byteLength: payload.byteLength,
+    completedAt: input.completedAt,
+  };
+  return [
+    record,
+    buildLiveRecord(input.random, identity, "final", bytes(JSON.stringify(descriptor)), record.partIndex + 1),
+  ];
 }

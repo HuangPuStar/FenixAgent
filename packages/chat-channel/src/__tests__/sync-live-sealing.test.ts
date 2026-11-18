@@ -316,15 +316,15 @@ describe("createSealingMachine", () => {
     expect(await fixture.store.registerSuccessor(routeInput(fixture))).toEqual({ outcome: "committed" });
   });
 
-  // 路由已被别的 successor 占用时封口失败；本次预分配、且不被任何路由引用的孤儿必须被回收。
-  test("路由冲突时回收未被引用的预分配孤儿", async () => {
+  // 固定路由的错误重放在预分配之前拒绝，协议机保持可用且不留下孤立后继。
+  test("路由冲突不创建孤立后继且保持协议机可用", async () => {
     const fixture = await setup(["one"]);
     const otherSuccessorDocId = docId("c");
     await fixture.store.registerSuccessor(routeInput(fixture, { successorDocId: otherSuccessorDocId }));
     const machine = machineFor(fixture.store);
 
-    await expectCode(machine.seal(sealRequest(fixture)), "DUPLICATE_OBJECT");
-    expect(machine.phase).toBe("failed");
+    await expectCode(machine.seal(sealRequest(fixture)), "DIGEST_CONFLICT");
+    expect(machine.phase).toBe("active");
     expect(await fixture.store.readDocStateAt(fixture.successorDocId, 0)).toBeNull();
     // 既有路由保持不变：冲突不得改写已经指向别的 successor 的入口。
     expect(await fixture.store.registerSuccessor(routeInput(fixture, { successorDocId: otherSuccessorDocId }))).toEqual(

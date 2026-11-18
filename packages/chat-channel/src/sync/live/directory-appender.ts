@@ -27,6 +27,8 @@ import { createBatchId, parseDocId } from "../protocol/identity";
 import type { GenerationEntryRefs, ProjectionStore, SyncDocRecord, WriterLease } from "../store/types";
 import { captureChange } from "./change-capture";
 import { loadCommittedDoc } from "./committed-doc";
+import { planTextDirectory } from "./text-batch-plan-directory";
+import type { TextDirectoryPlan } from "./text-batch-plan-types";
 
 export interface DirectoryAppenderOptions {
   readonly store: ProjectionStore;
@@ -52,6 +54,8 @@ export interface DirectoryAppender {
    * （封口后、追加 successor 前崩溃），调用方仍需自行确认可写性。
    */
   tailContentDocId(): string | null;
+  /** 离线追加整批内容块；提交成功后由计划安装目录缓存。 */
+  planContentDocs(docIds: readonly string[]): TextDirectoryPlan;
 }
 
 function fail(code: SyncErrorCode, message: string): never {
@@ -97,6 +101,33 @@ class DirectoryAppenderImpl implements DirectoryAppender {
   tailContentDocId(): string | null {
     if (this.pageDoc === null) return null;
     return readDirectoryPage(this.pageDoc).contentDocIds.at(-1) ?? null;
+  }
+
+  planContentDocs(docIds: readonly string[]): TextDirectoryPlan {
+    if (this.rootDoc === null || this.rootDocId === null) fail("DOC_NOT_FOUND", "directory appender is not loaded");
+    return planTextDirectory({
+      state: {
+        generation: this.requireGeneration(),
+        root: { docId: this.rootDocId, kind: "directory", doc: this.rootDoc, lastSeq: this.rootLastSeq },
+        page:
+          this.pageDoc === null || this.pageDocId === null
+            ? null
+            : { docId: this.pageDocId, kind: "directory", doc: this.pageDoc, lastSeq: this.pageLastSeq },
+      },
+      scopeKey: this.options.scopeKey,
+      digest: this.options.digest,
+      contentDocIds: docIds,
+      install: ({ root, page }) => {
+        this.rootDoc?.destroy();
+        this.pageDoc?.destroy();
+        this.rootDoc = root.doc;
+        this.rootDocId = root.docId;
+        this.rootLastSeq = root.lastSeq;
+        this.pageDoc = page?.doc ?? null;
+        this.pageDocId = page?.docId ?? null;
+        this.pageLastSeq = page?.lastSeq ?? 0;
+      },
+    });
   }
 
   async appendContentDoc(lease: WriterLease, docId: string): Promise<void> {

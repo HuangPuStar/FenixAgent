@@ -15,6 +15,10 @@
 // 与运行时解耦：本文件不 import `../channel`、`../state`、`../persist`，由接线阶段在调用方转换。
 
 import type { DocKind, DocState, GenerationState } from "../protocol/identity";
+import type { CommitContentBatchInput } from "./live-content-batch-types";
+
+export type { CommitContentBatchInput, ContentBatchSeal } from "./live-content-batch-types";
+
 import type {
   DirectoryPage,
   DirectoryQuery,
@@ -425,6 +429,8 @@ export interface ProjectionStore {
    * `fromSeq ≠ lastSeq + 1` 抛 `SEQUENCE_GAP`；无法确认是否落地时返回 `unknown`，不得猜 `committed`。
    */
   appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult>;
+  /** 同一文本冲刷的更新、新块、封口、路由和目录全组原子发布；失败不留下已提交前缀。 */
+  commitContentBatch(input: CommitContentBatchInput): Promise<AppendUpdatesResult>;
 
   /**
    * create-if-absent 写已封口文档：幂等键 `docId + hash`。已存在同键 → `already-committed` 并返回
