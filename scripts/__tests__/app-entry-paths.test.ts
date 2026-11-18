@@ -258,7 +258,7 @@ test.each(["peri", "ccb", "opencode", "dsh"])("sandbox-%s 完整交付 runtime b
     await cp(source.replace("/tmp/acp-runtime/dist", bundleDir), deliveredDir, { recursive: true });
     const outputs = await readdir(bundleDir);
     expect(outputs.some((name) => name.endsWith(".c"))).toBe(true);
-    expect(await readdir(deliveredDir)).toEqual(outputs);
+    expect((await readdir(deliveredDir)).sort()).toEqual(outputs.sort());
 
     const cmd = instructions.find((instruction) => instruction.startsWith("CMD "));
     if (!cmd) throw new Error("Sandbox runtime CMD instruction not found");

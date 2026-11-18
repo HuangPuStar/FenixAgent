@@ -20,9 +20,9 @@ import { getKnowledgeConfig } from "./config";
  * 构造一份字段齐全的 Knowledge 模块配置。
  *
  * 缺省值对齐宿主部署默认（`RAGFLOW_API_URL` 默认 `http://localhost:9380`、`RAGFLOW_API_KEY` 默认空 =
- * 未配置 RAGFlow、`RAGFLOW_REQUEST_TIMEOUT_MS` 默认 30s、`GOTENBERG_URL` 默认 `http://127.0.0.1:3200`），
- * 因此「宿主默认装配」可以直接用缺省调用；需要走真实 provider 的用例显式传 key，而不是依赖一个只对
- * 测试成立的默认值。
+ * 未配置 RAGFlow、`RAGFLOW_REQUEST_TIMEOUT_MS` 默认 30s、`GOTENBERG_URL` 默认
+ * `http://127.0.0.1:3200`、`KNOWLEDGE_RUNTIME_AUTH_MODE` 默认 `owner`），因此「宿主默认装配」可以
+ * 直接用缺省调用；需要走真实 provider 的用例显式传 key，而不是依赖一个只对测试成立的默认值。
  */
 export function createKnowledgeModuleConfig(overrides: Partial<KnowledgeModuleConfig> = {}): KnowledgeModuleConfig {
   return {
@@ -30,6 +30,7 @@ export function createKnowledgeModuleConfig(overrides: Partial<KnowledgeModuleCo
     ragflowApiKey: "",
     ragflowRequestTimeoutMs: 30_000,
     gotenbergUrl: "http://127.0.0.1:3200",
+    runtimeAuthMode: "owner",
     ...overrides,
   };
 }
