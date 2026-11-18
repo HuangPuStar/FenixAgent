@@ -1,10 +1,10 @@
 import * as Y from "yjs";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
-import { buildDocId, createBatchId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
-import type { CommitOutcome, DocFrontier, WriterLease } from "../store/types";
+import { buildDocId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
+import type { CommitOutcome, WriterLease } from "../store/types";
 import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
-import { captureChange } from "./change-capture";
-import { loadCommittedDoc } from "./committed-doc";
+import { captureSlice } from "./change-capture";
+import { loadCommittedDoc, openLiveCursor, probeCommittedBatch } from "./committed-doc";
 import { ensureWritableContentDoc } from "./content-tail";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
 import { writeLiveContentObject } from "./live-content-object";
@@ -17,7 +17,6 @@ import {
   malformed,
   NOOP,
   overflowOfSlices,
-  type Probe,
   RUNTIME_KIND,
   type Slice,
 } from "./live-writer-internal";
@@ -38,8 +37,8 @@ import { createSealingMachine, type SealingMachine, type SealResult } from "./se
 import { createTextClaim, type TextClaim } from "./text-claim";
 import {
   applyFrontiers,
+  buildPendingBatch,
   bytes,
-  concatParts,
   expectedFrontiers,
   hex,
   records,
@@ -210,7 +209,7 @@ export class LiveWriterImpl implements LiveWriter {
       const record = build(cursor);
       const slices: Slice[] = [];
       const hadRecords = (records(cursor.doc)?.length ?? 0) > 0;
-      this.capture(slices, cursor, () => records(cursor.doc, [record]));
+      captureSlice(slices, cursor, () => records(cursor.doc, [record]));
       const overflow = this.overflowOf(slices, record.payload.byteLength);
       if (overflow === null) {
         await this.persist(slices);
@@ -258,7 +257,7 @@ export class LiveWriterImpl implements LiveWriter {
         const boundaryBytes = boundaryPayload(entityId, ordinal);
         const identity: Identity = { entryId, contentSlot: "boundary", contentType: "tool-boundary" };
         const record = buildLiveRecord(this.options.random, identity, "tool_boundary", boundaryBytes, ordinal);
-        this.capture(slices, content, () => records(content.doc, [record]));
+        captureSlice(slices, content, () => records(content.doc, [record]));
         recordBytes = Math.max(recordBytes, boundaryBytes.byteLength);
       }
     }
@@ -268,8 +267,8 @@ export class LiveWriterImpl implements LiveWriter {
       const descriptor = bytes(JSON.stringify(descriptorOf(semantic.payload, entityId)));
       const content = this.cursor(CONTENT_KIND);
       const record = buildNextLiveRecord(this.options.random, content.doc, identity, "final", descriptor);
-      this.capture(slices, content, () => records(content.doc, [record]));
-      this.capture(slices, runtime, () => target.removeEntity(entityId));
+      captureSlice(slices, content, () => records(content.doc, [record]));
+      captureSlice(slices, runtime, () => target.removeEntity(entityId));
       recordBytes = Math.max(recordBytes, descriptor.byteLength);
     } else {
       if (terminalEntity) {
@@ -300,12 +299,12 @@ export class LiveWriterImpl implements LiveWriter {
           descriptorPayload,
           record.partIndex + 1,
         );
-        this.capture(slices, content, () => records(content.doc, [record, descriptorRecord]));
-        this.capture(slices, runtime, () => target.removeEntity(entityId));
+        captureSlice(slices, content, () => records(content.doc, [record, descriptorRecord]));
+        captureSlice(slices, runtime, () => target.removeEntity(entityId));
         recordBytes = Math.max(terminalContent.byteLength, descriptorPayload.byteLength);
       } else {
         const record = entityOf(semantic.kind, semantic.payload);
-        this.capture(slices, runtime, () => target.upsertEntity(record));
+        captureSlice(slices, runtime, () => target.upsertEntity(record));
       }
     }
     const overflow = this.overflowOf(slices, recordBytes);
@@ -314,60 +313,80 @@ export class LiveWriterImpl implements LiveWriter {
     this.rotation.onTransaction(slices.reduce((sum, slice) => sum + slice.bytes.byteLength, 0));
   }
   private async sealActive(kind: DocKind): Promise<SealResult> {
-    const current = this.cursor(kind);
-    const blockIndex = parseDocId(current.docId).blockIndex + (kind === CONTENT_KIND ? 1 : 0);
-    const nonce = hex(this.options.random, 8);
-    const successorDocId = buildDocId({ kind, generation: this.requireGeneration(), blockIndex, nonce });
-    const successorInitialState = Y.encodeStateAsUpdate(new Y.Doc());
-    const result = await this.sealing.seal({
-      scope: this.options.scope,
-      oldDocId: current.docId,
-      lease: this.requireLease(),
-      finalUpdateSeq: current.lastSeq,
-      successorDocId,
-      successorInitialState,
-    });
-    this.cursors.set(kind, this.openCursor(successorDocId, kind, successorInitialState));
-    // 内容轮换后新块必须立刻出现在目录里，否则客户端永远发现不了轮换后的 live 内容。
-    if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
-    return result;
+    try {
+      const current = this.cursor(kind);
+      const blockIndex = parseDocId(current.docId).blockIndex + (kind === CONTENT_KIND ? 1 : 0);
+      const nonce = hex(this.options.random, 8);
+      const successorDocId = buildDocId({ kind, generation: this.requireGeneration(), blockIndex, nonce });
+      const successorInitialState = Y.encodeStateAsUpdate(new Y.Doc());
+      const result = await this.sealing.seal({
+        scope: this.options.scope,
+        oldDocId: current.docId,
+        lease: this.requireLease(),
+        finalUpdateSeq: current.lastSeq,
+        successorDocId,
+        successorInitialState,
+      });
+      this.cursors.set(kind, openLiveCursor(successorDocId, kind, successorInitialState));
+      // 内容轮换后新块必须立刻出现在目录里，否则客户端永远发现不了轮换后的 live 内容。
+      if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
+      return result;
+    } catch (error) {
+      // 轮换已可能发布一部分状态；不能把未完成目录交接的 successor 当作可写入口。
+      this.failure = error;
+      throw error;
+    }
   }
   /** 运行态轮换（设计 §6.3）：先取出未结束与交接未完成的实体，再封口使旧版不可写；`requiredBaseSeq` 是新块自身的基线序号。 */
   private async rotateRuntimeDoc(): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
-    const previous = this.cursor(RUNTIME_KIND);
-    const carried = createRuntimeDoc(RUNTIME_KIND, this.options.limits, previous.doc).exportForRotation();
-    await this.sealActive(RUNTIME_KIND);
-    const successor = this.cursor(RUNTIME_KIND);
-    if (carried.length > 0) {
-      const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, successor.doc);
-      const slices: Slice[] = [];
-      this.capture(slices, successor, () => {
-        for (const record of carried) target.upsertEntity(record);
-      });
-      const overflow = this.overflowOf(slices);
-      if (overflow !== null) throw this.stop("CAPACITY_EXCEEDED", `rotation copy exceeds the hard limit: ${overflow}`);
-      await this.persist(slices);
+    try {
+      const previous = this.cursor(RUNTIME_KIND);
+      const carried = createRuntimeDoc(RUNTIME_KIND, this.options.limits, previous.doc).exportForRotation();
+      await this.sealActive(RUNTIME_KIND);
+      const successor = this.cursor(RUNTIME_KIND);
+      if (carried.length > 0) {
+        const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, successor.doc);
+        const slices: Slice[] = [];
+        captureSlice(slices, successor, () => {
+          for (const record of carried) target.upsertEntity(record);
+        });
+        const overflow = this.overflowOf(slices);
+        if (overflow !== null)
+          throw this.stop("CAPACITY_EXCEEDED", `rotation copy exceeds the hard limit: ${overflow}`);
+        await this.persist(slices);
+      }
+      this.rotation.reset();
+      return { oldDocId: previous.docId, newDocId: successor.docId, requiredBaseSeq: 0 };
+    } catch (error) {
+      // 已封口前代的活动实体必须完成搬运，不能在空 successor 上继续确认新事件。
+      this.failure = error;
+      throw error;
     }
-    this.rotation.reset();
-    return { oldDocId: previous.docId, newDocId: successor.docId, requiredBaseSeq: 0 };
-  }
-  /** 捕获一个改动成切片：每个改动一个事务、各得一条独立 update，同一 Doc 的序号顺延；无变更的事务不占序号（纯删除也算变更，见 `captureChange`）。 */
-  private capture(slices: Slice[], cursor: Cursor, mutate: () => void): void {
-    const update = captureChange(cursor.doc, mutate);
-    if (update === null) return;
-    const used = slices.filter((slice) => slice.docId === cursor.docId).length;
-    slices.push({ docId: cursor.docId, fromSeq: cursor.lastSeq + used + 1, bytes: update });
-  }
-  private fixBatch(slices: readonly Slice[]): Batch {
-    const raw = concatParts(slices.map((slice) => slice.bytes));
-    return { batchId: createBatchId(this.options.random), digest: this.options.digest(raw), slices };
   }
   private async persist(slices: readonly Slice[]): Promise<void> {
     if (slices.length === 0) return;
-    await this.executeBatch(this.fixBatch(slices), this.cursorsOf(slices));
+    await this.executeBatch(
+      buildPendingBatch(slices, this.options.random, this.options.digest),
+      new Map(slices.map((slice) => [slice.docId, this.cursorOf(slice.docId)])),
+    );
+  }
+  /** 拒绝后必须先恢复权威前沿；否则下一批会依赖尚未提交的 Yjs struct。 */
+  private async executeBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
+    try {
+      return await this.appendBatch(batch, cursors);
+    } catch (error) {
+      try {
+        for (const cursor of cursors.values()) await this.loadCursor(cursor.docId, cursor.kind);
+        this.boundaryIndex.reset();
+        this.boundarySeeded = false;
+      } catch (reloadError) {
+        this.failure = new AggregateError([error, reloadError], "live writer cursor recovery failed");
+      }
+      throw error;
+    }
   }
   /** 执行批次：全组一次 `appendUpdates`（不得部分写入后重试），按回执推进游标；`unknown` 先查询，只有结论为「确定不存在且写权仍在」才允许重放原字节。 */
-  private async executeBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
+  private async appendBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
     for (let attempt = 1; ; attempt += 1) {
       const lease = await this.renewLease();
       const result = await this.options.store.appendUpdates({
@@ -385,7 +404,7 @@ export class LiveWriterImpl implements LiveWriter {
         applyFrontiers(cursors, result.frontiers);
         return result.outcome;
       }
-      const probe = await this.confirmBatch(batch);
+      const probe = await probeCommittedBatch(this.options.store, batch);
       if (probe.status === "committed") {
         applyFrontiers(cursors, probe.frontiers);
         return "already-committed";
@@ -393,18 +412,6 @@ export class LiveWriterImpl implements LiveWriter {
       if (probe.status === "absent" && attempt < LIVE_COMMIT_MAX_ATTEMPTS) continue;
       throw this.stop("COMMIT_OUTCOME_UNKNOWN", `batch ${batch.batchId} is undecided after ${attempt} attempts`);
     }
-  }
-  /** 结果未知后的查询：只认已提交字节并逐片核对幂等键；混合结论按「无法判定」处理。 */
-  private async confirmBatch(batch: Batch): Promise<Probe> {
-    const frontiers: DocFrontier[] = [];
-    for (const { docId, fromSeq } of batch.slices) {
-      const first = (await this.options.store.readUpdatesAfter(docId, fromSeq - 1, 1))[0];
-      if (first === undefined || first.updateSeq !== fromSeq) continue;
-      if (first.batchId !== batch.batchId || first.digest !== batch.digest) return { status: "ambiguous" };
-      frontiers.push({ docId, lastSeq: fromSeq });
-    }
-    if (frontiers.length === batch.slices.length) return { status: "committed", frontiers };
-    return { status: frontiers.length === 0 ? "absent" : "ambiguous" };
   }
   /** 续租同时复核 fencing：epoch 被顶替或租约过期时立即停写（在途通知撤不回，只能先停）。 */
   private async renewLease(): Promise<WriterLease> {
@@ -454,13 +461,9 @@ export class LiveWriterImpl implements LiveWriter {
     const loaded = await loadCommittedDoc(this.options.store, docId);
     if (loaded === null) fail("DOC_NOT_FOUND", `document ${docId} has no committed base state`);
     const cursor = { docId, kind, ...loaded };
+    this.cursors.get(kind)?.doc.destroy();
     this.cursors.set(kind, cursor);
     return cursor;
-  }
-  private openCursor(docId: string, kind: DocKind, snapshot: Uint8Array): Cursor {
-    const doc = new Y.Doc({ guid: docId });
-    Y.applyUpdate(doc, snapshot);
-    return { docId, kind, doc, lastSeq: 0 };
   }
   private cursor(kind: DocKind): Cursor {
     return this.cursors.get(kind) ?? fail("DOC_NOT_FOUND", `live writer has no active ${kind} doc`);
@@ -468,9 +471,6 @@ export class LiveWriterImpl implements LiveWriter {
   private cursorOf(docId: string): Cursor {
     const found = [...this.cursors.values()].find((entry) => entry.docId === docId);
     return found ?? fail("DOC_NOT_FOUND", `document ${docId} is not a write target of this writer`);
-  }
-  private cursorsOf(slices: readonly Slice[]): Map<string, Cursor> {
-    return new Map(slices.map((slice) => [slice.docId, this.cursorOf(slice.docId)]));
   }
   private requireGeneration(): string {
     return this.generation ?? fail("GENERATION_MISMATCH", "live writer has no resolved generation");

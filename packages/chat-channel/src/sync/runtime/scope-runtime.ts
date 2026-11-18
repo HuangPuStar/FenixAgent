@@ -440,13 +440,11 @@ export async function createSyncScopeRuntime(input: {
       try {
         await writer.close();
       } finally {
-        if (ownedStore) {
-          try {
-            await history.abort(new SyncProtocolError("RESOURCE_RETIRED", { message: DISPOSED_REASON }));
-            await pool.drain();
-          } finally {
-            ownedStore.dispose();
-          }
+        try {
+          await history.abort(new SyncProtocolError("RESOURCE_RETIRED", { message: DISPOSED_REASON }));
+          await pool.drain();
+        } finally {
+          ownedStore?.dispose();
         }
       }
     },

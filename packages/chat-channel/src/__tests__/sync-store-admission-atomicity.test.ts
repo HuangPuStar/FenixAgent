@@ -6,6 +6,7 @@ import { AdmissionController, type ServerPoolName } from "../sync/capacity/admis
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { deterministicRandomSource, sha256Digest } from "../sync/clock";
 import { SyncProtocolError } from "../sync/protocol/errors";
+import { scopeKey } from "../sync/protocol/identity";
 import { resolveSyncRuntimeConfig } from "../sync/runtime/config";
 import { createSyncScopeRuntime } from "../sync/runtime/scope-runtime";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
@@ -288,40 +289,62 @@ test("运行时不释放调用方注入的共享 Store", async () => {
 });
 
 // 默认 Store 的导入也由运行时持有，源暂停时关闭仍须立即释放已缓存的导入额度。
-test("关闭自建运行时取消暂停的导入并释放暂存额度", async () => {
-  const root = await mkdtemp(join(tmpdir(), "owned-import-"));
-  const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
-  const scope = { organizationId: "org_import", rcsSessionId: "rcs_import" };
-  const runtime = await createSyncScopeRuntime({
-    scope,
-    config: resolveSyncRuntimeConfig({ spoolRootDir: root, lifecycle: { sealGraceMs: 100, retireGraceMs: 100 } }),
-    clock: { now: () => 1000 },
-    digest: sha256Digest,
-    random: deterministicRandomSource("owned-import"),
-    admission,
-  });
-  const paused = Promise.withResolvers<void>();
-  const resume = Promise.withResolvers<void>();
-  try {
-    await runtime.history.begin({ scope, acpSessionId: "ses_import", owner: "owner", leaseTtlMs: 1000 });
-    async function* source() {
-      yield { value: "first", meta: { kind: "history_object" as const } };
-      paused.resolve();
-      await resume.promise;
-      yield { value: "late", meta: { kind: "history_object" as const } };
+for (const sharedStore of [false, true]) {
+  test(`关闭运行时取消暂停的导入，注入 Store=${sharedStore}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "owned-import-"));
+    const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+    const store = sharedStore
+      ? new MemoryProjectionStore({
+          clock: { now: () => 1000 },
+          digest: sha256Digest,
+          capacity: DEFAULT_SYNC_CAPACITY,
+          lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
+          memoryBudget: admission,
+        })
+      : undefined;
+    const scope = { organizationId: "org_import", rcsSessionId: "rcs_import" };
+    const runtime = await createSyncScopeRuntime({
+      scope,
+      config: resolveSyncRuntimeConfig({ spoolRootDir: root, lifecycle: { sealGraceMs: 100, retireGraceMs: 100 } }),
+      clock: { now: () => 1000 },
+      digest: sha256Digest,
+      random: deterministicRandomSource("owned-import"),
+      admission,
+      store,
+    });
+    const paused = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    try {
+      await runtime.history.begin({ scope, acpSessionId: "ses_import", owner: "owner", leaseTtlMs: 1000 });
+      async function* source() {
+        yield { value: "first", meta: { kind: "history_object" as const } };
+        paused.resolve();
+        await resume.promise;
+        yield { value: "late", meta: { kind: "history_object" as const } };
+      }
+      const receiving = runtime.history.acceptRecords(source()).catch((error: unknown) => error);
+      await paused.promise;
+      expect(admission.used("historyBuild")).toBeGreaterThan(0);
+      if (store)
+        await expect(store.acquireWriter(scopeKey(scope), "blocked", 1000)).rejects.toMatchObject({
+          code: "SCOPE_BUSY",
+        });
+      await runtime.dispose();
+      expect(admission.used("historyBuild")).toBe(0);
+      if (store) {
+        expect(admission.used("controlIndex")).toBeGreaterThan(0);
+        const replacement = await store.acquireWriter(scopeKey(scope), "replacement", 1000);
+        await store.releaseWriter(replacement);
+        expect(runtime.history.status().state).toBe("failed");
+      } else expect(admission.used("controlIndex")).toBe(0);
+      resume.resolve();
+      expect(await receiving).toBeInstanceOf(SyncProtocolError);
+    } finally {
+      resume.resolve();
+      await runtime.history.abort(new Error("test cleanup"));
+      await runtime.dispose();
+      store?.dispose();
+      await rm(root, { recursive: true, force: true });
     }
-    const receiving = runtime.history.acceptRecords(source()).catch((error: unknown) => error);
-    await paused.promise;
-    expect(admission.used("historyBuild")).toBeGreaterThan(0);
-    await runtime.dispose();
-    expect(admission.used("historyBuild")).toBe(0);
-    expect(admission.used("controlIndex")).toBe(0);
-    resume.resolve();
-    expect(await receiving).toBeInstanceOf(SyncProtocolError);
-  } finally {
-    resume.resolve();
-    await runtime.history.abort(new Error("test cleanup"));
-    await runtime.dispose();
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  });
+}

@@ -4,9 +4,11 @@
 
 import * as Y from "yjs";
 
-import type { RandomSource } from "../clock";
+import type { DigestFn, RandomSource } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
+import { createBatchId } from "../protocol/identity";
 import type { DocFrontier } from "../store/types";
+import type { Batch, Slice } from "./live-writer-internal";
 
 const UTF8 = new TextEncoder();
 
@@ -77,6 +79,11 @@ export function concatParts(parts: readonly Uint8Array[]): Uint8Array {
     offset += part.byteLength;
   }
   return out;
+}
+
+/** 批次身份、摘要和原始切片只生成一次，结果未知时沿用同一份输入。 */
+export function buildPendingBatch(slices: readonly Slice[], random: RandomSource, digest: DigestFn): Batch {
+  return { batchId: createBatchId(random), digest: digest(concatParts(slices.map((slice) => slice.bytes))), slices };
 }
 
 export function expectedFrontiers(

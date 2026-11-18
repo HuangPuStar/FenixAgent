@@ -8,6 +8,7 @@
 // 批次序号区间也不会多出一格。
 
 import * as Y from "yjs";
+import type { Cursor, Slice } from "./live-writer-internal";
 
 /**
  * 在 `doc` 上执行一次 `mutate`，返回这次事务产生的更新字节；事务没有产生任何变更时返回 `null`。
@@ -28,4 +29,12 @@ export function captureChange(doc: Y.Doc, mutate: () => void): Uint8Array | null
     doc.off("update", track);
   }
   return changed ? Y.encodeStateAsUpdate(doc, before) : null;
+}
+
+/** 同一批内每个文档独立推进序号，无变化的事务不占用提交前沿。 */
+export function captureSlice(slices: Slice[], cursor: Cursor, mutate: () => void): void {
+  const update = captureChange(cursor.doc, mutate);
+  if (update === null) return;
+  const used = slices.filter((slice) => slice.docId === cursor.docId).length;
+  slices.push({ docId: cursor.docId, fromSeq: cursor.lastSeq + used + 1, bytes: update });
 }
