@@ -85,7 +85,7 @@ Provider 是对外部索引服务的抽象。定义了统一的接口（创建�
 
 ### MCP 端点（Agent 查询入口）
 
-Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成；三个工具都会把解析出的 Environment 用户与组织传入 Knowledge 运行时，由模块授权模式决定是否执行组织交集。
+Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成；三个工具都会把解析出的 Environment 用户与组织传入 Knowledge 运行时，授权模式决定是否要求运行身份完整，组织授权由外部门控负责。
 
 ## 数据库表
 
