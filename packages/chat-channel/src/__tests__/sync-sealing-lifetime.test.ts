@@ -7,6 +7,30 @@ import { buildDocId, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { ProjectionStore, SealDocInput, WriterLease } from "../sync/store/types";
 
+for (const fresh of [false, true]) {
+  // 显式重放已封口路由也必须核对初始字节，拒绝新基线时不污染固定路由或协议阶段。
+  test(`已封口路由拒绝替换后继初始基线，fresh=${fresh}`, async () => {
+    const f = await fixture();
+    const changed = new Y.Doc();
+    try {
+      const machine = f.machine();
+      const first = await machine.seal(f.request());
+      const replay = fresh ? f.machine() : machine;
+      changed.getText("body").insert(0, "different successor base");
+      const before = f.store.exportCommittedState();
+      await expect(
+        replay.seal({ ...f.request(), successorInitialState: Y.encodeStateAsUpdate(changed) }),
+      ).rejects.toMatchObject({ code: "DIGEST_CONFLICT" });
+      expect(f.store.exportCommittedState()).toEqual(before);
+      expect(replay.phase).toBe(fresh ? "active" : "sealed");
+      expect(await replay.seal(f.request())).toEqual(first);
+    } finally {
+      changed.destroy();
+      f.store.dispose();
+    }
+  });
+}
+
 /** 使用真实提交与唯一路由，故障仅发生在存储读取和回执边界。 */
 async function fixture() {
   const scope = { organizationId: "org_lifetime", rcsSessionId: "rcs_lifetime" };

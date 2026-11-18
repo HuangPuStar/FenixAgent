@@ -117,10 +117,12 @@ export class AccountedMap<K, V> extends Map<K, V> {
     return this;
   }
   override delete(key: K): boolean {
+    if (this.pendingKeys.has(key)) throw new Error("accounted map key has a pending preparation");
     this.release(key);
     return super.delete(key);
   }
   override clear(): void {
+    if (this.pendingKeys.size > 0) throw new Error("accounted map has pending preparations");
     for (const key of this.keys()) this.release(key);
     super.clear();
   }

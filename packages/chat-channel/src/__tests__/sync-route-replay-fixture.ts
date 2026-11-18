@@ -31,6 +31,7 @@ export async function routeReplayFixture(
   kind: DocKind = "runtime",
   admission = new AdmissionController(DEFAULT_SYNC_CAPACITY),
 ) {
+  const initialUsage = usage(admission);
   const scope = { organizationId: "r7", rcsSessionId: "route-replay" };
   const key = scopeKey(scope);
   const generationId = "gen-r7";
@@ -43,99 +44,104 @@ export async function routeReplayFixture(
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
     memoryBudget: admission,
   });
-  const lease = await store.acquireWriter(key, "owner", 10000);
-  const id = (nonce: string) =>
-    buildDocId({ kind, generation: generationId, blockIndex: kind === "content" ? 1 : 0, nonce });
-  const a = id("a");
-  const b = id("b");
-  const empty = textSnapshot("");
-  const record = (docId: string, snapshot = empty): SyncDocRecord => ({
-    scopeKey: key,
-    generation: generationId,
-    docId,
-    kind,
-    state: "active",
-    snapshot,
-    hash: sha256Digest(snapshot),
-    baseSeq: 0,
-    finalSeq: null,
-    blockIndex: kind === "content" ? 1 : null,
-    ordinalStart: null,
-    ordinalEnd: null,
-    dependsOn: [],
-  });
-  const generation: SyncGenerationRecord = {
-    scopeKey: key,
-    generation: generationId,
-    acpSessionId: "ses_r7",
-    loadId: "load-r7",
-    state: "staging",
-    importEndOrdinal: null,
-    createdAt: now,
-    entryRefs: { controlDocId: "control", directoryDocId: "directory", runtimeDocId: a, contentDocIds: [] },
-  };
-  await store.createGeneration({ scopeKey: key, epoch: lease.epoch, generation });
-  await store.createDoc({ scopeKey: key, epoch: lease.epoch, doc: record(a) });
-  await store.commitGeneration({
-    scopeKey: key,
-    epoch: lease.epoch,
-    expectedCurrent: null,
-    expectedPointerRevision: 0,
-    newGeneration: generation,
-    entryClosure: generation.entryRefs,
-    retired: [],
-  });
-  const route = (successorDoc?: SyncDocRecord) => ({
-    scopeKey: key,
-    epoch: lease.epoch,
-    predecessorDocId: a,
-    successorDocId: b,
-    expectedLastSeq: 0,
-    ...(successorDoc ? { successorDoc } : {}),
-  });
-  const request = (snapshot = empty) => ({
-    scope,
-    lease,
-    oldDocId: a,
-    finalUpdateSeq: 0,
-    successorDocId: b,
-    successorInitialState: snapshot,
-  });
-  const machine = () =>
-    createSealingMachine({ store, clock, digest: sha256Digest, random: deterministicRandomSource("r7-replay") });
-  async function append(docId: string, bytes: Uint8Array, lastSeq = 0) {
-    return store.appendUpdates({
+  try {
+    const lease = await store.acquireWriter(key, "owner", 10000);
+    const id = (nonce: string) =>
+      buildDocId({ kind, generation: generationId, blockIndex: kind === "content" ? 1 : 0, nonce });
+    const a = id("a");
+    const b = id("b");
+    const empty = textSnapshot("");
+    const record = (docId: string, snapshot = empty): SyncDocRecord => ({
+      scopeKey: key,
+      generation: generationId,
+      docId,
+      kind,
+      state: "active",
+      snapshot,
+      hash: sha256Digest(snapshot),
+      baseSeq: 0,
+      finalSeq: null,
+      blockIndex: kind === "content" ? 1 : null,
+      ordinalStart: null,
+      ordinalEnd: null,
+      dependsOn: [],
+    });
+    const generation: SyncGenerationRecord = {
+      scopeKey: key,
+      generation: generationId,
+      acpSessionId: "ses_r7",
+      loadId: "load-r7",
+      state: "staging",
+      importEndOrdinal: null,
+      createdAt: now,
+      entryRefs: { controlDocId: "control", directoryDocId: "directory", runtimeDocId: a, contentDocIds: [] },
+    };
+    await store.createGeneration({ scopeKey: key, epoch: lease.epoch, generation });
+    await store.createDoc({ scopeKey: key, epoch: lease.epoch, doc: record(a) });
+    await store.commitGeneration({
       scopeKey: key,
       epoch: lease.epoch,
-      owner: lease.owner,
-      batchId: `${docId}-${lastSeq}`,
-      digest: sha256Digest(bytes),
-      expectedFrontiers: [{ docId, lastSeq }],
-      updates: [{ docId, fromSeq: lastSeq + 1, bytes }],
+      expectedCurrent: null,
+      expectedPointerRevision: 0,
+      newGeneration: generation,
+      entryClosure: generation.entryRefs,
+      retired: [],
     });
-  }
-  function dispose(): void {
+    const route = (successorDoc?: SyncDocRecord) => ({
+      scopeKey: key,
+      epoch: lease.epoch,
+      predecessorDocId: a,
+      successorDocId: b,
+      expectedLastSeq: 0,
+      ...(successorDoc ? { successorDoc } : {}),
+    });
+    const request = (snapshot = empty) => ({
+      scope,
+      lease,
+      oldDocId: a,
+      finalUpdateSeq: 0,
+      successorDocId: b,
+      successorInitialState: snapshot,
+    });
+    const machine = () =>
+      createSealingMachine({ store, clock, digest: sha256Digest, random: deterministicRandomSource("r7-replay") });
+    async function append(docId: string, bytes: Uint8Array, lastSeq = 0) {
+      return store.appendUpdates({
+        scopeKey: key,
+        epoch: lease.epoch,
+        owner: lease.owner,
+        batchId: `${docId}-${lastSeq}`,
+        digest: sha256Digest(bytes),
+        expectedFrontiers: [{ docId, lastSeq }],
+        updates: [{ docId, fromSeq: lastSeq + 1, bytes }],
+      });
+    }
+    function dispose(): void {
+      store.dispose();
+      expect(usage(admission)).toEqual(initialUsage);
+    }
+    return {
+      store,
+      admission,
+      key,
+      lease,
+      a,
+      b,
+      id,
+      empty,
+      record,
+      generation,
+      route,
+      request,
+      machine,
+      append,
+      advance: (milliseconds: number) => {
+        now += milliseconds;
+      },
+      dispose,
+    };
+  } catch (error) {
     store.dispose();
-    expect(Object.values(usage(admission)).every((bytes) => bytes === 0)).toBe(true);
+    throw error;
   }
-  return {
-    store,
-    admission,
-    key,
-    lease,
-    a,
-    b,
-    id,
-    empty,
-    record,
-    generation,
-    route,
-    request,
-    machine,
-    append,
-    advance: (milliseconds: number) => {
-      now += milliseconds;
-    },
-    dispose,
-  };
 }

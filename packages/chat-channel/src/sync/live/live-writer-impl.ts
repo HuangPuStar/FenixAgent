@@ -72,6 +72,9 @@ export class LiveWriterImpl implements LiveWriter {
   }
   async acquire(): Promise<void> {
     this.assertLive(false);
+    // 旧租约排队输入须先按原错结清，清错不能使它们跨租约或跨代次复活。
+    if (this.reacquirableFailure !== null) await this.queue;
+    this.assertLive(false);
     // 租约被占或已过期时存储直接拒绝（SCOPE_BUSY）；本层不排队等待，等待会让「谁在写」不可判定。
     this.lease = await this.options.store.acquireWriter(this.scopeKey, this.owner, LIVE_WRITER_LEASE_TTL_MS);
     await this.rebuildFromCommitted();
@@ -179,12 +182,14 @@ export class LiveWriterImpl implements LiveWriter {
     const { clock, merge } = this.options;
     return createMergeBuffer({ clock, ...merge, onFlush: (request) => this.scheduleText(request) });
   }
-  /** 冲刷是同步回调、落库是异步的：异常记为停写原因——定时器触发的冲刷没有调用方接住，静默吞掉会让内容无声丢失。 */
+  /** 只记录实际执行冲刷的首错；队列门禁的延迟拒绝不得回写已恢复的状态，后台错误仍供后续输入观测。 */
   private scheduleText(request: MergeFlushRequest): void {
-    const task = this.enqueue(() => this.writeText(request)).catch((error: unknown) => {
-      this.failure = error;
-      throw error;
-    });
+    const task = this.enqueue(() =>
+      this.writeText(request).catch((error: unknown) => {
+        this.failure ??= error;
+        throw error;
+      }),
+    );
     this.lastFlush = task;
     void task.catch(NOOP);
   }
@@ -330,6 +335,7 @@ export class LiveWriterImpl implements LiveWriter {
       if (kind === CONTENT_KIND) await this.directory.appendContentDoc(this.requireLease(), successorDocId);
       return result;
     } catch (error) {
+      this.failure = error;
       // 只有确认路由未提交的正常过期可重新竞争写权；目录交接失败仍持有 committed 事实。
       if (
         error instanceof SyncProtocolError &&
@@ -338,7 +344,7 @@ export class LiveWriterImpl implements LiveWriter {
       ) {
         this.lease = null;
         this.reacquirableFailure = error;
-      } else this.failure = error;
+      }
       throw error;
     }
   }

@@ -73,7 +73,12 @@ export async function writerFailureFixture(
   });
   await writer.acquire();
   return {
-    ...base,
+    scope: base.scope,
+    store: base.store,
+    admission: base.admission,
+    contentId: base.contentId,
+    runtimeId: base.runtimeId,
+    readAll: base.readAll,
     writer,
     faults,
     readError,

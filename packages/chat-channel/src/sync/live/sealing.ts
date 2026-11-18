@@ -250,6 +250,15 @@ class SealingMachineImpl implements SealingMachine {
           },
         );
       }
+      const base = await this.store.readDocStateAt(attempt.successorDocId, BASE_SEQ);
+      if (!base) fail("DOC_NOT_FOUND", "sealed route successor has no initial base", { docId: attempt.successorDocId });
+      if (
+        base.snapshot.byteLength !== attempt.successorInitialState.byteLength ||
+        base.snapshot.some((byte, index) => byte !== attempt.successorInitialState[index])
+      ) {
+        attempt.invalidPinnedRequest = true;
+        fail("DIGEST_CONFLICT", "sealed route successor initial base differs", { docId: attempt.successorDocId });
+      }
       // 后继可能已再次封口；已完成的谱系不重登记其初始字节，租约仍由 sealDoc 复核。
       attempt.routeCommitted = true;
     }

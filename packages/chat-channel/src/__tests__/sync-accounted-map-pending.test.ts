@@ -35,6 +35,56 @@ const preparations = {
 };
 
 for (const [name, prepare] of Object.entries(preparations)) {
+  // 待提交写前像仍拥有旧值额度，删除不得让稍后的提交复活已归还的预留。
+  test(`${name} 准备期间拒绝删除同键且提交保留完整计费`, () => {
+    const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+    const rows = rowsFor(admission);
+    rows.set("doc", [100]);
+    const change = prepare(rows, "doc");
+    const pendingUsage = usage(admission);
+    try {
+      expect(() => rows.delete("doc")).toThrow(/pending/);
+      expect([...rows]).toEqual([["doc", [100]]]);
+      expect(usage(admission)).toEqual(pendingUsage);
+      change.commit();
+      expect(rows.get("doc")).toEqual(name === "replace" ? [120] : [100, 20]);
+      expect(admission.used("controlIndex")).toBe(name === "replace" ? 144 : 160);
+      expect(admission.used("hotDocLive")).toBe(120);
+      expect(admission.used("transportCache")).toBe(name === "replace" ? 4 : 8);
+    } finally {
+      change.abort();
+      rows.clear();
+    }
+    expect(usage(admission).every((bytes) => bytes === 0)).toBe(true);
+  });
+
+  // clear 必须先检查所有准备，不能释放排在待提交键之前的其他键。
+  test(`${name} 准备期间整体拒绝清空，回滚后可释放全部额度`, () => {
+    const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+    const rows = rowsFor(admission);
+    rows.set("earlier", [50]);
+    rows.set("doc", [100]);
+    const before = usage(admission);
+    const change = prepare(rows, "doc");
+    const pendingUsage = usage(admission);
+    try {
+      expect(() => rows.clear()).toThrow(/pending/);
+      expect([...rows]).toEqual([
+        ["earlier", [50]],
+        ["doc", [100]],
+      ]);
+      expect(usage(admission)).toEqual(pendingUsage);
+      change.abort();
+      expect(usage(admission)).toEqual(before);
+      rows.clear();
+      expect(rows.size).toBe(0);
+    } finally {
+      change.abort();
+      rows.clear();
+    }
+    expect(usage(admission).every((bytes) => bytes === 0)).toBe(true);
+  });
+
   // 第二份准备必须在任何额度申请之前拒绝，abort 与 commit 后都应允许同键重试。
   test(`${name} 同键准备互斥，结算后可重试且释放全部额度`, () => {
     const admission = new ReentrantAdmission(DEFAULT_SYNC_CAPACITY);
@@ -172,4 +222,21 @@ test("无预算时也拒绝重叠准备并在回滚后允许重试", () => {
   expect(rows.get("doc")).toEqual([100]);
   rows.prepareAppend("doc", [20]).commit();
   expect(rows.get("doc")).toEqual([100, 20]);
+});
+
+// 尚未提交的新键也持有准备权，未启用预算不能绕过破坏性操作的互斥。
+test("无预算的新键准备期间拒绝删除和清空，回滚后恢复操作", () => {
+  const rows = rowsFor();
+  const change = rows.prepareAppend("new", [20]);
+  try {
+    expect(() => rows.delete("new")).toThrow(/pending/);
+    expect(() => rows.clear()).toThrow(/pending/);
+    expect(rows.size).toBe(0);
+    change.abort();
+    expect(rows.delete("new")).toBe(false);
+    rows.clear();
+  } finally {
+    change.abort();
+    rows.clear();
+  }
 });

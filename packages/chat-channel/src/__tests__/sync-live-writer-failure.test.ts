@@ -61,11 +61,20 @@ for (const action of ["seal", "rotateRuntime"] as const) {
     try {
       await f.writer.accept(object("before"));
       const oldDocId = action === "seal" ? f.contentId : f.runtimeId;
+      let routeInput: Parameters<typeof f.store.registerSuccessor>[0] | undefined;
+      f.faults.beforeRoute = (input) => {
+        routeInput = input;
+        return;
+      };
       f.faults.afterRoute = () => f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
       const pending = f.writer[action]();
       await expect(pending).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
       const failure: unknown = await pending.catch((error: unknown) => error);
-      expect((await f.store.readSuccessor(scopeKey(f.scope), oldDocId))?.route).not.toBeNull();
+      expect(routeInput).toBeDefined();
+      expect(await f.store.readSuccessor(scopeKey(f.scope), oldDocId)).toMatchObject({
+        docId: oldDocId,
+        route: { successorDocId: routeInput!.successorDocId, expectedLastSeq: routeInput!.expectedLastSeq },
+      });
       await expect(f.writer.acquire()).rejects.toBe(failure);
       await expect(f.writer.accept(object("blocked"))).rejects.toBe(failure);
       expect(await f.readAll()).toHaveLength(1);
@@ -122,11 +131,16 @@ test("屏障冲刷触发自动轮换后正常过期仍可接管并重试文本",
 // 定时器没有同步调用方接住异常，下一次写入仍须暴露原错，而重新竞争写权允许恢复。
 test("后台冲刷的路由前过期保留原错且允许重新接管", async () => {
   const f = await writerFailureFixture({ capacity: narrowCapacity, maxDelayMs: 1 });
+  let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
     await fillContent(f);
     let entered: () => void = () => {};
-    const routeEntered = new Promise<void>((resolve) => {
-      entered = resolve;
+    const routeEntered = new Promise<void>((resolve, reject) => {
+      deadline = setTimeout(() => reject(new Error("background flush did not reach route registration")), 1000);
+      entered = () => {
+        clearTimeout(deadline);
+        resolve();
+      };
     });
     f.faults.beforeRoute = () => {
       f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
@@ -143,6 +157,7 @@ test("后台冲刷的路由前过期保留原错且允许重新接管", async ()
     await f.writer.accept(object("after"));
     expect(await f.readAll()).toHaveLength(2);
   } finally {
+    clearTimeout(deadline);
     await f.close();
   }
 });
@@ -250,20 +265,28 @@ for (const committed of [false, true]) {
   test(`路由登记异常后保持未知结果停写，实际已提交=${committed}`, async () => {
     const f = await writerFailureFixture();
     const replyError = new Error("route acknowledgement unavailable");
+    let routeInput: Parameters<typeof f.store.registerSuccessor>[0] | undefined;
     try {
+      f.faults.beforeRoute = (input) => {
+        routeInput = input;
+        if (!committed) throw replyError;
+        return;
+      };
       if (committed)
         f.faults.afterRoute = () => {
-          throw replyError;
-        };
-      else
-        f.faults.beforeRoute = () => {
           throw replyError;
         };
       const pending = f.writer.seal();
       await expect(pending).rejects.toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN", cause: replyError });
       const failure: unknown = await pending.catch((error: unknown) => error);
       const state = await f.store.readSuccessor(scopeKey(f.scope), f.contentId);
-      expect(state?.route !== null).toBe(committed);
+      expect(routeInput).toBeDefined();
+      expect(state).toMatchObject({
+        docId: f.contentId,
+        route: committed
+          ? { successorDocId: routeInput!.successorDocId, expectedLastSeq: routeInput!.expectedLastSeq }
+          : null,
+      });
       await expect(f.writer.acquire()).rejects.toBe(failure);
       await expect(f.writer.accept(object("blocked"))).rejects.toBe(failure);
       expect(await f.readAll()).toEqual([]);
