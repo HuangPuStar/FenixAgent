@@ -63,6 +63,7 @@ export async function readKnowledgeResourceForAgent(input: {
   userId?: string | null;
   organizationId?: string | null;
 }): Promise<KnowledgeResourceContent & { knowledgeBaseId: string }> {
+  const boundKnowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
   const result = await agentKnowledgeBindingRepo.getResourceWithKnowledgeBase(input.resourceId);
 
   if (!result) {
@@ -72,7 +73,6 @@ export async function readKnowledgeResourceForAgent(input: {
     throw new Error("Knowledge resource remote id is missing");
   }
 
-  const boundKnowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
   if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
     throw new KnowledgeRuntimeAccessError("KNOWLEDGE_BINDING_REQUIRED", "Knowledge resource is not bound to the agent");
   }

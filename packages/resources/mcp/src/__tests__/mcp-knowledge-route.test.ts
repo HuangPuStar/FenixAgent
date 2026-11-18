@@ -86,6 +86,7 @@ describe("MCP 知识工具授权链", () => {
     organizationId: string | null,
     mode: "owner" | "trusted-delegate",
     remoteId: string | null = "remote-1",
+    resourceState: "present" | "missing" | "unavailable" = "present",
   ) {
     initializeKnowledgeModuleConfig({ runtimeAuthMode: mode, ragflowApiKey: "test-key" });
     stubAgentRuntimePort({
@@ -107,7 +108,7 @@ describe("MCP 知识工具授权链", () => {
     const resource = {
       id: "resource-1",
       knowledgeBaseId: "kb-1",
-      remoteId: "remote-resource",
+      remoteId: resourceState === "unavailable" ? null : "remote-resource",
       kbRemoteId: "remote-1",
       kbUserId: "owner-1",
       kbOrganizationId: "org-provider",
@@ -116,7 +117,10 @@ describe("MCP 知识工具授权链", () => {
       select: () => ({
         from: () => ({
           innerJoin: () => ({
-            where: () => Object.assign(Promise.resolve([binding]), { limit: async () => [resource] }),
+            where: () =>
+              Object.assign(Promise.resolve([binding]), {
+                limit: async () => (resourceState === "missing" ? [] : [resource]),
+              }),
           }),
         }),
       }),
@@ -144,6 +148,24 @@ describe("MCP 知识工具授权链", () => {
     );
     expect(response.status).toBe(200);
     return (await response.json()).result;
+  }
+
+  for (const resourceState of ["missing", "unavailable"] as const) {
+    // 缺失委派身份时，资源状态不能改变授权错误或触发资源查询。
+    test(`kb_read 缺身份时不暴露资源状态：${resourceState}`, async () => {
+      const result = await callTool(
+        "kb_read",
+        { resourceId: "resource-1" },
+        null,
+        "org-provider",
+        "trusted-delegate",
+        "remote-1",
+        resourceState,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent.code).toBe("KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED");
+      expect(readResource).not.toHaveBeenCalled();
+    });
   }
 
   for (const [name, args] of [
@@ -183,6 +205,13 @@ describe("MCP 知识工具授权链", () => {
   // 默认模式继续允许跨组织运行公开 Agent 的知识检索。
   test("owner 模式保留跨组织绑定检索", async () => {
     const result = await callTool("kb_search", { query: "问题" }, "user-1", "org-caller", "owner");
+    expect(result.isError).not.toBe(true);
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  // 默认模式必须支持没有组织上下文的个人用户。
+  test("owner 模式允许无组织用户检索绑定知识库", async () => {
+    const result = await callTool("kb_search", { query: "问题" }, "user-1", null, "owner");
     expect(result.isError).not.toBe(true);
     expect(search).toHaveBeenCalledTimes(1);
   });
