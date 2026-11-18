@@ -22,7 +22,7 @@ Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，�
 
 1. Docker Engine 与 Docker Compose ≥ 2.20。
 2. 随主服务启动时**主服务项目必须先起**（`fenix-server` 由主服务项目创建——dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`；本目录以 `external: true` 引用）。
-3. 宿主能拉缺省版本 `ghcr.io/konghayao/peri-fuse:0.5.0`（版本用本目录 `.env` 的 `PERIFUSE_VERSION` 覆盖，缺省值写在 compose 的插值里）；本目录 `./data` 可写（首次启动自动创建）。
+3. 宿主能拉缺省版本 `ghcr.io/konghayao/peri-fuse:1.1.0`（版本用本目录 `.env` 的 `PERIFUSE_VERSION` 覆盖，缺省值写在 compose 的插值里）；本目录 `./data` 可写（首次启动自动创建）。
 4. Agent 进程所在的机器能访问你选定的上报地址（见下面「容器内地址 vs 宿主地址」）。
 
 ## 配置
@@ -31,7 +31,7 @@ Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，�
 | --- | --- | --- | --- |
 | `PERIFUSE_BIND_ADDR` | 本目录 `.env` | 默认 `127.0.0.1` | 宿主发布地址；Agent 在别的机器且要经宿主地址直连时改 `0.0.0.0` 或那台机器可达的网卡地址 |
 | `PERIFUSE_HOST_PORT` | 本目录 `.env` | 默认 `23332` | 宿主发布端口（容器内固定 23332）；控制台与 `LANGFUSE_BASE_URL` 都用它 |
-| `PERIFUSE_VERSION` | 本目录 `.env`（覆盖 compose 缺省） | 默认 `0.5.0`（写在 compose 的插值缺省里） | 镜像 tag；只在显式钉这台机器的版本时才写（`.env.example` 里是注释行，取消注释才生效），见「升级」 |
+| `PERIFUSE_VERSION` | 本目录 `.env`（覆盖 compose 缺省） | 默认 `1.1.0`（写在 compose 的插值缺省里） | 镜像 tag；只在显式钉这台机器的版本时才写（`.env.example` 里是注释行，取消注释才生效），见「升级」 |
 | `PERIFUSE_SALT` | 本目录 `.env` | 可选 | API key 哈希盐（密钥）；留空则首次启动自动生成到 `./data/.salt`。**首次签发 key 后再改值会让已有 key 全部失效** |
 | `LANGFUSE_BASE_URL` | 主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`） | 接入观测时必填 | Agent 进程侧的上报基址，取值见下节；未配置则不注入，peri 侧会走它的默认 SaaS 端点（等于没接自托管） |
 | `LANGFUSE_PUBLIC_KEY` | 主服务 env | 接入观测时必填 | 在 Peri-Fuse 控制台的项目里签发的 public key（`pk-lf-…`） |
@@ -102,8 +102,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:23332/api/public/healt
 ## 升级
 
 ```bash
-# 1. 选目标版本 tag：跟 release 用语义版本（0.5.0 / 0.5），跟主线用提交短哈希 tag
-#    （README 的 tags list 即当前可用值；2026-10-10 核对 `latest` / `main` 指向比 0.5.0 新的提交构建）
+# 1. 选目标版本 tag：跟 release 用语义版本，跟主线用提交短哈希 tag
 # 2. 钉版本，任选一处：
 #    - 改本目录 docker-compose.yml 的插值缺省值（进版本控制，随交付面走，所有人默认用这个版本）
 #    - 在本目录 .env 里写 PERIFUSE_VERSION（只钉这台机器，compose 缺省值随交付面更新时这里不受影响）
