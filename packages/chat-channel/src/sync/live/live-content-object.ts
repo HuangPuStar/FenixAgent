@@ -1,12 +1,12 @@
 import type { AdmissionController } from "../capacity/admission";
 import type { SyncCapacityProfile } from "../capacity/profile";
-import type { Clock, DigestFn } from "../clock";
+import type { DigestFn } from "../clock";
 import { fidelitySerialize } from "../history/fidelity-json";
 import { admitHistoryObject } from "../history/object-admission";
 import { planHistoryParts } from "../history/object-parts";
 import { identityOf, normalizeMeta } from "../history/record-identity";
 import { SyncProtocolError } from "../protocol/errors";
-import type { ProjectionStore, SyncRefRecord, WriterLease } from "../store/types";
+import type { ProjectionStore, SyncRefRecord } from "../store/types";
 import { loadCommittedDoc } from "./committed-doc";
 import type { LiveInput, LiveRecordValue } from "./live-writer-types";
 import { records } from "./writer-support";
@@ -71,8 +71,7 @@ export async function writeLiveContentObject(input: {
   readonly store: ProjectionStore;
   readonly scopeKey: string;
   readonly generation: string;
-  readonly clock: Clock;
-  readonly verifyOwnership: () => Promise<WriterLease>;
+  readonly confirmOwnership: (generation: string) => Promise<void>;
   readonly append: (
     record: Omit<LiveRecordValue, "recordId"> & { readonly recordId?: string },
     ref?: ContentObjectRef,
@@ -102,7 +101,7 @@ export async function writeLiveContentObject(input: {
     const lookupId = identity === null ? null : input.digest(fidelitySerialize(identity));
     const objectDigest = input.digest(accepted.bytes);
     for (const [index, part] of parts.entries()) {
-      const payload = fidelitySerialize(part.value);
+      const payload = parts.length === 1 ? accepted.bytes : fidelitySerialize(part.value);
       const record = {
         entryId: meta.entryId ?? "content-object",
         entryOrder: meta.entryOrder,
@@ -142,22 +141,7 @@ export async function writeLiveContentObject(input: {
         appended = true;
       }
     }
-    if (!appended) {
-      const lease = await input.verifyOwnership();
-      const pointer = await input.store.readScopePointer(input.scopeKey);
-      if (pointer?.currentGeneration !== input.generation)
-        throw new SyncProtocolError("GENERATION_MISMATCH", {
-          message: "live object retry generation is no longer current",
-        });
-      if (pointer.writerEpoch !== lease.epoch || pointer.writerOwner !== lease.owner)
-        throw new SyncProtocolError("WRITER_EPOCH_LOST", {
-          message: "live object retry writer no longer owns its scope",
-        });
-      if (pointer.leaseExpiresAt <= input.clock.now())
-        throw new SyncProtocolError("LEASE_EXPIRED", {
-          message: "live object retry lease expired during verification",
-        });
-    }
+    if (!appended) await input.confirmOwnership(input.generation);
   } finally {
     clearCache();
     accepted.reservation?.release();

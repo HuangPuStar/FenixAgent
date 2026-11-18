@@ -96,8 +96,14 @@ for (const kind of ["content", "runtime"] as const) {
         code: "ADMISSION_REJECTED",
       });
       f.faults.failSeal = false;
+      const predecessorId = kind === "content" ? f.contentId : f.runtimeId;
+      const registered = await f.store.readSuccessor(scopeKey(f.scope), predecessorId);
+      expect(registered).toMatchObject({ state: "sealing" });
+      expect(registered?.route).not.toBeNull();
       if (kind === "runtime") expect(await activeEntities(f)).toEqual(["tool-one"]);
       await f.reopen();
+      const completed = await f.store.readSuccessor(scopeKey(f.scope), predecessorId);
+      expect(completed).toMatchObject({ state: "sealed", route: registered?.route });
       if (kind === "content") {
         await f.writer.accept(object("after"));
         expect(await f.readAll()).toHaveLength(2);

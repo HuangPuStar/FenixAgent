@@ -74,6 +74,9 @@ test("对象分片回执丢失后重试只补未提交片", async () => {
     await f.writer.accept(input);
     const saved = await f.readAll();
     expect(saved).toHaveLength(payload(saved[0]).partCount);
+    const parts = saved.map(payload);
+    expect(parts.map((part) => part.partIndex)).toEqual(Array.from({ length: parts.length }, (_, index) => index));
+    expect(JSON.parse(Buffer.concat(parts.map((part) => Buffer.from(part.data, "base64"))).toString())).toEqual(value);
   } finally {
     await f.close();
   }
@@ -321,6 +324,28 @@ test("runtime 后继基线登记被拒绝后禁止继续写入", async () => {
     }
   } finally {
     hold.release();
+    await f.close();
+  }
+});
+
+// getter 只在接纳时读取一次，落库正文必须与指纹绑定的字节相同，重试不得发生身份冲突。
+test("单片对象沿用接纳字节且不再次读取原始 getter", async () => {
+  const f = await fixture();
+  let reads = 0;
+  const value = {
+    get text() {
+      reads++;
+      return reads === 1 ? "admitted" : "changed";
+    },
+  };
+  const meta = { kind: "history_object" as const, entryId: "getter" };
+  try {
+    await f.writer.accept({ ...object("getter"), object: { value, meta } });
+    expect(reads).toBe(1);
+    expect((await f.readAll()).map(payload)).toEqual([{ text: "admitted" }]);
+    await f.writer.accept({ ...object("getter"), object: { value: { text: "admitted" }, meta } });
+    expect(await f.readAll()).toHaveLength(1);
+  } finally {
     await f.close();
   }
 });

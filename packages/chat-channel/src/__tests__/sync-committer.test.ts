@@ -143,7 +143,11 @@ class CommitStoreDouble implements ProjectionStore {
   readonly readUpdatesAfter: () => Promise<SyncUpdateRecord[]> = () => unusedStoreMethod("readUpdatesAfter");
   readonly readScopePointer: () => Promise<SyncScopeRow | null> = () => unusedStoreMethod("readScopePointer");
   readonly readGeneration: () => Promise<SyncGenerationRecord | null> = () => unusedStoreMethod("readGeneration");
+  readonly createGeneration: ProjectionStore["createGeneration"] = () => unusedStoreMethod("createGeneration");
+  readonly createDoc: ProjectionStore["createDoc"] = () => unusedStoreMethod("createDoc");
+  readonly registerSuccessor: ProjectionStore["registerSuccessor"] = () => unusedStoreMethod("registerSuccessor");
   readonly readSuccessor: ProjectionStore["readSuccessor"] = () => unusedStoreMethod("readSuccessor");
+  readonly confirmWriter: ProjectionStore["confirmWriter"] = () => unusedStoreMethod("confirmWriter");
   readonly locateRefs: () => Promise<SyncRefRecord[]> = () => unusedStoreMethod("locateRefs");
   readonly retireAndCollect: () => Promise<RetireResult> = () => unusedStoreMethod("retireAndCollect");
 }

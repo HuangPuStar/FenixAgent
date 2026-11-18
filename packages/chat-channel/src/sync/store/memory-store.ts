@@ -112,6 +112,12 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     row.leaseExpiresAt = 0;
   }
 
+  /** 在同一同步临界区确认写者仍拥有当前代，供无写入操作建立确认边界。 */
+  async confirmWriter(lease: WriterLease, generation: string): Promise<void> {
+    const scope = this.requireLease(lease.scopeKey, lease.epoch, lease.owner);
+    if (scope.currentGeneration !== generation) fail("GENERATION_MISMATCH", "writer generation is no longer current");
+  }
+
   async createGeneration(input: CreateGenerationInput): Promise<RegistrationResult> {
     this.requireLease(input.scopeKey, input.epoch);
     const value = input.generation;
@@ -241,9 +247,12 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
         digest: input.digest,
       }));
       // 便宜上界能证明安全时不重建；临界区按真实 Yjs 编码检查，整批提交前失败不污染任何 Doc。
+      const accountedBytes = this.updates.accountedBytes(key, "hotDocLive");
       const bound =
         doc.baseSnapshot.byteLength +
-        ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0) +
+        (accountedBytes === undefined
+          ? ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0)
+          : accountedBytes / 2) +
         records.reduce((sum, item) => sum + item.bytes.byteLength, 0);
       if (bound > MAX_DOC_SNAPSHOT_BYTES) {
         const projection = new Y.Doc();

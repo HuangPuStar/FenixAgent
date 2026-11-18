@@ -36,7 +36,8 @@ import {
 } from "../sync/store/types";
 
 /** 接口方法名（编译期来源）。 */
-type ProjectionStoreMethodName = keyof ProjectionStore;
+/** 可选的租约释放扩展不属于必选原语清单。 */
+type ProjectionStoreMethodName = Exclude<keyof ProjectionStore, "releaseWriter">;
 
 /**
  * 冻结的方法名清单，与规格 §3.7 的 `ProjectionStore` 方法列表逐字同序。
@@ -47,6 +48,7 @@ type ProjectionStoreMethodName = keyof ProjectionStore;
 const PROJECTION_STORE_METHODS = [
   "acquireWriter",
   "renewWriter",
+  "confirmWriter",
   "createGeneration",
   "createDoc",
   "registerSuccessor",
@@ -72,6 +74,7 @@ const PROJECTION_STORE_METHODS = [
 const METHOD_ARITIES: Record<ProjectionStoreMethodName, number> = {
   acquireWriter: 3,
   renewWriter: 2,
+  confirmWriter: 2,
   createGeneration: 1,
   createDoc: 1,
   registerSuccessor: 1,
@@ -147,6 +150,9 @@ const stub = {
   },
   async readScopePointer(scopeKey: string): Promise<SyncScopeRow | null> {
     return stubCall("readScopePointer", scopeKey);
+  },
+  async confirmWriter(lease: WriterLease, generation: string): Promise<void> {
+    return stubCall("confirmWriter", lease, generation);
   },
   async readSuccessor(scopeKey: string, docId: string): ReturnType<ProjectionStore["readSuccessor"]> {
     return stubCall("readSuccessor", scopeKey, docId);

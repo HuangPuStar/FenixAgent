@@ -24,6 +24,7 @@ async function expectTailPublished(f: Awaited<ReturnType<typeof fixture>>) {
       const tail = f.store.exportCommittedState().docs.find((doc) => doc.kind === "content" && doc.state === "active");
       if (!tail) throw new Error("Missing active content");
       expect(readDirectoryPage(page.doc).contentDocIds).toContain(tail.docId);
+      return readDirectoryPage(page.doc).contentDocIds;
     } finally {
       page.doc.destroy();
     }
@@ -44,7 +45,13 @@ test("目录翻页根指针发布被拒后重开可继续发现新尾块", async
     await f.reopen();
     await f.writer.accept(object("after"));
     expect(await f.readAll()).toHaveLength(2);
-    await expectTailPublished(f);
+    const published = await expectTailPublished(f);
+    await f.writer.accept(object("after-again"));
+    await f.writer.seal();
+    const updated = await expectTailPublished(f);
+    expect(updated).toHaveLength(published.length + 1);
+    expect(updated.slice(0, published.length)).toEqual([...published]);
+    expect(updated.at(-1)).not.toBe(published.at(-1));
   } finally {
     f.faults.failDirectoryRoot = false;
     await f.close();
@@ -66,12 +73,23 @@ for (const phase of ["page", "root"] as const) {
       });
       f.faults.failDirectoryCreate = phase;
       await expect(f.reopen()).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
+      const pointer = await f.store.readScopePointer(scopeKey(f.scope));
+      if (!pointer?.currentGeneration) throw new Error("Missing generation");
+      const root = await loadCommittedDoc(f.store, directoryRootDocId(pointer.currentGeneration));
+      try {
+        expect(root).toBeNull();
+      } finally {
+        root?.doc.destroy();
+      }
       f.faults.failDirectoryCreate = null;
       await f.reopen();
       await f.writer.seal();
       await f.writer.accept(object("after"));
       expect(await f.readAll()).toHaveLength(1);
-      await expectTailPublished(f);
+      const published = await expectTailPublished(f);
+      expect(published).toHaveLength(2);
+      expect(published[0]).toBe(f.contentId);
+      expect(published[1]).not.toBe(f.contentId);
     } finally {
       f.faults.failDirectoryCreate = null;
       await f.close();

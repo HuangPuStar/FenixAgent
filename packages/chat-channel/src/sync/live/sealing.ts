@@ -86,7 +86,7 @@ interface Lineage {
   readonly lastSeq: number;
 }
 
-/** 第 3 步的产物；按 Doc 缓存，使封口重试复用同一摘要。 */
+/** 第 3 步的产物；本次调用内缓存，使有界重试复用同一摘要。 */
 interface SealedSnapshot {
   readonly finalUpdateSeq: number;
   readonly snapshot: Uint8Array;
@@ -109,6 +109,7 @@ interface SealAttempt {
   routeCommitted: boolean;
   /** 本次尝试首次登记了 successor（此前不存在）：只有这种 Doc 才确定未被既有路由引用。 */
   successorRegistered: boolean;
+  invalidPinnedRequest?: boolean;
   lineage?: Lineage;
   sealed?: SealedSnapshot;
 }
@@ -116,7 +117,6 @@ interface SealAttempt {
 class SealingMachineImpl implements SealingMachine {
   private readonly store: ProjectionStore;
   private readonly digest: DigestFn;
-  private readonly attempts = new Map<string, SealAttempt>(); // 键为 scope\0docId：裸 docId 会在另一个 scope 命中别人的计划
   private currentPhase: SealingPhase = "active";
 
   constructor(deps: SealingDeps) {
@@ -130,20 +130,21 @@ class SealingMachineImpl implements SealingMachine {
 
   async seal(request: SealRequest): Promise<SealResult> {
     const attempt = this.plan(request);
+    const previousPhase = this.currentPhase;
     this.currentPhase = "sealing";
     try {
       const result = await this.run(attempt);
       this.currentPhase = "sealed";
       return result;
     } catch (error) {
-      // 任何未收敛的失败都落到 failed：调用方需要「该谱系停止写入」的可观察信号，而非从异常类型各自推断。
-      this.currentPhase = "failed";
+      // 已提交计划的参数冲突没有进入写入；其余未收敛失败仍是停止写入的终态。
+      this.currentPhase = attempt.invalidPinnedRequest ? previousPhase : "failed";
       throw error;
     }
   }
 
   /**
-   * 崩溃恢复：只用**已提交字节**重建同一谱系，不读本机的 `attempts`——旧写者的内存已经不存在，恢复的正确性不能依赖它。
+   * 崩溃恢复：只用**已提交字节**重建同一谱系，不依赖旧写者的内存。
    * 重放只 apply 已提交字节、不产生本地 struct，故同输入必同摘要，这是「重建同谱系」成立的前提；第 4 步之后崩溃时存储
    * 里的 canonical 字节就是权威，只复核它自报的摘要与读回字节一致（两处证据矛盾时没有可采信的一方）。
    * 返回 `null`：未登记、已退役，或只有基线而无已提交 tail——最后一种正是一次「预分配但未被路由引用」的孤儿的样子。
@@ -176,9 +177,7 @@ class SealingMachineImpl implements SealingMachine {
   }
 
   /**
-   * 校验请求并取出（或建立）该 Doc 的封口计划。校验在进入 `sealing` 之前完成：畸形请求是调用方缺陷，不该把机器
-   * 推进 `failed`，否则一次参数写错就让整台机器对后续 Doc 也失效。计划一旦建立即钉死——换 successor 或换截止序号
-   * 是另一份计划（另建机器），不是重试。
+   * 校验在进入 sealing 前完成，避免畸形请求终止可用协议机；计划只由本次有界重试持有。
    */
   private plan(request: SealRequest): SealAttempt {
     const key = scopeKey(request.scope);
@@ -197,16 +196,7 @@ class SealingMachineImpl implements SealingMachine {
     if (successor.kind !== predecessor.kind || successor.generation !== predecessor.generation) {
       fail("GENERATION_MISMATCH", "successor shares no generation", { docId: request.successorDocId });
     }
-    const cached = this.attempts.get(`${key}\u0000${docId}`);
-    if (cached !== undefined) {
-      if (cached.successorDocId !== request.successorDocId || cached.finalUpdateSeq !== request.finalUpdateSeq) {
-        fail("DIGEST_CONFLICT", "seal plan is pinned to another successor or cutoff", { scope: key, docId });
-      }
-      // epoch 不同即另一写者的计划：存储会按 epoch 拒绝其写入，缓存命中分支在这里给出同一结论。
-      if (cached.epoch !== request.lease.epoch) fail("WRITER_EPOCH_LOST", "plan belongs to another epoch", { docId });
-      return cached;
-    }
-    const attempt: SealAttempt = {
+    return {
       scopeKey: key,
       docId,
       successorDocId: request.successorDocId,
@@ -219,8 +209,6 @@ class SealingMachineImpl implements SealingMachine {
       routeCommitted: false,
       successorRegistered: false,
     };
-    this.attempts.set(`${key}\u0000${docId}`, attempt);
-    return attempt;
   }
 
   /**
@@ -240,8 +228,25 @@ class SealingMachineImpl implements SealingMachine {
 
   private async runSteps(attempt: SealAttempt): Promise<SealResult> {
     const lineage = await this.readLineage(attempt);
-    await this.registerSuccessorDoc(attempt);
-    await this.registerRoute(attempt);
+    const committed = await this.store.readSuccessor(attempt.scopeKey, attempt.docId);
+    if (committed?.state === "sealed" && committed.route) {
+      const anotherSuccessor = committed.route.successorDocId !== attempt.successorDocId;
+      if (anotherSuccessor || committed.route.expectedLastSeq !== attempt.finalUpdateSeq) {
+        attempt.invalidPinnedRequest = true;
+        fail(
+          anotherSuccessor ? "DIGEST_CONFLICT" : "SEQUENCE_GAP",
+          "sealed predecessor differs from its pinned route",
+          {
+            docId: attempt.docId,
+          },
+        );
+      }
+      // 后继可能已再次封口；已完成的谱系不重登记其初始字节，租约仍由 sealDoc 复核。
+      attempt.routeCommitted = true;
+    } else {
+      await this.registerSuccessorDoc(attempt);
+      await this.registerRoute(attempt);
+    }
     const sealed = this.encodeSeal(attempt, lineage);
     return await this.commitSeal(attempt, sealed, lineage);
   }
@@ -334,14 +339,9 @@ class SealingMachineImpl implements SealingMachine {
   }
 
   /**
-   * 第 2 步的路由事务，也是本协议唯一能挡住「读取前沿之后、提交之前又落了一批更新」的关口：`registerSuccessor`
-   * 在存储内用**当前**前沿比较 `expectedLastSeq`，不匹配即拒绝（`SEQUENCE_GAP`）。本机早先读到的前沿只能用于计划。
-   * 路由未提交时 successor 仍是孤儿。只有「本次首次登记」的 Doc 才确定不被既有路由引用，才允许回收；已存在的 Doc
-   * 可能正是那条既有路由的目标，回收它会删掉仍被引用的字节。是否真删字节由存储的可达性判定（当前代次受保护），
-   * 本机不读回收结果——保留受保护的孤儿是正确结果。
-   * 已知偏差：存储以**异常**形式给出的确定性失败（如前沿不匹配的 `SEQUENCE_GAP`）与「已写入但结果未确认」无法区分，
-   * 故不触发回收，预分配的 Doc 保留到代次退役。影响：每个被放弃的封口计划最多残留一个未引用 Doc；移除条件：
-   * `ProjectionStore` 提供路由查询出口或原子「预分配 + 路由」原语。
+   * 存储内的当前前沿必须匹配截止序号，早先读取的前沿只能用于计划。
+   * 冲突时只申请回收本次新登记的 successor，最终可达性由存储判定；既有目标可能仍被其他路由引用。
+   * 异常不能证明路由未落地，预分配 Doc 留待代次退役回收，不能推测失败后删除。
    */
   private async registerRoute(attempt: SealAttempt): Promise<void> {
     if (attempt.routeCommitted) return;

@@ -10,7 +10,7 @@ import { directoryRootDocId } from "../sync/protocol/directory";
 import { SyncProtocolError } from "../sync/protocol/errors";
 import { buildDocId, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
-import type { AppendUpdatesInput, SyncDocRecord } from "../sync/store/types";
+import type { AppendUpdatesInput, SyncDocRecord, WriterLease } from "../sync/store/types";
 
 /** 完整 Store、真实额度和真实 Yjs，只在存储边界注入读失败或回执丢失。 */
 export async function fixture() {
@@ -86,13 +86,16 @@ export async function fixture() {
     rejectOnAppend: 0,
     hold: null as Reservation | null,
     afterLocate: null as (() => Promise<void> | void) | null,
-    afterPointer: null as (() => Promise<void> | void) | null,
+    beforeConfirm: null as ((lease: WriterLease, generation: string) => Promise<void> | void) | null,
+    unknownAppendOnce: false,
+    failProbeReadOnce: false,
     failSeal: false,
     failDirectoryRoot: false,
     failDirectoryCreate: null as "root" | "page" | null,
   };
   const readError = new Error("reload unavailable");
   const replyError = new Error("commit reply lost");
+  const probeError = new Error("commit probe unavailable");
   const wrapped = new Proxy(store, {
     get(target, property) {
       if (property === "createDoc")
@@ -106,13 +109,20 @@ export async function fixture() {
             );
           return target.createDoc(input);
         };
-      if (property === "readScopePointer")
-        return async (...args: Parameters<MemoryProjectionStore["readScopePointer"]>) => {
-          const result = await target.readScopePointer(...args);
-          const hook = faults.afterPointer;
-          faults.afterPointer = null;
-          await hook?.();
-          return result;
+      if (property === "confirmWriter")
+        return async (lease: WriterLease, generation: string) => {
+          const hook = faults.beforeConfirm;
+          faults.beforeConfirm = null;
+          await hook?.(lease, generation);
+          return target.confirmWriter(lease, generation);
+        };
+      if (property === "readUpdatesAfter")
+        return (...args: Parameters<MemoryProjectionStore["readUpdatesAfter"]>) => {
+          if (faults.failProbeReadOnce) {
+            faults.failProbeReadOnce = false;
+            return Promise.reject(probeError);
+          }
+          return target.readUpdatesAfter(...args);
         };
       if (property === "sealDoc")
         return (...args: Parameters<MemoryProjectionStore["sealDoc"]>) =>
@@ -133,6 +143,10 @@ export async function fixture() {
       if (property === "appendUpdates")
         return async (input: AppendUpdatesInput) => {
           faults.appendCalls++;
+          if (faults.unknownAppendOnce) {
+            faults.unknownAppendOnce = false;
+            return { outcome: "unknown" as const, frontiers: [] };
+          }
           if (
             faults.failDirectoryRoot &&
             input.updates.some((update) => update.docId === directoryRootDocId(generation))
@@ -201,6 +215,7 @@ export async function fixture() {
     admission,
     faults,
     replyError,
+    probeError,
     read,
     contentId: id("content"),
     runtimeId: id("runtime"),
@@ -214,6 +229,10 @@ export async function fixture() {
       const docs = store
         .exportCommittedState()
         .docs.filter((doc) => doc.kind === "content")
+        .map((doc) => {
+          if (doc.blockIndex === null) throw new Error("Content block has no index");
+          return { ...doc, blockIndex: doc.blockIndex };
+        })
         .sort((a, b) => a.blockIndex - b.blockIndex);
       for (const doc of docs) {
         const committed = await loadCommittedDoc(store, doc.docId);

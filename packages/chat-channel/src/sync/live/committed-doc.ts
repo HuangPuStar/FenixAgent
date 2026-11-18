@@ -66,7 +66,7 @@ export async function appendCommittedBatch(input: {
   readonly batch: Batch;
   readonly cursors: ReadonlyMap<string, Cursor>;
   readonly renew: () => Promise<WriterLease>;
-  readonly stop: (code: SyncErrorCode, message: string) => SyncProtocolError;
+  readonly stop: (code: SyncErrorCode, message: string, cause?: unknown) => SyncProtocolError;
 }): Promise<CommitOutcome> {
   const { batch, cursors } = input;
   for (let attempt = 1; ; attempt += 1) {
@@ -87,7 +87,12 @@ export async function appendCommittedBatch(input: {
       applyFrontiers(cursors, result.frontiers);
       return result.outcome;
     }
-    const probe = await probeCommittedBatch(input.store, batch);
+    let probe: Probe;
+    try {
+      probe = await probeCommittedBatch(input.store, batch);
+    } catch (error) {
+      throw input.stop("COMMIT_OUTCOME_UNKNOWN", `batch ${batch.batchId} could not be confirmed`, error);
+    }
     if (probe.status === "committed") {
       applyFrontiers(cursors, probe.frontiers);
       return "already-committed";

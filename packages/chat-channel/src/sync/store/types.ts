@@ -384,6 +384,8 @@ export interface ProjectionStore {
    * 成功返回延长后的租约。续租不改变 epoch，也不可能复活已过期的租约。
    */
   renewWriter(lease: WriterLease, ttlMs: number): Promise<WriterLease>;
+  /** 在与换代/写权交接串行的 Store 点复核 owner、epoch、到期时间与当前代；不改写正文。 */
+  confirmWriter(lease: WriterLease, generation: string): Promise<void>;
 
   /**
    * 登记一个新的代次记录（`staging`）。幂等键 `scopeKey + generation`：同键同 `loadId` 重试 →
@@ -407,7 +409,7 @@ export interface ProjectionStore {
    * 「停止旧 Doc 新写入」的唯一承载物：提交后该 Doc 的追加一律被拒，前沿不再越过登记的截止序号。
    */
   registerSuccessor(input: RegisterSuccessorInput): Promise<RegistrationResult>;
-  /** 只读已登记的 scoped 路由；未知、退役或其他 scope 的文档返回 null。 */
+  /** 已知文档返回元数据（无后继时 route 为 null）；未知、退役或其他 scope 返回 null。 */
   readSuccessor(scopeKey: string, docId: string): Promise<SyncSuccessorState | null>;
 
   /**

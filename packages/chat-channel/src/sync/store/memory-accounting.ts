@@ -12,36 +12,43 @@ interface PreparedSet {
   commit(): void;
   abort(): void;
 }
+type PoolBytes = Partial<Record<ServerPoolName, number>>;
+interface AccountingEntry {
+  totals: PoolBytes;
+  reservations: Reservation[];
+}
 /** 预留成功后才替换；可先为整批准备再原子提交，防止部分写入。 */
 export class AccountedMap<K, V> extends Map<K, V> {
-  private readonly charges = new Map<K, Reservation[]>();
+  private readonly accounting = new Map<K, AccountingEntry>();
   constructor(
     protected readonly budget: MemoryBudget | undefined,
-    private readonly estimate: (key: K, value: V) => Partial<Record<ServerPoolName, number>>,
+    private readonly estimate: (key: K, value: V) => PoolBytes,
   ) {
     super();
   }
+  /** 完整替换先预留全部新值，提交后才归还旧值的额度。 */
   prepare(key: K, value: V): PreparedSet {
-    return this.prepareValue(key, value, false);
+    return this.prepareValue(key, value, this.budget ? this.estimate(key, value) : {}, false);
+  }
+  /** 无预算时不做估算；有预算时返回已提交值的累计池用量。 */
+  accountedBytes(key: K, pool: ServerPoolName): number | undefined {
+    return this.budget ? (this.accounting.get(key)?.totals[pool] ?? 0) : undefined;
   }
   /** 仅供数组追加使用：旧值的所有对象、缓冲与计费归属都继续保留。 */
-  protected prepareRetaining(key: K, value: V): PreparedSet {
-    return this.prepareValue(key, value, true);
+  protected prepareRetaining(key: K, value: V, additions: PoolBytes): PreparedSet {
+    return this.prepareValue(key, value, additions, true);
   }
-  private prepareValue(key: K, value: V, retain: boolean): PreparedSet {
+  private prepareValue(key: K, value: V, estimate: PoolBytes, retain: boolean): PreparedSet {
     const reservations: Reservation[] = [];
-    const oldCharges = this.charges.get(key) ?? [];
-    const oldEstimate: Partial<Record<ServerPoolName, number>> =
-      retain && this.has(key) ? this.estimate(key, this.get(key)!) : {};
-    const nextEstimate = this.estimate(key, value);
-    for (const [pool, bytes] of Object.entries(oldEstimate))
-      if ((nextEstimate[pool as ServerPoolName] ?? 0) < bytes)
-        throw new RangeError("retained accounting cannot shrink an existing pool");
+    const old = this.accounting.get(key);
+    const totals: PoolBytes = retain ? { ...old?.totals } : {};
     try {
       if (this.budget)
-        for (const [pool, bytes] of Object.entries(nextEstimate)) {
-          const retained = oldEstimate[pool as ServerPoolName] ?? 0;
-          if (bytes > retained) reservations.push(this.budget.reserve(pool as ServerPoolName, bytes - retained));
+        for (const [name, bytes] of Object.entries(estimate)) {
+          const pool = name as ServerPoolName;
+          if (bytes < 0) throw new RangeError("retained accounting cannot shrink an existing pool");
+          if (bytes > 0) reservations.push(this.budget.reserve(pool, bytes));
+          totals[pool] = (totals[pool] ?? 0) + bytes;
         }
     } catch (error) {
       for (const charge of reservations) charge.release();
@@ -54,10 +61,11 @@ export class AccountedMap<K, V> extends Map<K, V> {
         settled = true;
         if (!retain) this.release(key);
         super.set(key, value);
-        if (retain) {
-          oldCharges.push(...reservations);
-          this.charges.set(key, oldCharges);
-        } else this.charges.set(key, reservations);
+        if (this.budget) {
+          const charges = retain ? (old?.reservations ?? []) : [];
+          charges.push(...reservations);
+          this.accounting.set(key, { totals, reservations: charges });
+        }
       },
       abort() {
         if (settled) return;
@@ -79,21 +87,35 @@ export class AccountedMap<K, V> extends Map<K, V> {
     super.clear();
   }
   private release(key: K): void {
-    for (const charge of this.charges.get(key) ?? []) charge.release();
-    this.charges.delete(key);
+    for (const charge of this.accounting.get(key)?.reservations ?? []) charge.release();
+    this.accounting.delete(key);
   }
 }
 
-/** 仅追加原样共享的旧数组元素；替换元素、缓冲或缩小数组仍须使用完整 prepare。 */
+/** 估算须由固定基数与逐项用量组成；仅追加原样共享的元素，替换或缩小仍须完整 prepare。 */
 export class AccountedArrayMap<K, T> extends AccountedMap<K, T[]> {
+  constructor(
+    budget: MemoryBudget | undefined,
+    private readonly estimateArray: (key: K, value: readonly T[]) => PoolBytes,
+  ) {
+    super(budget, estimateArray);
+  }
   /** 旧前缀原样共享；失败只归还新增与临时额度，旧值和计费保持不变。 */
   prepareAppend(key: K, additions: readonly T[]): PreparedSet {
     const previous = this.get(key) ?? [];
     const temporary = this.budget?.reserve("controlIndex", 128 + previous.length * 8);
     try {
+      const additionsEstimate = this.budget ? this.estimateArray(key, additions) : {};
+      if (this.budget && this.has(key)) {
+        // 空账本给出每 key 的固定基数；后续追加只为新增记录计费。
+        for (const [name, bytes] of Object.entries(this.estimateArray(key, []))) {
+          const pool = name as ServerPoolName;
+          additionsEstimate[pool] = (additionsEstimate[pool] ?? 0) - bytes;
+        }
+      }
       // 临时数组先取得额度；旧记录对象和 bytes 不复制，也不重复取得其存量额度。
       const value = [...previous, ...additions];
-      const prepared = this.prepareRetaining(key, value);
+      const prepared = this.prepareRetaining(key, value, additionsEstimate);
       return {
         commit() {
           prepared.commit();

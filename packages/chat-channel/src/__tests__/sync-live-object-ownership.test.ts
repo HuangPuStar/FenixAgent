@@ -9,6 +9,9 @@ test("对象重试全命中但读取期间租约过期时拒绝成功", async ()
     await f.writer.accept(object("same"));
     f.faults.afterLocate = () => f.advance(31000);
     await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+    await f.writer.acquire();
+    await f.writer.accept(object("after"));
+    expect(await f.readAll()).toHaveLength(2);
   } finally {
     await f.close();
   }
@@ -48,23 +51,61 @@ test("对象重试全命中但读取期间被新写者接管时拒绝成功", as
   const f = await fixture();
   try {
     await f.writer.accept(object("same"));
-    f.faults.afterLocate = async () => {
-      f.advance(31000);
+    f.faults.beforeConfirm = async (lease) => {
+      await f.store.releaseWriter(lease);
       await f.store.acquireWriter(scopeKey(f.scope), "another-writer", 1000);
     };
+    await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "WRITER_EPOCH_LOST" });
+  } finally {
+    await f.close();
+  }
+});
+
+// 确认前租约到期仍须拒绝当前操作，但同一实例可以在之后重新接管。
+test("对象重试在 Store 确认前租约过期后可重新接管", async () => {
+  const f = await fixture();
+  try {
+    await f.writer.accept(object("same"));
+    f.faults.beforeConfirm = () => f.advance(31000);
     await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
   } finally {
     await f.close();
   }
 });
 
-// 最终指针读取也可能耗尽租约，必须以返回时的时钟复核读取到的租约期限。
-test("对象重试在最终指针读取期间租约过期时拒绝成功", async () => {
+// 后台续租完成后按当前 Store 状态确认，不使用旧快照中的到期时间误判。
+test("全命中重试确认使用已经续租的当前租约", async () => {
+  const f = await fixture();
+  let renewed = false;
+  try {
+    await f.writer.accept(object("same"));
+    f.faults.beforeConfirm = async (lease) => {
+      f.advance(29999);
+      await f.store.renewWriter(lease, 30000);
+      f.advance(2);
+      renewed = true;
+    };
+    await f.writer.accept(object("same"));
+    expect(renewed).toBe(true);
+    expect(await f.readAll()).toHaveLength(1);
+  } finally {
+    await f.close();
+  }
+});
+
+// 后台续租可先清理过期句柄，正在等待的重试失败后仍须允许同一 writer 重新接管。
+test("后台续租清理过期租约后不会永久锁死正在重试的 writer", async () => {
   const f = await fixture();
   try {
     await f.writer.accept(object("same"));
-    f.faults.afterPointer = () => f.advance(31000);
-    await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+    f.faults.afterLocate = async () => {
+      f.advance(31000);
+      await expect(f.writer.renew()).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+    };
+    await expect(f.writer.accept(object("same"))).rejects.toMatchObject({ code: "WRITER_EPOCH_LOST" });
+    await f.writer.acquire();
+    await f.writer.accept(object("after"));
+    expect(await f.readAll()).toHaveLength(2);
   } finally {
     await f.close();
   }

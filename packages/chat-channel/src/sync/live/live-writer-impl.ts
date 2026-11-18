@@ -33,6 +33,7 @@ import {
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
 import { buildRuntimeSuccessorState, createRuntimeDoc, type FinalEntityDescriptor } from "./runtime-doc";
+import { restoreRuntimeSuccessor } from "./runtime-recovery";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
 import { createTextClaim, type TextClaim } from "./text-claim";
 import { buildPendingBatch, bytes, hex, records, requireObject, requireString, splitLiveText } from "./writer-support";
@@ -40,7 +41,7 @@ export class LiveWriterImpl implements LiveWriter {
   private readonly scopeKey: string;
   private readonly owner: string;
   private readonly rotation: RotationController;
-  private readonly sealing: SealingMachine;
+  private sealing: SealingMachine;
   private merge: MergeBuffer;
   private queue: Promise<unknown> = Promise.resolve();
   private failure: unknown = null;
@@ -57,11 +58,11 @@ export class LiveWriterImpl implements LiveWriter {
   private historyContentDocIds: readonly string[] = [];
   private closed = false;
   constructor(private readonly options: LiveWriterOptions) {
-    const { store, clock, digest, random } = options;
+    const { store, digest, random } = options;
     this.scopeKey = scopeKey(options.scope);
     this.owner = `live_${hex(random, 8)}`;
     this.rotation = createRotationController(options.rotation);
-    this.sealing = createSealingMachine({ store, clock, digest, random });
+    this.sealing = createSealingMachine(options);
     this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
     this.textClaim = createTextClaim(store);
     this.merge = this.newMerge();
@@ -96,8 +97,7 @@ export class LiveWriterImpl implements LiveWriter {
           store: this.options.store,
           scopeKey: this.scopeKey,
           generation: this.requireGeneration(),
-          verifyOwnership: () => this.renewLease(),
-          clock: this.options.clock,
+          confirmOwnership: (generation) => this.confirmOwnership(generation),
           append: (record, ref) =>
             this.appendContentRecord(
               () => ({ ...record, recordId: record.recordId ?? `rec_${hex(this.options.random, 8)}` }),
@@ -343,37 +343,6 @@ export class LiveWriterImpl implements LiveWriter {
       throw error;
     }
   }
-  /** 仅在首次更新前补齐实体交接；已有后续事件的后继不得重新搬运前代。 */
-  private async restoreRuntimeCarry(previousId: string, nextId: string): Promise<void> {
-    await this.loadCursor(previousId, RUNTIME_KIND);
-    const carried = createRuntimeDoc(
-      RUNTIME_KIND,
-      this.options.limits,
-      this.cursor(RUNTIME_KIND).doc,
-    ).exportForRotation();
-    await this.loadCursor(nextId, RUNTIME_KIND);
-    const next = this.cursor(RUNTIME_KIND);
-    if (next.lastSeq !== 0) return;
-    const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, next.doc);
-    const existing = target.exportForRotation();
-    if (existing.length > 0) {
-      const byId = new Map(existing.map((record) => [record.entityId, JSON.stringify(record)]));
-      if (
-        existing.length !== carried.length ||
-        carried.some((record) => byId.get(record.entityId) !== JSON.stringify(record))
-      )
-        throw this.stop("DIGEST_CONFLICT", "runtime successor base differs from its transfer");
-      return;
-    }
-    if (carried.length === 0) return;
-    const slices: Slice[] = [];
-    captureSlice(slices, next, () => {
-      for (const record of carried) target.upsertEntity(record);
-    });
-    const overflow = this.overflowOf(slices);
-    if (overflow !== null) throw this.stop("CAPACITY_EXCEEDED", "runtime successor transfer exceeds the hard limit");
-    await this.persist(slices);
-  }
   private async persist(slices: readonly Slice[], refs?: SyncRefRecord[]): Promise<void> {
     if (slices.length === 0) return;
     await this.executeBatch(
@@ -390,7 +359,7 @@ export class LiveWriterImpl implements LiveWriter {
         batch,
         cursors,
         renew: () => this.renewLease(),
-        stop: (code, message) => this.stop(code, message),
+        stop: (code, message, cause) => this.stop(code, message, cause),
       });
     } catch (error) {
       try {
@@ -405,15 +374,26 @@ export class LiveWriterImpl implements LiveWriter {
   }
   /** 续租同时复核 fencing：epoch 被顶替或租约过期时立即停写（在途通知撤不回，只能先停）。 */
   private async renewLease(): Promise<WriterLease> {
+    const current = this.requireLease();
     try {
-      this.lease = await this.options.store.renewWriter(this.requireLease(), LIVE_WRITER_LEASE_TTL_MS);
+      this.lease = await this.options.store.renewWriter(current, LIVE_WRITER_LEASE_TTL_MS);
       return this.lease;
     } catch (error) {
-      this.failure = error;
+      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") this.lease = null;
+      else this.failure = error;
+      throw error;
+    }
+  }
+  private async confirmOwnership(generation: string): Promise<void> {
+    try {
+      await this.options.store.confirmWriter(await this.renewLease(), generation);
+    } catch (error) {
+      if (error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") this.lease = null;
       throw error;
     }
   }
   private async rebuildFromCommitted(): Promise<void> {
+    if (this.sealing.phase === "failed") this.sealing = createSealingMachine(this.options);
     // 恢复时丢弃未提交缓冲和幂等声明，避免失败后同一用户消息被永久拒绝。
     this.merge.dispose();
     this.textClaim.reset();
@@ -439,7 +419,14 @@ export class LiveWriterImpl implements LiveWriter {
     const runtimeDocId = await recoverLiveSuccessors({
       ...succession,
       startDocId: generation.entryRefs.runtimeDocId,
-      onSuccessor: (previous, next) => this.restoreRuntimeCarry(previous, next),
+      onSuccessor: (previousId, nextId) =>
+        restoreRuntimeSuccessor({
+          options: this.options,
+          previousId,
+          nextId,
+          renew: () => this.renewLease(),
+          stop: (code, message, cause) => this.stop(code, message, cause),
+        }),
     });
     await this.loadCursor(runtimeDocId, RUNTIME_KIND);
     await this.directory.load(this.requireLease(), generation.generation, generation.entryRefs);
@@ -487,8 +474,8 @@ export class LiveWriterImpl implements LiveWriter {
       cursorOf: (docId) => this.cursorOf(docId),
     });
   }
-  private stop(code: SyncErrorCode, message: string): SyncProtocolError {
-    const error = new SyncProtocolError(code, { message });
+  private stop(code: SyncErrorCode, message: string, cause?: unknown): SyncProtocolError {
+    const error = new SyncProtocolError(code, { message, cause });
     this.failure = error;
     return error;
   }
