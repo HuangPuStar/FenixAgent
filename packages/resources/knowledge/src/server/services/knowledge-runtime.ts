@@ -6,10 +6,12 @@
  * 「读行 + 解析 key」，控制台组织口径现在只由门面决定。
  *
  * Agent 侧入口（`readKnowledgeResourceForAgent` / `searchKnowledgeByConfigId` / `getKnowledgeGraphForAgent`）
- * 的授权只来自 agent 知识库绑定本身：绑定挂在 Agent 上，跟着 Agent 的可见范围走，调用方身份不参与
+ * 默认只以 agent 知识库绑定作为授权来源：绑定挂在 Agent 上，跟着 Agent 的可见范围走，调用方身份不参与
  * 判定——跨组织运行共享 Agent 时，环境属于调用方而知识库属于提供方，按调用方过滤会让绑定整体失效。
+ * 显式启用 `trusted-delegate` 时，外部门控承担逐请求授权，CE 要求运行时身份完整。
  */
 
+import { getKnowledgeConfig } from "../config";
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
 import { agentKnowledgeBindingRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
 import type { KnowledgeBaseCredential } from "./knowledge-credential";
@@ -23,6 +25,11 @@ import type {
   MetaDataFilter,
   RerankModelOption,
 } from "./knowledge-provider/types";
+import {
+  KnowledgeRuntimeAccessError,
+  type KnowledgeRuntimeRequestIdentity,
+  resolveKnowledgeRuntimeAccessScope,
+} from "./knowledge-runtime-authorization";
 import { resolveRagflowApiKey } from "./ragflow-key";
 
 export interface BoundKnowledgeBase {
@@ -39,14 +46,24 @@ export interface BoundKnowledgeBase {
 }
 
 export { setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting } from "./knowledge-provider/registry";
+export {
+  KnowledgeRuntimeAccessError,
+  type KnowledgeRuntimeAccessErrorCode,
+  type KnowledgeRuntimeAccessScope,
+  type KnowledgeRuntimeRequestIdentity,
+  resolveKnowledgeRuntimeAccessScope,
+} from "./knowledge-runtime-authorization";
 
 /**
  * Reads a knowledge resource only if it belongs to a knowledge base bound to the agent.
  */
 export async function readKnowledgeResourceForAgent(input: {
-  agentConfigId?: string;
+  agentConfigId: string;
   resourceId: string;
+  userId?: string | null;
+  organizationId?: string | null;
 }): Promise<KnowledgeResourceContent & { knowledgeBaseId: string }> {
+  const boundKnowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
   const result = await agentKnowledgeBindingRepo.getResourceWithKnowledgeBase(input.resourceId);
 
   if (!result) {
@@ -56,11 +73,8 @@ export async function readKnowledgeResourceForAgent(input: {
     throw new Error("Knowledge resource remote id is missing");
   }
 
-  const boundKnowledgeBases = input.agentConfigId
-    ? await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId)
-    : [];
   if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
-    throw new Error("Knowledge resource is not bound to the agent");
+    throw new KnowledgeRuntimeAccessError("KNOWLEDGE_BINDING_REQUIRED", "Knowledge resource is not bound to the agent");
   }
 
   const provider = getKnowledgeRuntimeProvider();
@@ -87,11 +101,32 @@ export async function readKnowledgeResourceForAgent(input: {
 /**
  * Resolves the ordered bound knowledge bases for an agent config.
  *
- * 不做组织过滤：绑定表是唯一的授权来源，且写入侧已校验知识库归属与 Agent 归属组织一致
- * （`syncAgentKnowledgeBindingsById`）。
+ * `owner` 不做组织过滤：绑定表是唯一的授权来源，且写入侧已校验知识库归属与 Agent 归属组织一致
+ * （`syncAgentKnowledgeBindingsById`）。跨组织授权由外部门控决定。
  */
-export async function resolveBoundKnowledgeBasesByConfigId(agentConfigId: string): Promise<BoundKnowledgeBase[]> {
-  const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
+export async function resolveBoundKnowledgeBasesByConfigId(
+  agentConfigId: string,
+  identity: KnowledgeRuntimeRequestIdentity = {},
+): Promise<BoundKnowledgeBase[]> {
+  return resolveBoundKnowledgeBasesWithAccess(agentConfigId, identity);
+}
+
+async function resolveBoundKnowledgeBasesWithAccess(
+  agentConfigId: string,
+  identity: KnowledgeRuntimeRequestIdentity,
+): Promise<BoundKnowledgeBase[]> {
+  const rows = await resolveKnowledgeBindingsWithAccess(agentConfigId, identity);
+  return toAvailableKnowledgeBases(rows);
+}
+
+async function resolveKnowledgeBindingsWithAccess(agentConfigId: string, identity: KnowledgeRuntimeRequestIdentity) {
+  resolveKnowledgeRuntimeAccessScope(getKnowledgeConfig().runtimeAuthMode, identity);
+  return agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
+}
+
+function toAvailableKnowledgeBases(
+  rows: Awaited<ReturnType<typeof resolveKnowledgeBindingsWithAccess>>,
+): BoundKnowledgeBase[] {
   return rows
     .filter((row) => !!row.kbRemoteId)
     .sort((a, b) => a.priority - b.priority)
@@ -102,7 +137,7 @@ export async function resolveBoundKnowledgeBasesByConfigId(agentConfigId: string
       remoteUserId: row.kbRemoteUserId?.trim() || row.kbUserId,
       priority: row.priority,
       userId: row.kbUserId,
-      organizationId: row.kbOrganizationId ?? row.kbUserId,
+      organizationId: row.kbOrganizationId?.trim() || row.kbUserId,
       name: row.kbName ?? "未知知识库",
       embeddingModel: row.kbEmbeddingModel?.trim() || null,
     }));
@@ -115,6 +150,8 @@ export async function searchKnowledgeByConfigId(input: {
   agentConfigId: string;
   query: string;
   topK: number;
+  userId?: string | null;
+  organizationId?: string | null;
 }): Promise<KnowledgeSearchResult[]> {
   return searchKnowledgeDetailedForAgent(input);
 }
@@ -128,6 +165,8 @@ export async function searchKnowledgeDetailedForAgent(input: {
   agentConfigId: string;
   query: string;
   topK: number;
+  userId?: string | null;
+  organizationId?: string | null;
   similarityThreshold?: number;
   vectorSimilarityWeight?: number;
   rerankId?: string | null;
@@ -137,7 +176,7 @@ export async function searchKnowledgeDetailedForAgent(input: {
   crossLanguages?: string[];
   metaDataFilter?: MetaDataFilter;
 }): Promise<KnowledgeSearchResult[]> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId);
+  const knowledgeBases = await resolveBoundKnowledgeBasesWithAccess(input.agentConfigId, input);
   if (knowledgeBases.length === 0) return [];
 
   const provider = getKnowledgeRuntimeProvider();
@@ -384,20 +423,30 @@ export async function pollKnowledgeGraphProgressForKb(input: {
  * 获取 agent 绑定知识库的知识图谱数据（节点 + 边）。
  * 若指定 knowledgeBaseId，仅查该 KB；否则返回第一个有图谱的绑定 KB。
  */
-export async function getKnowledgeGraphForAgent(input: { agentConfigId: string; knowledgeBaseId?: string }): Promise<{
+export async function getKnowledgeGraphForAgent(input: {
+  agentConfigId: string;
+  knowledgeBaseId?: string;
+  userId?: string | null;
+  organizationId?: string | null;
+}): Promise<{
   knowledgeBaseId: string;
   graph: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] };
   mind_map?: unknown;
 } | null> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId);
-  if (knowledgeBases.length === 0) return null;
-
-  const provider = getKnowledgeRuntimeProvider();
-
-  // 若指定了 KB ID，只查那个
+  const bindings = await resolveKnowledgeBindingsWithAccess(input.agentConfigId, input);
+  const knowledgeBases = toAvailableKnowledgeBases(bindings);
   if (input.knowledgeBaseId) {
     const target = knowledgeBases.find((kb) => kb.id === input.knowledgeBaseId);
-    if (!target) throw new Error(`Knowledge base ${input.knowledgeBaseId} is not bound to this agent`);
+    if (!target) {
+      if (bindings.some((binding) => binding.kbId === input.knowledgeBaseId)) {
+        throw new KnowledgeRuntimeAccessError("KNOWLEDGE_BASE_UNAVAILABLE", "Knowledge base remote id is missing");
+      }
+      throw new KnowledgeRuntimeAccessError(
+        "KNOWLEDGE_BINDING_REQUIRED",
+        `Knowledge base ${input.knowledgeBaseId} is not bound to this agent`,
+      );
+    }
+    const provider = getKnowledgeRuntimeProvider();
     try {
       const apiKey = await resolveRagflowApiKey("global", target.userId, target.organizationId);
       const result = await provider.getKnowledgeGraph({
@@ -413,6 +462,9 @@ export async function getKnowledgeGraphForAgent(input: { agentConfigId: string; 
       return null;
     }
   }
+
+  if (knowledgeBases.length === 0) return null;
+  const provider = getKnowledgeRuntimeProvider();
 
   // 否则遍历所有绑定 KB，返回第一个有图谱的。单个 KB 失败不阻断。
   for (const kb of knowledgeBases) {

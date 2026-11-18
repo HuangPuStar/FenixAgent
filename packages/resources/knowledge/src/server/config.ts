@@ -8,8 +8,8 @@ import * as z from "zod/v4";
  * 阶段经 `initializeApplicationInfrastructure({ moduleConfigs: { knowledge } })` 注入。包内不做第二份
  * 环境解析（既不读 `process.env`，也不读 `.env`）：两处默认值一旦分歧便无法在启动期暴露。
  *
- * 字段集是本包实测的读取面（RAGFlow 基址 / 密钥 / 请求超时 + Office 转 PDF 的 Gotenberg 基址）。
- * 这些字段暂由宿主直接提供，而不是走模块 `envDefinitions`（声明、校验与 preflight 收敛归任务 1.7）。
+ * 字段集是本包实测的读取面（RAGFlow 基址 / 密钥 / 请求超时 + Office 转 PDF 的 Gotenberg 基址 +
+ * Agent 知识运行时授权模式）。值的启动期校验归模块 `envDefinitions`，宿主只负责把已校验值投影到本配置。
  */
 export interface KnowledgeModuleConfig {
   /** RAGFlow API 基址（不含尾部斜杠），如 `http://localhost:9380`。 */
@@ -25,7 +25,19 @@ export interface KnowledgeModuleConfig {
   readonly ragflowRequestTimeoutMs: number;
   /** Gotenberg 服务基址，用于把 Office 文档转成 PDF；不可用时调用方回退 LibreOffice CLI。 */
   readonly gotenbergUrl: string;
+  /**
+   * Agent 知识运行时授权模式。
+   *
+   * `owner` 保留当前“Agent 绑定即可运行”的 CE 行为（含跨组织共享公开 Agent）；
+   * `trusted-delegate` 要求运行时用户与组织非空，
+   * 供已完成逐请求知识库授权的外部门控复用。
+   */
+  readonly runtimeAuthMode: KnowledgeRuntimeAuthMode;
 }
+
+export const KNOWLEDGE_RUNTIME_AUTH_MODES = ["owner", "trusted-delegate"] as const;
+
+export type KnowledgeRuntimeAuthMode = (typeof KNOWLEDGE_RUNTIME_AUTH_MODES)[number];
 
 /**
  * 模块配置的形状校验。
@@ -42,6 +54,7 @@ const KnowledgeModuleConfigSchema: z.ZodType<KnowledgeModuleConfig> = z.strictOb
   ragflowApiKey: z.string(),
   ragflowRequestTimeoutMs: z.number().int().positive(),
   gotenbergUrl: z.string().min(1),
+  runtimeAuthMode: z.enum(KNOWLEDGE_RUNTIME_AUTH_MODES),
 });
 
 /**

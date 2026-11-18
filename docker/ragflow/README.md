@@ -63,12 +63,13 @@ external 网络 fenix-server（主服务项目创建）：
 
 ## 配置
 
-应用侧（主服务读）的四个键在**主服务 env**（生产 `docker/main/.env`、dev 仓库根 `.env`）；本栈自带实例的
+应用侧（主服务读）的五个键在**主服务 env**（生产 `docker/main/.env`、dev 仓库根 `.env`）；本栈自带实例的
 全部凭据在本目录 `.env`（模板 `.env.example`），主服务 env 里没有本栈要读的共享键：
 
 | 键 | 位置 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `RAGFLOW_API_URL` | 主服务 env | `http://localhost:9380` | 主服务访问 RAGFlow API 的基址。**容器形态必须显式改**（见下节） |
+| `KNOWLEDGE_RUNTIME_AUTH_MODE` | 主服务 env | `owner` | Agent 知识库运行时授权模式。`owner` 保持 Agent 绑定授权；`trusted-delegate` 要求运行时用户/组织非空，供 EE 等外部授权门控使用 |
 | `RAGFLOW_API_KEY` | 主服务 env | 空串 | RAGFlow API key，密钥；空串表示「未配置 RAGFlow」，检索链路快速失败 |
 | `RAGFLOW_REQUEST_TIMEOUT_MS` | 主服务 env | `30000` | 单次 HTTP 请求超时（毫秒，正整数） |
 | `GOTENBERG_URL` | 主服务 env | `http://127.0.0.1:3200` | 主服务访问 Gotenberg 的基址。**容器形态必须显式改为 `http://gotenberg:3000`**（见下节） |
