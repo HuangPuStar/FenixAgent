@@ -21,7 +21,6 @@ function getBearerToken(headerValue: string | undefined): string | null {
 const KNOWLEDGE_ACCESS_ERROR_MESSAGES = {
   KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED: "知识运行时缺少用户身份",
   KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED: "知识运行时缺少组织身份",
-  KNOWLEDGE_ORGANIZATION_MISMATCH: "知识库不在当前组织内",
   KNOWLEDGE_BINDING_REQUIRED: "知识资源不属于当前 Agent 绑定的知识库",
   KNOWLEDGE_BASE_UNAVAILABLE: "知识库不存在或当前无法访问",
 } as const;
@@ -50,7 +49,7 @@ async function runKnowledgeTool<T>(operation: () => Promise<T>) {
 
 /**
  * 透传 Environment 的运行时身份；是否使用它由 Knowledge 模块的授权模式决定。
- * 默认 owner 模式仍可运行跨组织共享 Agent，trusted-delegate 才强制组织交集。
+ * 两种模式均支持跨组织共享 Agent；trusted-delegate 的授权由外部门控负责。
  */
 function createKnowledgeMcpServer(environment: {
   agentConfigId: string | null;

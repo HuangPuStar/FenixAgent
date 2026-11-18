@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { moduleManifest } from "../../fenix.module";
 import {
-  assertKnowledgeRuntimeBindingsInScope,
   KnowledgeRuntimeAccessError,
   resolveKnowledgeRuntimeAccessScope,
 } from "../server/services/knowledge-runtime-authorization";
@@ -52,56 +51,13 @@ describe("知识运行时授权范围", () => {
     expect(error.code).toBe("KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED");
   });
 
-  test("trusted-delegate 规范化身份并要求所有绑定知识库同组织", () => {
-    const access = resolveKnowledgeRuntimeAccessScope("trusted-delegate", {
-      userId: " user-1 ",
-      organizationId: " org-1 ",
-    });
-
-    expect(access).toEqual({
-      mode: "trusted-delegate",
-      trustedDelegate: true,
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-    expect(() =>
-      assertKnowledgeRuntimeBindingsInScope(access, [
-        { id: "kb-1", organizationId: "org-1" },
-        { id: "kb-2", organizationId: " org-1 " },
-      ]),
-    ).not.toThrow();
-  });
-
-  test.each([
-    ["跨组织", "org-2"],
-    ["组织缺失", null],
-    ["组织为空串", ""],
-  ])("trusted-delegate 遇到%s的绑定即拒绝整次请求", (_caseName, organizationId) => {
-    const access = resolveKnowledgeRuntimeAccessScope("trusted-delegate", {
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-
-    const error = captureAccessError(() =>
-      assertKnowledgeRuntimeBindingsInScope(access, [
-        { id: "kb-ok", organizationId: "org-1" },
-        { id: "kb-invalid", organizationId },
-      ]),
-    );
-
-    expect(error.code).toBe("KNOWLEDGE_ORGANIZATION_MISMATCH");
-    expect(error.message).toContain("kb-invalid");
-  });
-
-  test("owner 模式不增加组织交集限制", () => {
-    const access = resolveKnowledgeRuntimeAccessScope("owner", {});
-
-    expect(() =>
-      assertKnowledgeRuntimeBindingsInScope(access, [
-        { id: "kb-1", organizationId: "org-1" },
-        { id: "kb-2", organizationId: null },
-        { id: "kb-3", organizationId: "org-2" },
-      ]),
-    ).not.toThrow();
+  // 委派模式只规范化并校验身份，跨组织授权交由外部门控。
+  test("trusted-delegate 规范化运行身份", () => {
+    expect(
+      resolveKnowledgeRuntimeAccessScope("trusted-delegate", {
+        userId: " user-1 ",
+        organizationId: " org-1 ",
+      }),
+    ).toEqual({ mode: "trusted-delegate", trustedDelegate: true, userId: "user-1", organizationId: "org-1" });
   });
 });

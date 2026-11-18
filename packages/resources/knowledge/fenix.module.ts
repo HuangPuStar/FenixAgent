@@ -150,7 +150,7 @@ export const moduleManifest = {
       restartRequired: true,
       description:
         "Agent 知识运行时授权模式。默认 owner 保留当前 Agent 绑定即授权的 CE 行为；trusted-delegate 要求" +
-        "运行时 userId/organizationId 非空且所有绑定知识库同属该组织，供已完成逐请求知识库授权的外部门控使用。" +
+        "运行时 userId/organizationId 非空，供已完成逐请求知识库授权的外部门控使用。" +
         "非法值在启动期失败。",
     },
     {

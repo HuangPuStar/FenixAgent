@@ -29,7 +29,7 @@ export interface KnowledgeModuleConfig {
    * Agent 知识运行时授权模式。
    *
    * `owner` 保留当前“Agent 绑定即可运行”的 CE 行为（含跨组织共享公开 Agent）；
-   * `trusted-delegate` 要求运行时用户与组织非空，并把所有绑定知识库限制在当前组织，
+   * `trusted-delegate` 要求运行时用户与组织非空，
    * 供已完成逐请求知识库授权的外部门控复用。
    */
   readonly runtimeAuthMode: KnowledgeRuntimeAuthMode;

@@ -151,23 +151,17 @@ describe("知识运行时绑定解析", () => {
     ).resolves.toMatchObject([{ id: "kb-1", organizationId: "org-1" }]);
   });
 
-  test("trusted-delegate 在过滤未同步远端行之前拒绝缺组织绑定", async () => {
+  // 委派模式不能将库的归属组织作为授权判据。
+  test("trusted-delegate 允许跨组织与缺少组织的绑定", async () => {
     initializeKnowledgeModuleConfig({ runtimeAuthMode: "trusted-delegate" });
     stubDb(
       createJoinedBindingsQuery([
-        {
-          kbId: "kb-unsynced",
-          kbRemoteId: null,
-          kbUserId: "owner-1",
-          kbOrganizationId: null,
-          priority: 0,
-        },
+        { kbId: "kb-cross", kbRemoteId: "remote-1", kbUserId: "owner-1", kbOrganizationId: "org-other", priority: 0 },
+        { kbId: "kb-no-org", kbRemoteId: "remote-2", kbUserId: "owner-1", kbOrganizationId: null, priority: 1 },
       ]),
     );
-
-    await expect(
-      resolveBoundKnowledgeBasesByConfigId("agent-1", { userId: "user-1", organizationId: "org-1" }),
-    ).rejects.toMatchObject({ code: "KNOWLEDGE_ORGANIZATION_MISMATCH" });
+    const result = await resolveBoundKnowledgeBasesByConfigId("agent-1", { userId: "user-1", organizationId: "org-1" });
+    expect(result.map((item) => item.id)).toEqual(["kb-cross", "kb-no-org"]);
   });
 
   test("图谱请求选择未绑定知识库时返回稳定授权错误", async () => {
@@ -208,18 +202,13 @@ describe("知识运行时绑定解析", () => {
     await expect(getKnowledgeGraphForAgent({ agentConfigId: "agent-1" })).resolves.toBeNull();
   });
 
-  // 未授权时不能借远端状态区分知识库是否可用。
-  test("组织校验先于知识库可用性判断", async () => {
+  // 运行身份无效时不能借远端状态探测知识库。
+  test("运行身份校验先于知识库可用性判断", async () => {
     initializeKnowledgeModuleConfig({ runtimeAuthMode: "trusted-delegate" });
     stubDb(createJoinedBindingsQuery([{ kbId: "kb-1", kbRemoteId: null, kbOrganizationId: "org-other" }]));
     await expect(
-      getKnowledgeGraphForAgent({
-        agentConfigId: "agent-1",
-        knowledgeBaseId: "kb-1",
-        userId: "user-1",
-        organizationId: "org-1",
-      }),
-    ).rejects.toMatchObject({ code: "KNOWLEDGE_ORGANIZATION_MISMATCH" });
+      getKnowledgeGraphForAgent({ agentConfigId: "agent-1", knowledgeBaseId: "kb-1", organizationId: "org-1" }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED" });
   });
 
   // Agent 没有可检索的知识库绑定时必须直接返回空结果，避免访问密钥或上游 provider。

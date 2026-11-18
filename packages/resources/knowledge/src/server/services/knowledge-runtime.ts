@@ -8,8 +8,7 @@
  * Agent 侧入口（`readKnowledgeResourceForAgent` / `searchKnowledgeByConfigId` / `getKnowledgeGraphForAgent`）
  * 默认只以 agent 知识库绑定作为授权来源：绑定挂在 Agent 上，跟着 Agent 的可见范围走，调用方身份不参与
  * 判定——跨组织运行共享 Agent 时，环境属于调用方而知识库属于提供方，按调用方过滤会让绑定整体失效。
- * 显式启用 `trusted-delegate` 时，外部门控承担成员级分享判定，CE 仍要求运行时身份完整且全部绑定库属于
- * 当前组织，避免身份缺失或历史跨组织脏数据绕过组织边界。
+ * 显式启用 `trusted-delegate` 时，外部门控承担逐请求授权，CE 要求运行时身份完整。
  */
 
 import { getKnowledgeConfig } from "../config";
@@ -27,7 +26,6 @@ import type {
   RerankModelOption,
 } from "./knowledge-provider/types";
 import {
-  assertKnowledgeRuntimeBindingsInScope,
   KnowledgeRuntimeAccessError,
   type KnowledgeRuntimeRequestIdentity,
   resolveKnowledgeRuntimeAccessScope,
@@ -49,7 +47,6 @@ export interface BoundKnowledgeBase {
 
 export { setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting } from "./knowledge-provider/registry";
 export {
-  assertKnowledgeRuntimeBindingsInScope,
   KnowledgeRuntimeAccessError,
   type KnowledgeRuntimeAccessErrorCode,
   type KnowledgeRuntimeAccessScope,
@@ -105,7 +102,7 @@ export async function readKnowledgeResourceForAgent(input: {
  * Resolves the ordered bound knowledge bases for an agent config.
  *
  * `owner` 不做组织过滤：绑定表是唯一的授权来源，且写入侧已校验知识库归属与 Agent 归属组织一致
- * （`syncAgentKnowledgeBindingsById`）。`trusted-delegate` 会在过滤未同步远端行之前执行组织交集校验。
+ * （`syncAgentKnowledgeBindingsById`）。跨组织授权由外部门控决定。
  */
 export async function resolveBoundKnowledgeBasesByConfigId(
   agentConfigId: string,
@@ -123,13 +120,8 @@ async function resolveBoundKnowledgeBasesWithAccess(
 }
 
 async function resolveKnowledgeBindingsWithAccess(agentConfigId: string, identity: KnowledgeRuntimeRequestIdentity) {
-  const access = resolveKnowledgeRuntimeAccessScope(getKnowledgeConfig().runtimeAuthMode, identity);
-  const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
-  assertKnowledgeRuntimeBindingsInScope(
-    access,
-    rows.map((row) => ({ id: row.kbId, organizationId: row.kbOrganizationId })),
-  );
-  return rows;
+  resolveKnowledgeRuntimeAccessScope(getKnowledgeConfig().runtimeAuthMode, identity);
+  return agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
 }
 
 function toAvailableKnowledgeBases(

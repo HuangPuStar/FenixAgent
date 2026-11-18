@@ -10,7 +10,6 @@ export interface KnowledgeRuntimeRequestIdentity {
 export type KnowledgeRuntimeAccessErrorCode =
   | "KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED"
   | "KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED"
-  | "KNOWLEDGE_ORGANIZATION_MISMATCH"
   | "KNOWLEDGE_BINDING_REQUIRED"
   | "KNOWLEDGE_BASE_UNAVAILABLE";
 
@@ -66,22 +65,4 @@ export function resolveKnowledgeRuntimeAccessScope(
     );
   }
   return Object.freeze({ mode, trustedDelegate: true, userId, organizationId });
-}
-
-/**
- * 严格交集：`trusted-delegate` 下任一绑定知识库缺组织或跨组织，整次请求拒绝。
- * 在过滤远端未同步行之前执行，避免无效行成为组织边界的旁路。
- */
-export function assertKnowledgeRuntimeBindingsInScope(
-  access: KnowledgeRuntimeAccessScope,
-  bindings: ReadonlyArray<{ readonly id: string; readonly organizationId: string | null | undefined }>,
-): void {
-  if (!access.trustedDelegate) return;
-  const invalid = bindings.find((binding) => nonBlank(binding.organizationId) !== access.organizationId);
-  if (invalid) {
-    throw new KnowledgeRuntimeAccessError(
-      "KNOWLEDGE_ORGANIZATION_MISMATCH",
-      `Knowledge base ${invalid.id} is outside the runtime organization`,
-    );
-  }
 }

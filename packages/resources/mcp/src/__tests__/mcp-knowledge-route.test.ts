@@ -151,14 +151,12 @@ describe("MCP 知识工具授权链", () => {
     ["kb_read", { resourceId: "resource-1" }],
     ["kb_graph_get", { knowledgeBaseId: "kb-1" }],
   ] as const) {
-    // 三个工具必须透传身份，拒绝跨组织访问且不调用上游。
-    test(`${name} 拒绝跨组织委派`, async () => {
+    // 上层允许跨组织使用时，三个工具都能访问已绑定知识库。
+    test(`${name} 允许跨组织绑定`, async () => {
       const result = await callTool(name, args, "user-1", "org-caller", "trusted-delegate");
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent.code).toBe("KNOWLEDGE_ORGANIZATION_MISMATCH");
-      expect(search).not.toHaveBeenCalled();
-      expect(readResource).not.toHaveBeenCalled();
-      expect(getKnowledgeGraph).not.toHaveBeenCalled();
+      expect(result.isError).not.toBe(true);
+      const expectedProvider = name === "kb_search" ? search : name === "kb_read" ? readResource : getKnowledgeGraph;
+      expect(expectedProvider).toHaveBeenCalledTimes(1);
     });
 
     // 缺失用户身份不能以空结果或成功响应代替授权拒绝。
@@ -166,6 +164,16 @@ describe("MCP 知识工具授权链", () => {
       const result = await callTool(name, args, null, "org-provider", "trusted-delegate");
       expect(result.isError).toBe(true);
       expect(result.structuredContent.code).toBe("KNOWLEDGE_RUNTIME_IDENTITY_REQUIRED");
+      expect(search).not.toHaveBeenCalled();
+      expect(readResource).not.toHaveBeenCalled();
+      expect(getKnowledgeGraph).not.toHaveBeenCalled();
+    });
+
+    // 委派模式缺少组织上下文时必须在访问 Provider 之前失败关闭。
+    test(`${name} 拒绝缺失组织`, async () => {
+      const result = await callTool(name, args, "user-1", null, "trusted-delegate");
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent.code).toBe("KNOWLEDGE_RUNTIME_ORGANIZATION_REQUIRED");
       expect(search).not.toHaveBeenCalled();
       expect(readResource).not.toHaveBeenCalled();
       expect(getKnowledgeGraph).not.toHaveBeenCalled();
