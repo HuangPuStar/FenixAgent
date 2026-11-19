@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { AdmissionController } from "../capacity/admission";
+import type { WorkingCredit } from "../capacity/working-credit";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
 import type { CommitOutcome, SyncRefRecord, WriterLease } from "../store/types";
@@ -21,17 +22,18 @@ import {
 import { rebuildLiveProjection } from "./live-writer-rebuild";
 import { applySemanticWrite, planSemanticWrite } from "./live-writer-semantic";
 import type { LiveInput, LiveRecordValue, LiveWriter, LiveWriterOptions, PendingBatch } from "./live-writer-types";
-import type { MergeFlushRequest, MergeKey } from "./merge-buffer";
+import type { MergeFlushRequest } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
 import { buildRuntimeSuccessorState, createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
-import { admitText, revalidateRetainedText, type TextAdmissionSnapshot } from "./text-admission";
+import { admitText, createTextInputAdmission, type TextAdmissionSnapshot } from "./text-admission";
 import { writeAtomicText } from "./text-batch-commit";
 import { createTextClaim, type TextClaim } from "./text-claim";
 import { WriterAuthority, type WriterAuthorityToken } from "./writer-authority";
 import { retainWriterFailure } from "./writer-failure";
 import { buildPendingBatch, hex, records, requireString } from "./writer-support";
-import { WriterTextBarrier } from "./writer-text-barrier";
+import type { WriterTextBarrier } from "./writer-text-barrier";
+import { createTextWorkQueue } from "./writer-text-working";
 /** 串行编排实时正文、语义实体与持久投影的写者生命周期。 */
 export class LiveWriterImpl implements LiveWriter {
   private readonly options: LiveWriterOptions & { readonly admission: AdmissionController };
@@ -51,6 +53,7 @@ export class LiveWriterImpl implements LiveWriter {
   private boundarySeeded = false;
   private readonly directory: DirectoryAppender;
   private readonly textClaim: TextClaim;
+  private readonly pushText: ReturnType<typeof createTextInputAdmission>;
   /** 当前代次的入口闭包（历史导入块）；为空表示没有可对照的历史。 */
   private historyContentDocIds: readonly string[] = [];
   constructor(options: LiveWriterOptions) {
@@ -67,42 +70,38 @@ export class LiveWriterImpl implements LiveWriter {
       () => this.textBarrier.pause(),
     );
     this.textClaim = createTextClaim({ store, scopeKey: this.scopeKey, digest, admission: this.options.admission });
-    this.textBarrier = new WriterTextBarrier({
-      admission: this.options.admission,
-      clock: this.options.clock,
-      merge: this.options.merge,
-      capture: () => this.authority.captureTask(),
-      enqueue: (task) => this.authority.enqueue(task),
-      write: (request, token) => this.writeText(request, token),
-      shouldReplay: (key, token) =>
-        revalidateRetainedText({
-          claim: this.textClaim,
-          authority: this.authority,
-          token,
-          key,
-          activeDoc: this.cursor(CONTENT_KIND).doc,
-          historyDocIds: this.historyContentDocIds,
-        }),
-      isCurrent: (token) => this.authority.isCurrent(token),
+    this.textBarrier = createTextWorkQueue({
+      options: this.options,
+      scopeKey: this.scopeKey,
+      directory: this.directory,
+      content: () => this.cursor(CONTENT_KIND),
+      claim: this.textClaim,
+      history: () => this.historyContentDocIds,
+      authority: this.authority,
+      write: (request, token, credit) => this.writeText(request, token, credit),
       onFailure: (error) => {
         this.failure ??= error;
       },
     });
+    this.pushText = createTextInputAdmission(this.textClaim, this.textBarrier);
   }
   /** 等旧队列结清后取得写权并安装已提交投影。 */
   async acquire(): Promise<void> {
     this.assertLive(false);
-    await this.authority.rebuild(async () => {
-      // 所有旧任务先结清；公开 renew 发现过期也不能跳过仍在规划的冲刷。
-      await this.authority.drain();
-      this.assertLive(false);
-      await this.authority.acquire(this.scopeKey, this.owner);
-      await this.rebuildFromCommitted();
-      if (this.failure === this.reacquirableFailure) this.failure = null;
-      this.reacquirableFailure = null;
-      await this.textBarrier.flush();
-      this.assertLive(false);
-    });
+    await this.authority.rebuild(
+      async () => {
+        // 所有旧任务先结清；公开 renew 发现过期也不能跳过仍在规划的冲刷。
+        await this.authority.drain();
+        this.assertLive(false);
+        await this.authority.acquire(this.scopeKey, this.owner);
+        await this.rebuildFromCommitted();
+        if (this.failure === this.reacquirableFailure) this.failure = null;
+        this.reacquirableFailure = null;
+        await this.textBarrier.flush();
+        this.assertLive(false);
+      },
+      (error) => this.textBarrier.canRetryRebuild(error),
+    );
   }
   /** 续租当前已安装投影的真实 fencing token。 */
   async renew(): Promise<void> {
@@ -165,22 +164,6 @@ export class LiveWriterImpl implements LiveWriter {
       historyDocIds: this.historyContentDocIds,
     };
   }
-  /** 同步接纳到当前 merge 后捕获本次冲刷回执，后续 await 不重新读取投影。 */
-  private pushText(
-    identity: Omit<MergeKey, "generation">,
-    delta: string,
-    generation: string,
-    idempotent = false,
-  ): Promise<void> | null {
-    try {
-      return this.textBarrier.push({ generation, ...identity }, delta, idempotent);
-    } catch (error) {
-      if (idempotent && !this.textBarrier.retains(generation, identity.entryId, identity.contentSlot))
-        this.textClaim.release(identity.entryId, identity.contentSlot);
-      throw error;
-    }
-  }
-
   /** 校验连续前沿并提交调用方提供的固定更新。 */
   async commit(pending: PendingBatch): Promise<CommitOutcome> {
     this.assertLive(true);
@@ -207,12 +190,15 @@ export class LiveWriterImpl implements LiveWriter {
   /** 排空旧任务后以相同真实租约重建投影。 */
   async recover(): Promise<void> {
     this.assertLive(true);
-    await this.authority.rebuild(async () => {
-      await this.authority.drain();
-      this.authority.replace();
-      await this.rebuildFromCommitted();
-      await this.textBarrier.flush();
-    });
+    await this.authority.rebuild(
+      async () => {
+        await this.authority.drain();
+        this.authority.replace();
+        await this.rebuildFromCommitted();
+        await this.textBarrier.flush();
+      },
+      (error) => this.textBarrier.canRetryRebuild(error),
+    );
   }
   /** 关闭先尝试结清已接纳正文；失败仍释放资源，并把原回执交给调用方。 */
   async close(): Promise<void> {
@@ -245,7 +231,11 @@ export class LiveWriterImpl implements LiveWriter {
     return await this.authority.enqueue(task);
   }
   /** 同一次合并冲刷的正文、跨块封口和目录在一个提交点生效，失败不留下前缀。 */
-  private async writeText(request: MergeFlushRequest, token: WriterAuthorityToken): Promise<void> {
+  private async writeText(
+    request: MergeFlushRequest,
+    token: WriterAuthorityToken,
+    workingCredit: WorkingCredit,
+  ): Promise<void> {
     try {
       this.authority.assertCurrent(token);
       const cursor = await writeAtomicText({
@@ -253,6 +243,7 @@ export class LiveWriterImpl implements LiveWriter {
         scopeKey: this.scopeKey,
         generation: request.key.generation,
         request,
+        workingCredit,
         cursor: this.cursor(CONTENT_KIND),
         directory: this.directory,
         renew: () => this.renewLease(token),

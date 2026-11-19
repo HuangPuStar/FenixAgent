@@ -51,6 +51,7 @@ for (const changedGeneration of [false, true]) {
     const host = await createSyncHostSession({
       scope: f.scope,
       store: f.store,
+      admission: f.admission,
       clock: f.clock,
       digest: sha256Digest,
       random: deterministicRandomSource("host-claim-recovery"),
@@ -96,5 +97,7 @@ for (const changedGeneration of [false, true]) {
       await host.dispose();
       await f.close();
     }
+    expect(f.admission.used("controlIndex")).toBe(0);
+    expect(f.admission.used("ingressSpool")).toBe(0);
   });
 }

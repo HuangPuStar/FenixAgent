@@ -87,18 +87,49 @@ test("继承 parentSub 的 map 写入不能被误认为数组追加", () => {
   const source = new Y.Doc();
   try {
     source.getMap("root").set("records", new Y.Array());
-    const base = Y.encodeStateAsUpdate(source),
-      vector = Y.encodeStateVector(source);
+    const vector = Y.encodeStateVector(source);
     source.getMap("root").set("records", new Y.Array());
     const update = Y.encodeStateAsUpdate(source, vector);
     const decoded = decodeStateUpdate(update);
     expect(decoded.mapWrites).toBe(true);
-    const bound = createEncodedStateBound(base);
-    bound.calibrate(base.byteLength, source);
-    bound.add(update, decoded);
-    expect(bound.upperBytes).toBe(Number.POSITIVE_INFINITY);
   } finally {
     source.destroy();
+  }
+});
+
+// 匹配的单 wrapper 基线应仅因纯 map 位失去证明；相同基线的数组追加仍保持有限。
+test("纯 map 标志独立撤回上界而普通 records 追加保持有限", () => {
+  const source = new Y.Doc(),
+    control = new Y.Doc();
+  try {
+    const array = new Y.Array();
+    array.push([1]);
+    source.getMap("root").set("records", array);
+    const base = Y.encodeStateAsUpdate(source),
+      vector = Y.encodeStateVector(source);
+    const mapBound = createEncodedStateBound(base),
+      arrayBound = createEncodedStateBound(base);
+    mapBound.calibrate(base.byteLength, source);
+    arrayBound.calibrate(base.byteLength, source);
+    source.getMap("root").set("new-key", 1);
+    const update = Y.encodeStateAsUpdate(source, vector),
+      decoded = decodeStateUpdate(update);
+    expect(decoded.mapWrites).toBe(true);
+    expect(decoded.decoded.ds.clients.size).toBe(0);
+    expect(
+      decoded.decoded.structs.every((item) => item instanceof Y.Item && item.content instanceof Y.ContentAny),
+    ).toBe(true);
+    mapBound.add(update, decoded);
+    expect(mapBound.upperBytes).toBe(Number.POSITIVE_INFINITY);
+    Y.applyUpdate(control, base);
+    (control.getMap("root").get("records") as Y.Array<number>).push([2]);
+    const append = Y.encodeStateAsUpdate(control, vector);
+    expect(decodeStateUpdate(append).mapWrites).toBe(false);
+    arrayBound.add(append);
+    expect(Number.isFinite(arrayBound.upperBytes)).toBe(true);
+  } finally {
+    source.destroy();
+    control.destroy();
   }
 });
 

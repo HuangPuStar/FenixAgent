@@ -125,13 +125,13 @@ test("多个已排队 key 的拒绝保留原文并依次恢复", async () => {
   expect(f.admission.used("controlIndex")).toBe(0);
 });
 
-// timer 不能因后续索引预算不足丢掉已确认缓冲，恢复预算后用原窗口重试，不要求上游重发非幂等 chunk。
+// 独立正文池仍可背压timer；恢复预算后重试原窗口，不要求上游重发非幂等chunk。
 test("timer 确定拒绝后显式屏障恢复保留正文且完整释放", async () => {
   const f = await authorityFixture({ maxDelayMs: 1, maxBytes: 1 << 20 });
   let hold: ReturnType<typeof f.admission.reserve> | undefined;
   try {
     await f.writer.accept({ ...text("A"), idempotent: false });
-    hold = f.admission.reserve("controlIndex", f.admission.available("controlIndex"));
+    hold = f.admission.reserve("hotDocLive", f.admission.available("hotDocLive"));
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
     await expect(f.writer.accept(semantic("tool", { entityId: "tool" }))).rejects.toMatchObject({
       code: "ADMISSION_REJECTED",

@@ -7,10 +7,13 @@ import { sha256Digest } from "../sync/clock";
 import { readTextClaimDoc } from "../sync/live/text-claim-read";
 import { SyncProtocolError } from "../sync/protocol/errors";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../sync/protocol/frames";
-import { scopeKey } from "../sync/protocol/identity";
+import { buildDocId, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { DocStateSnapshot, SyncUpdateRecord } from "../sync/store/types";
 import { authorityFixture, gate, rejection, withinDeadline } from "./sync-live-writer-authority-fixture";
+
+const DOC_ID = buildDocId({ kind: "content", generation: "claim", blockIndex: 0, nonce: "body" });
+const SCOPE_KEY = "claim/scope";
 
 /** 保留真实预算和解码器，只在 Store 的有界读取出口控制字节和异步次序。 */
 function fixture() {
@@ -21,11 +24,20 @@ function fixture() {
     capacity: DEFAULT_SYNC_CAPACITY,
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
   });
+  store.readSuccessor = async () => ({
+    scopeKey: SCOPE_KEY,
+    docId: DOC_ID,
+    generation: "claim",
+    kind: "content",
+    state: "active",
+    finalSeq: null,
+    route: null,
+  });
   return {
     admission,
     store,
     read<T>(consume: (doc: Y.Doc, lastSeq: number) => T, assertCurrent = () => {}) {
-      return readTextClaimDoc({ admission, store, docId: "claim-body", consume, assertCurrent });
+      return readTextClaimDoc({ admission, store, scopeKey: SCOPE_KEY, docId: DOC_ID, consume, assertCurrent });
     },
     close() {
       store.dispose();
@@ -35,14 +47,14 @@ function fixture() {
 
 /** canonical 与单条 tail 使用同一字节边界，不向解码器提供未受限数据。 */
 function base(snapshot: Uint8Array): DocStateSnapshot {
-  return { docId: "claim-body", snapshot, hash: sha256Digest(snapshot), baseSeq: 0, lastSeq: 0 };
+  return { docId: DOC_ID, snapshot, hash: sha256Digest(snapshot), baseSeq: 0, lastSeq: 0 };
 }
 
 /** 构造一条真正连续的更新；空 scope 仅是只读出口的测试元数据。 */
 function tail(bytes: Uint8Array, updateSeq = 1): SyncUpdateRecord {
   return {
-    docId: "claim-body",
-    scopeKey: "claim/scope",
+    docId: DOC_ID,
+    scopeKey: SCOPE_KEY,
     generation: "claim",
     updateSeq,
     bytes,
@@ -159,6 +171,7 @@ test("并发 claim 正文读取自然受共享热池上限限制", async () => {
   let reads = 0;
   f.store.readDocStateAt = async () => {
     reads++;
+    if (reads === 2) paused.enter();
     await paused.released;
     return base(snapshot);
   };
@@ -166,6 +179,7 @@ test("并发 claim 正文读取自然受共享热池上限限制", async () => {
   const pending = Array.from({ length: admitted }, () => rejection(f.read(() => true)));
   let extra: Promise<unknown> | undefined;
   try {
+    await withinDeadline(paused.entered);
     expect(reads).toBe(admitted);
     expect(admitted).toBe(2);
     extra = rejection(f.read(() => true));
@@ -291,6 +305,7 @@ test("重复更新与删除形成的大账本仍可读取小于上限的已提�
       await readTextClaimDoc({
         store: f.store,
         admission: f.admission,
+        scopeKey: key,
         docId: f.contentId,
         assertCurrent: () => {},
         consume(doc, seq) {

@@ -1,5 +1,5 @@
 import type * as Y from "yjs";
-import type { AdmissionController, Reservation } from "../capacity/admission";
+import type { AdmissionBudget, Reservation } from "../capacity/admission";
 import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { parseDocId } from "../protocol/identity";
@@ -31,6 +31,8 @@ export function isTextClaimInvalidated(error: unknown): error is SyncProtocolErr
 
 /** 单写者的暂存声明与当前代次的已提交文本判重入口。 */
 export interface TextClaim {
+  /** 已确认接纳时真实保留的身份与链额度；同代临时重判只资助本 scope 的相同工作集。 */
+  reservedControlBytes(): number;
   /** false 表示同 entryId + 槽位已提交或本写者已接收；失败不会留下新占位。 */
   claim(input: {
     readonly generation: string;
@@ -52,7 +54,7 @@ async function indexedTextExists(
   identity: TextClaimIdentity,
   lineage: TextClaimLineage,
   activeDocId: string,
-  admission: AdmissionController,
+  admission: AdmissionBudget,
   assertCurrent: () => void,
 ): Promise<boolean> {
   const lookupId = textClaimLookupId(digest, identity);
@@ -80,6 +82,7 @@ async function indexedTextExists(
   const exists = await readTextClaimDoc({
     store,
     admission,
+    scopeKey: identity.scopeKey,
     docId: ref.docId,
     assertCurrent,
     consume(doc) {
@@ -112,7 +115,7 @@ export function createTextClaim(options: {
   readonly store: ProjectionStore;
   readonly scopeKey: string;
   readonly digest: DigestFn;
-  readonly admission: AdmissionController;
+  readonly admission: AdmissionBudget;
 }): TextClaim {
   const { store } = options;
   const claimed = new TextClaimCache(options.admission);
@@ -138,6 +141,7 @@ export function createTextClaim(options: {
       const loaded = await readTextClaimDoc({
         store,
         admission: options.admission,
+        scopeKey: options.scopeKey,
         docId,
         assertCurrent() {
           if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(activeDocId);
@@ -264,6 +268,8 @@ export function createTextClaim(options: {
   }
 
   return {
+    reservedControlBytes: () =>
+      claimed.reservedBytes + historicalEntries.reservedBytes + legacyEntries.reservedBytes + lineage.reservedBytes(),
     claim(input) {
       try {
         assertActiveWriterDoc(input);

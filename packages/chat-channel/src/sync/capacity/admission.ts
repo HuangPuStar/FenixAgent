@@ -8,9 +8,13 @@
 
 import { SyncProtocolError } from "../protocol/errors";
 import type { SERVER_POOL_BYTES, SyncCapacityProfile } from "./profile";
+import { type CreditPartition, WorkingCredit } from "./working-credit";
 
 /** 服务端子池名：与 `SERVER_POOL_BYTES` 的键一一对应，新增池时编译期即暴露漏配。 */
 export type ServerPoolName = keyof typeof SERVER_POOL_BYTES;
+
+/** 读取和缓存只需取得额度，不得依赖控制器全局用量或自行制造另一个池。 */
+export type AdmissionBudget = Pick<AdmissionController, "reserve">;
 
 /** 一次已生效的额度占用；`release()` 幂等，重复调用不会重复归还。 */
 export interface Reservation {
@@ -60,6 +64,7 @@ export class AdmissionController {
   private readonly usage: Record<ServerPoolName, number>;
   /** 本控制器签发且尚未释放的预留：拦住已释放预留或他处预留被再次交接从而凭空造出额度。 */
   private readonly liveReservations = new WeakSet<Reservation>();
+  private readonly workingCredits = new WeakSet<WorkingCredit>();
 
   constructor(profile: SyncCapacityProfile) {
     // 构造期刻意不做 profile 校验：校验是启用边界的一次性动作（validateCapacityProfile），
@@ -69,9 +74,13 @@ export class AdmissionController {
   }
 
   /** 预留额度；超出池上限抛 ADMISSION_REJECTED，不排队、不等待（设计 §10.6）。 */
-  reserve(pool: ServerPoolName, bytes: number): Reservation {
+  reserve(pool: ServerPoolName, bytes: number, credit?: WorkingCredit): Reservation {
     const name = this.assertKnownPool(pool);
     assertReservableBytes(name, bytes);
+    if (credit !== undefined) {
+      this.assertWorkingCredit(credit);
+      if (name === "controlIndex") return credit.take(bytes);
+    }
     const used = this.usage[name];
     const limit = this.limits[name];
     if (used + bytes > limit) {
@@ -79,6 +88,24 @@ export class AdmissionController {
     }
     this.usage[name] = used + bytes;
     return this.issueReservation(name, bytes);
+  }
+
+  /** 已接纳窗口的工作承诺实际占池，不通过释放再申请来模拟跨 scope 的保护。 */
+  createWorkingCredit(bytes: number): WorkingCredit {
+    const initial = this.reserve("controlIndex", bytes);
+    const credit = new WorkingCredit(
+      initial,
+      (extra) => this.reserve("controlIndex", extra),
+      (hold, size) => this.partition(hold, size),
+    );
+    this.workingCredits.add(credit);
+    return credit;
+  }
+
+  /** 即使本次prepare不增长，也必须验证本Controller签发且未关闭的本地能力。 */
+  assertWorkingCredit(credit: WorkingCredit): void {
+    if (!this.workingCredits.has(credit)) rejectAdmission("working credit was issued by another controller");
+    if (credit.closed) rejectAdmission("working credit is closed");
   }
 
   /**
@@ -129,5 +156,15 @@ export class AdmissionController {
     this.liveReservations.add(reservation);
     // 冻结：调用方不得改写已签发预留的池名或字节数，否则账目与预留描述会不一致。
     return Object.freeze(reservation);
+  }
+
+  private partition(hold: Reservation, bytes: number): CreditPartition {
+    if (!this.liveReservations.has(hold) || bytes <= 0 || bytes >= hold.bytes)
+      rejectAdmission("working credit partition is not an owned reservation");
+    this.liveReservations.delete(hold);
+    return {
+      taken: this.issueReservation(hold.pool, bytes),
+      remainder: this.issueReservation(hold.pool, hold.bytes - bytes),
+    };
   }
 }

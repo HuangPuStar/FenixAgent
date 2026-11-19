@@ -65,6 +65,13 @@ async function queueTexts(f: Awaited<ReturnType<typeof writerFailureFixture>>) {
   ];
 }
 
+/** 缓冲接纳已成功的输入不借用前驱回执，最后的显式屏障仍必须保留同一个真实失败。 */
+async function expectBufferedThenBarrier(pending: readonly Promise<unknown>[], failure: unknown) {
+  const results = await Promise.all(pending);
+  expect(results.slice(0, -1).every((result) => result === undefined)).toBe(true);
+  expect(results.at(-1)).toBe(failure);
+}
+
 /** 以新租约提交独立的空代次，验证接管不能把旧任务写进新的权威入口。 */
 async function replaceGeneration(f: Awaited<ReturnType<typeof writerFailureFixture>>, lease: WriterLease) {
   const key = scopeKey(f.scope);
@@ -123,7 +130,7 @@ async function replaceGeneration(f: Awaited<ReturnType<typeof writerFailureFixtu
 
 for (const changedGeneration of [false, true]) {
   // 旧回执先按原错结清；同代接管显式重放完整保留队列，真正换代才退休旧文本。
-  test(`过期后立即接管会拒绝全部 200 个排队任务，换代=${changedGeneration}`, async () => {
+  test(`200 个保留窗口过期后由屏障拒绝并按代次恢复，换代=${changedGeneration}`, async () => {
     const f = await writerFailureFixture();
     const route = gate();
     let appendsAfterExpiry = 0;
@@ -158,7 +165,8 @@ for (const changedGeneration of [false, true]) {
       const failure = await sealing;
       expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
       await f.writer.acquire();
-      expect((await Promise.all(pending)).every((result) => result === failure)).toBe(true);
+      expect(pending).toHaveLength(200);
+      await expectBufferedThenBarrier(pending, failure);
       expect(appendsAfterExpiry).toBe(0);
       expect(await f.store.readScopePointer(scopeKey(f.scope))).toMatchObject({
         currentGeneration: changedGeneration ? "gen_reacquired" : "gen_cursor",
@@ -197,7 +205,7 @@ test("可恢复接管等待旧队列时关闭会拒绝接管", async () => {
     const acquired = rejection(f.writer.acquire());
     expect(await rejection(f.writer.close())).toBe(failure);
     expect(await acquired).toMatchObject({ code: "RESOURCE_RETIRED" });
-    for (const pending of queued) expect(await pending).toBe(failure);
+    await expectBufferedThenBarrier(queued, failure);
     expect(await f.readAll()).toEqual([]);
   } finally {
     route.release();
@@ -232,7 +240,7 @@ for (const action of ["seal", "rotateRuntime"] as const) {
       route.release();
       const failure = await sealing;
       expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
-      for (const pending of queued) expect(await pending).toBe(failure);
+      await expectBufferedThenBarrier(queued, failure);
       await expect(f.writer.accept(object("observe"))).rejects.toBe(failure);
       expect(appendsAfterExpiry).toBe(0);
       expect(await f.readAll()).toHaveLength(1);
@@ -273,7 +281,7 @@ test("排队冲刷过期在 SCOPE_BUSY 和重建期间保持原错", async () =>
     route.release();
     const failure = await sealing;
     expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
-    for (const pending of queued) expect(await pending).toBe(failure);
+    await expectBufferedThenBarrier(queued, failure);
     const other = await f.store.acquireWriter(scopeKey(f.scope), "other-writer", 1000);
     try {
       await expect(f.writer.acquire()).rejects.toMatchObject({ code: "SCOPE_BUSY" });
@@ -356,7 +364,7 @@ for (const phase of ["route", "directory", "unknown"] as const) {
       route.release();
       const failure = await sealing;
       expect(failure).toMatchObject({ code: phase === "unknown" ? "COMMIT_OUTCOME_UNKNOWN" : "LEASE_EXPIRED" });
-      for (const pending of queued) expect(await pending).toBe(failure);
+      await expectBufferedThenBarrier(queued, failure);
       await expect(f.writer.acquire()).rejects.toBe(failure);
       await expect(f.writer.accept(object("blocked"))).rejects.toBe(failure);
       expect(await f.readAll()).toEqual([]);

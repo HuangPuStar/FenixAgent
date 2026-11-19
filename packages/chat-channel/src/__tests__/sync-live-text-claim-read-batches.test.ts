@@ -78,6 +78,7 @@ test("同批跨页的 200 KiB 插入、32 KiB 插入再删除可完整读取", a
       await readTextClaimDoc({
         store: f.store,
         admission: f.admission,
+        scopeKey: key,
         docId: f.contentId,
         assertCurrent: () => {},
         consume(doc, seq) {
@@ -106,8 +107,8 @@ test("同批跨页的 200 KiB 插入、32 KiB 插入再删除可完整读取", a
   }
 });
 
-// 最终删空也不能允许无界中间驻留；独立重放内存上限仍须在同一大批内部生效。
-test("同一合法原子批的中间重放超出独立内存上限时明确拒绝", async () => {
+// 新提交不能留下无法重放的已接纳数据；读取旧 active 时仍保留独立重放上限。
+test("超重放上限的批次在写入前整批拒绝且旧 active 读取仍受限", async () => {
   const f = await authorityFixture(),
     source = new Y.Doc();
   try {
@@ -128,25 +129,43 @@ test("同一合法原子批的中间重放超出独立内存上限时明确拒�
     const key = scopeKey(f.scope),
       pointer = await f.store.readScopePointer(key);
     if (!pointer?.writerOwner) throw new Error("Missing active writer");
-    expect(
-      (
-        await f.store.appendUpdates({
-          scopeKey: key,
-          epoch: pointer.writerEpoch,
-          owner: pointer.writerOwner,
-          batchId: "bounded-large-atomic",
-          digest: sha256Digest(concatParts(encoded)),
-          expectedFrontiers: [{ docId: f.contentId, lastSeq: 0 }],
-          updates: encoded.map((bytes, index) => ({ docId: f.contentId, fromSeq: index + 1, bytes })),
-        })
-      ).outcome,
-    ).toBe("committed");
+    const pools = ["hotDocLive", "controlIndex", "transportCache"] as const;
+    const state = f.store.exportCommittedState(),
+      used = pools.map((pool) => f.admission.used(pool));
+    await expect(
+      f.store.appendUpdates({
+        scopeKey: key,
+        epoch: pointer.writerEpoch,
+        owner: pointer.writerOwner,
+        batchId: "bounded-large-atomic",
+        digest: sha256Digest(concatParts(encoded)),
+        expectedFrontiers: [{ docId: f.contentId, lastSeq: 0 }],
+        updates: encoded.map((bytes, index) => ({ docId: f.contentId, fromSeq: index + 1, bytes })),
+      }),
+    ).rejects.toMatchObject({ code: "CAPACITY_EXCEEDED" });
+    expect(f.store.exportCommittedState()).toEqual(state);
+    expect(pools.map((pool) => f.admission.used(pool))).toEqual(used);
+    f.store.readUpdatesAfter = async (docId, seq) =>
+      encoded[seq]
+        ? [
+            {
+              docId,
+              scopeKey: key,
+              generation: pointer.currentGeneration!,
+              updateSeq: seq + 1,
+              bytes: encoded[seq]!,
+              batchId: "old-active-batch",
+              digest: "old-active-digest",
+            },
+          ]
+        : [];
     const before = f.admission.used("hotDocLive");
     let consumed = false;
     await expect(
       readTextClaimDoc({
         store: f.store,
         admission: f.admission,
+        scopeKey: key,
         docId: f.contentId,
         assertCurrent: () => {},
         consume() {
@@ -195,6 +214,7 @@ test("近限基线的中间插入导致 split 开销时拒绝最终超限快照"
       readTextClaimDoc({
         store: f.store,
         admission: f.admission,
+        scopeKey: scopeKey(f.scope),
         docId: f.contentId,
         assertCurrent: () => {},
         consume() {
@@ -261,6 +281,7 @@ for (const fault of ["quota", "tail"] as const) {
         readTextClaimDoc({
           store: f.store,
           admission: f.admission,
+          scopeKey: key,
           docId: f.contentId,
           assertCurrent: () => {},
           consume(doc) {

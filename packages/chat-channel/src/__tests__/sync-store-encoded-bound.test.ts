@@ -307,6 +307,7 @@ test("覆盖证明预算不足不会阻断有界正文 fallback", async () => {
       ).toBe(0);
       expect(
         await readTextClaimDoc({
+          scopeKey: f.input.scopeKey,
           store: f.store,
           admission: f.admission,
           docId: f.ids[0],
@@ -363,6 +364,7 @@ test("覆盖缓存发布预算不足仍可读取合法正文", async () => {
     ).toBe(0);
     expect(
       await readTextClaimDoc({
+        scopeKey: f.input.scopeKey,
         store: f.store,
         admission: f.admission,
         docId: f.ids[0],

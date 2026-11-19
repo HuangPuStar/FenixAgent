@@ -65,10 +65,12 @@ test("同 key 的幂等窗口和非幂等后继在恢复时分别结清", async 
   const f = await authorityFixture({ maxBytes: 1 << 20 });
   const replacement = f.makeWriter();
   const commit = f.store.commitContentBatch.bind(f.store);
+  const oldAttempt = gate();
   let refused = false;
   f.store.commitContentBatch = async (input) => {
     if (!refused) {
       refused = true;
+      oldAttempt.enter();
       throw new SyncProtocolError("ADMISSION_REJECTED", { message: "old owner first flush refused" });
     }
     return await commit(input);
@@ -76,7 +78,8 @@ test("同 key 的幂等窗口和非幂等后继在恢复时分别结清", async 
   try {
     await f.writer.accept(text("message"));
     const switched = await rejection(f.writer.accept({ ...text("message"), delta: "tail", idempotent: false }));
-    expect(switched).toHaveProperty("code", "ADMISSION_REJECTED");
+    expect(switched).toBeUndefined();
+    await withinDeadline(oldAttempt.entered);
     expect(refused).toBe(true);
     f.store.commitContentBatch = commit;
     f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);

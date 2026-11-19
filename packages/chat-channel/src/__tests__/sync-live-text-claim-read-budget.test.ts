@@ -54,24 +54,35 @@ test("热池耗尽时导入历史判重零读取且释放后仍识别旧消息",
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
   });
   const generation = "history-budget";
+  const historyId = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "history" });
+  const key = "history-org/history-session";
   const active = new Y.Doc({ guid: buildDocId({ kind: "content", generation, blockIndex: 1, nonce: "active" }) });
   const historical = new Y.Doc();
   records(historical, [{ kind: "text_part", entryId: "history-entry", contentSlot: 0 }]);
   const snapshot = Y.encodeStateAsUpdate(historical);
   historical.destroy();
   let reads = 0;
+  store.readSuccessor = async () => ({
+    scopeKey: key,
+    docId: historyId,
+    generation,
+    kind: "content",
+    state: "sealed",
+    finalSeq: 0,
+    route: null,
+  });
   store.readDocStateAt = async (docId) => {
     reads++;
     return { docId, snapshot, hash: sha256Digest(snapshot), baseSeq: 0, lastSeq: 0 };
   };
-  const claims = createTextClaim({ store, admission, scopeKey: "history-org/history-session", digest: sha256Digest });
+  const claims = createTextClaim({ store, admission, scopeKey: key, digest: sha256Digest });
   const claim = () =>
     claims.claim({
       generation,
       entryId: "history-entry",
       contentSlot: "text",
       activeDoc: active,
-      historyDocIds: ["history"],
+      historyDocIds: [historyId],
     });
   const hold = admission.reserve("hotDocLive", admission.available("hotDocLive"));
   try {

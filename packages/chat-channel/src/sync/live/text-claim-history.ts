@@ -18,7 +18,7 @@ export function textClaimKey(entryId: string, contentSlot: string): string {
 /** 旧块逐 Doc 加载 canonical 与连续 tail；调用方只缓存身份，不保留正文或 Y.Doc。 */
 export async function legacyLiveTextClaims(input: {
   readonly store: ProjectionStore;
-  readonly admission: AdmissionController;
+  readonly admission: AdmissionBudget;
   readonly scopeKey: string;
   readonly generation: string;
   readonly activeDocId: string;
@@ -42,6 +42,7 @@ export async function legacyLiveTextClaims(input: {
       const loaded = await readTextClaimDoc({
         store: input.store,
         admission: input.admission,
+        scopeKey: input.scopeKey,
         docId,
         assertCurrent: input.assertCurrent,
         consume(doc) {
@@ -60,4 +61,4 @@ export async function legacyLiveTextClaims(input: {
   }
 }
 
-import type { AdmissionController } from "../capacity/admission";
+import type { AdmissionBudget } from "../capacity/admission";

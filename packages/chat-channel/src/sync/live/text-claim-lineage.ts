@@ -1,4 +1,4 @@
-import type { AdmissionController } from "../capacity/admission";
+import type { AdmissionBudget } from "../capacity/admission";
 import { SyncProtocolError } from "../protocol/errors";
 import { parseDocId } from "../protocol/identity";
 import type { ProjectionStore } from "../store/types";
@@ -12,13 +12,15 @@ export interface TextClaimLineage {
   predecessors(generation: string, activeDocId: string, fromDocId: string | null): Promise<readonly string[]>;
   /** 投影关闭或重建后归还链身份额度，并使在途读取不能恢复旧缓存。 */
   clear(): void;
+  /** 已读取链身份实际持有的额度，不重新遍历 Store。 */
+  reservedBytes(): number;
 }
 
 /** 只缓存文档身份；尾部增长时沿旧尾增量预检，不读取前驱正文或扫描同代次孤块。 */
 export function createTextClaimLineage(
   store: ProjectionStore,
   scopeKey: string,
-  admission: AdmissionController,
+  admission: AdmissionBudget,
 ): TextClaimLineage {
   const identities = new TextClaimCache(admission);
   let epoch = Symbol();
@@ -117,6 +119,7 @@ export function createTextClaimLineage(
   }
 
   const lineage: TextClaimLineage = {
+    reservedBytes: () => identities.reservedBytes,
     clear() {
       epoch = Symbol();
       identities.clear();

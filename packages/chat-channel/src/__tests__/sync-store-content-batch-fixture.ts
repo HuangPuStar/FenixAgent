@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import { AdmissionController, type ServerPoolName } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
+import type { WorkingCredit } from "../sync/capacity/working-credit";
 import { type DigestFn, sha256Digest } from "../sync/clock";
 import { captureChange } from "../sync/live/change-capture";
 import { records } from "../sync/live/writer-support";
@@ -20,11 +21,11 @@ import type { CommitContentBatchInput, SyncDocRecord, SyncGenerationRecord } fro
 class BatchAdmission extends AdmissionController {
   remaining: number | null = null;
   beforeReserve: ((pool: ServerPoolName, bytes: number) => void) | null = null;
-  override reserve(pool: ServerPoolName, bytes: number) {
+  override reserve(pool: ServerPoolName, bytes: number, credit?: WorkingCredit) {
     this.beforeReserve?.(pool, bytes);
     if (this.remaining !== null && this.remaining-- === 0)
       throw new SyncProtocolError("ADMISSION_REJECTED", { message: "test batch budget exhausted" });
-    return super.reserve(pool, bytes);
+    return super.reserve(pool, bytes, credit);
   }
 }
 

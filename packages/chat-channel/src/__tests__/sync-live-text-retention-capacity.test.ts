@@ -19,9 +19,14 @@ test("最长合法 MergeKey 在精确保留额度内首写并共享在途结果"
   };
   for (const [field, value] of Object.entries(key)) assertIdentifier(value, field);
   const minimum = textInputReservations(MAX_IDENTIFIER_BYTES * 5, 1);
+  const workingBytes = 256;
   const admission = new AdmissionController({
     ...DEFAULT_SYNC_CAPACITY,
-    serverPools: { ...DEFAULT_SYNC_CAPACITY.serverPools, ...minimum },
+    serverPools: {
+      ...DEFAULT_SYNC_CAPACITY.serverPools,
+      ...minimum,
+      controlIndex: minimum.controlIndex + workingBytes,
+    },
   });
   const token = {
     generation: identity,
@@ -43,15 +48,17 @@ test("最长合法 MergeKey 在精确保留额度内首写并共享在途结果"
     },
     isCurrent: (value) => value === token,
     shouldReplay: async () => true,
+    workingBytes: () => workingBytes,
+    chunkCount: () => 1,
     onFailure: (error) => failures.push(error),
   });
   try {
     const pending = barrier.push(key, "x", true);
     await withinDeadline(paused.entered);
-    expect(admission.used("controlIndex")).toBe(minimum.controlIndex);
+    expect(admission.used("controlIndex")).toBe(minimum.controlIndex + workingBytes);
     expect(admission.used("ingressSpool")).toBe(minimum.ingressSpool);
     expect(barrier.pending(identity, identity, identity)).toBe(pending);
-    expect(admission.used("controlIndex")).toBe(minimum.controlIndex);
+    expect(admission.used("controlIndex")).toBe(minimum.controlIndex + workingBytes);
     paused.release();
     await pending;
     expect(writes).toHaveLength(1);

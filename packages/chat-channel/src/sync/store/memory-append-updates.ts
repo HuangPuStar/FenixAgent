@@ -2,12 +2,16 @@ import * as Y from "yjs";
 import { contentDocOverflow } from "../capacity/content-doc-limits";
 import { createEncodedStateBound } from "../capacity/encoded-state-bound";
 import type { SyncCapacityProfile } from "../capacity/profile";
+import { TEXT_CLAIM_REPLAY_MAX_BYTES } from "../capacity/text-claim-reservations";
+import { WORKING_CREDIT } from "../capacity/working-credit";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { commitAccountedSets } from "./memory-accounting";
-import { analyzeContentUpdate, appendContentUsage, contentUpdateUsage } from "./memory-content-usage";
+import { projectMemoryDoc } from "./memory-content-projection";
+import { analyzeContentUpdate, appendContentUsage, contentMayShadow, contentUpdateUsage } from "./memory-content-usage";
 import type { MemoryContentBatchState } from "./memory-live-content-batch";
 import { compositeKey, copyBytes, copyRef, fail, type StoredDoc } from "./memory-store-state";
 import { changedCoverageGenerations } from "./memory-text-coverage-revision";
+import { canonicalContentRecords, canonicalSelectionChanged } from "./memory-text-records";
 import type { AppendUpdatesInput, AppendUpdatesResult, SyncRefRecord } from "./types";
 
 function assertSnapshotSize(snapshot: Uint8Array): void {
@@ -88,9 +92,15 @@ export function appendMemoryUpdates(
     let contentUsage = doc.contentUsage;
     let rewroteRecords = false;
     const deltas = doc.kind === "content" ? records.map((record) => analyzeContentUpdate(record.bytes)) : [];
+    const mayShadow = contentUsage && contentMayShadow(contentUsage, deltas);
     const encoded = createEncodedStateBound(doc.encodedStateBound ?? doc.baseSnapshot);
     if (!doc.encodedStateBound) for (const item of ledger) encoded.add(item.bytes);
-    for (let index = 0; index < records.length; index++) encoded.add(records[index].bytes, deltas[index]?.encoding);
+    let needsReplayCheck = false;
+    for (let index = 0; index < records.length; index++) {
+      if (doc.kind === "content") assertSnapshotSize(records[index].bytes);
+      encoded.add(records[index].bytes, deltas[index]?.encoding);
+      needsReplayCheck ||= doc.kind === "content" && encoded.upperBytes > TEXT_CLAIM_REPLAY_MAX_BYTES;
+    }
     const bound = encoded.upperBytes;
     if (doc.kind === "content") {
       if (list.at(-1)!.fromSeq - doc.baseSeq > deps.capacity.inputs.maxTransactionsPerDoc)
@@ -100,19 +110,23 @@ export function appendMemoryUpdates(
     const limits = deps.capacity.inputs;
     const needsContentCheck =
       doc.kind === "content" &&
-      (!contentUsage ||
+      (needsReplayCheck ||
+        mayShadow ||
+        !contentUsage ||
         contentUsage.recordCountUpper > limits.maxRecordsPerDoc ||
         contentUsage.maxPayloadBytes > limits.payloadChunkMaxBytes ||
         bound > limits.activeHardEncodedBytes);
     if (bound > MAX_DOC_SNAPSHOT_BYTES || needsContentCheck) {
-      const projection = new Y.Doc();
+      let priorRecords: unknown;
+      let beforeCanonical: ReadonlyMap<string, unknown> = new Map();
+      const projection = projectMemoryDoc(doc, ledger, records, (value) => {
+        priorRecords = doc.kind === "content" ? value.getMap<unknown>("root").get("records") : undefined;
+        if (doc.kind === "content") beforeCanonical = canonicalContentRecords(value);
+      });
       try {
-        Y.applyUpdate(projection, doc.baseSnapshot);
-        for (const item of ledger) Y.applyUpdate(projection, item.bytes);
-        const priorRecords = doc.kind === "content" ? projection.getMap<unknown>("root").get("records") : undefined;
-        for (const item of records) Y.applyUpdate(projection, item.bytes);
         rewroteRecords =
-          priorRecords instanceof Y.Array && projection.getMap<unknown>("root").get("records") !== priorRecords;
+          (priorRecords instanceof Y.Array && projection.getMap<unknown>("root").get("records") !== priorRecords) ||
+          (doc.kind === "content" && canonicalSelectionChanged(beforeCanonical, canonicalContentRecords(projection)));
         const snapshot = Y.encodeStateAsUpdate(projection);
         encoded.calibrate(snapshot.byteLength, projection);
         assertSnapshotSize(snapshot);
@@ -161,15 +175,17 @@ export function appendMemoryUpdates(
     ...refs.filter((ref) => ref.value.lookupKind === "live-text" && state.refs.has(ref.key)).map((ref) => ref.value),
   ]);
   const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
+  const credit = input[WORKING_CREDIT];
   commitAccountedSets((changes) => {
-    for (const generation of generations) changes.push(state.generations.prepare(generation.key, generation.next));
+    for (const generation of generations)
+      changes.push(state.generations.prepare(generation.key, generation.next, credit));
     for (const { doc, records, next } of pending) {
       const key = compositeKey(input.scopeKey, doc.docId);
-      changes.push(state.docs.prepareSharing(key, next, ["transportCache"]));
-      changes.push(state.updates.prepareAppend(key, records));
+      changes.push(state.docs.prepareSharing(key, next, ["transportCache"], credit));
+      changes.push(state.updates.prepareAppend(key, records, credit));
     }
-    for (const ref of refs) changes.push(state.refs.prepare(ref.key, ref.value));
-    changes.push(state.batches.prepare(batchKey, batch));
+    for (const ref of refs) changes.push(state.refs.prepare(ref.key, ref.value, credit));
+    changes.push(state.batches.prepare(batchKey, batch, credit));
     deps.assertLease();
     for (const generation of generations)
       if (state.generations.get(generation.key) !== generation.before)

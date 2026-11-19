@@ -1,3 +1,4 @@
+import { WORKING_CREDIT, type WorkingCredit } from "../capacity/working-credit";
 import type { DocKind, DocState } from "../protocol/identity";
 
 /** 派生索引的查找类别：条目、工具调用与最终描述各自独立定位（设计 §4.4）。 */
@@ -68,6 +69,7 @@ export interface RefQuery {
 
 /** 只查询已鉴权代次权威链中的块；返回值证明块内全部 live 文本身份已有有效持久索引。 */
 export interface LiveTextCoverageQuery {
+  readonly [WORKING_CREDIT]?: WorkingCredit;
   readonly scopeKey: string;
   readonly generation: string;
   readonly docIds: readonly string[];
@@ -80,5 +82,6 @@ export interface SyncSuccessorState {
   readonly generation: string;
   readonly kind: DocKind;
   readonly state: DocState;
+  readonly finalSeq: number | null;
   readonly route: { readonly successorDocId: string; readonly expectedLastSeq: number } | null;
 }

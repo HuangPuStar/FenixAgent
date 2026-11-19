@@ -1,4 +1,4 @@
-// packages/chat-channel/src/__tests__/sync-verify-core.test.ts
+// packages/chat-channel/src/__tests__/sync-verify-core-store.test.ts
 // 对抗式验证用例：不确认实现「大致正确」，而是逐条攻击设计 §4.1 / §8.3 / §9.2 / §10.1 与规格 §3~§4 的断言。
 //
 // 三条纪律：
@@ -26,25 +26,25 @@ import {
 } from "./sync-verify-core-store-fixture";
 
 describe("对抗验证：存储原子性、读取边界与 fencing", () => {
-  // 缺陷复现（待修复）：refs 的校验发生在字节与前沿落地之后（memory-store.ts:288-294），
-  // 于是「refs 非法」这类校验失败会留下已应用的批次：读取出口随后就能看到未提交的内容。
-  // 期望：任一校验失败都必须零变化（规格 §4 第 3 条「任何一项失败时不改变任何状态」）。
+  // 非法引用必须使整批零发布，字节、前沿和批次回执都不得先于校验落地。
   test("appendUpdates 的 refs 校验失败必须整批零变化，字节与新前沿不得先落地", async () => {
     const { store, lease } = await setup();
     await registerDoc(store, lease, "doc-1");
+    const before = store.exportCommittedState();
     await expectRejectCode(
       store.appendUpdates(appendInput(lease, { refs: [refRecord({ docId: "ghost-doc" })] })),
       "DOC_NOT_FOUND",
     );
+    expect(store.exportCommittedState()).toEqual(before);
     expect(await store.readUpdatesAfter("doc-1", 0, 10)).toEqual([]);
     expect(await store.readDocStateAt("doc-1", 0)).not.toBeNull();
   });
 
-  // 缺陷复现（待修复）：refs 是逐条写入的，中段出现非法项时前面的索引项已经落库。
-  // 期望：失败批次不得留下任何索引项（索引必须与 canonical 字节同生共死）。
+  // 中段引用校验失败时，前面的合法引用和整批其他状态也必须保持原状。
   test("refs 数组中段校验失败时不得留下半写索引项", async () => {
     const { store, lease } = await setup();
     await registerDoc(store, lease, "doc-1");
+    const before = store.exportCommittedState();
     await expectRejectCode(
       store.appendUpdates(
         appendInput(lease, {
@@ -53,6 +53,7 @@ describe("对抗验证：存储原子性、读取边界与 fencing", () => {
       ),
       "DOC_NOT_FOUND",
     );
+    expect(store.exportCommittedState()).toEqual(before);
     expect(await store.locateRefs({ generation: "gen-1", lookupKind: "entry", lookupId: "kept", limit: 10 })).toEqual(
       [],
     );

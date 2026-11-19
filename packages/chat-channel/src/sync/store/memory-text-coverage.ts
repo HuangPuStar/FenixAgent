@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import type { Reservation } from "../capacity/admission";
+import { WORKING_CREDIT } from "../capacity/working-credit";
 import type { DigestFn } from "../clock";
 import { textClaimLookupId } from "../live/text-claim-identity";
 import { commitAccountedSets } from "./memory-accounting";
@@ -49,10 +50,11 @@ export function readMemoryTextCoverage(
   digest: DigestFn,
 ): ReadonlySet<string> {
   let queryCharge: Reservation | undefined;
+  const credit = query[WORKING_CREDIT];
   try {
     const queryBytes = query.docIds.reduce((sum, id) => sum + 128 + id.length * 2, 128);
     try {
-      queryCharge = state.memoryBudget?.reserve("controlIndex", queryBytes * 2);
+      queryCharge = state.memoryBudget?.reserve("controlIndex", queryBytes * 2, credit);
     } catch (error) {
       if (isCoverageBudgetRefusal(error)) return new Set();
       throw error;
@@ -70,7 +72,7 @@ export function readMemoryTextCoverage(
         result.add(id);
         continue;
       }
-      const loaded = loadCoverageDoc(doc, state);
+      const loaded = loadCoverageDoc(doc, state, credit);
       if (!loaded) continue;
       const observedRefs = new Map<string, SyncRefRecord>(),
         observedDocs = new Map<string, StoredDoc>([[key, doc]]),
@@ -118,7 +120,7 @@ export function readMemoryTextCoverage(
         loaded.releaseBody();
         if (covered)
           for (const [target, refs] of targets) {
-            const other = loadCoverageDoc(target, state);
+            const other = loadCoverageDoc(target, state, credit);
             if (!other) {
               covered = false;
               break;
@@ -140,9 +142,12 @@ export function readMemoryTextCoverage(
           if (covered)
             try {
               pending.push(
-                state.docs.prepareSharing(key, { ...doc, textCoverage: true, textCoverageRevision: revision }, [
-                  "transportCache",
-                ]),
+                state.docs.prepareSharing(
+                  key,
+                  { ...doc, textCoverage: true, textCoverageRevision: revision },
+                  ["transportCache"],
+                  credit,
+                ),
               );
             } catch (error) {
               if (!isCoverageBudgetRefusal(error)) throw error;

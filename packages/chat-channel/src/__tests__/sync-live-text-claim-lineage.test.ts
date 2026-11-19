@@ -74,7 +74,7 @@ test("完全匹配的 orphan 文本索引明确拒绝且不吞掉未提交消息
   }
 });
 
-// 首次按权威链证明归属后，同尾块引用复用元数据；轮换后只检查旧尾部到新尾部的扩展。
+// 谱系归属缓存复用同链，每次 canonical 读取仍确认目标生命周期；轮换只检查新扩展。
 test("文本索引归属缓存复用同链并随 live 尾块增量延伸", async () => {
   const inspected: string[] = [];
   const f = await textClaimHandoffFixture(
@@ -96,12 +96,17 @@ test("文本索引归属缓存复用同链并随 live 尾块增量延伸", async
     await f.append("B");
     await f.append("C");
     await f.reopen();
+    const chain = f.store
+      .exportCommittedState()
+      .docs.filter((doc) => doc.kind === "content")
+      .sort((left, right) => left.blockIndex! - right.blockIndex!)
+      .map((doc) => doc.docId);
     inspected.length = 0;
     await f.append("A");
-    expect(inspected).toHaveLength(3);
+    expect(inspected).toEqual([...chain, chain[0]!]);
     const firstInspection = [...inspected];
     await f.append("B");
-    expect(inspected).toEqual(firstInspection);
+    expect(inspected).toEqual([...firstInspection, chain[1]!]);
     for (const entryId of ["E", "F"])
       await f.writer.accept({
         kind: "text-delta",
@@ -113,7 +118,12 @@ test("文本索引归属缓存复用同链并随 live 尾块增量延伸", async
       });
     inspected.length = 0;
     await f.append("E");
-    expect(inspected).toHaveLength(3);
+    const extension = f.store
+      .exportCommittedState()
+      .docs.filter((doc) => doc.kind === "content" && doc.blockIndex! >= 2)
+      .sort((left, right) => left.blockIndex! - right.blockIndex!)
+      .map((doc) => doc.docId);
+    expect(inspected).toEqual([...extension, extension[1]!]);
     expect(inspected).not.toContain(f.contentId);
     expect((await f.readAll()).map((record) => record.entryId)).toEqual(["A", "B", "C", "E", "F"]);
   } finally {

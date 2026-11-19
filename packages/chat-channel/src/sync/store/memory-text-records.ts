@@ -16,6 +16,38 @@ export function canonicalContentRecords(doc: Y.Doc): ReadonlyMap<string, unknown
   return result;
 }
 
+/** 同一 Doc 重放中的对象引用稳定；首选项丢失或换成同名对象都属于定位破坏。 */
+export function canonicalSelectionChanged(
+  before: ReadonlyMap<string, unknown>,
+  after: ReadonlyMap<string, unknown>,
+): boolean {
+  return [...before].some(([id, value]) => after.get(id) !== value);
+}
+
+/** 只有实际 canonical 文本才能成为旧定位目标；异常身份保持未知，不能制造完整证明。 */
+export function canonicalTextIdentities(
+  records: ReadonlyMap<string, unknown>,
+  scopeKey: string,
+  generation: string,
+  digest: DigestFn,
+): ReadonlySet<string> | null {
+  const result = new Set<string>();
+  for (const value of records.values()) {
+    const record = value as Record<string, unknown>;
+    if (record.kind !== "text") continue;
+    if (
+      typeof record.entryId !== "string" ||
+      typeof record.contentSlot !== "string" ||
+      !(record.payload instanceof Uint8Array)
+    )
+      return null;
+    result.add(
+      textClaimLookupId(digest, { scopeKey, generation, entryId: record.entryId, contentSlot: record.contentSlot }),
+    );
+  }
+  return result;
+}
+
 /** live-text 定位必须满足消费者的完整身份、二进制载荷与整片范围契约。 */
 export function validLiveTextRef(ref: SyncRefRecord, value: unknown, digest: DigestFn): boolean {
   if (value === null || typeof value !== "object") return false;

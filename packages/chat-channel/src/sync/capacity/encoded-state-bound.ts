@@ -145,7 +145,10 @@ export function createEncodedStateBound(base: Uint8Array | EncodedStateBoundStat
         splitBytes = 0;
         uncertain = false;
         wrapper = composite ? standardWrapper(doc) : undefined;
-      } else bytes = add(actualBytes, splitBytes);
+      } else {
+        bytes = add(actualBytes, splitBytes);
+        uncertain = true;
+      }
     },
     snapshot() {
       return { bytes, splitBytes, uncertain, composite, wrapper };

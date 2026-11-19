@@ -1,5 +1,6 @@
 import type { AdmissionController, Reservation } from "../capacity/admission";
 import { textInputReservations } from "../capacity/text-plan-reservations";
+import type { WorkingCredit } from "../capacity/working-credit";
 import type { Clock } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
@@ -13,6 +14,10 @@ interface RetainedFlush {
   readonly key: MergeKey;
   readonly idempotent: boolean;
   readonly holds: Reservation[];
+  readonly credit: WorkingCredit;
+  textBytes: number;
+  chunks: number;
+  workingBytes: number;
   revalidate: boolean;
   request: MergeFlushRequest | null;
   state: FlushState;
@@ -28,8 +33,19 @@ export class WriterTextBarrier {
   private merge: MergeBuffer;
   private paused = false;
   private closed = false;
-  private lastScheduled: Promise<void> | null = null;
-  private incoming: { holds: Reservation[]; idempotent: boolean } | null = null;
+  private pendingChunks = 0;
+  private incoming: {
+    holds: Reservation[];
+    idempotent: boolean;
+    window: RetainedFlush | null;
+    credit: WorkingCredit | null;
+    textBytes: number;
+    chunks: number;
+    joining: boolean;
+    originalCreditBytes: number;
+    prior: RetainedFlush | null;
+    workingBytes: number;
+  } | null = null;
 
   constructor(
     private readonly options: {
@@ -38,8 +54,10 @@ export class WriterTextBarrier {
       readonly merge: { readonly maxDelayMs: number; readonly maxBytes: number };
       readonly capture: () => WriterAuthorityToken;
       readonly enqueue: (task: () => Promise<void>) => Promise<void>;
-      readonly write: (request: MergeFlushRequest, token: WriterAuthorityToken) => Promise<void>;
-      readonly shouldReplay: (key: MergeKey, token: WriterAuthorityToken) => Promise<boolean>;
+      readonly write: (request: MergeFlushRequest, token: WriterAuthorityToken, credit: WorkingCredit) => Promise<void>;
+      readonly shouldReplay: (key: MergeKey, token: WriterAuthorityToken, credit: WorkingCredit) => Promise<boolean>;
+      readonly workingBytes: (key: MergeKey, bytes: number, aheadChunks: number, idempotent: boolean) => number;
+      readonly chunkCount: (bytes: number) => number;
       readonly isCurrent: (token: WriterAuthorityToken) => boolean;
       readonly onFailure: (error: unknown) => void;
     },
@@ -55,18 +73,31 @@ export class WriterTextBarrier {
     if (head?.state === "refused") throw head.error;
     if (delta.length === 0) return null;
     // 在 key switch 冲刷旧窗口之前取得新输入全部额度，拒绝连旧 timer 都不改变。
-    const holds = this.reserveInput(key, delta);
-    const previous = this.lastScheduled;
-    this.incoming = { holds, idempotent };
+    const incoming = {
+      holds: [] as Reservation[],
+      idempotent,
+      window: null as RetainedFlush | null,
+      credit: null as WorkingCredit | null,
+      textBytes: 0,
+      chunks: 0,
+      joining: false,
+      originalCreditBytes: 0,
+      prior: null as RetainedFlush | null,
+      workingBytes: 0,
+    };
+    this.incoming = incoming;
     try {
-      // 幂等用户消息与流式 chunk 不能共用窗口，否则恢复判重会连合法后继一起退休。
-      if (this.buffered !== null && this.buffered.idempotent !== idempotent) this.merge.barrier();
       this.merge.push(key, delta);
     } finally {
-      if (this.incoming !== null) for (const hold of this.incoming.holds) hold.release();
-      this.incoming = null;
+      if (incoming.window === null) {
+        for (const hold of incoming.holds) hold.release();
+        if (!incoming.joining) incoming.credit?.release();
+        else if (incoming.credit && !incoming.credit.closed)
+          incoming.credit.shrinkTo(Math.max(incoming.originalCreditBytes, incoming.prior?.workingBytes ?? 0));
+      }
+      if (this.incoming === incoming) this.incoming = null;
     }
-    return this.lastScheduled === previous ? null : this.lastScheduled;
+    return incoming.window?.attempt ?? null;
   }
 
   /** 保留正文仍拥有该身份；后续新 chunk 拒绝不得释放原来幂等输入的声明。 */
@@ -77,6 +108,17 @@ export class WriterTextBarrier {
         entry.key.generation === generation &&
         entry.key.entryId === entryId &&
         entry.key.contentSlot === contentSlot,
+    );
+  }
+
+  /** 安装后的读取/写入拒绝都由队首的本次未写证明背书，不依赖错误码猜测未知结果。 */
+  canRetryRebuild(error: unknown): boolean {
+    const head = this.entries[0];
+    return (
+      head?.error === error &&
+      head.notWritten &&
+      error instanceof SyncProtocolError &&
+      error.code === "ADMISSION_REJECTED"
     );
   }
 
@@ -140,37 +182,66 @@ export class WriterTextBarrier {
     return createMergeBuffer({
       ...this.options.merge,
       clock: this.options.clock,
+      canAppend: () => this.buffered?.idempotent === this.incoming?.idempotent,
+      beforePush: (key, delta, joining) => this.reserveInput(key, delta, joining),
       beforeAppend: (key, delta) => this.retain(key, delta),
       onFlush: (request) => this.acceptFlush(request),
     });
   }
 
   /** 字符串、合并副本和任务元数据均在缓冲变更前计费，拒绝只回滚本次预留。 */
-  private reserveInput(key: MergeKey, delta: string): Reservation[] {
-    const holds: Reservation[] = [];
+  private reserveInput(key: MergeKey, delta: string, joining: boolean): void {
+    const incoming = this.incoming!;
+    const prior = joining ? this.buffered! : null;
+    incoming.prior = prior;
+    incoming.joining = joining;
+    incoming.originalCreditBytes = prior?.credit.totalBytes ?? 0;
+    const holds = incoming.holds;
     try {
       const budget = textInputReservations(
         Object.values(key).reduce((sum, value) => sum + value.length, 0),
         delta.length,
       );
       holds.push(this.options.admission.reserve("controlIndex", budget.controlIndex));
+      this.assertAdmitting(incoming);
       holds.push(this.options.admission.reserve("ingressSpool", budget.ingressSpool));
+      this.assertAdmitting(incoming);
+      incoming.textBytes = (prior?.textBytes ?? 0) + new TextEncoder().encode(delta).byteLength;
+      incoming.chunks = this.options.chunkCount(incoming.textBytes);
+      const working = this.options.workingBytes(
+        key,
+        incoming.textBytes,
+        this.pendingChunks - (prior?.chunks ?? 0),
+        incoming.idempotent,
+      );
+      incoming.workingBytes = working;
+      if (prior) {
+        incoming.credit = prior.credit;
+        prior.credit.growTo(working);
+      } else incoming.credit = this.options.admission.createWorkingCredit(working);
+      this.assertAdmitting(incoming);
     } catch (error) {
       for (const hold of holds) hold.release();
       throw error;
     }
-    return holds;
   }
 
   private retain(key: MergeKey, _delta: string): void {
     const incoming = this.incoming;
     if (incoming === null) throw new Error("merge append has no input reservation");
+    this.assertAdmitting(incoming);
+    if (incoming.joining && this.buffered?.credit !== incoming.credit)
+      throw new SyncProtocolError("WRITER_EPOCH_LOST", { message: "text window changed before admission" });
     this.incoming = null;
     if (this.buffered === null) {
       this.buffered = {
         key: { ...key },
         idempotent: incoming.idempotent,
         holds: [],
+        credit: incoming.credit!,
+        textBytes: 0,
+        chunks: 0,
+        workingBytes: 0,
         revalidate: false,
         request: null,
         state: "buffered",
@@ -181,6 +252,16 @@ export class WriterTextBarrier {
       this.entries.push(this.buffered);
     }
     this.buffered.holds.push(...incoming.holds);
+    this.pendingChunks += incoming.chunks - this.buffered.chunks;
+    this.buffered.chunks = incoming.chunks;
+    this.buffered.textBytes = incoming.textBytes;
+    this.buffered.workingBytes = Math.max(this.buffered.workingBytes, incoming.workingBytes);
+    incoming.window = this.buffered;
+  }
+
+  private assertAdmitting(incoming: NonNullable<WriterTextBarrier["incoming"]>): void {
+    if (this.closed || this.paused || this.incoming !== incoming)
+      throw new SyncProtocolError("WRITER_EPOCH_LOST", { message: "text input retired during admission" });
   }
 
   private acceptFlush(request: MergeFlushRequest): void {
@@ -233,8 +314,9 @@ export class WriterTextBarrier {
         if (this.entries[0] !== entry)
           throw this.entries[0]?.error ?? new Error("text flush is behind its retained predecessor");
         entry.state = "writing";
+        entry.credit.growTo(this.options.workingBytes(entry.key, entry.textBytes, 0, entry.idempotent));
         if (entry.revalidate) {
-          const replay = await this.options.shouldReplay(entry.key, token);
+          const replay = await this.options.shouldReplay(entry.key, token, entry.credit);
           entry.revalidate = false;
           if (!replay) {
             this.remove(entry);
@@ -242,7 +324,7 @@ export class WriterTextBarrier {
           }
         }
         entered = true;
-        await this.options.write(entry.request!, token);
+        await this.options.write(entry.request!, token, entry.credit);
         this.remove(entry);
       })
       .catch((error: unknown) => {
@@ -264,14 +346,16 @@ export class WriterTextBarrier {
         throw error;
       });
     entry.attempt = attempt;
-    this.lastScheduled = attempt;
     void attempt.catch(() => {});
   }
 
   private remove(entry: RetainedFlush): void {
     const index = this.entries.indexOf(entry);
-    if (index >= 0) this.entries.splice(index, 1);
+    if (index < 0) return;
+    this.entries.splice(index, 1);
     if (this.buffered === entry) this.buffered = null;
+    this.pendingChunks -= entry.chunks;
+    entry.credit.release();
     for (const hold of entry.holds) hold.release();
     entry.holds.length = 0;
   }

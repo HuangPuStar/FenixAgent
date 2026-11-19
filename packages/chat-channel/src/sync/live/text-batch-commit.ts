@@ -1,3 +1,4 @@
+import { WORKING_CREDIT, type WorkingCredit } from "../capacity/working-credit";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { createBatchId } from "../protocol/identity";
 import type { WriterLease } from "../store/types";
@@ -34,6 +35,7 @@ function markNotWritten(error: unknown): never {
 
 /** 整个物理计划固定身份和摘要，复用既有未知提交探测，禁止重新规划已发出的批次。 */
 export async function commitPlannedTextBatch(input: {
+  readonly workingCredit?: WorkingCredit;
   readonly options: LiveWriterOptions;
   readonly scopeKey: string;
   readonly generation: string;
@@ -91,6 +93,7 @@ export async function commitPlannedTextBatch(input: {
         storeEntered = true;
         try {
           return await options.store.commitContentBatch({
+            [WORKING_CREDIT]: input.workingCredit,
             ...append,
             expectedFrontiers: frontiers,
             generation: input.generation,
@@ -120,6 +123,7 @@ export async function commitPlannedTextBatch(input: {
 
 /** 规划与提交共同持有临时资源；只有明确成功后才交付末块游标与目录缓存。 */
 export async function writeAtomicText(input: {
+  readonly workingCredit?: WorkingCredit;
   readonly options: LiveWriterOptions;
   readonly scopeKey: string;
   readonly generation: string;

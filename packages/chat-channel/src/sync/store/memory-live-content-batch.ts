@@ -1,7 +1,8 @@
 import * as Y from "yjs";
-import { contentDocOverflow, contentRecordIds } from "../capacity/content-doc-limits";
+import { contentDocOverflow } from "../capacity/content-doc-limits";
 import { measuredEncodedStateBound } from "../capacity/encoded-state-bound";
 import type { SyncCapacityProfile } from "../capacity/profile";
+import { WORKING_CREDIT } from "../capacity/working-credit";
 import type { Clock, DigestFn } from "../clock";
 import {
   DIRECTORY_PAGE_SIZE,
@@ -14,6 +15,7 @@ import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { parseDocId } from "../protocol/identity";
 import type { CommitContentBatchInput } from "./live-content-batch-types";
 import { type AccountedArrayMap, type AccountedMap, commitAccountedSets, type MemoryBudget } from "./memory-accounting";
+import { projectMemoryDoc as projection } from "./memory-content-projection";
 import { analyzeContentUpdate, contentUpdateUsage } from "./memory-content-usage";
 import { prepareActiveDocument } from "./memory-store-documents";
 import { compositeKey, copyBytes, copyRef, fail, type StoredDoc, type StoredGeneration } from "./memory-store-state";
@@ -23,7 +25,12 @@ import {
   prepareContentCoverage,
   type TextIdentityObservation,
 } from "./memory-text-coverage-revision";
-import { canonicalContentRecords, validLiveTextRef } from "./memory-text-records";
+import {
+  canonicalContentRecords,
+  canonicalSelectionChanged,
+  canonicalTextIdentities,
+  validLiveTextRef,
+} from "./memory-text-records";
 import type { AppendUpdatesResult, DocFrontier, SyncRefRecord, SyncScopeRow, SyncUpdateRecord } from "./types";
 
 type BatchRecord = { digest: string; frontiers: DocFrontier[] };
@@ -53,26 +60,6 @@ function currentScope(input: CommitContentBatchInput, state: MemoryContentBatchS
   )
     fail("GENERATION_MISMATCH", "content batch generation is not current");
   return scope;
-}
-
-/** 只重放本次触及的 Doc；现存 base 与 ledger 字节保持共享。 */
-function projection(
-  doc: StoredDoc,
-  prior: readonly SyncUpdateRecord[],
-  added: readonly SyncUpdateRecord[],
-  beforeAdd?: (doc: Y.Doc) => void,
-): Y.Doc {
-  const value = new Y.Doc({ guid: doc.docId });
-  try {
-    Y.applyUpdate(value, doc.baseSnapshot);
-    for (const update of prior) Y.applyUpdate(value, update.bytes);
-    beforeAdd?.(value);
-    for (const update of added) Y.applyUpdate(value, update.bytes);
-    return value;
-  } catch (error) {
-    value.destroy();
-    throw error;
-  }
 }
 
 /** 内容链必须从现有活跃尾块开始，且仅将末块保留为 active。 */
@@ -301,7 +288,7 @@ export function commitMemoryContentBatch(
   for (const [id, doc] of docs) {
     const key = compositeKey(input.scopeKey, id);
     const list = additions.get(id) ?? [];
-    const destructive =
+    let destructive =
       doc.kind === "content" &&
       list.some((item) => {
         const delta = analyzeContentUpdate(item.bytes);
@@ -319,14 +306,20 @@ export function commitMemoryContentBatch(
     const lastSeq = doc.lastSeq + list.length;
     let beforeRecords: ReadonlySet<string> = new Set();
     let beforeText: ReadonlySet<string> | null = null;
+    let priorRecords: unknown,
+      beforeCanonical: ReadonlyMap<string, unknown> = new Map();
+    let destructiveBefore: ReadonlySet<string> | null = null;
     const checkRefs = (input.refs ?? []).some((ref) => ref.docId === id);
     const value = projection(
       doc,
       newIds.has(id) ? [] : (state.updates.get(key) ?? []),
       list,
-      checkRefs || destructive || (doc.textCoverage === true && doc.textCoverageRevision === revision)
+      doc.kind === "content" || checkRefs
         ? (value) => {
-            beforeRecords = contentRecordIds(value);
+            priorRecords = value.getMap<unknown>("root").get("records");
+            beforeCanonical = canonicalContentRecords(value);
+            beforeRecords = new Set(beforeCanonical.keys());
+            destructiveBefore = canonicalTextIdentities(beforeCanonical, input.scopeKey, input.generation, deps.digest);
             if (destructive || (doc.textCoverage === true && doc.textCoverageRevision === revision))
               beforeText = textLookupIds(Y.encodeStateAsUpdate(value), input.scopeKey, input.generation, deps.digest);
           }
@@ -334,12 +327,17 @@ export function commitMemoryContentBatch(
     );
     try {
       const snapshot = Y.encodeStateAsUpdate(value);
+      const canonical = canonicalContentRecords(value);
+      destructive ||=
+        doc.kind === "content" &&
+        ((priorRecords instanceof Y.Array && value.getMap<unknown>("root").get("records") !== priorRecords) ||
+          canonicalSelectionChanged(beforeCanonical, canonical));
       const encodedStateBound = measuredEncodedStateBound(snapshot, value);
       if (doc.kind === "content")
         textIdentities.set(id, {
           before: doc.textCoverage === true && doc.textCoverageRevision === revision ? beforeText : null,
           after: textLookupIds(snapshot, input.scopeKey, input.generation, deps.digest),
-          ...(destructive ? { destructiveBefore: beforeText } : {}),
+          ...(destructive ? { destructiveBefore } : {}),
         });
       if (doc.kind === "content" && list.length > 0) {
         const overflow = contentDocOverflow({
@@ -358,10 +356,7 @@ export function commitMemoryContentBatch(
       )
         fail("CAPACITY_EXCEEDED", "content batch snapshot exceeds transport limit");
       if (checkRefs)
-        writtenRecords.set(
-          id,
-          new Map([...canonicalContentRecords(value)].filter(([recordId]) => !beforeRecords.has(recordId))),
-        );
+        writtenRecords.set(id, new Map([...canonical].filter(([recordId]) => !beforeRecords.has(recordId))));
       if (doc.kind === "directory" && parseDocId(id).blockIndex > 0) {
         const page = readDirectoryPage(value);
         if (page.contentDocIds.length > DIRECTORY_PAGE_SIZE)
@@ -429,29 +424,40 @@ export function commitMemoryContentBatch(
     revision,
   );
   const nextScope = { ...scope, pointerRevision: scope.pointerRevision + input.seals.length };
+  const credit = input[WORKING_CREDIT];
   commitAccountedSets((pending) => {
-    for (const change of coverageChanges) pending.push(state.generations.prepare(change.key, change.next));
+    for (const change of coverageChanges) pending.push(state.generations.prepare(change.key, change.next, credit));
     for (const [id, doc] of finalDocs) {
       const key = compositeKey(input.scopeKey, id);
       pending.push(
-        newIds.has(id) ? state.docs.prepare(key, doc) : state.docs.prepareSharing(key, doc, ["transportCache"]),
+        newIds.has(id)
+          ? state.docs.prepare(key, doc, credit)
+          : state.docs.prepareSharing(key, doc, ["transportCache"], credit),
       );
       const list = additions.get(id) ?? [];
-      if (newIds.has(id)) pending.push(state.updates.prepare(key, list));
-      else if (list.length > 0) pending.push(state.updates.prepareAppend(key, list));
+      if (newIds.has(id)) pending.push(state.updates.prepare(key, list, credit));
+      else if (list.length > 0) pending.push(state.updates.prepareAppend(key, list, credit));
     }
     for (const seal of input.seals)
       pending.push(
-        state.successors.prepare(compositeKey(input.scopeKey, seal.docId), {
-          successorDocId: seal.successorDocId,
-          expectedLastSeq: seal.finalSeq,
-        }),
+        state.successors.prepare(
+          compositeKey(input.scopeKey, seal.docId),
+          {
+            successorDocId: seal.successorDocId,
+            expectedLastSeq: seal.finalSeq,
+          },
+          credit,
+        ),
       );
-    for (const ref of refs) pending.push(state.refs.prepare(ref.key, ref.value));
+    for (const ref of refs) pending.push(state.refs.prepare(ref.key, ref.value, credit));
     pending.push(
-      state.batches.prepare(batchKey, { digest: input.digest, frontiers: frontiers.map((value) => ({ ...value })) }),
+      state.batches.prepare(
+        batchKey,
+        { digest: input.digest, frontiers: frontiers.map((value) => ({ ...value })) },
+        credit,
+      ),
     );
-    pending.push(state.scopes.prepare(input.scopeKey, nextScope));
+    pending.push(state.scopes.prepare(input.scopeKey, nextScope, credit));
     // 计划由写者独占；先取得最终存储额度再隔离正文，复制失败仍处于可整组撤销的准备阶段。
     for (const list of additions.values())
       for (const record of list) {

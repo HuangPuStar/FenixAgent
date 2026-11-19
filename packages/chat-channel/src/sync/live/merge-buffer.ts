@@ -39,6 +39,10 @@ export interface MergeBufferOptions {
   readonly onFlush: (request: MergeFlushRequest) => void;
   /** 在当前增量进入缓冲前取得保留额度；拒绝不会改变已接纳的旧缓冲。 */
   readonly beforeAppend?: (key: MergeKey, delta: string) => void;
+  /** 在冲刷旧窗口前取得新输入及工作额度，joining 表示本次确实加入原窗口。 */
+  readonly beforePush?: (key: MergeKey, delta: string, joining: boolean) => void;
+  /** 输入语义也可要求分窗，五段文本身份相等仍不能混合幂等与非幂等窗口。 */
+  readonly canAppend?: () => boolean;
 }
 
 /** 合并缓冲：同一时刻最多缓冲一个键，键一换就先冲刷，语义屏障因此只需看当前键。 */
@@ -144,7 +148,13 @@ export function createMergeBuffer(options: MergeBufferOptions): MergeBuffer {
       // 目标缓冲必须在触发任何回调**之前**决定：冲刷回调内重入 push 会替换槽位，若之后再从槽位取目标，
       // 本次增量就会被追加进异键的缓冲（键与文本对不上，正是「只合并相同键」要防的内容串台）。
       let target = pending;
-      if (target !== null && (!sameMergeKey(target.key, key) || now - target.firstArrivalAt >= maxDelayMs)) {
+      const joining =
+        target !== null &&
+        sameMergeKey(target.key, key) &&
+        now - target.firstArrivalAt < maxDelayMs &&
+        (options.canAppend?.() ?? true);
+      options.beforePush?.(key, delta, joining);
+      if (target !== null && !joining) {
         flushPending();
         target = null;
       }

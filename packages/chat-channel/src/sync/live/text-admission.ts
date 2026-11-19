@@ -1,10 +1,33 @@
 import type * as Y from "yjs";
+import type { AdmissionController } from "../capacity/admission";
+import { WORKING_CREDIT, type WorkingCredit } from "../capacity/working-credit";
+import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
+import type { ProjectionStore } from "../store/types";
 import type { MergeKey } from "./merge-buffer";
 import { isTextBatchNotWritten } from "./text-batch-commit";
-import { isTextClaimInvalidated, type TextClaim } from "./text-claim";
+import { createTextClaim, isTextClaimInvalidated, type TextClaim } from "./text-claim";
 import { textClaimKey } from "./text-claim-history";
 import type { WriterAuthority, WriterAuthorityToken } from "./writer-authority";
+import type { WriterTextBarrier } from "./writer-text-barrier";
+
+/** merge 接纳失败只回收本次尚未保留的幂等声明，已接纳窗口继续拥有原身份。 */
+export function createTextInputAdmission(claim: TextClaim, barrier: WriterTextBarrier) {
+  return (
+    identity: Omit<MergeKey, "generation">,
+    delta: string,
+    generation: string,
+    idempotent = false,
+  ): Promise<void> | null => {
+    try {
+      return barrier.push({ generation, ...identity }, delta, idempotent);
+    } catch (error) {
+      if (idempotent && !barrier.retains(generation, identity.entryId, identity.contentSlot))
+        claim.release(identity.entryId, identity.contentSlot);
+      throw error;
+    }
+  };
+}
 
 /** claim 的读取面必须与同一已安装投影绑定。 */
 export interface TextAdmissionSnapshot {
@@ -43,7 +66,11 @@ export function admitText(input: {
 
 /** 同代新 token 重放前重新核对 canonical；只有已提交身份和当前写权共同成立才能退休原正文。 */
 export async function revalidateRetainedText(input: {
-  readonly claim: TextClaim;
+  readonly admission: AdmissionController;
+  readonly store: ProjectionStore;
+  readonly scopeKey: string;
+  readonly digest: DigestFn;
+  readonly credit: WorkingCredit;
   readonly authority: WriterAuthority;
   readonly token: WriterAuthorityToken;
   readonly key: MergeKey;
@@ -54,10 +81,28 @@ export async function revalidateRetainedText(input: {
   authority.assertCurrent(token);
   if (token.generation !== key.generation)
     throw new SyncProtocolError("GENERATION_MISMATCH", { message: "retained text crosses its installed projection" });
-  const replay = await input.claim.claim({ ...input, ...key });
-  authority.assertCurrent(token);
-  if (!replay) await authority.confirm(token, key.generation);
-  return replay;
+  const temporary = createTextClaim({
+    scopeKey: input.scopeKey,
+    digest: input.digest,
+    admission: { reserve: (pool, bytes) => input.admission.reserve(pool, bytes, input.credit) },
+    store: new Proxy(input.store, {
+      get(target, property) {
+        if (property === "readLiveTextCoverage" && target.readLiveTextCoverage)
+          return (query: Parameters<NonNullable<ProjectionStore["readLiveTextCoverage"]>>[0]) =>
+            target.readLiveTextCoverage!({ ...query, [WORKING_CREDIT]: input.credit });
+        const value: unknown = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }),
+  });
+  try {
+    const replay = await temporary.claim({ ...input, ...key });
+    authority.assertCurrent(token);
+    if (!replay) await authority.confirm(token, key.generation);
+    return replay;
+  } finally {
+    temporary.reset();
+  }
 }
 
 /** 旧投影重判同样进入新 token 的共享任务，旧回调只结清自己持有的 map。 */

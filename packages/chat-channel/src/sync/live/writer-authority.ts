@@ -24,13 +24,25 @@ export class WriterAuthority {
   ) {}
 
   /** 重建只允许一个在途任务；门禁先于任何异步 Store 边界关闭。 */
-  rebuild(task: () => Promise<void>): Promise<void> {
+  rebuild(task: () => Promise<void>, retainInstalled?: (error: unknown) => boolean): Promise<void> {
     this.assertOpen();
     if (this.transition !== null) return this.transition;
+    const previous = this.current;
     const pending = Promise.resolve()
       .then(task)
       .catch((error: unknown) => {
-        if (this.current !== null) this.current.generation = null;
+        // 已确认安装的新投影只在调用方证明回放未写时保留；安装失败仍不能向新输入背书。
+        if (
+          this.current !== null &&
+          !(
+            this.current !== previous &&
+            this.current.generation !== null &&
+            this.currentLease !== null &&
+            this.failure() === null &&
+            retainInstalled?.(error)
+          )
+        )
+          this.current.generation = null;
         if (this.closed)
           throw new SyncProtocolError("RESOURCE_RETIRED", { message: "live writer is closed", cause: error });
         throw error;

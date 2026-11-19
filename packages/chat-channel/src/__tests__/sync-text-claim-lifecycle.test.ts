@@ -9,10 +9,15 @@ import { SyncProtocolError } from "../sync/protocol/errors";
 import { buildDocId } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { DocStateSnapshot } from "../sync/store/types";
+import { withinDeadline } from "./sync-live-writer-authority-fixture";
 
 const generation = "claim-generation";
 const activeDocId = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "active" });
 const scopeKey = "claim-org/claim-session";
+const HISTORY = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "history" });
+const OLD_HISTORY = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "history-old" });
+const NEW_HISTORY = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "history-new" });
+const CURRENT_HISTORY = buildDocId({ kind: "content", generation, blockIndex: 0, nonce: "history-current" });
 
 /** 在历史读取边界控制完成顺序，保留真实的声明状态机和 Yjs 历史解析。 */
 function fixture() {
@@ -29,9 +34,12 @@ function fixture() {
     resolve: (value: DocStateSnapshot | null) => void;
     reject: (error: unknown) => void;
   }[] = [];
+  const started = new Map<number, () => void>();
   store.readDocStateAt = (docId) =>
     new Promise((resolve, reject) => {
       pending.push({ docId, resolve, reject });
+      started.get(pending.length - 1)?.();
+      started.delete(pending.length - 1);
     });
   store.readGeneration = async () => ({
     scopeKey,
@@ -48,12 +56,13 @@ function fixture() {
       contentDocIds: [activeDocId],
     },
   });
-  store.readSuccessor = async () => ({
+  store.readSuccessor = async (_scope, docId) => ({
     scopeKey,
     generation,
-    docId: activeDocId,
+    docId,
     kind: "content",
-    state: "active",
+    state: docId === activeDocId ? "active" : "sealed",
+    finalSeq: docId === activeDocId ? null : 0,
     route: null,
   });
   const claims = createTextClaim({ store, scopeKey, digest: sha256Digest, admission });
@@ -65,7 +74,9 @@ function fixture() {
     claim(entryId: string, historyDocIds: readonly string[], contentSlot = "text") {
       return claims.claim({ generation, entryId, contentSlot, activeDoc, historyDocIds });
     },
-    read(index: number) {
+    /** 等待元数据预检完成后的真实 canonical 边界，再控制 reset 与回执次序。 */
+    async read(index: number) {
+      if (!pending[index]) await withinDeadline(new Promise<void>((resolve) => started.set(index, resolve)));
       const read = pending[index];
       if (!read) throw new Error("Expected a pending history read");
       return read;
@@ -119,26 +130,28 @@ for (const oldFinishesFirst of [true, false]) {
   test(`旧历史${oldFinishesFirst ? "先" : "后"}完成时拒绝旧声明并保留新代次`, async () => {
     const f = fixture();
     try {
-      const previous = outcome(f.claim("same-entry", ["history-old"]));
+      const previous = outcome(f.claim("same-entry", [OLD_HISTORY]));
+      await f.read(0);
       f.claims.reset();
-      const current = outcome(f.claim("same-entry", ["history-new"]));
-      const duplicate = outcome(f.claim("same-entry", ["history-new"]));
+      const current = outcome(f.claim("same-entry", [NEW_HISTORY]));
+      const duplicate = outcome(f.claim("same-entry", [NEW_HISTORY]));
+      await f.read(1);
       if (oldFinishesFirst) {
-        f.read(0).resolve(historyState("history-old", ["old-only"]));
+        (await f.read(0)).resolve(historyState(OLD_HISTORY, ["old-only"]));
         expectInvalidated(await previous);
       }
-      const other = outcome(f.claim("old-only", ["history-new"]));
-      f.read(1).resolve(historyState("history-new", ["new-only"]));
+      const other = outcome(f.claim("old-only", [NEW_HISTORY]));
+      (await f.read(1)).resolve(historyState(NEW_HISTORY, ["new-only"]));
       expect(await current).toEqual({ value: true });
       expect(await duplicate).toEqual({ value: false });
       expect(await other).toEqual({ value: true });
       if (!oldFinishesFirst) {
-        f.read(0).resolve(historyState("history-old", ["old-only"]));
+        (await f.read(0)).resolve(historyState(OLD_HISTORY, ["old-only"]));
         expectInvalidated(await previous);
       }
-      expect(await f.claim("new-only", ["history-new"])).toBe(false);
-      expect(await f.claim("after-reset", ["history-new"])).toBe(true);
-      expect(f.pending.map((read) => read.docId)).toEqual(["history-old", "history-new"]);
+      expect(await f.claim("new-only", [NEW_HISTORY])).toBe(false);
+      expect(await f.claim("after-reset", [NEW_HISTORY])).toBe(true);
+      expect(f.pending.map((read) => read.docId)).toEqual([OLD_HISTORY, NEW_HISTORY]);
     } finally {
       f.close();
     }
@@ -150,15 +163,17 @@ test("旧历史失败不清理新声明或新历史任务", async () => {
   const f = fixture();
   const readError = new Error("old history unavailable");
   try {
-    const previous = outcome(f.claim("same-entry", ["history-old"]));
+    const previous = outcome(f.claim("same-entry", [OLD_HISTORY]));
+    await f.read(0);
     f.claims.reset();
-    const current = outcome(f.claim("same-entry", ["history-new"]));
-    f.read(0).reject(readError);
+    const current = outcome(f.claim("same-entry", [NEW_HISTORY]));
+    await f.read(1);
+    (await f.read(0)).reject(readError);
     expectInvalidated(await previous, readError);
-    const duplicate = outcome(f.claim("same-entry", ["history-new"]));
-    const other = outcome(f.claim("new-only", ["history-new"]));
-    expect(f.pending.map((read) => read.docId)).toEqual(["history-old", "history-new"]);
-    f.read(1).resolve(historyState("history-new", ["new-only"]));
+    const duplicate = outcome(f.claim("same-entry", [NEW_HISTORY]));
+    const other = outcome(f.claim("new-only", [NEW_HISTORY]));
+    expect(f.pending.map((read) => read.docId)).toEqual([OLD_HISTORY, NEW_HISTORY]);
+    (await f.read(1)).resolve(historyState(NEW_HISTORY, ["new-only"]));
     expect(await current).toEqual({ value: true });
     expect(await duplicate).toEqual({ value: false });
     expect(await other).toEqual({ value: false });
@@ -172,15 +187,15 @@ test("直接同键 claim 等待首个读取并共享原始失败", async () => {
   const f = fixture();
   const failure = new Error("lookup failed");
   try {
-    const first = outcome(f.claim("pending", ["history"]));
+    const first = outcome(f.claim("pending", [HISTORY]));
     let settled = false;
-    const second = outcome(f.claim("pending", ["history"])).then((value) => {
+    const second = outcome(f.claim("pending", [HISTORY])).then((value) => {
       settled = true;
       return value;
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(settled).toBe(false);
-    f.read(0).reject(failure);
+    (await f.read(0)).reject(failure);
     expect(await first).toEqual({ error: failure });
     expect(await second).toEqual({ error: failure });
   } finally {
@@ -192,17 +207,17 @@ test("直接同键 claim 等待首个读取并共享原始失败", async () => {
 test("同键 pending 不为错误代次提供重复成功", async () => {
   const f = fixture();
   try {
-    const current = outcome(f.claim("same-entry", ["history"]));
+    const current = outcome(f.claim("same-entry", [HISTORY]));
     const wrong = outcome(
       f.claims.claim({
         generation: "wrong-generation",
         entryId: "same-entry",
         contentSlot: "text",
         activeDoc: f.activeDoc,
-        historyDocIds: ["history"],
+        historyDocIds: [HISTORY],
       }),
     );
-    f.read(0).resolve(historyState("history", []));
+    (await f.read(0)).resolve(historyState(HISTORY, []));
     expect(await current).toEqual({ value: true });
     expect(await wrong).toMatchObject({ error: { code: "GENERATION_MISMATCH" } });
   } finally {
@@ -233,13 +248,13 @@ test("当前历史失败后同键可重试并保留原始错误", async () => {
   const f = fixture();
   const readError = new Error("current history unavailable");
   try {
-    const first = outcome(f.claim("same-entry", ["history-current"]));
-    f.read(0).reject(readError);
+    const first = outcome(f.claim("same-entry", [CURRENT_HISTORY]));
+    (await f.read(0)).reject(readError);
     expect(await first).toEqual({ error: readError });
-    const retried = f.claim("same-entry", ["history-current"]);
-    f.read(1).resolve(historyState("history-current", []));
+    const retried = f.claim("same-entry", [CURRENT_HISTORY]);
+    (await f.read(1)).resolve(historyState(CURRENT_HISTORY, []));
     expect(await retried).toBe(true);
-    expect(await f.claim("same-entry", ["history-current"])).toBe(false);
+    expect(await f.claim("same-entry", [CURRENT_HISTORY])).toBe(false);
   } finally {
     f.close();
   }
@@ -254,10 +269,10 @@ test("正常声明保留消息槽位与历史 entryId 幂等", async () => {
     expect(await f.claim("new-entry", [], "reasoning")).toBe(true);
     records(f.activeDoc, [{ kind: "text", entryId: "active-entry", contentSlot: "text" }]);
     expect(await f.claim("active-entry", [])).toBe(false);
-    const historical = f.claim("history-entry", ["history-current"]);
-    f.read(0).resolve(historyState("history-current", ["history-entry"]));
+    const historical = f.claim("history-entry", [CURRENT_HISTORY]);
+    (await f.read(0)).resolve(historyState(CURRENT_HISTORY, ["history-entry"]));
     expect(await historical).toBe(false);
-    expect(await f.claim("different-entry", ["history-current"])).toBe(true);
+    expect(await f.claim("different-entry", [CURRENT_HISTORY])).toBe(true);
   } finally {
     f.close();
   }

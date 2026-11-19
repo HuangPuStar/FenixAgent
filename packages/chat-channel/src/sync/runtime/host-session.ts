@@ -9,21 +9,20 @@
 //
 // 本文件不复制协议规则：帧编解码、握手、额度、ACK、封口继续由 protocol/provider/live/history 承担。
 
-import { type Clock, cryptoRandomSource, type DigestFn, type RandomSource, sha256Digest, systemClock } from "../clock";
+import { cryptoRandomSource, sha256Digest, systemClock } from "../clock";
 import type { HistoryRecordMeta } from "../history/ingest";
 import { SyncProtocolError } from "../protocol/errors";
 import { encodeSyncFrame, MAX_CONTROL_FRAME_BYTES, parseSyncFrame } from "../protocol/frames";
 import { assertIdentifier, type SyncScope, scopeKey } from "../protocol/identity";
 import { MemoryProjectionStore } from "../store/memory-store";
-import type { ProjectionStore } from "../store/types";
 import { commitHostHistory } from "./commit-host-history";
-import { resolveSyncRuntimeConfig, type SyncRuntimeConfigOverrides } from "./config";
-import type { SyncFrameTransport } from "./egress";
+import { resolveSyncRuntimeConfig } from "./config";
 import { ensureBaselineGeneration } from "./host-baseline";
+import type { SyncHostSessionOptions } from "./host-session-options";
 import { normalizeAcpSessionUpdate, type SyncIngressEvent } from "./ingress";
 import { createIngressFailureReporter } from "./ingress-failure-reporter";
 import { createSyncScopeRuntime, type SyncScopeRuntime, type SyncTransportDiagnostics } from "./scope-runtime";
-import { isScopeBusy, type SyncStoreRegistry, uniqueOwner } from "./store-registry";
+import { isScopeBusy, uniqueOwner } from "./store-registry";
 
 /** 宿主连接可注入的运行时旋钮（宽限期由 env 装配给出，本层不提供默认值）。 */
 export interface SyncHostRuntimeConfig {
@@ -118,35 +117,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `resolveSyncRuntimeConfig` 负责把宽限期与容量档案收敛成唯一配置；`createSyncScopeRuntime` 在构造期
  * 校验配置并建立独立内存 store。任何失败都原样上抛，由连接层以明确原因关闭连接。
  */
-export async function createSyncHostSession(input: {
-  readonly scope: SyncHostScope;
-  readonly runtimeConfig: SyncHostRuntimeConfig;
-  readonly transport: SyncFrameTransport;
-  readonly clock?: Clock;
-  readonly digest?: DigestFn;
-  readonly random?: RandomSource;
-  readonly overrides?: Omit<SyncRuntimeConfigOverrides, "lifecycle" | "spoolRootDir">;
-  /** 存储替身（测试或未来 DB adapter）；缺省为独立内存 store。 */
-  readonly store?: ProjectionStore;
-  /**
-   * 同 scope 共享投影存储：多标签页必须看到同一份已提交事实。
-   *
-   * 只共享 store 与一次历史引导，**不共享 runtime**；每个连接仍各自持有 provider 会话与传输绑定，
-   * 抢不到单写者租约的连接按 follower 降级。
-   */
-  readonly storeRegistry?: SyncStoreRegistry;
-  /** 稳定历史源；缺省或读取为空时回退空基线。读取失败不缓存，下一次连接可重试。 */
-  readonly historySource?: SyncHistorySource;
-  /**
-   * 投影代次（旧 Chat/Session Doc 的 generation）。同一 scope 换代时必须换 store，
-   * 否则新连接会复用上一代次的已提交时间线与一次性历史引导。
-   */
-  readonly storeBinding?: string;
-  readonly owner?: string;
-  readonly onError?: (message: string, error: unknown) => void;
-  /** 入口永久停写：宿主据此让客户端重建投影，不能只留服务端日志。 */
-  readonly onIngressStopped?: (error: unknown) => void;
-}): Promise<SyncHostSession> {
+export async function createSyncHostSession(input: SyncHostSessionOptions): Promise<SyncHostSession> {
   assertIdentifier(input.scope.organizationId, "scope.organizationId");
   assertIdentifier(input.scope.rcsSessionId, "scope.rcsSessionId");
   if (!Number.isSafeInteger(input.runtimeConfig.sealGraceMs) || input.runtimeConfig.sealGraceMs <= 0) {
@@ -198,6 +169,7 @@ export async function createSyncHostSession(input: {
       digest,
       random,
       store,
+      admission: input.admission,
     });
   } catch (error) {
     sharedStore?.release();

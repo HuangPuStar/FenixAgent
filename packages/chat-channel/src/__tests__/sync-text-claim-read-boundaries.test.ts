@@ -20,6 +20,18 @@ function fixture() {
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
   });
   const generation = "claim-boundary";
+  const historyIds = [0, 1].map((blockIndex) =>
+    buildDocId({ kind: "content", generation, blockIndex, nonce: "history" }),
+  );
+  store.readSuccessor = async (scopeKey, docId) => ({
+    scopeKey,
+    docId,
+    generation,
+    kind: "content",
+    state: "sealed",
+    finalSeq: 0,
+    route: null,
+  });
   const active = new Y.Doc({ guid: buildDocId({ kind: "content", generation, blockIndex: 1, nonce: "active" }) });
   const claims = createTextClaim({ store, admission, scopeKey: "boundary-org/boundary-session", digest: sha256Digest });
   return {
@@ -33,7 +45,7 @@ function fixture() {
       entryId: "entry",
       contentSlot: "text",
       activeDoc: active,
-      historyDocIds: ["history-1", "history-2"],
+      historyDocIds: historyIds,
     },
     close() {
       claims.reset();
@@ -62,13 +74,13 @@ test("缺失列出的历史基线明确失败且下次重新扫描", async () =>
   let missing = true;
   f.store.readDocStateAt = async (docId) => {
     reads.push(docId);
-    return missing && docId === "history-2" ? null : history(docId, ["entry"]);
+    return missing && docId === f.input.historyDocIds[1] ? null : history(docId, ["entry"]);
   };
   try {
     await expect(f.claims.claim(f.input)).rejects.toMatchObject({ code: "DOC_NOT_FOUND" });
     missing = false;
     expect(await f.claims.claim(f.input)).toBe(false);
-    expect(reads).toEqual(["history-1", "history-2", "history-1", "history-2"]);
+    expect(reads).toEqual([...f.input.historyDocIds, ...f.input.historyDocIds]);
   } finally {
     f.close();
   }

@@ -2,6 +2,7 @@
 // 幂等写入以稳定批次、文档和代次身份判定；读取只返回已提交边界。
 // 本文件仅含类型和常量，不依赖进程宿主或运行时装配。
 
+import { WORKING_CREDIT, type WorkingCredit } from "../capacity/working-credit";
 import type { DocKind, DocState, GenerationState } from "../protocol/identity";
 import type { CommitContentBatchInput } from "./live-content-batch-types";
 
@@ -191,6 +192,8 @@ export interface DocFrontier {
  * `updates[].fromSeq` 必须等于该 Doc 当前 `lastSeq + 1`，全组在同一事务内生效。
  */
 export interface AppendUpdatesInput {
+  /** 进程内工作额度能力；符号键不进入协议 JSON、摘要或可移植快照。 */
+  readonly [WORKING_CREDIT]?: WorkingCredit;
   scopeKey: string;
   epoch: number;
   owner: string;

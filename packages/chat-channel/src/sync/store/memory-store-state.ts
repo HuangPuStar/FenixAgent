@@ -281,6 +281,7 @@ export class MemoryStoreState {
       generation: doc.generation,
       kind: doc.kind,
       state: doc.state,
+      finalSeq: doc.finalSeq,
       route: route ? { ...route } : null,
     };
   }

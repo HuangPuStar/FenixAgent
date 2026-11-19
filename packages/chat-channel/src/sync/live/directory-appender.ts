@@ -56,6 +56,8 @@ export interface DirectoryAppender {
   tailContentDocId(): string | null;
   /** 离线追加整批内容块；提交成功后由计划安装目录缓存。 */
   planContentDocs(docIds: readonly string[]): TextDirectoryPlan;
+  /** 只读提交前沿用于工作额度估算，不读取全历史页或复制目录正文。 */
+  workingFrontier(): { rootLastSeq: number; pageLastSeq: number; docIdUnits: number };
 }
 
 function fail(code: SyncErrorCode, message: string): never {
@@ -101,6 +103,14 @@ class DirectoryAppenderImpl implements DirectoryAppender {
   tailContentDocId(): string | null {
     if (this.pageDoc === null) return null;
     return readDirectoryPage(this.pageDoc).contentDocIds.at(-1) ?? null;
+  }
+
+  workingFrontier() {
+    return {
+      rootLastSeq: this.rootLastSeq,
+      pageLastSeq: this.pageLastSeq,
+      docIdUnits: Math.max(this.rootDocId?.length ?? 0, this.pageDocId?.length ?? 0),
+    };
   }
 
   planContentDocs(docIds: readonly string[]): TextDirectoryPlan {
