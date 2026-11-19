@@ -318,7 +318,7 @@ export function AssistantBubble({
             return (
               // Chunks lack a unique identifier.
               // biome-ignore lint/suspicious/noArrayIndexKey: 协议块本身没有唯一 id（源文件同款写法）。本包 package.json 声明了 react 依赖，biome 因而启用 react 域规则；源宿主 packages/agent-runtime 未声明 react，规则未启用。chunks 只整体替换、不重排，索引键不会引起元素错位。
-              <Reasoning key={i} isStreaming={thoughtStreaming} className="mb-0">
+              <Reasoning key={i} isStreaming={thoughtStreaming} className="mb-0 min-w-0">
                 <ReasoningTrigger className="chat-thought-trigger text-xs leading-normal text-gray-400 hover:text-slate-500" />
                 <ReasoningContent className="mt-1.5 text-slate-500">
                   <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
@@ -427,7 +427,7 @@ function ThoughtContent({ text, isStreaming }: { text: string; isStreaming?: boo
   return (
     <div
       ref={containerRef}
-      className="text-sm text-text-secondary leading-relaxed overflow-y-auto"
+      className="text-sm text-text-secondary leading-relaxed wrap-anywhere overflow-y-auto"
       style={{ maxHeight: `${THOUGHT_STREAMING_MAX_HEIGHT}px` }}
     >
       {text}
