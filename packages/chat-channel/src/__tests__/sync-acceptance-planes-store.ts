@@ -14,6 +14,7 @@ import type {
   DirectoryPage,
   DirectoryQuery,
   DocStateSnapshot,
+  LiveTextCoverageQuery,
   ProjectionStore,
   PutSealedInput,
   PutSealedResult,
@@ -31,6 +32,7 @@ import type {
   SyncUpdateRecord,
   WriterLease,
 } from "../sync/store/types";
+import { windowCapacity } from "./sync-window-capacity-fixture";
 
 // ------------------------------------------------------------------ 常量与时钟
 
@@ -126,14 +128,10 @@ export function tightenWindow(
   windowBytes: number,
   base: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY,
 ): SyncCapacityProfile {
+  const tuned = windowCapacity(windowBytes, base);
   const capacity: SyncCapacityProfile = {
-    ...base,
-    concurrency: {
-      ...base.concurrency,
-      connectionBodyWindowBytes: windowBytes,
-      socketHighWatermarkBytes: windowBytes,
-    },
-    inputs: { ...base.inputs, activeSoftPayloadBytes: Math.floor(windowBytes / 4) },
+    ...tuned,
+    inputs: { ...tuned.inputs, activeSoftPayloadBytes: Math.floor(windowBytes / 4) },
   };
   const frameBytes = maxSingleTailFrameBytes(capacity);
   if (!(windowBytes > frameBytes)) {
@@ -266,6 +264,10 @@ export class FaultyProjectionStore implements ProjectionStore {
   /** 保留 {@link ProjectionStore.readDirectory} 的底层契约。 */
   readDirectory(query: DirectoryQuery): Promise<DirectoryPage> {
     return this.base.readDirectory(query);
+  }
+  /** 保留全部 live 文本已索引的底层证明。 */
+  readLiveTextCoverage(query: LiveTextCoverageQuery): Promise<ReadonlySet<string>> {
+    return this.base.readLiveTextCoverage(query);
   }
   /** 保留 {@link ProjectionStore.locateRefs} 的底层契约。 */
   locateRefs(query: RefQuery): Promise<SyncRefRecord[]> {

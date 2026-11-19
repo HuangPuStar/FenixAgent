@@ -324,14 +324,15 @@ export function docOf(runtime: Runtime, docId: string) {
 
 /** 按客户端的恢复路径重建文档：canonical base 快照 + 连续已提交 tail。 */
 export function rebuild(runtime: Runtime, docId: string): Y.Doc {
-  const stored = docOf(runtime, docId);
+  const snapshot = committed(runtime);
+  const stored = snapshot.docs.find((doc) => doc.docId === docId);
   if (stored === undefined) throw new Error(`document ${docId} is not committed`);
   const doc = new Y.Doc({ guid: docId });
   try {
     Y.applyUpdate(doc, stored.baseSnapshot);
     let seq = stored.baseSeq;
-    for (const update of updatesOf(runtime, docId)
-      .filter((update) => update.updateSeq > seq)
+    for (const update of snapshot.updates
+      .filter((update) => update.docId === docId && update.updateSeq > seq)
       .sort((a, b) => a.updateSeq - b.updateSeq)) {
       if (update.updateSeq !== seq + 1) throw new Error("fixture recovery tail is not contiguous");
       Y.applyUpdate(doc, update.bytes);

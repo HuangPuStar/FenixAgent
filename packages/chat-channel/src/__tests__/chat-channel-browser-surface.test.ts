@@ -299,9 +299,11 @@ describe("sync-client 子路径浏览器可达面", () => {
     expect(externals).toEqual(["yjs", "zod/v4"]);
   });
 
-  test("值导入闭包只含 client 自身、protocol 的纯逻辑模块与 capacity 预算表", () => {
+  // 共享预算计算仍须浏览器安全，不能借 profile 的传递导入带入服务端实现。
+  test("值导入闭包只含 client、protocol 与纯容量预算模块", () => {
     expect(relFiles).toEqual([
       "sync/capacity/profile.ts",
+      "sync/capacity/text-plan-reservations.ts",
       "sync/client/apply-queue.ts",
       "sync/client/doc-hub.ts",
       "sync/client/index.ts",

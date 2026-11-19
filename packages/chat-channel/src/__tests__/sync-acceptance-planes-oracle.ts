@@ -123,6 +123,8 @@ export interface PlaneHarness {
   currentEntryRefs(): Promise<GenerationEntryRefs>;
   currentPointerRevision(): Promise<number>;
   contentDocIds(): Promise<string[]>;
+  /** 通过已提交目录读取内容块，按 ordinal 顺序返回。 */
+  directoryBlocks(generation?: string): Promise<PlaneDirectoryBlock[]>;
   /** 目录覆盖：ordinal 1..max 是否被恰好覆盖一次（返回缺口与重复序号）。 */
   coverage(generation?: string): Promise<{ gaps: number[]; duplicates: number[]; maxOrdinal: number }>;
   /** 已提交代次的全部内容块记录（按目录 ordinal 展开；跨块顺序的唯一依据）。 */
@@ -139,6 +141,8 @@ export interface PlaneHarness {
     key: { readonly entryId: string; readonly contentSlot?: number; readonly partIndex?: number },
   ): Promise<IngestedRecord>;
   importStatus(): ImportStatus | null;
+  /** 完成接收、构建和换代，返回真实导入服务的最终回执。 */
+  finishImport(): Promise<{ outcome: string; generation: string; pointerRevision: number }>;
   /** 把一条客户端帧排入入站队列（丢帧 / 重复 / 伪造注入都走这里）。 */
   queueClientFrame(connection: PlaneConnection, frame: SyncFrame): void;
   disposeAll(): Promise<void>;

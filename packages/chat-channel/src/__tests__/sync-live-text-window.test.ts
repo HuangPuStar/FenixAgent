@@ -96,7 +96,7 @@ test("one atomic 256 KiB delta catches up through a real 64 KiB runtime/client w
     const committed = textOfRecords(await harness.canonicalRecords(harness.seedContentDocId), ENTRY_ID, TEXT_SLOT);
     expect(committed.length).toBeGreaterThan(0);
     expect(textOfRecords(client.mirror.records(harness.seedContentDocId), ENTRY_ID, TEXT_SLOT)).toBe(committed);
-    await assertCaughtUp(harness, client, LARGE_DELTA);
+    await assertCaughtUp(harness, client, LARGE_DELTA, true);
   } finally {
     await harness.disposeAll();
   }
@@ -131,17 +131,20 @@ test("a paused 64 KiB client resumes and acknowledges every piece of one large a
     await client.handshake();
     await client.subscribe();
     const priorAcks = client.link.observedInbound.filter((frame) => frame.type === "APPLY_ACK").length;
+    const appliedBytesBeforePause = client.hub.loadedBytes();
     client.pause();
     await harness.writeText(LARGE_DELTA);
     expect(client.audit.outstandingBytes()).toBeGreaterThan(0);
     expect(client.audit.outstandingBytes()).toBeLessThanOrEqual(WINDOW_BYTES);
     expect(client.link.observedInbound.filter((frame) => frame.type === "APPLY_ACK")).toHaveLength(priorAcks);
     const partial = textOfRecords(client.mirror.records(harness.seedContentDocId), ENTRY_ID, TEXT_SLOT);
+    expect(client.hub.loadedBytes()).toBe(appliedBytesBeforePause);
+    expect(client.hub.queueDepth()).toBeGreaterThan(0);
     expect(LARGE_DELTA.startsWith(partial)).toBe(true);
     expect(partial.length).toBeLessThan(LARGE_DELTA.length);
     client.resume();
     await harness.pump();
-    await assertCaughtUp(harness, client, LARGE_DELTA);
+    await assertCaughtUp(harness, client, LARGE_DELTA, true);
     expect(client.link.observedInbound.filter((frame) => frame.type === "APPLY_ACK").length).toBeGreaterThan(priorAcks);
   } finally {
     await harness.disposeAll();
@@ -191,7 +194,7 @@ test("probes every piece after an unknown multi-update commit and continues from
     }
     await harness.writeText("|after-unknown|");
     expect(commits).toBe(2);
-    await assertCaughtUp(harness, client, `${LARGE_DELTA}|after-unknown|`);
+    await assertCaughtUp(harness, client, `${LARGE_DELTA}|after-unknown|`, true);
   } finally {
     await harness.disposeAll();
     base.dispose();

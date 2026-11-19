@@ -3,8 +3,10 @@ import { contentDocOverflow } from "../capacity/content-doc-limits";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { commitAccountedSets } from "./memory-accounting";
+import { analyzeContentUpdate, appendContentUsage, contentUpdateUsage } from "./memory-content-usage";
 import type { MemoryContentBatchState } from "./memory-live-content-batch";
 import { compositeKey, copyBytes, copyRef, fail, type StoredDoc } from "./memory-store-state";
+import { changedCoverageGenerations } from "./memory-text-coverage-revision";
 import type { AppendUpdatesInput, AppendUpdatesResult, SyncRefRecord } from "./types";
 
 function assertSnapshotSize(snapshot: Uint8Array): void {
@@ -90,7 +92,21 @@ export function appendMemoryUpdates(
         ? ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0)
         : accountedBytes / 2) +
       records.reduce((sum, item) => sum + item.bytes.byteLength, 0);
-    if (bound > MAX_DOC_SNAPSHOT_BYTES || doc.kind === "content") {
+    let contentUsage = doc.contentUsage;
+    const deltas = doc.kind === "content" ? records.map((record) => analyzeContentUpdate(record.bytes)) : [];
+    if (doc.kind === "content") {
+      if (list.at(-1)!.fromSeq - doc.baseSeq > deps.capacity.inputs.maxTransactionsPerDoc)
+        fail("CAPACITY_EXCEEDED", "content transaction capacity exceeded");
+      if (contentUsage) contentUsage = appendContentUsage(contentUsage, deltas);
+    }
+    const limits = deps.capacity.inputs;
+    const needsContentCheck =
+      doc.kind === "content" &&
+      (!contentUsage ||
+        contentUsage.recordCountUpper > limits.maxRecordsPerDoc ||
+        contentUsage.maxPayloadBytes > limits.payloadChunkMaxBytes ||
+        bound > limits.activeHardEncodedBytes);
+    if (bound > MAX_DOC_SNAPSHOT_BYTES || needsContentCheck) {
       const projection = new Y.Doc();
       try {
         Y.applyUpdate(projection, doc.baseSnapshot);
@@ -107,20 +123,52 @@ export function appendMemoryUpdates(
             snapshot,
           });
           if (overflow) fail("CAPACITY_EXCEEDED", overflow);
+          contentUsage = contentUpdateUsage(snapshot);
         }
       } finally {
         projection.destroy();
       }
     }
-    return { doc, records, lastSeq: list[list.length - 1].fromSeq };
+    return {
+      doc,
+      records,
+      invalidatesCoverage: deltas.some(
+        (delta) =>
+          delta.deletes ||
+          delta.usage.hasLiveText ||
+          (delta.opaque &&
+            !(
+              doc.lastSeq === 0 &&
+              doc.baseSnapshot.length === 2 &&
+              doc.baseSnapshot[0] === 0 &&
+              doc.baseSnapshot[1] === 0
+            )),
+      ),
+      next: {
+        ...doc,
+        lastSeq: list.at(-1)!.fromSeq,
+        ...(doc.kind === "content" ? { contentUsage, textCoverage: undefined, textCoverageRevision: undefined } : {}),
+      },
+    };
   });
+  const generations = changedCoverageGenerations(state, [
+    ...pending.filter((item) => item.invalidatesCoverage).map((item) => item.doc),
+    ...refs.filter((ref) => ref.value.lookupKind === "live-text" && state.refs.has(ref.key)).map((ref) => ref.value),
+  ]);
   const batch = { digest: input.digest, frontiers: frontiers.map((item) => ({ ...item })) };
   commitAccountedSets((changes) => {
-    for (const { doc, records } of pending)
-      changes.push(state.updates.prepareAppend(compositeKey(input.scopeKey, doc.docId), records));
+    for (const generation of generations) changes.push(state.generations.prepare(generation.key, generation.next));
+    for (const { doc, records, next } of pending) {
+      const key = compositeKey(input.scopeKey, doc.docId);
+      changes.push(state.docs.prepareSharing(key, next, ["transportCache"]));
+      changes.push(state.updates.prepareAppend(key, records));
+    }
     for (const ref of refs) changes.push(state.refs.prepare(ref.key, ref.value));
     changes.push(state.batches.prepare(batchKey, batch));
     deps.assertLease();
+    for (const generation of generations)
+      if (state.generations.get(generation.key) !== generation.before)
+        fail("SEQUENCE_GAP", "text coverage generation changed during admission");
     if (state.batches.has(batchKey)) fail("DIGEST_CONFLICT", "batch identity changed during admission");
     for (const { doc } of pending) {
       const current = deps.assertWritableDoc(input.scopeKey, doc.docId);
@@ -128,6 +176,5 @@ export function appendMemoryUpdates(
         fail("SEQUENCE_GAP", "append frontier changed during admission");
     }
   });
-  for (const { doc, lastSeq } of pending) doc.lastSeq = lastSeq;
   return { outcome: "committed", frontiers };
 }

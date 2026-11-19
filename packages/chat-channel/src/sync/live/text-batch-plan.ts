@@ -7,7 +7,7 @@ import type { ContentBatchSeal } from "../store/live-content-batch-types";
 import type { SyncDocRecord } from "../store/types";
 import { captureChange } from "./change-capture";
 import type { Cursor, Slice } from "./live-writer-internal";
-import { buildNextLiveRecord } from "./live-writer-records";
+import { buildLiveRecord, nextContentPartIndex } from "./live-writer-records";
 import { reserveTextBatchBudget } from "./text-batch-plan-budget";
 import type { TextBatchPlan, TextBatchPlanOptions, TextDirectoryPlan } from "./text-batch-plan-types";
 import { bytes, hex, records, splitLiveText } from "./writer-support";
@@ -56,6 +56,7 @@ export async function planLiveTextBatch(options: TextBatchPlanOptions): Promise<
       capacityExceeded("current content exceeds the transport hard limit");
     budget.reserveContentDoc(options.cursor.docId);
     let cursor = cloneCursor(options.cursor, initial);
+    let nextPartIndex = nextContentPartIndex(cursor.doc, request.key);
     cursors.set(cursor.docId, cursor);
     const slices: Slice[] = [];
     const newDocs: SyncDocRecord[] = [];
@@ -98,6 +99,7 @@ export async function planLiveTextBatch(options: TextBatchPlanOptions): Promise<
       cursor = { docId, kind: "content", doc, lastSeq: 0 };
       cursors.set(docId, cursor);
       plannedUpdates = 0;
+      nextPartIndex = 0;
     };
     // 存量超出当前写入规则时原样封口；复用Store的增长校验，避免向旧块追加后才发现不兼容。
     if (
@@ -117,7 +119,7 @@ export async function planLiveTextBatch(options: TextBatchPlanOptions): Promise<
       const before = Y.encodeStateAsUpdate(cursor.doc);
       const append = () => {
         const update = captureChange(cursor.doc, () =>
-          records(cursor.doc, [buildNextLiveRecord(options.random, cursor.doc, request.key, "text", payload)]),
+          records(cursor.doc, [buildLiveRecord(options.random, request.key, "text", payload, nextPartIndex)]),
         );
         if (update === null)
           throw new SyncProtocolError("MALFORMED_FRAME", { message: "text piece produced no update" });
@@ -138,6 +140,7 @@ export async function planLiveTextBatch(options: TextBatchPlanOptions): Promise<
       // 单次逻辑提交保留有界物理片；合并成整Doc更新会使小连接窗口永远无法发送。
       slices.push({ docId: cursor.docId, fromSeq: cursor.lastSeq + plannedUpdates + 1, bytes: update });
       plannedUpdates += 1;
+      nextPartIndex += 1;
     }
     const finalCursor = cursor;
     budget.reserveDirectory(newDocs.length);

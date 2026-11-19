@@ -1,8 +1,9 @@
 import * as Y from "yjs";
+import { AdmissionController } from "../capacity/admission";
 import { type SyncErrorCode, SyncProtocolError } from "../protocol/errors";
 import { buildDocId, type DocKind, parseDocId, scopeKey } from "../protocol/identity";
 import type { CommitOutcome, SyncRefRecord, WriterLease } from "../store/types";
-import { BoundaryIndex, boundaryPayload, seedBoundaryIndexFromDocs } from "./boundary-index";
+import { BoundaryIndex, seedBoundaryIndexFromDocs } from "./boundary-index";
 import { captureSlice } from "./change-capture";
 import { appendCommittedBatch, loadCommittedDoc, openLiveCursor } from "./committed-doc";
 import { createDirectoryAppender, type DirectoryAppender } from "./directory-appender";
@@ -12,7 +13,6 @@ import {
   CONTENT_KIND,
   type Cursor,
   fail,
-  type Identity,
   malformed,
   NOOP,
   overflowOfSlices,
@@ -20,13 +20,7 @@ import {
   type Slice,
 } from "./live-writer-internal";
 import { rebuildLiveProjection } from "./live-writer-rebuild";
-import {
-  buildLiveRecord,
-  buildNextLiveRecord,
-  buildTerminalRecords,
-  descriptorOf,
-  entityOf,
-} from "./live-writer-records";
+import { applySemanticWrite, planSemanticWrite } from "./live-writer-semantic";
 import type { LiveInput, LiveRecordValue, LiveWriter, LiveWriterOptions, PendingBatch } from "./live-writer-types";
 import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
@@ -37,8 +31,11 @@ import { writeAtomicText } from "./text-batch-commit";
 import { createTextClaim, type TextClaim } from "./text-claim";
 import { WriterAuthority, type WriterAuthorityToken } from "./writer-authority";
 import { retainWriterFailure } from "./writer-failure";
-import { buildPendingBatch, bytes, hex, records, requireObject, requireString } from "./writer-support";
+import { buildPendingBatch, hex, records, requireString } from "./writer-support";
+import { WriterTextBarrier } from "./writer-text-barrier";
+/** 串行编排实时正文、语义实体与持久投影的写者生命周期。 */
 export class LiveWriterImpl implements LiveWriter {
+  private readonly options: LiveWriterOptions & { readonly admission: AdmissionController };
   private readonly scopeKey: string;
   private readonly owner: string;
   private readonly rotation: RotationController;
@@ -48,6 +45,8 @@ export class LiveWriterImpl implements LiveWriter {
   /** 只认封口已证明未发布路由的那次错误，外围冲刷仍保留它供写入观测。 */
   private reacquirableFailure: SyncProtocolError | null = null;
   private lastFlush: Promise<void> | null = null;
+  private readonly textBarrier: WriterTextBarrier;
+  private schedulingRefusals = 0;
   private readonly authority: WriterAuthority;
   private readonly cursors = new Map<DocKind, Cursor>();
   /** 工具边界 occurrence 索引，轮转沿用，恢复时覆盖当前代次全部可达块。 */
@@ -57,21 +56,24 @@ export class LiveWriterImpl implements LiveWriter {
   private readonly textClaim: TextClaim;
   /** 当前代次的入口闭包（历史导入块）；为空表示没有可对照的历史。 */
   private historyContentDocIds: readonly string[] = [];
-  constructor(private readonly options: LiveWriterOptions) {
-    const { store, digest, random } = options;
+  constructor(options: LiveWriterOptions) {
+    this.options = { ...options, admission: options.admission ?? new AdmissionController(options.capacity) };
+    const { store, digest, random } = this.options;
     this.scopeKey = scopeKey(options.scope);
     this.owner = `live_${hex(random, 8)}`;
+    this.textBarrier = new WriterTextBarrier(this.options.admission);
     this.rotation = createRotationController(options.rotation);
-    this.sealing = createSealingMachine(options);
+    this.sealing = createSealingMachine(this.options);
     this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
     this.authority = new WriterAuthority(
       store,
       () => this.failure,
       () => this.merge.dispose(),
     );
-    this.textClaim = createTextClaim({ store, scopeKey: this.scopeKey, digest });
+    this.textClaim = createTextClaim({ store, scopeKey: this.scopeKey, digest, admission: this.options.admission });
     this.merge = this.newMerge();
   }
+  /** 等旧队列结清后取得写权并安装已提交投影。 */
   async acquire(): Promise<void> {
     this.assertLive(false);
     await this.authority.rebuild(async () => {
@@ -85,10 +87,12 @@ export class LiveWriterImpl implements LiveWriter {
       this.reacquirableFailure = null;
     });
   }
+  /** 续租当前已安装投影的真实 fencing token。 */
   async renew(): Promise<void> {
     this.assertLive(true);
     await this.authority.renew();
   }
+  /** 按输入种类完成声明、合并或带正文屏障的语义写入。 */
   async accept(input: LiveInput): Promise<void> {
     this.assertLive(true);
     if (input.kind === "content-object") {
@@ -146,10 +150,24 @@ export class LiveWriterImpl implements LiveWriter {
   /** 同步接纳到当前 merge 后捕获本次冲刷回执，后续 await 不重新读取投影。 */
   private pushText(identity: Omit<MergeKey, "generation">, delta: string, generation: string): Promise<void> | null {
     const key: MergeKey = { generation, ...identity };
-    this.lastFlush = null;
+    try {
+      this.textBarrier.assertInput(this.textKey(key));
+    } catch (error) {
+      this.textClaim.release(identity.entryId, identity.contentSlot);
+      throw error;
+    }
+    const previous = this.lastFlush;
+    const refusedBefore = this.schedulingRefusals;
     this.merge.push(key, delta);
-    return this.lastFlush;
+    if (refusedBefore !== this.schedulingRefusals) {
+      // 回调已取走旧缓冲；此时留下的只有本次未获成功回执的新输入，可安全丢弃并交还调用方重试。
+      this.merge.dispose();
+      this.merge = this.newMerge();
+      this.textClaim.release(identity.entryId, identity.contentSlot);
+    }
+    return this.lastFlush === previous ? null : this.lastFlush;
   }
+  /** 校验连续前沿并提交调用方提供的固定更新。 */
   async commit(pending: PendingBatch): Promise<CommitOutcome> {
     this.assertLive(true);
     return await this.authority.enqueue(async () => {
@@ -164,12 +182,15 @@ export class LiveWriterImpl implements LiveWriter {
       return await this.executeBatch(batch, new Map([[cursor.docId, cursor]]));
     });
   }
+  /** 等已接纳正文确认后封口并发布后继内容块。 */
   async seal(): Promise<SealResult> {
     return await this.run(() => this.sealActive(CONTENT_KIND));
   }
+  /** 保留未结束实体并轮换运行态文档。 */
   async rotateRuntime(): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
     return await this.run(() => this.rotateRuntimeDoc());
   }
+  /** 排空旧任务后以相同真实租约重建投影。 */
   async recover(): Promise<void> {
     this.assertLive(true);
     await this.authority.rebuild(async () => {
@@ -178,16 +199,22 @@ export class LiveWriterImpl implements LiveWriter {
       await this.rebuildFromCommitted();
     });
   }
+  /** 同步停输入，释放写权与当前投影的声明和拒绝索引。 */
   async close(): Promise<void> {
     this.merge.dispose();
-    await this.authority.close();
+    try {
+      await this.authority.close();
+    } finally {
+      this.textClaim.reset();
+      this.textBarrier.close();
+    }
   }
   /** 带屏障的公共动作：复核写者仍活着 → 冲刷已接收文本并等它落地（设计 §6.1「之前已接收的文本先完成写入」）→ 排队执行。 */
   private async run<T>(task: () => Promise<T>): Promise<T> {
     this.assertLive(true);
-    this.lastFlush = null;
     this.merge.barrier();
     if (this.lastFlush !== null) await this.lastFlush;
+    this.textBarrier.assertReady();
     this.assertLive(true);
     return await this.authority.enqueue(task);
   }
@@ -198,14 +225,24 @@ export class LiveWriterImpl implements LiveWriter {
   /** 只记录实际执行冲刷的首错；队列门禁的延迟拒绝不得回写已恢复的状态，后台错误仍供后续输入观测。 */
   private scheduleText(request: MergeFlushRequest): void {
     const token = this.authority.captureTask();
-    const task = this.authority.enqueue(() =>
-      this.writeText(request, token).catch((error: unknown) => {
-        if (this.authority.isCurrent(token) && !isRetryableTextRefusal(error)) this.failure ??= error;
-        throw error;
-      }),
-    );
-    this.lastFlush = task;
-    void task.catch(NOOP);
+    this.lastFlush = this.textBarrier.enqueue({
+      key: this.textKey(request.key),
+      enqueue: (task) => this.authority.enqueue(task),
+      write: () => this.writeText(request, token),
+      isCurrent: () => this.authority.isCurrent(token),
+      onSchedulingRefusal: () => {
+        this.schedulingRefusals++;
+        this.textClaim.release(request.key.entryId, request.key.contentSlot);
+      },
+      onFailure: (error) => {
+        this.failure ??= error;
+      },
+    });
+    void this.lastFlush.catch(NOOP);
+  }
+  /** 固定长度身份用于有界拒绝索引，不在应急槽保存任意长的外部 entry。 */
+  private textKey(key: MergeKey): string {
+    return this.options.digest(new TextEncoder().encode(JSON.stringify(key)));
   }
   /** 同一次合并冲刷的正文、跨块封口和目录在一个提交点生效，失败不留下前缀。 */
   private async writeText(request: MergeFlushRequest, token: WriterAuthorityToken): Promise<void> {
@@ -227,9 +264,11 @@ export class LiveWriterImpl implements LiveWriter {
       }
       this.cursors.get(CONTENT_KIND)?.doc.destroy();
       this.cursors.set(CONTENT_KIND, cursor);
+      this.textBarrier.confirm(this.textKey(request.key));
     } catch (error) {
-      if (this.authority.isCurrent(token) && isRetryableTextRefusal(error))
+      if (this.authority.isCurrent(token) && isRetryableTextRefusal(error)) {
         this.textClaim.release(request.key.entryId, request.key.contentSlot);
+      }
       if (this.authority.isCurrent(token) && error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
         this.failure = error;
         this.reacquirableFailure = error;
@@ -257,24 +296,7 @@ export class LiveWriterImpl implements LiveWriter {
     }
   }
   private async writeSemantic(semantic: NonNullable<LiveInput["semantic"]>, entryId: string): Promise<void> {
-    const gauge = createRuntimeDoc(RUNTIME_KIND, this.options.limits, this.cursor(RUNTIME_KIND).doc);
-    const stats = { encodedBytes: gauge.encodedBytes(), entityCount: gauge.entityCount() };
-    if (this.rotation.evaluate(stats).rotate) await this.rotateRuntimeDoc();
-    const runtime = this.cursor(RUNTIME_KIND);
-    const target = createRuntimeDoc(RUNTIME_KIND, this.options.limits, runtime.doc);
-    const slices: Slice[] = [];
-    let recordBytes = 0;
-    const entityId = requireString(semantic.payload, "entityId");
-    const terminalEntity =
-      semantic.kind !== "final" && semantic.payload.finalDescriptor === undefined && semantic.payload.terminal === true;
-    // 终态可能触发轮转，须先轮转再写 boundary，避免落入已封口 Doc。
-    if (terminalEntity) {
-      const content = this.cursor(CONTENT_KIND);
-      if (Y.encodeStateAsUpdate(content.doc).byteLength >= this.options.limits.softRotateBytes) {
-        await this.sealActive(CONTENT_KIND);
-      }
-    }
-    // 终态首帧也必须留下边界；源 occurrence 相同的重放只认第一次。
+    let boundaryOrdinal: number | null = null;
     if (semantic.kind === "tool" && semantic.payload.boundary === true) {
       if (!this.boundarySeeded) {
         await seedBoundaryIndexFromDocs(
@@ -286,50 +308,31 @@ export class LiveWriterImpl implements LiveWriter {
         );
         this.boundarySeeded = true;
       }
-      const ordinal = this.boundaryIndex.claim(entryId, entityId, semantic.payload.boundaryOrdinal);
-      if (ordinal !== null) {
-        const content = this.cursor(CONTENT_KIND);
-        const boundaryBytes = boundaryPayload(entityId, ordinal);
-        const identity: Identity = { entryId, contentSlot: "boundary", contentType: "tool-boundary" };
-        const record = buildLiveRecord(this.options.random, identity, "tool_boundary", boundaryBytes, ordinal);
-        captureSlice(slices, content, () => records(content.doc, [record]));
-        recordBytes = Math.max(recordBytes, boundaryBytes.byteLength);
-      }
+      boundaryOrdinal = this.boundaryIndex.claim(
+        entryId,
+        requireString(semantic.payload, "entityId"),
+        semantic.payload.boundaryOrdinal,
+      );
     }
-    // 终态由描述符决定而不是由 kind 决定：`kind` 只声明实体类别（如 `permission`），缺描述符的 `kind: "final"` 仍按契约报错。
-    if (semantic.kind === "final" || semantic.payload.finalDescriptor !== undefined) {
-      const identity: Identity = { entryId: entityId, contentSlot: "final", contentType: "final-descriptor" };
-      const descriptor = bytes(JSON.stringify(descriptorOf(semantic.payload, entityId)));
-      const content = this.cursor(CONTENT_KIND);
-      const record = buildNextLiveRecord(this.options.random, content.doc, identity, "final", descriptor);
-      captureSlice(slices, content, () => records(content.doc, [record]));
-      captureSlice(slices, runtime, () => target.removeEntity(entityId));
-      recordBytes = Math.max(recordBytes, descriptor.byteLength);
-    } else {
-      if (terminalEntity) {
-        // 终态描述符和实体移除必须在同一批提交，避免出现不可解析的引用。
-        const metadata =
-          semantic.payload.metadata === undefined ? {} : requireObject(semantic.payload.metadata, "metadata");
-        const content = this.cursor(CONTENT_KIND);
-        const terminalRecords = buildTerminalRecords({
-          random: this.options.random,
-          digest: this.options.digest,
-          doc: content.doc,
-          entityId,
-          kind: semantic.kind,
-          metadata,
-          completedAt: this.options.clock.now(),
-        });
-        captureSlice(slices, content, () => records(content.doc, terminalRecords));
-        captureSlice(slices, runtime, () => target.removeEntity(entityId));
-        recordBytes = Math.max(...terminalRecords.map((record) => record.payload.byteLength));
-      } else {
-        const record = entityOf(semantic.kind, semantic.payload);
-        captureSlice(slices, runtime, () => target.upsertEntity(record));
-      }
-    }
-    const overflow = this.overflowOf(slices, recordBytes);
-    if (overflow !== null) throw this.stop("CAPACITY_EXCEEDED", `semantic event exceeds the hard limit: ${overflow}`);
+    const gauge = createRuntimeDoc(RUNTIME_KIND, this.options.limits, this.cursor(RUNTIME_KIND).doc);
+    const rotateRuntime = this.rotation.evaluate({
+      encodedBytes: gauge.encodedBytes(),
+      entityCount: gauge.entityCount(),
+    }).rotate;
+    const plan = planSemanticWrite({
+      semantic,
+      entryId,
+      boundaryOrdinal,
+      content: this.cursor(CONTENT_KIND),
+      runtime: this.cursor(RUNTIME_KIND),
+      rotateRuntime,
+      options: this.options,
+    });
+    if (plan.overflow !== null)
+      throw this.stop("CAPACITY_EXCEEDED", `semantic event exceeds the hard limit: ${plan.overflow}`);
+    if (rotateRuntime) await this.rotateRuntimeDoc(plan.runtimeInitialState);
+    if (plan.rotateContent) await this.sealActive(CONTENT_KIND);
+    const slices = applySemanticWrite(plan, this.cursor(CONTENT_KIND), this.cursor(RUNTIME_KIND), this.options);
     await this.persist(slices);
     this.rotation.onTransaction(slices.reduce((sum, slice) => sum + slice.bytes.byteLength, 0));
   }
@@ -367,9 +370,11 @@ export class LiveWriterImpl implements LiveWriter {
     }
   }
   /** 运行态轮换（设计 §6.3）：先取出未结束与交接未完成的实体，再封口使旧版不可写；`requiredBaseSeq` 是新块自身的基线序号。 */
-  private async rotateRuntimeDoc(): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
+  private async rotateRuntimeDoc(
+    initial?: Uint8Array,
+  ): Promise<{ oldDocId: string; newDocId: string; requiredBaseSeq: number }> {
     const previous = this.cursor(RUNTIME_KIND);
-    const initialState = buildRuntimeSuccessorState(previous.doc, this.options.limits);
+    const initialState = initial ?? buildRuntimeSuccessorState(previous.doc, this.options.limits);
     await this.sealActive(RUNTIME_KIND, initialState);
     this.rotation.reset();
     return { oldDocId: previous.docId, newDocId: this.cursor(RUNTIME_KIND).docId, requiredBaseSeq: 0 };
@@ -383,16 +388,18 @@ export class LiveWriterImpl implements LiveWriter {
   }
   /** 拒绝后必须先恢复权威前沿；否则下一批会依赖尚未提交的 Yjs struct。 */
   private async executeBatch(batch: Batch, cursors: ReadonlyMap<string, Cursor>): Promise<CommitOutcome> {
+    const token = this.authority.captureTask();
     try {
       return await appendCommittedBatch({
         store: this.options.store,
         scopeKey: this.scopeKey,
         batch,
         cursors,
-        renew: () => this.renewLease(),
-        stop: (code, message, cause) => this.stop(code, message, cause),
+        renew: () => this.renewLease(token),
+        stop: (code, message, cause) => this.stop(code, message, cause, token),
       });
     } catch (error) {
+      if (!this.authority.isCurrent(token)) throw error;
       try {
         for (const cursor of cursors.values()) await this.loadCursor(cursor.docId, cursor.kind);
         this.boundaryIndex.reset();
@@ -448,6 +455,8 @@ export class LiveWriterImpl implements LiveWriter {
       this.cursors.set(kind, cursor);
     }
     this.textClaim.reset();
+    this.textBarrier.reset();
+    this.lastFlush = null;
     this.merge = this.newMerge();
     this.rotation.reset();
   }

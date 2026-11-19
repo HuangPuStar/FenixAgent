@@ -1,18 +1,6 @@
-// packages/chat-channel/src/sync/store/types.ts
-// 投影存储的 A 阶段契约：记录形状、原语入参/结果与 `ProjectionStore` 接口。
-//
-// 本文件只有类型与常量，没有任何运行时副作用（不取时间、不读文件、不发请求）：它是 B 阶段内存
-// adapter 与接线阶段 PostgreSQL adapter 的同一份契约，换实现不换签名。所有方法返回 `Promise`——
-// 真实存储是数据库访问，同步签名会迫使调用方假设「提交已经落地」，而这正是本层最不能猜的一件事。
-//
-// 两条贯穿全文件的规则（违反即数据串扰或重复副作用）：
-// 1. 幂等键由调用方给出：`batchId + digest`（追加）、`docId + hash`（封口文档）、
-//    `generation + expectedCurrent + expectedPointerRevision`（换代）、退役目标。存储只按同键判定
-//    「首次落地 / 已提交 / 冲突 / 未知」，不得用时间戳或自增序号重新发明幂等。
-// 2. 读取出口只观察已提交边界：未决批次、未封口的中间快照、尚未提交的指针都不属于可读状态；
-//    读取方法不得返回「也许已提交」的数据。
-//
-// 与运行时解耦：本文件不 import `../channel`、`../state`、`../persist`，由接线阶段在调用方转换。
+// 投影存储的资源记录、原语入参/结果与异步读取契约。
+// 幂等写入以稳定批次、文档和代次身份判定；读取只返回已提交边界。
+// 本文件仅含类型和常量，不依赖进程宿主或运行时装配。
 
 import type { DocKind, DocState, GenerationState } from "../protocol/identity";
 import type { CommitContentBatchInput } from "./live-content-batch-types";
@@ -23,6 +11,7 @@ import type {
   DirectoryPage,
   DirectoryQuery,
   DocStateSnapshot,
+  LiveTextCoverageQuery,
   RefLookupKind,
   RefQuery,
   SyncSuccessorState,
@@ -32,6 +21,7 @@ export type {
   DirectoryPage,
   DirectoryQuery,
   DocStateSnapshot,
+  LiveTextCoverageQuery,
   RefLookupKind,
   RefQuery,
   SyncSuccessorState,
@@ -421,6 +411,9 @@ export interface ProjectionStore {
   registerSuccessor(input: RegisterSuccessorInput): Promise<RegistrationResult>;
   /** 已知文档返回元数据（无后继时 route 为 null）；未知、退役或其他 scope 返回 null。 */
   readSuccessor(scopeKey: string, docId: string): Promise<SyncSuccessorState | null>;
+
+  /** 返回已证明全部 live 文本身份有持久索引的块；未知覆盖必须省略，不能据此确认正文存在。 */
+  readLiveTextCoverage(query: LiveTextCoverageQuery): Promise<ReadonlySet<string>>;
 
   /**
    * 全组原子追加（字节与 refs 同一次提交）；幂等键 `batchId + digest`：同键同摘要 → `already-committed`

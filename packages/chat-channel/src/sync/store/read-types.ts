@@ -66,6 +66,13 @@ export interface RefQuery {
   limit: number;
 }
 
+/** 只查询已鉴权代次权威链中的块；返回值证明块内全部 live 文本身份已有有效持久索引。 */
+export interface LiveTextCoverageQuery {
+  readonly scopeKey: string;
+  readonly generation: string;
+  readonly docIds: readonly string[];
+}
+
 /** 已提交的文档生命周期与唯一后继；已知无路由与未知文档分别表达。 */
 export interface SyncSuccessorState {
   readonly scopeKey: string;

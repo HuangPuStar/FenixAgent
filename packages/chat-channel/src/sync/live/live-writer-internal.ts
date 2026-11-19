@@ -44,17 +44,21 @@ export function overflowOfSlices(input: {
   if (input.recordBytes > chunkLimit) {
     return `record payload is ${input.recordBytes} bytes, chunk limit is ${chunkLimit}`;
   }
-  for (const { docId } of input.slices) {
+  const transactions = new Map<string, number>();
+  for (const { docId } of input.slices) transactions.set(docId, (transactions.get(docId) ?? 0) + 1);
+  for (const [docId, count] of transactions) {
     const cursor = input.cursorOf(docId);
-    const size = Y.encodeStateAsUpdate(cursor.doc).byteLength;
+    const snapshot = Y.encodeStateAsUpdate(cursor.doc);
     if (cursor.kind === CONTENT_KIND) {
       const overflow = contentDocOverflow({
         doc: cursor.doc,
         capacity: input.capacity,
-        lastSeq: cursor.lastSeq + input.slices.filter((slice) => slice.docId === docId).length,
+        lastSeq: cursor.lastSeq + count,
+        snapshot,
       });
       if (overflow) return overflow;
-    } else if (size > input.runtimeHardLimitBytes) return `snapshot of ${docId} exceeds runtime hard limit`;
+    } else if (snapshot.byteLength > input.runtimeHardLimitBytes)
+      return `snapshot of ${docId} exceeds runtime hard limit`;
   }
   return null;
 }

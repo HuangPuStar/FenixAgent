@@ -9,384 +9,54 @@
 // 范围（规格 §2 的 G1–G6）：sync/runtime/**、sync/client/transport.ts、provider/control-governor.ts、
 // provider/ack-timeout.ts。
 
-import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
+
 import * as Y from "yjs";
-import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
+
 import { createSyncClientTransport } from "../sync/client/transport";
-import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
-import type { LiveInput, LiveWriter } from "../sync/live/live-writer";
-import { SyncProtocolError } from "../sync/protocol/errors";
+
 import {
   type ApplyAckFrame,
   type DocBaseFrame,
-  type DocUpdateFrame,
   decodeSyncFrame,
   type ErrorFrame,
   encodeSyncFrame,
-  type HelloFrame,
-  MAX_DATA_FRAME_BYTES,
-  type SubscribeFrame,
   SYNC_PROTOCOL_VERSION,
 } from "../sync/protocol/frames";
-import { buildDocId, type DocKind, type SyncScope, scopeKey } from "../sync/protocol/identity";
+
 import { createAckTimeoutTracker } from "../sync/provider/ack-timeout";
+
 import { createControlGovernor } from "../sync/provider/control-governor";
-import { resolveSyncRuntimeConfig, type SyncRuntimeConfig, validateSyncRuntimeConfig } from "../sync/runtime/config";
-import type { SyncFrameGateway } from "../sync/runtime/egress";
+
+import { resolveSyncRuntimeConfig, validateSyncRuntimeConfig } from "../sync/runtime/config";
+
 import { createLiveIngress, type SyncIngressEvent } from "../sync/runtime/ingress";
-import { createSyncScopeRuntime, type SyncScopeRuntime } from "../sync/runtime/scope-runtime";
-import { MemoryProjectionStore } from "../sync/store/memory-store";
-import type { GenerationEntryRefs, SyncDocRecord, SyncGenerationRecord } from "../sync/store/types";
-
-const SCOPE: SyncScope = { organizationId: "org-1", rcsSessionId: "session-verify" };
-const SCOPE_KEY = scopeKey(SCOPE);
-const GENERATION = "gen-verify-1";
-const RUNTIME_DOC = docIdFor("runtime", 0, "runtime");
-const CONTENT_DOC = docIdFor("content", 0, "content");
-const ENTRY_REFS: GenerationEntryRefs = {
-  controlDocId: docIdFor("control", 0, "control"),
-  directoryDocId: docIdFor("directory", 0, "directory"),
-  runtimeDocId: RUNTIME_DOC,
-  contentDocIds: [CONTENT_DOC],
-};
-const BOOTSTRAP_TTL_MS = 5_000;
-const LIFECYCLE = { sealGraceMs: 100, retireGraceMs: 100 } as const;
-const ACK_DEADLINE_MS = 1_000;
-/** 连接窗口与 socket 水位（同值）：窗口是「已发送未 ACK 字节」的唯一上限，缺陷靠它变得可观测。 */
-const WINDOW_BYTES = 4_096;
-/** 单轮文本长度：一帧约 0.5KiB，几轮即可吃满 4KiB 窗口。 */
-const ROUND_TEXT = "y".repeat(200);
-/** 标识字段的最小合法形态（不含控制字符、不超长）。 */
-const TRANSPORT_EPOCH = "tx_cloud0000000001";
-const SUB_EPOCH = "sub_cloud0000000001";
-const ATTEMPT_ID = "att_cloud0000000001";
-
-const tempRoots: string[] = [];
-afterAll(async () => {
-  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
-
-function docIdFor(kind: DocKind, blockIndex: number, nonce: string): string {
-  return buildDocId({ kind, generation: GENERATION, blockIndex, nonce });
-}
-
-/** 可推进（也可回拨）的假时钟：控制令牌、ACK 期限与交接期限都只经注入时钟取时。 */
-class TestClock implements Clock {
-  private current: number;
-
-  constructor(current = 1_000) {
-    this.current = current;
-  }
-
-  now(): number {
-    return this.current;
-  }
-
-  advance(milliseconds: number): void {
-    this.current += milliseconds;
-  }
-}
-
-/**
- * 探针传输端口：分别记录「交接尝试」「被接受的帧」「被拒的帧」「关闭请求」，并允许按谓词拒发指定帧。
- *
- * `send` 返回 false 是宿主 WS 的正常饱和信号（规格 §2.4 的端口契约），因此这是可达路径而非人为故障：
- * 被拒帧仍进 `attempts`（服务端确实尝试过发），但不进 `sent`（客户端永远收不到）。
- */
-class ProbeTransport {
-  readonly attempts: Uint8Array[] = [];
-  readonly sent: Uint8Array[] = [];
-  readonly refused: Uint8Array[] = [];
-  readonly closeReasons: string[] = [];
-  /** socket 待发送字节真值：验证门禁读的是真值。 */
-  pendingBytes = 0;
-  private refusePredicate: ((bytes: Uint8Array) => boolean) | null = null;
-  private refuseBudget = 0;
-
-  /** 按谓词拒发接下来的 N 帧；缺省 N 为持续拒发。 */
-  refuse(predicate: (bytes: Uint8Array) => boolean, budget = Number.POSITIVE_INFINITY): void {
-    this.refusePredicate = predicate;
-    this.refuseBudget = budget;
-  }
-
-  stopRefusing(): void {
-    this.refusePredicate = null;
-    this.refuseBudget = 0;
-  }
-
-  send(bytes: Uint8Array): boolean {
-    this.attempts.push(bytes);
-    if (this.refusePredicate !== null && this.refuseBudget > 0 && this.refusePredicate(bytes)) {
-      this.refuseBudget -= 1;
-      this.refused.push(bytes);
-      return false;
-    }
-    this.sent.push(bytes);
-    return true;
-  }
-
-  bufferedAmount(): number {
-    return this.pendingBytes;
-  }
-
-  close(reason: string): void {
-    this.closeReasons.push(reason);
-  }
-}
-
-function emptyState(): Uint8Array {
-  return Y.encodeStateAsUpdate(new Y.Doc());
-}
-
-function textState(text: string): Uint8Array {
-  const doc = new Y.Doc();
-  doc.getText("body").insert(0, text);
-  return Y.encodeStateAsUpdate(doc);
-}
-
-function docRecord(docId: string, kind: DocKind, snapshot: Uint8Array): SyncDocRecord {
-  return {
-    scopeKey: SCOPE_KEY,
-    generation: GENERATION,
-    docId,
-    kind,
-    state: "active",
-    snapshot,
-    hash: sha256Digest(snapshot),
-    baseSeq: 0,
-    finalSeq: null,
-    blockIndex: 0,
-    ordinalStart: null,
-    ordinalEnd: null,
-    dependsOn: [],
-  };
-}
-
-/** 只收紧一处容量数值：窗口与 socket 水位必须一起改（档案校验要求窗口 ≤ 水位）。 */
-function tightCapacity(windowBytes: number): SyncCapacityProfile {
-  const concurrency = { ...DEFAULT_SYNC_CAPACITY.concurrency };
-  concurrency.connectionBodyWindowBytes = windowBytes;
-  concurrency.socketHighWatermarkBytes = windowBytes;
-  return { ...DEFAULT_SYNC_CAPACITY, concurrency };
-}
-
-/** 建一个有已提交代次的作用域：代次必须经 `commitGeneration` 成为当前代次，否则握手与写入都会被拒。 */
-async function seedScope(store: MemoryProjectionStore, time: TestClock, text = ""): Promise<void> {
-  const lease = await store.acquireWriter(SCOPE_KEY, "bootstrap", BOOTSTRAP_TTL_MS);
-  const generation: SyncGenerationRecord = {
-    scopeKey: SCOPE_KEY,
-    generation: GENERATION,
-    acpSessionId: "acp-1",
-    loadId: "load-1",
-    state: "staging",
-    importEndOrdinal: null,
-    entryRefs: ENTRY_REFS,
-    createdAt: time.now(),
-  };
-  await store.createGeneration({ scopeKey: SCOPE_KEY, epoch: lease.epoch, generation });
-  await store.commitGeneration({
-    scopeKey: SCOPE_KEY,
-    epoch: lease.epoch,
-    newGeneration: generation,
-    entryClosure: ENTRY_REFS,
-    expectedCurrent: null,
-    expectedPointerRevision: 0,
-    retired: [],
-  });
-  await store.createDoc({
-    scopeKey: SCOPE_KEY,
-    epoch: lease.epoch,
-    doc: docRecord(CONTENT_DOC, "content", text === "" ? emptyState() : textState(text)),
-  });
-  await store.createDoc({
-    scopeKey: SCOPE_KEY,
-    epoch: lease.epoch,
-    doc: docRecord(RUNTIME_DOC, "runtime", emptyState()),
-  });
-  // 引导租约到期：运行时的写者才能以新的 epoch 取得写权（存储不提供主动释放）。
-  time.advance(BOOTSTRAP_TTL_MS + 1);
-}
-
-interface ScopeHarness {
-  readonly runtime: SyncScopeRuntime;
-  readonly transport: ProbeTransport;
-  readonly time: TestClock;
-  readonly config: SyncRuntimeConfig;
-  /** 已回执过的 deliveryId：诚实客户端只回执自己真正收到的帧，重复回执会掩盖账目问题。 */
-  readonly acked: Set<string>;
-}
-
-/** 装配一个 scope 运行时：合并窗口取 1 字节（每条文本立即落库），窗口大小按用例收紧。 */
-async function setupScope(windowBytes = WINDOW_BYTES): Promise<ScopeHarness> {
-  const time = new TestClock();
-  const spoolRoot = await mkdtemp(join(tmpdir(), "sync-verify-wiring-"));
-  tempRoots.push(spoolRoot);
-  const config = resolveSyncRuntimeConfig({
-    clock: time,
-    random: deterministicRandomSource("verify-wiring"),
-    lifecycle: LIFECYCLE,
-    capacity: tightCapacity(windowBytes),
-    merge: { maxBytes: 1 },
-    deadlines: { ackMs: ACK_DEADLINE_MS },
-    spoolRootDir: spoolRoot,
-  });
-  const store = new MemoryProjectionStore({
-    clock: time,
-    digest: sha256Digest,
-    capacity: config.capacity,
-    lifecycle: LIFECYCLE,
-  });
-  await seedScope(store, time, "seed");
-  const runtime = await createSyncScopeRuntime({
-    scope: SCOPE,
-    config,
-    clock: time,
-    digest: sha256Digest,
-    random: deterministicRandomSource("verify-wiring"),
-    store,
-  });
-  return { runtime, transport: new ProbeTransport(), time, config, acked: new Set<string>() };
-}
-
-function textEvent(delta: string, turnId: string): SyncIngressEvent {
-  return {
-    kind: "text-delta",
-    turnId,
-    entryId: `${turnId}:assistant`,
-    contentSlot: "text",
-    contentType: "text/plain",
-    delta,
-  };
-}
-
-function helloFrame(): HelloFrame {
-  return {
-    type: "HELLO",
-    protocolVersion: SYNC_PROTOCOL_VERSION,
-    scope: SCOPE,
-    generation: GENERATION,
-    loadedDocs: [],
-    stateful: true,
-  };
-}
-
-function subscribeFrame(docIds: readonly string[]): SubscribeFrame {
-  return { type: "SUBSCRIBE", protocolVersion: SYNC_PROTOCOL_VERSION, docIds: [...docIds], priority: "live" };
-}
-
-function ackFrame(frame: DocBaseFrame | DocUpdateFrame): ApplyAckFrame {
-  return {
-    type: "APPLY_ACK",
-    protocolVersion: SYNC_PROTOCOL_VERSION,
-    transportEpoch: frame.transportEpoch,
-    deliveryId: frame.deliveryId,
-    result: "processed",
-    docId: frame.docId,
-  };
-}
-
-/** 字节流里的数据帧（DOC_BASE / DOC_UPDATE）：只有它们需要回执。 */
-function decodedData(frames: readonly Uint8Array[]): Array<DocBaseFrame | DocUpdateFrame> {
-  const out: Array<DocBaseFrame | DocUpdateFrame> = [];
-  for (const bytes of frames) {
-    const frame = decodeSyncFrame(bytes);
-    if (frame.type === "DOC_BASE" || frame.type === "DOC_UPDATE") out.push(frame);
-  }
-  return out;
-}
-
-/** 字节流里的增量帧：序号缺口的判定只看它们。 */
-function decodedUpdates(frames: readonly Uint8Array[]): DocUpdateFrame[] {
-  const out: DocUpdateFrame[] = [];
-  for (const bytes of frames) {
-    const frame = decodeSyncFrame(bytes);
-    if (frame.type === "DOC_UPDATE") out.push(frame);
-  }
-  return out;
-}
-
-function carriesDelivery(frames: readonly Uint8Array[], deliveryId: string): boolean {
-  return decodedUpdates(frames).some((frame) => frame.deliveryId === deliveryId);
-}
-
-/** 同一 deliveryId 的交接尝试次数：1 表示只有最初那一次（被拒），>1 才说明被重试过。 */
-function attemptCount(frames: readonly Uint8Array[], deliveryId: string): number {
-  return decodedUpdates(frames).filter((frame) => frame.deliveryId === deliveryId).length;
-}
-
-/** 逐个回执客户端**真正收到**的数据帧（已回执过的跳过）：ACK 是额度归还的唯一路径。 */
-async function ackReceived(h: ScopeHarness): Promise<number> {
-  let count = 0;
-  for (const frame of decodedData(h.transport.sent)) {
-    if (h.acked.has(frame.deliveryId)) continue;
-    h.acked.add(frame.deliveryId);
-    await h.runtime.onInboundBytes(encodeSyncFrame(ackFrame(frame)));
-    count += 1;
-  }
-  return count;
-}
-
-/** 建立「握手 + 订阅 + 基线已回执」的可写连接：所有出站用例的共同起点；返回网关以便读在途账目。 */
-async function connect(h: ScopeHarness): Promise<SyncFrameGateway> {
-  const gateway = h.runtime.attachTransport(h.transport);
-  await h.runtime.onInboundBytes(encodeSyncFrame(helloFrame()));
-  await h.runtime.onInboundBytes(encodeSyncFrame(subscribeFrame([CONTENT_DOC])));
-  await ackReceived(h);
-  return gateway;
-}
-
-const isDataUpdate = (bytes: Uint8Array): boolean => decodeSyncFrame(bytes).type === "DOC_UPDATE";
-
-function captureSyncError(run: () => unknown): SyncProtocolError {
-  try {
-    run();
-  } catch (error) {
-    if (error instanceof SyncProtocolError) return error;
-    throw error;
-  }
-  throw new Error("expected the call to throw");
-}
-
-/** 取出协议错误：非本层错误原样上抛，避免把「类型不对」当成「校验生效」。 */
-async function rejectionOf(promise: Promise<unknown>): Promise<SyncProtocolError> {
-  try {
-    await promise;
-  } catch (error) {
-    if (error instanceof SyncProtocolError) return error;
-    throw error;
-  }
-  throw new Error("expected the promise to be rejected");
-}
-
-/** 原始线上字节：帧编码器不做 schema 校验，因此可以造出「版本不对」或「结构不对」的输入。 */
-const TEXT_ENCODER = new TextEncoder();
-
-function encodeRaw(value: unknown): Uint8Array {
-  return TEXT_ENCODER.encode(JSON.stringify(value));
-}
-
-/** 入口只调 `accept`：其余出口抛错而不是返回空值，避免替身在无关路径上伪装成成功。 */
-function unusedWriterMethod<T>(name: string): Promise<T> {
-  throw new Error(`stub writer does not implement ${name}`);
-}
-
-class StubWriter implements LiveWriter {
-  readonly inputs: LiveInput[] = [];
-
-  readonly acquire: LiveWriter["acquire"] = () => unusedWriterMethod("acquire");
-  readonly commit: LiveWriter["commit"] = () => unusedWriterMethod("commit");
-  readonly seal: LiveWriter["seal"] = () => unusedWriterMethod("seal");
-  readonly rotateRuntime: LiveWriter["rotateRuntime"] = () => unusedWriterMethod("rotateRuntime");
-  readonly recover: LiveWriter["recover"] = () => unusedWriterMethod("recover");
-  readonly close: LiveWriter["close"] = () => unusedWriterMethod("close");
-
-  async accept(input: LiveInput): Promise<void> {
-    this.inputs.push(input);
-  }
-}
+import {
+  ACK_DEADLINE_MS,
+  ATTEMPT_ID,
+  ackReceived,
+  attemptCount,
+  CONTENT_DOC,
+  captureSyncError,
+  carriesDelivery,
+  connect,
+  decodedUpdates,
+  GENERATION,
+  helloFrame,
+  isDataUpdate,
+  LIFECYCLE,
+  ROUND_TEXT,
+  SCOPE_KEY,
+  StubWriter,
+  SUB_EPOCH,
+  setupScope,
+  subscribeFrame,
+  TestClock,
+  TRANSPORT_EPOCH,
+  textEvent,
+  tightCapacity,
+  WINDOW_BYTES,
+} from "./sync-verify-wiring-fixture";
 
 describe("对抗验证：出站数据帧被传输层拒发后的账目与补偿", () => {
   // 传输层 `send` 返回 false 是端口契约里的正常饱和信号（规格 §2.4）。被拒帧的字节由**会话**在 emit 时已计费
@@ -707,132 +377,5 @@ describe("对抗验证：探查后未见缺陷的方向", () => {
     await transport.drain();
     expect(transport.hub.loadedBytes()).toBeGreaterThan(0);
     expect(sent.map((frame) => frame.result)).toEqual(["rejected", "processed"]);
-  });
-});
-
-describe("对抗验证：版本协商与尺寸门禁的绕过尝试", () => {
-  // `protocolVersion` 在 schema 里是字面量，因此「非本版本」与「版本字段不是数字」必须在原始字节上分流：前者是
-  // 终态（回 PROTOCOL_VERSION_UNSUPPORTED 并关连接），后者只是畸形帧（抛错、不关连接）。把非数字也算成版本
-  // 不兼容，任何垃圾都能触发终结路径；静默吞掉则让「客户端一直在发坏帧」表现为连接正常。
-  // 期望：两条输入都以 MALFORMED_FRAME 上抛、无 ERROR 帧、无关闭请求，且连接随后仍能正常读写。
-  test("非数字 protocolVersion 走严格解析：抛 MALFORMED_FRAME、不发 ERROR、不关连接，连接仍可用", async () => {
-    const h = await setupScope();
-    await connect(h);
-    const sentBefore = h.transport.sent.length;
-
-    const asString = await rejectionOf(h.runtime.onInboundBytes(encodeRaw({ ...helloFrame(), protocolVersion: "1" })));
-    const missing = await rejectionOf(
-      h.runtime.onInboundBytes(
-        encodeRaw({ type: "HELLO", scope: SCOPE, generation: GENERATION, loadedDocs: [], stateful: true }),
-      ),
-    );
-    expect([asString.code, missing.code]).toEqual(["MALFORMED_FRAME", "MALFORMED_FRAME"]);
-    // 非数字版本不走终结路径：没有 ERROR 帧出去，也没有任何关闭请求。
-    expect(h.transport.sent.length).toBe(sentBefore);
-    expect(h.transport.closeReasons).toEqual([]);
-
-    // 连接仍可用：坏帧之后写入的内容必须真的发得出去。
-    await h.runtime.acceptIngress(textEvent("after-malformed", "turn-malformed"));
-    await h.runtime.tick();
-    expect(decodedUpdates(h.transport.sent.slice(sentBefore)).length).toBeGreaterThan(0);
-  });
-
-  // 尺寸放宽的判据是「从原始文本里探测出的帧类」，探测只看第一个 `"type"`（可以出现在无关嵌套字段里），因此
-  // 必须验证「解析后按**解析结果**复核类别」这一步真的收紧了：宣告数据类不能变成进会话的通行证，真控制帧无论
-  // 多长都按 32KiB 拒，超数据帧上限的字节连内容都不看。
-  // 期望：三条路径都在派发前被拒、不回帧、不关连接（畸形输入的断连决定权在调用方）。
-  test("宣告数据类不能绕过控制帧上限：超长垃圾与超长控制帧都在派发前被拒且不关连接", async () => {
-    const h = await setupScope();
-    await connect(h);
-    const sentBefore = h.transport.sent.length;
-
-    // 首个 `"type"` 声明为 DOC_UPDATE（数据类 → 允许 >32KiB 进解析），但字段不足以构成任何帧。
-    const declaredData = await rejectionOf(
-      h.runtime.onInboundBytes(
-        encodeRaw({ type: "DOC_UPDATE", protocolVersion: SYNC_PROTOCOL_VERSION, pad: "z".repeat(40_000) }),
-      ),
-    );
-    expect(declaredData.code).toBe("MALFORMED_FRAME");
-
-    // 真控制帧（ERROR）带 40KB 文本：解析类别为控制类，必须按控制上限拒绝。
-    const oversizedControl = await rejectionOf(
-      h.runtime.onInboundBytes(
-        encodeRaw({
-          type: "ERROR",
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          code: "MALFORMED_FRAME",
-          retryable: false,
-          message: "y".repeat(40_000),
-        }),
-      ),
-    );
-    expect(oversizedControl.code).toBe("FRAME_TOO_LARGE");
-
-    // 数据帧上限是硬门禁且先于解析：宣告数据类再加超限字节，同样拿不到版本协商的机会。
-    const overDataLimit = new Uint8Array(MAX_DATA_FRAME_BYTES + 1);
-    overDataLimit.set(TEXT_ENCODER.encode('{"type":"DOC_UPDATE","protocolVersion":'), 0);
-    const overLimit = await rejectionOf(h.runtime.onInboundBytes(overDataLimit));
-    expect(overLimit.code).toBe("FRAME_TOO_LARGE");
-
-    expect(h.transport.sent.length).toBe(sentBefore);
-    expect(h.transport.closeReasons).toEqual([]);
-  });
-
-  // 数据帧上限是唯一先于版本协商的尺寸门禁（`egress.ts:327-336` 的顺序）：>32KiB 但 ≤288KiB 的帧只要原始
-  // 版本不是本版本，走的就是终结路径而不是越界拒绝。顺序刻意为之——客户端要拿到「请重新加载」而不是「帧太大」。
-  // 期望：旧版本的超长帧得到 PROTOCOL_VERSION_UNSUPPORTED 的 ERROR 帧与恰好一次关闭（实测一致）。
-  test("尺寸顺序：>32KiB 的旧版本帧仍走版本终结路径，得到 ERROR 与一次关闭", async () => {
-    const h = await setupScope();
-    await connect(h);
-
-    await h.runtime.onInboundBytes(encodeRaw({ type: "HELLO", protocolVersion: 99, pad: "q".repeat(40_000) }));
-
-    expect(h.transport.closeReasons).toEqual(["unsupported protocol version 99"]);
-    const tail = h.transport.sent.at(-1);
-    expect(tail === undefined ? null : decodeSyncFrame(tail).type).toBe("ERROR");
-  });
-});
-
-describe("对抗验证：scope 生命周期的边界", () => {
-  // 绑定只能一次、dispose 是终态、dispose 只关一次：三条在生命周期边界上必须同时成立。dispose 的归零口径与
-  // `handleAckTimeout`（`scope-runtime.ts:246-253`）一致——四条终止路径都经 `convergeClosedConnection()` 清空
-  // 投递登记、账本与额度，因此 dispose 之后 `outstandingDeliveries()` 归零，观测面不会把死连接看成忙碌的。
-  test("生命周期边界：二次绑定被拒、dispose 后各入口拒绝、只关一次且投递登记归零", async () => {
-    const h = await setupScope();
-    const gateway = h.runtime.attachTransport(h.transport);
-    await h.runtime.onInboundBytes(encodeSyncFrame(helloFrame()));
-    await h.runtime.onInboundBytes(encodeSyncFrame(subscribeFrame([CONTENT_DOC])));
-    await ackReceived(h);
-
-    // 传输只能绑定一次：第二个传输被拒，且被拒的动作没有顺手关掉既有连接。
-    const secondBind = captureSyncError(() => h.runtime.attachTransport(new ProbeTransport()));
-    expect(secondBind.code).toBe("ADMISSION_REJECTED");
-    expect(h.transport.closeReasons).toEqual([]);
-
-    await h.runtime.acceptIngress(textEvent(ROUND_TEXT, "turn-life"));
-    await h.runtime.tick();
-    expect(gateway.outstandingDeliveries()).toBe(1);
-
-    await h.runtime.dispose();
-    expect(h.transport.closeReasons.length).toBe(1);
-
-    const afterDispose = await Promise.all([
-      rejectionOf(h.runtime.tick()),
-      rejectionOf(h.runtime.acceptIngress(textEvent("post-dispose", "turn-dead"))),
-      rejectionOf(h.runtime.onInboundBytes(encodeSyncFrame(subscribeFrame([CONTENT_DOC])))),
-    ]);
-    expect(afterDispose.map((error) => error.code)).toEqual([
-      "RESOURCE_RETIRED",
-      "RESOURCE_RETIRED",
-      "RESOURCE_RETIRED",
-    ]);
-    const lateBind = captureSyncError(() => h.runtime.attachTransport(new ProbeTransport()));
-    expect(lateBind.code).toBe("RESOURCE_RETIRED");
-    // dispose 幂等：第二次调用不产生第二次关闭。
-    await h.runtime.dispose();
-    expect(h.transport.closeReasons.length).toBe(1);
-
-    // 投递登记随连接进入终态一并归零：账本、额度、投递登记与 ACK 期限表是这条连接的同一份状态，口径必须一致。
-    expect(gateway.outstandingDeliveries()).toBe(0);
   });
 });

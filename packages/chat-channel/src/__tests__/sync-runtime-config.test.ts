@@ -64,7 +64,7 @@ function capacityWithWindow(
   socketHighWatermarkBytes: number = DEFAULT_SYNC_CAPACITY.concurrency.socketHighWatermarkBytes,
 ): SyncCapacityProfile {
   return {
-    ...DEFAULT_SYNC_CAPACITY,
+    ...windowCapacity(connectionBodyWindowBytes),
     concurrency: { ...DEFAULT_SYNC_CAPACITY.concurrency, connectionBodyWindowBytes, socketHighWatermarkBytes },
   };
 }
@@ -144,13 +144,13 @@ describe("resolveSyncRuntimeConfig 的数值来源", () => {
   // 覆盖只改被指定的字段，其余仍由 profile 派生；同时改档案与配额侧后必须仍能通过校验。
   test("覆盖只影响指定字段，档案与配额同改后仍通过校验", () => {
     const config = resolve({
-      capacity: capacityWithWindow(4_096, 4_096),
-      quota: { maxOutstandingBytes: 4_096, socketHighWatermark: 4_096, maxDirtyDocs: 4 },
+      capacity: capacityWithWindow(8_192, 8_192),
+      quota: { maxOutstandingBytes: 8_192, socketHighWatermark: 8_192, maxDirtyDocs: 4 },
       rotation: { maxResidentMs: 60_000, maxTransactions: 7 },
       deadlines: { ackMs: 1_234 },
       merge: { maxDelayMs: 5 },
     });
-    expect(config.quota.maxOutstandingBytes).toBe(4_096);
+    expect(config.quota.maxOutstandingBytes).toBe(8_192);
     expect(config.quota.maxDirtyDocs).toBe(4);
     expect(config.rotation.maxResidentMs).toBe(60_000);
     expect(config.rotation.maxTransactions).toBe(7);
@@ -235,3 +235,5 @@ describe("validateSyncRuntimeConfig 的装配期断言", () => {
     expectConfigRejection(() => validateSyncRuntimeConfig(broken), "quota.fairness.control");
   });
 });
+
+import { windowCapacity } from "./sync-window-capacity-fixture";

@@ -80,10 +80,12 @@ export async function textBatchFixture(
   if (!committed) await store.createDoc({ scopeKey, epoch: lease.epoch, doc: initial });
   const directory = createDirectoryAppender({ store, scopeKey, digest: sha256Digest, random });
   await directory.load(lease, generation, entryRefs);
-  const restored = committed ? await loadCommittedDoc(store, contentId) : null;
+  const restoredId = committed ? directory.tailContentDocId() : contentId;
+  if (committed && restoredId === null) throw new Error("fixture snapshot has no committed content tail");
+  const restored = committed && restoredId ? await loadCommittedDoc(store, restoredId) : null;
   if (committed && !restored) throw new Error("fixture snapshot has no committed content");
   const cursor = restored
-    ? { docId: contentId, kind: "content" as const, doc: restored.doc, lastSeq: restored.lastSeq }
+    ? { docId: restored.doc.guid, kind: "content" as const, doc: restored.doc, lastSeq: restored.lastSeq }
     : openLiveCursor(contentId, "content", snapshot);
   const admission = new AdmissionController(capacity);
   return {

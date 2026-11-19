@@ -12,25 +12,27 @@ import {
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { parseDocId } from "../protocol/identity";
 import type { CommitContentBatchInput } from "./live-content-batch-types";
-import { type AccountedArrayMap, type AccountedMap, commitAccountedSets } from "./memory-accounting";
+import { type AccountedArrayMap, type AccountedMap, commitAccountedSets, type MemoryBudget } from "./memory-accounting";
+import { analyzeContentUpdate, contentUpdateUsage } from "./memory-content-usage";
 import { prepareActiveDocument } from "./memory-store-documents";
-import { compositeKey, copyBytes, copyRef, fail, type StoredDoc } from "./memory-store-state";
-import type {
-  AppendUpdatesResult,
-  DocFrontier,
-  SyncGenerationRecord,
-  SyncRefRecord,
-  SyncScopeRow,
-  SyncUpdateRecord,
-} from "./types";
+import { compositeKey, copyBytes, copyRef, fail, type StoredDoc, type StoredGeneration } from "./memory-store-state";
+import { textLookupIds } from "./memory-text-coverage";
+import {
+  coverageRevision,
+  prepareContentCoverage,
+  type TextIdentityObservation,
+} from "./memory-text-coverage-revision";
+import { canonicalContentRecords, validLiveTextRef } from "./memory-text-records";
+import type { AppendUpdatesResult, DocFrontier, SyncRefRecord, SyncScopeRow, SyncUpdateRecord } from "./types";
 
 type BatchRecord = { digest: string; frontiers: DocFrontier[] };
 type Route = { successorDocId: string; expectedLastSeq: number };
 type DocPreimage = { readonly doc: StoredDoc; readonly lastSeq: number };
 /** 原子正文提交仅访问既有行集合，不提供通用事务或外部状态句柄。 */
 export interface MemoryContentBatchState {
+  readonly memoryBudget?: MemoryBudget;
   readonly scopes: AccountedMap<string, SyncScopeRow>;
-  readonly generations: ReadonlyMap<string, SyncGenerationRecord>;
+  readonly generations: AccountedMap<string, StoredGeneration>;
   readonly docs: AccountedMap<string, StoredDoc>;
   readonly updates: AccountedArrayMap<string, SyncUpdateRecord>;
   readonly refs: AccountedMap<string, SyncRefRecord>;
@@ -211,6 +213,9 @@ export function commitMemoryContentBatch(
     refs: raw.refs?.map(copyRef),
   };
   const scope = currentScope(input, state, deps.clock);
+  const generationKey = compositeKey(input.scopeKey, input.generation);
+  const generation = state.generations.get(generationKey);
+  const revision = coverageRevision(generation);
   const batchKey = compositeKey(input.scopeKey, input.batchId);
   const priorBatch = state.batches.get(batchKey);
   if (priorBatch)
@@ -246,6 +251,9 @@ export function commitMemoryContentBatch(
     });
     additions.set(update.docId, list);
   }
+  const updateHashes = new Map(
+    [...additions.values()].flatMap((list) => list.map((record) => [record, deps.digest(record.bytes)] as const)),
+  );
   const touched = new Set([...expected.keys(), ...input.seals.map((seal) => seal.docId), ...newIds]);
   for (const id of touched) {
     const doc = docs.get(id) ?? state.docs.get(compositeKey(input.scopeKey, id));
@@ -287,25 +295,50 @@ export function commitMemoryContentBatch(
   const directoryPages = new Map<string, DirectoryPageState>();
   let latestPage: string | null | undefined;
   const finalDocs = new Map<string, StoredDoc>();
-  const writtenRecords = new Map<string, ReadonlySet<string>>();
+  const textIdentities = new Map<string, TextIdentityObservation>();
+  const writtenRecords = new Map<string, ReadonlyMap<string, unknown>>();
   for (const [id, doc] of docs) {
     const key = compositeKey(input.scopeKey, id);
     const list = additions.get(id) ?? [];
+    const destructive =
+      doc.kind === "content" &&
+      list.some((item) => {
+        const delta = analyzeContentUpdate(item.bytes);
+        return (
+          delta.deletes ||
+          (delta.opaque &&
+            !(
+              doc.lastSeq === 0 &&
+              doc.baseSnapshot.length === 2 &&
+              doc.baseSnapshot[0] === 0 &&
+              doc.baseSnapshot[1] === 0
+            ))
+        );
+      });
     const lastSeq = doc.lastSeq + list.length;
     let beforeRecords: ReadonlySet<string> = new Set();
+    let beforeText: ReadonlySet<string> | null = null;
     const checkRefs = (input.refs ?? []).some((ref) => ref.docId === id);
     const value = projection(
       doc,
       newIds.has(id) ? [] : (state.updates.get(key) ?? []),
       list,
-      checkRefs
+      checkRefs || destructive || (doc.textCoverage === true && doc.textCoverageRevision === revision)
         ? (value) => {
             beforeRecords = contentRecordIds(value);
+            if (destructive || (doc.textCoverage === true && doc.textCoverageRevision === revision))
+              beforeText = textLookupIds(Y.encodeStateAsUpdate(value), input.scopeKey, input.generation, deps.digest);
           }
         : undefined,
     );
     try {
       const snapshot = Y.encodeStateAsUpdate(value);
+      if (doc.kind === "content")
+        textIdentities.set(id, {
+          before: doc.textCoverage === true && doc.textCoverageRevision === revision ? beforeText : null,
+          after: textLookupIds(snapshot, input.scopeKey, input.generation, deps.digest),
+          ...(destructive ? { destructiveBefore: beforeText } : {}),
+        });
       if (doc.kind === "content" && list.length > 0) {
         const overflow = contentDocOverflow({
           doc: value,
@@ -325,7 +358,7 @@ export function commitMemoryContentBatch(
       if (checkRefs)
         writtenRecords.set(
           id,
-          new Set([...contentRecordIds(value)].filter((recordId) => !beforeRecords.has(recordId))),
+          new Map([...canonicalContentRecords(value)].filter(([recordId]) => !beforeRecords.has(recordId))),
         );
       if (doc.kind === "directory" && parseDocId(id).blockIndex > 0) {
         const page = readDirectoryPage(value);
@@ -353,7 +386,7 @@ export function commitMemoryContentBatch(
               hash: seal.finalHash,
               sealedAt: deps.clock.now(),
             }
-          : { ...doc, lastSeq },
+          : { ...doc, lastSeq, ...(doc.kind === "content" ? { contentUsage: contentUpdateUsage(snapshot) } : {}) },
       );
       if (expected.has(id)) frontiers.push({ docId: id, lastSeq });
     } finally {
@@ -369,16 +402,27 @@ export function commitMemoryContentBatch(
       fail("DOC_NOT_FOUND", "content batch reference target differs");
     if (docs.get(ref.docId)?.kind !== "content" || !writtenRecords.get(ref.docId)?.has(ref.recordId))
       fail("MALFORMED_FRAME", "reference has no canonical record written by this batch");
+    if (
+      ref.lookupKind === "live-text" &&
+      !validLiveTextRef(ref, writtenRecords.get(ref.docId)?.get(ref.recordId), deps.digest)
+    )
+      fail("MALFORMED_FRAME", "text reference differs from canonical record");
     const key = [ref.scopeKey, ref.generation, ref.lookupKind, ref.lookupId, ref.contentSlot, ref.partIndex].join(
       "\u0000",
     );
     return { key, value: copyRef(ref) };
   });
-  const updateHashes = new Map(
-    [...additions.values()].flatMap((list) => list.map((record) => [record, deps.digest(record.bytes)] as const)),
+  const coverageChanges = prepareContentCoverage(
+    state,
+    input,
+    finalDocs,
+    textIdentities,
+    refs.map((ref) => ref.value),
+    revision,
   );
   const nextScope = { ...scope, pointerRevision: scope.pointerRevision + input.seals.length };
   commitAccountedSets((pending) => {
+    for (const change of coverageChanges) pending.push(state.generations.prepare(change.key, change.next));
     for (const [id, doc] of finalDocs) {
       const key = compositeKey(input.scopeKey, id);
       pending.push(
@@ -400,7 +444,23 @@ export function commitMemoryContentBatch(
       state.batches.prepare(batchKey, { digest: input.digest, frontiers: frontiers.map((value) => ({ ...value })) }),
     );
     pending.push(state.scopes.prepare(input.scopeKey, nextScope));
+    // 计划由写者独占；先取得最终存储额度再隔离正文，复制失败仍处于可整组撤销的准备阶段。
+    for (const list of additions.values())
+      for (const record of list) {
+        const copied = copyBytes(record.bytes);
+        if (deps.digest(copied) !== updateHashes.get(record))
+          fail("DIGEST_CONFLICT", "update bytes changed during admission");
+        record.bytes = copied;
+      }
+    for (const seal of input.seals) {
+      const doc = finalDocs.get(seal.docId)!;
+      const copied = copyBytes(doc.snapshot);
+      if (deps.digest(copied) !== doc.hash) fail("DIGEST_CONFLICT", "seal bytes changed during admission");
+      doc.snapshot = copied;
+    }
     const verifiedScope = currentScope(input, state, deps.clock);
+    if (state.generations.get(generationKey) !== generation || coverageRevision(generation) !== revision)
+      fail("SEQUENCE_GAP", "text coverage generation changed during admission");
     nextScope.leaseExpiresAt = verifiedScope.leaseExpiresAt;
     if (state.scopes.get(input.scopeKey) !== scope || scope.pointerRevision !== input.expectedPointerRevision)
       fail("POINTER_REVISION_STALE", "content batch pointer changed during admission");
@@ -421,20 +481,6 @@ export function commitMemoryContentBatch(
     for (const [id, lastSeq] of expected)
       if (!newIds.has(id) && state.docs.get(compositeKey(input.scopeKey, id))?.lastSeq !== lastSeq)
         fail("SEQUENCE_GAP", "content batch frontier changed during admission");
-    // 计划由写者独占；先取得最终存储额度再隔离正文，复制失败仍处于可整组撤销的准备阶段。
-    for (const list of additions.values())
-      for (const record of list) {
-        const copied = copyBytes(record.bytes);
-        if (deps.digest(copied) !== updateHashes.get(record))
-          fail("DIGEST_CONFLICT", "update bytes changed during admission");
-        record.bytes = copied;
-      }
-    for (const seal of input.seals) {
-      const doc = finalDocs.get(seal.docId)!;
-      const copied = copyBytes(doc.snapshot);
-      if (deps.digest(copied) !== doc.hash) fail("DIGEST_CONFLICT", "seal bytes changed during admission");
-      doc.snapshot = copied;
-    }
   });
   return { outcome: "committed", frontiers };
 }

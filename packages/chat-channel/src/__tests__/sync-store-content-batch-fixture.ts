@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { AdmissionController, type ServerPoolName } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY, type SyncCapacityProfile } from "../sync/capacity/profile";
-import { sha256Digest } from "../sync/clock";
+import { type DigestFn, sha256Digest } from "../sync/clock";
 import { captureChange } from "../sync/live/change-capture";
 import { records } from "../sync/live/writer-support";
 import {
@@ -19,9 +19,9 @@ import type { CommitContentBatchInput, SyncDocRecord, SyncGenerationRecord } fro
 /** 在真实预算申请处拒绝，验证最后一份额度失败也不会发布文本前缀。 */
 class BatchAdmission extends AdmissionController {
   remaining: number | null = null;
-  beforeReserve: (() => void) | null = null;
+  beforeReserve: ((pool: ServerPoolName, bytes: number) => void) | null = null;
   override reserve(pool: ServerPoolName, bytes: number) {
-    this.beforeReserve?.();
+    this.beforeReserve?.(pool, bytes);
     if (this.remaining !== null && this.remaining-- === 0)
       throw new SyncProtocolError("ADMISSION_REJECTED", { message: "test batch budget exhausted" });
     return super.reserve(pool, bytes);
@@ -29,12 +29,15 @@ class BatchAdmission extends AdmissionController {
 }
 
 /** 真实跨三块文本与同批目录更新，只保留当前块和本次新增块。 */
-export async function contentBatchFixture(capacity: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY) {
+export async function contentBatchFixture(
+  capacity: SyncCapacityProfile = DEFAULT_SYNC_CAPACITY,
+  options: { readonly digest?: DigestFn } = {},
+) {
   let now = 1000;
   const admission = new BatchAdmission(capacity);
   const store = new MemoryProjectionStore({
     clock: { now: () => now },
-    digest: sha256Digest,
+    digest: options.digest ?? sha256Digest,
     capacity,
     memoryBudget: admission,
     lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },

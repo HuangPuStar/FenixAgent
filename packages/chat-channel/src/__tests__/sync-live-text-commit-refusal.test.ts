@@ -5,7 +5,44 @@ import { SyncProtocolError } from "../sync/protocol/errors";
 import { scopeKey } from "../sync/protocol/identity";
 import type { CommitContentBatchInput } from "../sync/store/live-content-batch-types";
 import { indexBytes } from "../sync/store/memory-accounting";
+import type { ProjectionStore } from "../sync/store/types";
 import { textClaimHandoffFixture } from "./sync-live-text-claim-handoff-fixture";
+
+// 两个写者复用适配器异常时，各自是否确定未写必须独立，未知批次不能改写另一个回执。
+test("重叠批次共享 Store 异常仍各自保持确定拒绝与未知结果", async () => {
+  const shared = new SyncProtocolError("ADMISSION_REJECTED", { message: "shared adapter refusal" });
+  let laterAttempts = 0;
+  const wrap = (unknownFirst: boolean) => (store: ProjectionStore) =>
+    new Proxy(store, {
+      get(target, property) {
+        if (property === "commitContentBatch")
+          return async () => {
+            if (unknownFirst && laterAttempts++ === 0) return { outcome: "unknown" as const, frontiers: [] };
+            throw shared;
+          };
+        const value: unknown = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  const first = await textClaimHandoffFixture(wrap(false));
+  const later = await textClaimHandoffFixture(wrap(true));
+  try {
+    const [refused, undecided] = await Promise.all([
+      first.append("A").catch((error: unknown) => error),
+      later.append("B").catch((error: unknown) => error),
+    ]);
+    expect(undecided).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
+    expect(isTextBatchNotWritten(undecided)).toBe(false);
+    expect(isTextBatchNotWritten(refused)).toBe(true);
+    expect(refused).not.toBe(shared);
+    expect(refused).toMatchObject({ code: "ADMISSION_REJECTED", cause: shared });
+    expect(first.store.exportCommittedState().refs).toEqual([]);
+    expect(later.store.exportCommittedState().refs).toEqual([]);
+  } finally {
+    await first.close();
+    await later.close();
+  }
+});
 
 // 已经出现 unknown 时，重用旧额度异常的后续确定拒绝不能覆盖第一次提交的不确定性。
 test("未知提交后复用旧拒绝对象仍保留未知结果停写", async () => {
@@ -33,13 +70,16 @@ test("未知提交后复用旧拒绝对象仍保留未知结果停写", async ()
   );
   try {
     planRefused = true;
-    await expect(f.append("A")).rejects.toBe(refused);
-    expect(isTextBatchNotWritten(refused)).toBe(true);
+    const firstRefusal = await f.append("A").catch((error: unknown) => error);
+    expect(firstRefusal).toMatchObject({ code: "ADMISSION_REJECTED", cause: refused });
+    expect(isTextBatchNotWritten(firstRefusal)).toBe(true);
+    expect(isTextBatchNotWritten(refused)).toBe(false);
     expect(f.store.exportCommittedState().refs).toEqual([]);
     planRefused = false;
     const outcome = await f.append("A").catch((error: unknown) => error);
-    expect(outcome).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN", cause: refused });
+    expect(outcome).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN", cause: { cause: refused } });
     expect(isTextBatchNotWritten(outcome)).toBe(false);
+    expect(isTextBatchNotWritten(firstRefusal)).toBe(true);
     expect(isTextBatchNotWritten(refused)).toBe(false);
     expect(f.store.exportCommittedState().refs).toEqual([]);
     expect(await f.readAll()).toEqual([]);
@@ -101,7 +141,6 @@ for (const unknownFirst of [false, true]) {
         await expect(f.writer.acquire()).rejects.toBe(refused);
         await expect(f.append("A")).rejects.toBe(refused);
       } else {
-        await f.writer.acquire();
         await f.append("A");
         await f.append("A");
         expect((await f.readAll()).map((record) => record.entryId)).toEqual(["A"]);
@@ -118,14 +157,20 @@ for (const unknownFirst of [false, true]) {
 // unknown 未提交分支不能留下定位索引，失权后仍保持未知结果而非放行整条重试。
 test("未知文本提交与失权不会持久化声明引用", async () => {
   let unknown = true;
+  let commits = 0;
+  const leaseLoss = new SyncProtocolError("LEASE_EXPIRED");
   const f = await textClaimHandoffFixture(
     (store) =>
       new Proxy(store, {
         get(target, property) {
-          if (property === "commitContentBatch") return async () => ({ outcome: "unknown" as const, frontiers: [] });
+          if (property === "commitContentBatch")
+            return async () => {
+              commits += 1;
+              return { outcome: "unknown" as const, frontiers: [] };
+            };
           if (property === "renewWriter")
             return async (...args: Parameters<typeof store.renewWriter>) => {
-              if (!unknown) throw new SyncProtocolError("LEASE_EXPIRED");
+              if (!unknown) throw leaseLoss;
               unknown = false;
               return target.renewWriter(...args);
             };
@@ -135,7 +180,11 @@ test("未知文本提交与失权不会持久化声明引用", async () => {
       }),
   );
   try {
-    await expect(f.append("A")).rejects.toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
+    const outcome = await f.append("A").catch((error: unknown) => error);
+    expect(outcome).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN", cause: leaseLoss });
+    expect(commits).toBe(1);
+    await expect(f.append("A")).rejects.toBe(outcome);
+    expect(commits).toBe(1);
     expect(f.store.exportCommittedState().refs).toEqual([]);
     expect(await f.readAll()).toEqual([]);
   } finally {

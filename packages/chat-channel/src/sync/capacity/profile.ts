@@ -8,7 +8,8 @@
 // 要么更糟——某个池参与的比较因为 NaN 恒为 false，从而静默放行一切。
 
 import { SyncProtocolError } from "../protocol/errors";
-import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
+import { MAX_DOC_SNAPSHOT_BYTES, MAX_FRAME_HEADER_BYTES } from "../protocol/frames";
+import { minimumTextPlanReservations } from "./text-plan-reservations";
 
 /** 单进程同步资源预留总量（设计 §10.1）：512MiB。不等于全应用 RSS 上限，运行时与其他业务另计。 */
 export const SERVER_TOTAL_BYTES = 536870912;
@@ -391,7 +392,23 @@ export function validateCapacityProfile(profile: unknown): void {
     "controlHardBytes",
   ] as const) {
     assertFitsCapacity(`inputs.${field}`, inputs[field], "MAX_DOC_SNAPSHOT_BYTES", MAX_DOC_SNAPSHOT_BYTES);
+    // 首次发现与重连发送完整 base，窗口必须容纳 base64 载荷、封装与最大合法帧头。
+    assertFitsCapacity(
+      `inputs.${field} encoded base`,
+      4 * Math.ceil(inputs[field] / 3) + MAX_FRAME_HEADER_BYTES + 13,
+      "concurrency.connectionBodyWindowBytes",
+      concurrency.connectionBodyWindowBytes,
+    );
   }
+
+  const minimumTextPlan = minimumTextPlanReservations(inputs);
+  for (const pool of ["hotDocLive", "persistSeal"] as const)
+    assertFitsCapacity(
+      `minimum live text plan ${pool}`,
+      minimumTextPlan[pool],
+      `serverPools.${pool}`,
+      serverPools[pool],
+    );
 
   // 6. 客户端各池之和必须等于客户端总预算（池的构成见 CLIENT_BUDGET 的注释）。
   assertSumEquals(

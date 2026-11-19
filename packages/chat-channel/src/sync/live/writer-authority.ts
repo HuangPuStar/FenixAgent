@@ -134,7 +134,15 @@ export class WriterAuthority {
   /** 判重在 Store 线性化；其成功不受随后租约过期、关闭或投影替换反向影响。 */
   async confirm(token: WriterAuthorityToken, generation: string): Promise<void> {
     this.assertCurrent(token);
-    await this.store.confirmWriter(token.lease, generation);
+    try {
+      await this.store.confirmWriter(token.lease, generation);
+    } catch (error) {
+      if (this.isCurrent(token) && error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
+        this.currentLease = null;
+        this.leaseLoss = error;
+      }
+      throw error;
+    }
   }
 
   /** 续租输入固定为任务捕获的真实租约，迟到回执不能替换当前 lease。 */

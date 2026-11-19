@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import * as Y from "yjs";
 import { sha256Digest } from "../sync/clock";
+import { loadCommittedDoc } from "../sync/live/committed-doc";
 import { createTextClaim } from "../sync/live/text-claim";
 import { records } from "../sync/live/writer-support";
 import { buildDocId, scopeKey } from "../sync/protocol/identity";
@@ -76,7 +77,12 @@ test("live 文本索引通过 canonical 加连续 tail 核对真实记录", asyn
   const local = new Y.Doc({ guid: f.contentId });
   try {
     await f.append("A");
-    const claims = createTextClaim({ store: f.store, scopeKey: scopeKey(f.scope), digest: sha256Digest });
+    const claims = createTextClaim({
+      store: f.store,
+      scopeKey: scopeKey(f.scope),
+      digest: sha256Digest,
+      admission: f.admission,
+    });
     expect(
       await claims.claim({
         generation: "gen_cursor",
@@ -87,6 +93,7 @@ test("live 文本索引通过 canonical 加连续 tail 核对真实记录", asyn
       }),
     ).toBe(false);
     expect((await f.readAll()).map((record) => record.entryId)).toEqual(["A"]);
+    claims.reset();
   } finally {
     local.destroy();
     await f.close();
@@ -136,12 +143,26 @@ test("旧无索引前驱在重开后判重且不会扫描 orphan", async () => {
         docId: orphanId,
         blockIndex: 9,
         snapshot: canonical,
+        baseSnapshot: canonical,
         hash: sha256Digest(canonical),
+        baseHash: sha256Digest(canonical),
         baseSeq: 0,
+        lastSeq: 0,
         finalSeq: 0,
       });
       f.store.restoreFromCommittedState(snapshot);
     });
+    const orphan = await loadCommittedDoc(f.store, orphanId);
+    if (!orphan) throw new Error("Missing readable orphan baseline");
+    try {
+      expect(
+        records<{ entryId: string }>(orphan.doc)
+          ?.toArray()
+          .map((record) => record.entryId),
+      ).toEqual(["orphan-only"]);
+    } finally {
+      orphan.doc.destroy();
+    }
     reads.length = 0;
     await f.append("A");
     expect(reads.filter((docId) => docId === f.contentId)).toHaveLength(1);
@@ -224,6 +245,10 @@ test("跨块文本冲刷原子发布一个末片定位引用", async () => {
       byteStart: 0,
       byteEnd: 22,
     });
+    await f.reopen();
+    await f.append("A", "text", "x".repeat(150));
+    expect(await f.readAll()).toEqual(values);
+    expect(f.store.exportCommittedState().refs).toEqual(committed.refs);
   } finally {
     await f.close();
   }

@@ -140,6 +140,8 @@ test.each([
     expect(plan.seals[0]?.finalSnapshot).toEqual(prior);
     expect(plan.finalCursor.docId).not.toBe(f.cursor.docId);
     await commit(f, plan);
+    const storedSeal = f.store.exportCommittedState().docs.find((doc) => doc.docId === f.cursor.docId);
+    expect(storedSeal).toMatchObject({ state: "sealed", finalSeq: priorSeq, snapshot: prior, hash: f.digest(prior) });
     const sealed = await loadCommittedDoc(f.store, f.cursor.docId);
     const successor = await loadCommittedDoc(f.store, plan.finalCursor.docId);
     try {
@@ -284,6 +286,7 @@ test("reloads committed root and page links to discover the new tail after direc
     inputs: { ...DEFAULT_SYNC_CAPACITY.inputs, payloadChunkMaxBytes: 100, activeHardEncodedBytes: 400 },
   };
   const f = await textBatchFixture(capacity, 64);
+  const priorDirectory = await committedDirectory(f);
   const plan = await planLiveTextBatch({ ...f, request: f.request("x".repeat(350)) });
   try {
     await commit(f, plan);
@@ -294,8 +297,10 @@ test("reloads committed root and page links to discover the new tail after direc
       root?.doc.destroy();
     }
     const ids = await committedDirectory(f);
-    expect(ids).toHaveLength(64 + plan.newDocs.filter((doc) => doc.kind === "content").length);
-    expect(ids.at(-1)).toBe(plan.finalCursor.docId);
+    expect(ids).toEqual([
+      ...priorDirectory,
+      ...plan.newDocs.filter((doc) => doc.kind === "content").map((doc) => doc.docId),
+    ]);
   } finally {
     plan.dispose();
     plan.finalCursor.doc.destroy();

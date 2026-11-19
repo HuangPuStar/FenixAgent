@@ -1,13 +1,15 @@
-import * as Y from "yjs";
+import type * as Y from "yjs";
+import type { AdmissionController, Reservation } from "../capacity/admission";
 import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { parseDocId } from "../protocol/identity";
 import type { ProjectionStore } from "../store/types";
-import { loadCommittedDoc } from "./committed-doc";
 import type { LiveRecordValue } from "./live-writer-types";
+import { TextClaimCache } from "./text-claim-cache";
 import { legacyLiveTextClaims, type StoredTextRecord, textClaimKey } from "./text-claim-history";
 import { type TextClaimIdentity, textClaimLookupId } from "./text-claim-identity";
 import { createTextClaimLineage, type TextClaimLineage } from "./text-claim-lineage";
+import { readTextClaimDoc } from "./text-claim-read";
 import { records } from "./writer-support";
 
 /** 仅本声明生命周期的失效可重新判定，其他同码错误不提供安全重试证据。 */
@@ -50,6 +52,8 @@ async function indexedTextExists(
   identity: TextClaimIdentity,
   lineage: TextClaimLineage,
   activeDocId: string,
+  admission: AdmissionController,
+  assertCurrent: () => void,
 ): Promise<boolean> {
   const lookupId = textClaimLookupId(digest, identity);
   const [ref] = await store.locateRefs({
@@ -73,27 +77,34 @@ async function indexedTextExists(
   const reachable = await lineage.read(identity.generation, activeDocId);
   if (!reachable.has(ref.docId))
     throw new SyncProtocolError("MALFORMED_FRAME", { message: "text claim reference is outside its live lineage" });
-  const loaded = await loadCommittedDoc(store, ref.docId);
-  if (!loaded) throw new SyncProtocolError("DOC_NOT_FOUND", { message: "text claim reference has no committed state" });
-  try {
-    const record = records<LiveRecordValue>(loaded.doc)
-      ?.toArray()
-      .find((item) => item.recordId === ref.recordId);
-    if (
-      record?.kind !== "text" ||
-      record.entryId !== identity.entryId ||
-      record.contentSlot !== identity.contentSlot ||
-      !(record.payload instanceof Uint8Array) ||
-      ref.byteStart !== 0 ||
-      ref.byteEnd !== record.payload.byteLength ||
-      ref.orderStart !== 0 ||
-      ref.orderEnd !== 0
-    )
-      throw new SyncProtocolError("MALFORMED_FRAME", { message: "text claim reference differs from committed record" });
-    return true;
-  } finally {
-    loaded.doc.destroy();
-  }
+  const exists = await readTextClaimDoc({
+    store,
+    admission,
+    docId: ref.docId,
+    assertCurrent,
+    consume(doc) {
+      const record = records<LiveRecordValue>(doc)
+        ?.toArray()
+        .find((item) => item.recordId === ref.recordId);
+      if (
+        record?.kind !== "text" ||
+        record.entryId !== identity.entryId ||
+        record.contentSlot !== identity.contentSlot ||
+        !(record.payload instanceof Uint8Array) ||
+        ref.byteStart !== 0 ||
+        ref.byteEnd !== record.payload.byteLength ||
+        ref.orderStart !== 0 ||
+        ref.orderEnd !== 0
+      )
+        throw new SyncProtocolError("MALFORMED_FRAME", {
+          message: "text claim reference differs from committed record",
+        });
+      return true;
+    },
+  });
+  if (exists === null)
+    throw new SyncProtocolError("DOC_NOT_FOUND", { message: "text claim reference has no committed state" });
+  return exists;
 }
 
 /** 建立消息声明：新写入走持久索引；索引前旧 live 块只沿当前代次权威链逐 Doc 读取一次。 */
@@ -101,106 +112,171 @@ export function createTextClaim(options: {
   readonly store: ProjectionStore;
   readonly scopeKey: string;
   readonly digest: DigestFn;
+  readonly admission: AdmissionController;
 }): TextClaim {
   const { store } = options;
-  const claimed = new Set<string>();
-  let historicalEntries: ReadonlySet<string> | null = null;
-  let historyLoad: Promise<ReadonlySet<string>> | null = null;
-  let legacyEntries: ReadonlySet<string> | null = null;
-  let legacyLoad: Promise<ReadonlySet<string>> | null = null;
+  const claimed = new TextClaimCache(options.admission);
+  const pending = new Map<string, Promise<boolean>>();
+  const historicalEntries = new TextClaimCache(options.admission);
+  let historyLoaded = false;
+  let historyLoad: Promise<void> | null = null;
+  const legacyEntries = new TextClaimCache(options.admission);
+  let legacyTailDocId: string | null = null;
+  let legacyLoad: { docId: string; promise: Promise<void> } | null = null;
   let generation: string | null = null;
   let epoch = Symbol();
-  let lineage = createTextClaimLineage(store, options.scopeKey);
+  let lineage = createTextClaimLineage(store, options.scopeKey, options.admission);
 
-  async function loadHistoricalEntries(docIds: readonly string[], activeDocId: string): Promise<ReadonlySet<string>> {
-    const entries = new Set<string>();
+  /** 导入槽位按 entryId 判重；边读边计费，旧读取不能越过 reset 恢复缓存。 */
+  async function loadHistoricalEntries(
+    docIds: readonly string[],
+    activeDocId: string,
+    claimEpoch: symbol,
+  ): Promise<void> {
     for (const docId of docIds) {
       if (docId === activeDocId) continue;
-      const state = await store.readDocStateAt(docId, 0);
-      if (state === null) continue;
-      const doc = new Y.Doc({ guid: docId });
-      try {
-        Y.applyUpdate(doc, state.snapshot);
-        for (const record of records<StoredTextRecord>(doc)?.toArray() ?? []) {
-          // 导入 text_part 使用数字槽位；保持按 entryId 对齐实时用户消息的既有契约。
-          if (record.kind === "text_part" && typeof record.entryId === "string") entries.add(record.entryId);
-        }
-      } finally {
-        doc.destroy();
-      }
+      await readTextClaimDoc({
+        store,
+        admission: options.admission,
+        docId,
+        assertCurrent() {
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(activeDocId);
+        },
+        consume(doc) {
+          for (const record of records<StoredTextRecord>(doc)?.toArray() ?? []) {
+            // 导入 text_part 使用数字槽位；保持按 entryId 对齐实时用户消息的既有契约。
+            if (record.kind === "text_part" && typeof record.entryId === "string")
+              historicalEntries.add(record.entryId);
+          }
+        },
+      });
     }
-    return entries;
+  }
+
+  /** 每次只补已扫描尾块之后的新封口范围；不同目标在前次失败后仍可独立读取。 */
+  function loadLegacy(input: Parameters<TextClaim["claim"]>[0], claimEpoch: symbol, claimLineage: TextClaimLineage) {
+    if (legacyLoad?.docId === input.activeDoc.guid) return legacyLoad.promise;
+    const inspect = async () => {
+      const docIds = await claimLineage.predecessors(input.generation, input.activeDoc.guid, legacyTailDocId);
+      if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+      await legacyLiveTextClaims({
+        store,
+        admission: options.admission,
+        scopeKey: options.scopeKey,
+        generation: input.generation,
+        activeDocId: input.activeDoc.guid,
+        docIds: new Set(docIds),
+        assertCurrent() {
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+        },
+        accept(key) {
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+          legacyEntries.add(key);
+        },
+      });
+      if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+      legacyTailDocId = input.activeDoc.guid;
+    };
+    const promise = legacyLoad ? legacyLoad.promise.then(inspect, inspect) : inspect();
+    const current = { docId: input.activeDoc.guid, promise };
+    legacyLoad = current;
+    const clear = () => {
+      if (legacyLoad === current) legacyLoad = null;
+    };
+    void promise.then(clear, clear);
+    return promise;
+  }
+
+  /** 所有判重依据属于同一投影生命周期；仅成功判定才保留身份占位。 */
+  async function evaluate(input: Parameters<TextClaim["claim"]>[0]): Promise<boolean> {
+    const claimEpoch = epoch;
+    const claimLineage = lineage;
+    const activeIdentity = parseDocId(input.activeDoc.guid);
+    if (
+      activeIdentity.kind !== "content" ||
+      activeIdentity.generation !== input.generation ||
+      (generation !== null && generation !== input.generation)
+    )
+      throw new SyncProtocolError("GENERATION_MISMATCH", {
+        message: "text claim differs from its writer generation",
+      });
+    generation = input.generation;
+    const key = textClaimKey(input.entryId, input.contentSlot);
+    if (claimed.has(key)) return false;
+    claimed.add(key);
+    try {
+      const active = records<StoredTextRecord>(input.activeDoc)?.toArray() ?? [];
+      let exists = active.some(
+        (record) =>
+          record.kind === "text" && record.entryId === input.entryId && record.contentSlot === input.contentSlot,
+      );
+      if (!exists && input.historyDocIds.length > 0) {
+        if (!historyLoaded) {
+          historyLoad ??= loadHistoricalEntries(input.historyDocIds, input.activeDoc.guid, claimEpoch);
+          await historyLoad;
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+          historyLoaded = true;
+        }
+        exists = historicalEntries.has(input.entryId);
+      }
+      if (!exists) {
+        exists = await indexedTextExists(
+          store,
+          options.digest,
+          { ...options, ...input },
+          claimLineage,
+          input.activeDoc.guid,
+          options.admission,
+          () => {
+            if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+          },
+        );
+        if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+      }
+      if (!exists) {
+        if (legacyTailDocId !== input.activeDoc.guid) {
+          await loadLegacy(input, claimEpoch, claimLineage);
+          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+        }
+        exists = legacyEntries.has(key);
+      }
+      if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
+      return !exists;
+    } catch (error) {
+      if (claimEpoch !== epoch) {
+        if (isTextClaimInvalidated(error)) throw error;
+        throw new TextClaimInvalidatedError(input.activeDoc.guid, error);
+      }
+      claimed.delete(key);
+      if (!historyLoaded) {
+        historyLoad = null;
+        historicalEntries.clear();
+      }
+      throw error;
+    }
   }
 
   return {
-    async claim(input) {
-      const claimEpoch = epoch;
-      const claimLineage = lineage;
-      const activeIdentity = parseDocId(input.activeDoc.guid);
-      if (
-        activeIdentity.kind !== "content" ||
-        activeIdentity.generation !== input.generation ||
-        (generation !== null && generation !== input.generation)
-      )
-        throw new SyncProtocolError("GENERATION_MISMATCH", {
-          message: "text claim differs from its writer generation",
-        });
-      generation = input.generation;
-      const key = textClaimKey(input.entryId, input.contentSlot);
-      if (claimed.has(key)) return false;
-      claimed.add(key);
+    claim(input) {
+      const key = JSON.stringify([input.generation, input.entryId, input.contentSlot]);
+      const existing = pending.get(key);
+      if (existing) return existing.then(() => false);
+      let inFlight: Reservation;
       try {
-        const active = records<StoredTextRecord>(input.activeDoc)?.toArray() ?? [];
-        let exists = active.some(
-          (record) =>
-            record.kind === "text" && record.entryId === input.entryId && record.contentSlot === input.contentSlot,
-        );
-        if (!exists && input.historyDocIds.length > 0) {
-          if (historicalEntries === null) {
-            historyLoad ??= loadHistoricalEntries(input.historyDocIds, input.activeDoc.guid);
-            const entries = await historyLoad;
-            if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
-            historicalEntries = entries;
-          }
-          exists = historicalEntries.has(input.entryId);
-        }
-        if (!exists) {
-          exists = await indexedTextExists(
-            store,
-            options.digest,
-            { ...options, ...input },
-            claimLineage,
-            input.activeDoc.guid,
-          );
-          if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
-        }
-        if (!exists) {
-          if (legacyEntries === null) {
-            legacyLoad ??= claimLineage.read(input.generation, input.activeDoc.guid).then((docIds) =>
-              legacyLiveTextClaims({
-                store,
-                activeDocId: input.activeDoc.guid,
-                docIds,
-              }),
-            );
-            const entries = await legacyLoad;
-            if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
-            legacyEntries = entries;
-          }
-          exists = legacyEntries.has(key);
-        }
-        if (claimEpoch !== epoch) throw new TextClaimInvalidatedError(input.activeDoc.guid);
-        return !exists;
+        let metadataBytes = 512 + key.length * 4 + input.generation.length * 2 + input.activeDoc.guid.length * 2;
+        for (const docId of input.historyDocIds) metadataBytes += 16 + docId.length * 2;
+        inFlight = options.admission.reserve("controlIndex", metadataBytes);
       } catch (error) {
-        if (claimEpoch !== epoch) {
-          if (isTextClaimInvalidated(error)) throw error;
-          throw new TextClaimInvalidatedError(input.activeDoc.guid, error);
-        }
-        claimed.delete(key);
-        if (historicalEntries === null) historyLoad = null;
-        if (legacyEntries === null) legacyLoad = null;
-        throw error;
+        return Promise.reject(error);
       }
+      // reset 只失效已安装缓存；等待 Store 的输入仍存活，必须由原任务结清后归还。
+      const promise = evaluate(input).finally(() => inFlight.release());
+      pending.set(key, promise);
+      const clear = () => {
+        if (pending.get(key) === promise) pending.delete(key);
+      };
+      void promise.then(clear, clear);
+      return promise;
     },
     release(entryId, contentSlot) {
       claimed.delete(textClaimKey(entryId, contentSlot));
@@ -208,12 +284,16 @@ export function createTextClaim(options: {
     reset() {
       epoch = Symbol();
       claimed.clear();
-      historicalEntries = null;
+      pending.clear();
+      historicalEntries.clear();
+      historyLoaded = false;
       historyLoad = null;
-      legacyEntries = null;
+      legacyEntries.clear();
+      legacyTailDocId = null;
       legacyLoad = null;
       generation = null;
-      lineage = createTextClaimLineage(store, options.scopeKey);
+      lineage.clear();
+      lineage = createTextClaimLineage(store, options.scopeKey, options.admission);
     },
   };
 }

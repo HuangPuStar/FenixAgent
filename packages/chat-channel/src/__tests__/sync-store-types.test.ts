@@ -19,6 +19,7 @@ import {
   type DirectoryPage,
   type DirectoryQuery,
   type DocStateSnapshot,
+  type LiveTextCoverageQuery,
   type ProjectionStore,
   type PutSealedInput,
   type PutSealedResult,
@@ -65,6 +66,7 @@ const PROJECTION_STORE_METHODS = [
   "readGeneration",
   "readDirectory",
   "locateRefs",
+  "readLiveTextCoverage",
   "retireAndCollect",
 ] as const satisfies readonly ProjectionStoreMethodName[];
 
@@ -92,6 +94,7 @@ const METHOD_ARITIES: Record<ProjectionStoreMethodName, number> = {
   readGeneration: 2,
   readDirectory: 1,
   locateRefs: 1,
+  readLiveTextCoverage: 1,
   retireAndCollect: 2,
 };
 
@@ -168,6 +171,9 @@ const stub = {
   },
   async readDirectory(query: DirectoryQuery): Promise<DirectoryPage> {
     return stubCall("readDirectory", query);
+  },
+  async readLiveTextCoverage(query: LiveTextCoverageQuery): Promise<ReadonlySet<string>> {
+    return stubCall("readLiveTextCoverage", query);
   },
   async locateRefs(query: RefQuery): Promise<SyncRefRecord[]> {
     return stubCall("locateRefs", query);

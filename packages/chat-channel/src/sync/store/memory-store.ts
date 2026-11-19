@@ -1,4 +1,6 @@
 import { appendMemoryUpdates } from "./memory-append-updates";
+import { readMemoryTextCoverage } from "./memory-text-coverage";
+import type { LiveTextCoverageQuery } from "./read-types";
 // packages/chat-channel/src/sync/store/memory-store.ts
 // B 阶段内存 adapter：以同步临界区模拟事务，保留 fencing、幂等和已提交读取边界。
 // lifecycle 必须由装配方显式提供；宽限期没有冻结数值，不能在 adapter 内隐藏默认值。
@@ -8,6 +10,7 @@ import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import type { MemoryBudget } from "./memory-accounting";
+import { stripDerivedMemoryState } from "./memory-derived-state";
 import { commitMemoryContentBatch } from "./memory-live-content-batch";
 import { prepareActiveDocument, sameSuccessorBase } from "./memory-store-documents";
 import {
@@ -119,7 +122,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
 
   async createGeneration(input: CreateGenerationInput): Promise<RegistrationResult> {
     this.requireLease(input.scopeKey, input.epoch);
-    const value = input.generation;
+    const value = stripDerivedMemoryState(input.generation);
     if (value.scopeKey !== input.scopeKey || value.state !== "staging")
       fail("MALFORMED_FRAME", "generation registration must be staging and belong to scope");
     const id = compositeKey(input.scopeKey, value.generation);
@@ -134,7 +137,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
 
   async createDoc(input: CreateDocInput): Promise<RegistrationResult> {
     this.requireLease(input.scopeKey, input.epoch);
-    const doc = input.doc;
+    const doc = stripDerivedMemoryState(input.doc);
     this.assertSnapshotSize(doc.snapshot);
     if (doc.scopeKey !== input.scopeKey) fail("DOC_NOT_FOUND", "document generation is not registered");
     const key = compositeKey(input.scopeKey, doc.docId);
@@ -191,6 +194,11 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
     return { outcome: "committed" };
   }
 
+  /** 仅返回已由 canonical 与完整 live-text 索引证明的块，未知恢复状态按需重建。 */
+  async readLiveTextCoverage(query: LiveTextCoverageQuery): Promise<ReadonlySet<string>> {
+    return readMemoryTextCoverage(query, this.contentBatchState(), this.digest);
+  }
+
   async appendUpdates(input: AppendUpdatesInput): Promise<AppendUpdatesResult> {
     const { scopeKey, epoch, owner } = input;
     this.requireLease(scopeKey, epoch, owner);
@@ -212,7 +220,7 @@ export class MemoryProjectionStore extends MemoryStoreState implements Projectio
   }
   async putSealedIfAbsent(input: PutSealedInput): Promise<PutSealedResult> {
     this.requireLease(input.scopeKey, input.epoch);
-    const doc = input.doc;
+    const doc = stripDerivedMemoryState(input.doc);
     this.assertSnapshotSize(doc.snapshot);
     if (doc.scopeKey !== input.scopeKey || doc.state !== "sealed" || this.digest(doc.snapshot) !== doc.hash)
       fail("MALFORMED_FRAME", "sealed document is invalid");

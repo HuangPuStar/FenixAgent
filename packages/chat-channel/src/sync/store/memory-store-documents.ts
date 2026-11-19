@@ -1,5 +1,6 @@
 import type { DigestFn } from "../clock";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
+import { stripDerivedMemoryState } from "./memory-derived-state";
 import { copyBytes, fail, type StoredDoc } from "./memory-store-state";
 import type { SyncDocRecord } from "./types";
 
@@ -11,7 +12,7 @@ export function prepareActiveDocument(doc: SyncDocRecord, digest: DigestFn, depe
   if (doc.dependsOn.length > dependsOnMax) fail("CAPACITY_EXCEEDED", "document dependencies exceed capacity");
   const snapshot = copyBytes(doc.snapshot);
   return {
-    ...doc,
+    ...stripDerivedMemoryState(doc),
     lastSeq: doc.baseSeq,
     baseSnapshot: snapshot,
     baseHash: doc.hash,

@@ -7,7 +7,10 @@ import {
   indexBytes,
   type MemoryBudget,
 } from "./memory-accounting";
+import type { ContentUsage } from "./memory-content-usage";
+import { stripDerivedMemoryState } from "./memory-derived-state";
 import type { MemoryContentBatchState } from "./memory-live-content-batch";
+import { firstUpdateAfter } from "./memory-update-lookup";
 import type {
   CommitGenerationInput,
   DirectoryPage,
@@ -26,13 +29,18 @@ import type {
 
 /** 内存文档的已提交前沿与生命周期元数据。 */
 export interface StoredDoc extends SyncDocRecord {
+  readonly contentUsage?: ContentUsage;
+  readonly textCoverage?: boolean;
+  readonly textCoverageRevision?: number;
   lastSeq: number;
   baseSnapshot: Uint8Array;
   baseHash: string;
   sealedAt: number | null;
   retiredAt: number | null;
 }
-interface StoredGeneration extends SyncGenerationRecord {
+/** 代次私有覆盖版本只随内存事务发布，不进入协议或恢复输入。 */
+export interface StoredGeneration extends SyncGenerationRecord {
+  readonly textCoverageRevision?: number;
   retiredAt: number | null;
 }
 interface BatchRecord {
@@ -85,9 +93,10 @@ export function sameRefs(left: GenerationEntryRefs, right: GenerationEntryRefs):
   );
 }
 function copyDoc(doc: StoredDoc): StoredDoc {
+  const portable = stripDerivedMemoryState(doc);
   const snapshot = copyBytes(doc.snapshot);
   return {
-    ...doc,
+    ...portable,
     snapshot,
     baseSnapshot: doc.baseSnapshot === doc.snapshot ? snapshot : copyBytes(doc.baseSnapshot),
     dependsOn: [...doc.dependsOn],
@@ -95,7 +104,7 @@ function copyDoc(doc: StoredDoc): StoredDoc {
 }
 /** 隔离代次入口闭包。 */
 export function copyGeneration(value: StoredGeneration): StoredGeneration {
-  return { ...value, entryRefs: copyRefs(value.entryRefs) };
+  return { ...stripDerivedMemoryState(value), entryRefs: copyRefs(value.entryRefs) };
 }
 /** 隔离已提交更新的字节。 */
 export function copyUpdate(value: SyncUpdateRecord): SyncUpdateRecord {
@@ -118,7 +127,8 @@ export class MemoryStoreState {
   protected readonly commits: AccountedMap<string, CommitRecord>;
   protected readonly retireTombstones = new Set<string>();
 
-  constructor(budget?: MemoryBudget) {
+  constructor(protected readonly memoryBudget?: MemoryBudget) {
+    const budget = memoryBudget;
     const metadata = (key: string, value: unknown) => ({ controlIndex: key.length * 2 + indexBytes(value) });
     this.scopes = new AccountedMap<string, SyncScopeRow>(budget, metadata);
     this.generations = new AccountedMap<string, StoredGeneration>(budget, metadata);
@@ -141,6 +151,7 @@ export class MemoryStoreState {
   /** 正文专用原子提交复用现有行集合和额度原语。 */
   protected contentBatchState(): MemoryContentBatchState {
     return {
+      memoryBudget: this.memoryBudget,
       scopes: this.scopes,
       generations: this.generations,
       docs: this.docs,
@@ -294,7 +305,9 @@ export class MemoryStoreState {
     if (doc === undefined || doc.state === "retired") return [];
     const result: SyncUpdateRecord[] = [];
     let expected = seq + 1;
-    for (const update of this.updates.get(compositeKey(doc.scopeKey, docId)) ?? []) {
+    const ledger = this.updates.get(compositeKey(doc.scopeKey, docId)) ?? [];
+    for (let index = firstUpdateAfter(ledger, seq); index < ledger.length; index++) {
+      const update = ledger[index];
       if (update.updateSeq < expected) continue;
       if (update.updateSeq !== expected || result.length >= limit) break;
       result.push(copyUpdate(update));

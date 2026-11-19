@@ -121,12 +121,19 @@ export async function replaceGeneration(f: Awaited<ReturnType<typeof authorityFi
       contentDocIds: [id("content")],
     },
   };
-  await f.store.createGeneration({ scopeKey: key, epoch: lease.epoch, generation: next });
+  const registered = await f.store.createGeneration({ scopeKey: key, epoch: lease.epoch, generation: next });
+  const staged = await f.store.readGeneration(key, generation);
+  if (
+    !["committed", "already-committed"].includes(registered.outcome) ||
+    staged?.loadId !== next.loadId ||
+    staged.state !== "staging"
+  )
+    throw new Error(`replacement generation registration returned ${registered.outcome}`);
   const doc = new Y.Doc();
   const snapshot = Y.encodeStateAsUpdate(doc);
   doc.destroy();
   for (const kind of ["runtime", "content"] as const) {
-    await f.store.createDoc({
+    const registeredDoc = await f.store.createDoc({
       scopeKey: key,
       epoch: lease.epoch,
       doc: {
@@ -145,8 +152,15 @@ export async function replaceGeneration(f: Awaited<ReturnType<typeof authorityFi
         dependsOn: [],
       },
     });
+    const initial = await f.store.readDocStateAt(id(kind), 0);
+    if (
+      !["committed", "already-committed"].includes(registeredDoc.outcome) ||
+      initial?.lastSeq !== 0 ||
+      sha256Digest(initial.snapshot) !== sha256Digest(snapshot)
+    )
+      throw new Error(`replacement document ${id(kind)} registration returned ${registeredDoc.outcome}`);
   }
-  await f.store.commitGeneration({
+  const result = await f.store.commitGeneration({
     scopeKey: key,
     epoch: lease.epoch,
     newGeneration: next,
@@ -155,4 +169,14 @@ export async function replaceGeneration(f: Awaited<ReturnType<typeof authorityFi
     entryClosure: next.entryRefs,
     retired: [old.generation],
   });
+  const current = await f.store.readScopePointer(key);
+  if (
+    !["committed", "already-committed"].includes(result.outcome) ||
+    result.currentGeneration !== generation ||
+    current?.currentGeneration !== generation ||
+    current.pointerRevision !== result.pointerRevision
+  )
+    throw new Error(
+      `replacement generation ${result.currentGeneration} revision ${result.pointerRevision} returned ${result.outcome}`,
+    );
 }

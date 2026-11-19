@@ -156,9 +156,13 @@ test("并发写入串行提交，任一时刻只有一个未决批次", async ()
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
     await fix.writer.accept(textDelta("entry-1", "a"));
-    pending.push(fix.writer.accept(textDelta("entry-2", "b")));
+    const writing = fix.writer.accept(textDelta("entry-2", "b"));
+    pending.push(writing);
+    const failed = writing.then(() => new Promise<never>(() => {}));
+    void failed.catch(() => {});
     await Promise.race([
       entered,
+      failed,
       new Promise<never>((_, reject) => {
         deadline = setTimeout(() => reject(new Error("first commit did not reach its gate")), 1000);
       }),

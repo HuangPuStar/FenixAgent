@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import * as Y from "yjs";
+import { AdmissionController } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { sha256Digest } from "../sync/clock";
 import { createTextClaim } from "../sync/live/text-claim";
@@ -15,6 +16,7 @@ const scopeKey = "claim-org/claim-session";
 
 /** 在历史读取边界控制完成顺序，保留真实的声明状态机和 Yjs 历史解析。 */
 function fixture() {
+  const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
   const store = new MemoryProjectionStore({
     clock: { now: () => 1000 },
     digest: sha256Digest,
@@ -54,10 +56,11 @@ function fixture() {
     state: "active",
     route: null,
   });
-  const claims = createTextClaim({ store, scopeKey, digest: sha256Digest });
+  const claims = createTextClaim({ store, scopeKey, digest: sha256Digest, admission });
   return {
     claims,
     activeDoc,
+    admission,
     pending,
     claim(entryId: string, historyDocIds: readonly string[], contentSlot = "text") {
       return claims.claim({ generation, entryId, contentSlot, activeDoc, historyDocIds });
@@ -68,6 +71,7 @@ function fixture() {
       return read;
     },
     close() {
+      claims.reset();
       activeDoc.destroy();
       store.dispose();
     },
@@ -118,7 +122,7 @@ for (const oldFinishesFirst of [true, false]) {
       const previous = outcome(f.claim("same-entry", ["history-old"]));
       f.claims.reset();
       const current = outcome(f.claim("same-entry", ["history-new"]));
-      expect(await f.claim("same-entry", ["history-new"])).toBe(false);
+      const duplicate = outcome(f.claim("same-entry", ["history-new"]));
       if (oldFinishesFirst) {
         f.read(0).resolve(historyState("history-old", ["old-only"]));
         expectInvalidated(await previous);
@@ -126,6 +130,7 @@ for (const oldFinishesFirst of [true, false]) {
       const other = outcome(f.claim("old-only", ["history-new"]));
       f.read(1).resolve(historyState("history-new", ["new-only"]));
       expect(await current).toEqual({ value: true });
+      expect(await duplicate).toEqual({ value: false });
       expect(await other).toEqual({ value: true });
       if (!oldFinishesFirst) {
         f.read(0).resolve(historyState("history-old", ["old-only"]));
@@ -150,13 +155,75 @@ test("旧历史失败不清理新声明或新历史任务", async () => {
     const current = outcome(f.claim("same-entry", ["history-new"]));
     f.read(0).reject(readError);
     expectInvalidated(await previous, readError);
-    expect(await f.claim("same-entry", ["history-new"])).toBe(false);
+    const duplicate = outcome(f.claim("same-entry", ["history-new"]));
     const other = outcome(f.claim("new-only", ["history-new"]));
     expect(f.pending.map((read) => read.docId)).toEqual(["history-old", "history-new"]);
     f.read(1).resolve(historyState("history-new", ["new-only"]));
     expect(await current).toEqual({ value: true });
+    expect(await duplicate).toEqual({ value: false });
     expect(await other).toEqual({ value: false });
   } finally {
+    f.close();
+  }
+});
+
+// 同一声明尚在读取时只能共享最终判定或失败，预留身份本身不构成已接纳的证据。
+test("直接同键 claim 等待首个读取并共享原始失败", async () => {
+  const f = fixture();
+  const failure = new Error("lookup failed");
+  try {
+    const first = outcome(f.claim("pending", ["history"]));
+    let settled = false;
+    const second = outcome(f.claim("pending", ["history"])).then((value) => {
+      settled = true;
+      return value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    f.read(0).reject(failure);
+    expect(await first).toEqual({ error: failure });
+    expect(await second).toEqual({ error: failure });
+  } finally {
+    f.close();
+  }
+});
+
+// 等待同键不能跳过 projection 身份校验，错误代次不得借用当前代次的 pending 结果。
+test("同键 pending 不为错误代次提供重复成功", async () => {
+  const f = fixture();
+  try {
+    const current = outcome(f.claim("same-entry", ["history"]));
+    const wrong = outcome(
+      f.claims.claim({
+        generation: "wrong-generation",
+        entryId: "same-entry",
+        contentSlot: "text",
+        activeDoc: f.activeDoc,
+        historyDocIds: ["history"],
+      }),
+    );
+    f.read(0).resolve(historyState("history", []));
+    expect(await current).toEqual({ value: true });
+    expect(await wrong).toMatchObject({ error: { code: "GENERATION_MISMATCH" } });
+  } finally {
+    f.close();
+  }
+});
+
+// 判重缓存与声明共享现有控制索引池，超载拒绝不能留下占位，reset 必须归还全部缓存额度。
+test("claim 缓存受控制索引预算约束且 reset 归还额度", async () => {
+  const f = fixture();
+  const hold = f.admission.reserve("controlIndex", f.admission.available("controlIndex"));
+  try {
+    await expect(f.claim("budgeted", [])).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
+    hold.release();
+    expect(await f.claim("budgeted", [])).toBe(true);
+    expect(f.admission.used("controlIndex")).toBeGreaterThan(0);
+    f.claims.reset();
+    expect(f.admission.used("controlIndex")).toBe(0);
+    expect(await f.claim("budgeted", [])).toBe(true);
+  } finally {
+    hold.release();
     f.close();
   }
 });

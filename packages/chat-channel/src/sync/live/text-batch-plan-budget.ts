@@ -1,13 +1,11 @@
 import { AdmissionController, type Reservation, type ServerPoolName } from "../capacity/admission";
+import { TEXT_DOCUMENT_METADATA_BYTES, textPlanBaseReservations } from "../capacity/text-plan-reservations";
 import { DIRECTORY_PAGE_SIZE } from "../protocol/directory";
-import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { MAX_IDENTIFIER_BYTES } from "../protocol/identity";
 import type { TextBatchPlanOptions } from "./text-batch-plan-types";
 
 /** Y.Doc、游标、路由/初态记录及额度对象的固定元数据，不以正文大小替代对象数量。 */
-const DOCUMENT_METADATA_BYTES = 8192;
-/** 字符串切片及其数组槽位；正文UTF-16存储由输入预算单独覆盖。 */
-const CHUNK_METADATA_BYTES = 64;
+const DOCUMENT_METADATA_BYTES = TEXT_DOCUMENT_METADATA_BYTES;
 
 /** 分阶段取得额度，所有构造失败均由同一生命周期归还已取得的部分。 */
 export interface TextBatchBudget {
@@ -28,32 +26,13 @@ export function reserveTextBatchBudget(options: TextBatchPlanOptions): TextBatch
   const release = () => {
     for (const reservation of reservations.splice(0)) reservation.release();
   };
-  const chunkBytes = Math.max(
-    1,
-    Math.min(capacity.inputs.payloadChunkMaxBytes, Math.floor(capacity.inputs.activeHardEncodedBytes / 2)),
-  );
-  // 非末片至多因下一个四字节码点浪费3B；先界定切片数组，再取得实际片数的记录头额度。
-  const chunkCountBound = Math.ceil(request.bytes / Math.max(1, chunkBytes - 3));
+  const base = textPlanBaseReservations(capacity.inputs, request.text.length, request.bytes);
   // 旧current可能来自更宽的写入配置；克隆/封口额度按传输硬限保留，不随新active阈值缩小。
   try {
     // live池承担UTF-16源/切片、记录payload和解码Y.Doc；不包含下方独立编码buffer。
-    reserve(
-      "hotDocLive",
-      Math.max(
-        1,
-        request.text.length * 4 +
-          request.bytes * 6 +
-          chunkCountBound * CHUNK_METADATA_BYTES +
-          DOCUMENT_METADATA_BYTES * 2 +
-          MAX_DOC_SNAPSHOT_BYTES * 4 +
-          capacity.inputs.directoryHardBytes * 2,
-      ),
-    );
+    reserve("hotDocLive", base.hotDocLive);
     // 四类不同编码：待提交update、final snapshot、试写checkpoint和候选编码临时输出。
-    reserve(
-      "persistSeal",
-      Math.max(1, request.bytes * 4 + MAX_DOC_SNAPSHOT_BYTES * 4 + capacity.inputs.directoryHardBytes * 2),
-    );
+    reserve("persistSeal", base.persistSeal);
   } catch (error) {
     release();
     throw error;

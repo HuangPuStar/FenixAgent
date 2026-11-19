@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { LIVE_WRITER_LEASE_TTL_MS } from "../sync/live/live-writer";
+import { SyncProtocolError } from "../sync/protocol/errors";
 import { scopeKey } from "../sync/protocol/identity";
+import { contentObjectInput } from "./sync-live-admission-fixture";
 import {
   authorityFixture,
   gate,
@@ -9,14 +11,16 @@ import {
   text,
   withinDeadline,
 } from "./sync-live-writer-authority-fixture";
+import { semantic } from "./sync-live-writer-fixture";
 
 // 规划阶段拒绝额度已证明没有 Store 写入，同一幂等消息在额度恢复后应完整重试。
 test("阈值冲刷额度拒绝后可重试同一幂等消息", async () => {
   const f = await authorityFixture();
   const hold = f.admission.reserve("persistSeal", f.admission.available("persistSeal"));
   try {
+    const before = f.store.exportCommittedState();
     await expect(f.writer.accept(text())).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
-    expect(await f.readAll()).toEqual([]);
+    expect(f.store.exportCommittedState()).toEqual(before);
     hold.release();
     await f.writer.accept(text());
     await f.writer.seal();
@@ -55,6 +59,7 @@ test("公开续租发现过期后接管等待旧定时冲刷且正文只写一�
     };
     acquiring = f.writer.acquire();
     void acquiring.catch(() => {});
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(acquisitions).toBe(0);
     paused.release();
     await acquiring;
@@ -200,6 +205,7 @@ test("已提交文本回执迟到关闭后仍成功且不重复写", async () =>
   const commit = f.store.commitContentBatch.bind(f.store);
   f.store.commitContentBatch = async (input) => {
     const result = await commit(input);
+    expect(result.outcome).toBe("committed");
     paused.enter();
     await paused.released;
     return result;
@@ -233,6 +239,7 @@ test("已提交文本回执等待期间续租过期仍报告成功", async () =>
   const commit = f.store.commitContentBatch.bind(f.store);
   f.store.commitContentBatch = async (input) => {
     const result = await commit(input);
+    expect(result.outcome).toBe("committed");
     paused.enter();
     await paused.released;
     return result;
@@ -252,6 +259,123 @@ test("已提交文本回执等待期间续租过期仍报告成功", async () =>
   } finally {
     paused.release();
     await rejection(accepted);
+    await f.close();
+  }
+});
+
+// 已接纳的小文本即使由 timer 先取走，后继语义仍须观察拒绝并等同一文本重试成功。
+test("语义屏障不能越过在途定时冲刷的确定拒绝", async () => {
+  const f = await authorityFixture({ maxDelayMs: 1, maxBytes: 1 << 20 });
+  const paused = gate();
+  const commit = f.store.commitContentBatch.bind(f.store);
+  let first = true;
+  f.store.commitContentBatch = async (input) => {
+    if (first) {
+      first = false;
+      paused.enter();
+      await paused.released;
+    }
+    return await commit(input);
+  };
+  let hold: ReturnType<typeof f.admission.reserve> | undefined;
+  let accepted: Promise<unknown> | undefined;
+  try {
+    const before = f.store.exportCommittedState();
+    await f.writer.accept(text());
+    await withinDeadline(paused.entered);
+    accepted = rejection(f.writer.accept(semantic("tool", { entityId: "tool" })));
+    hold = f.admission.reserve("hotDocLive", f.admission.available("hotDocLive"));
+    paused.release();
+    expect(await accepted).toMatchObject({ code: "ADMISSION_REJECTED" });
+    expect(f.store.exportCommittedState()).toEqual(before);
+    hold.release();
+    await expect(f.writer.accept({ ...text("other"), idempotent: false })).rejects.toMatchObject({
+      code: "ADMISSION_REJECTED",
+    });
+    await f.writer.accept(text());
+    await f.writer.accept(semantic("tool", { entityId: "tool" }));
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual(["message"]);
+  } finally {
+    paused.release();
+    hold?.release();
+    if (accepted) await accepted;
+    await f.close();
+  }
+});
+
+// 旧 token 的失败回执只能关闭旧门禁，不能清除已安装的 replacement 租约。
+test("旧判重确认的过期回执不影响 replacement 写权", async () => {
+  const f = await authorityFixture();
+  const paused = gate();
+  const confirm = f.store.confirmWriter.bind(f.store);
+  let first = true;
+  f.store.confirmWriter = async (...args) => {
+    if (first) {
+      first = false;
+      paused.enter();
+      await paused.released;
+    }
+    await confirm(...args);
+  };
+  let accepted: Promise<unknown> | undefined;
+  try {
+    await f.writer.accept(text());
+    accepted = rejection(f.writer.accept(text()));
+    await withinDeadline(paused.entered);
+    f.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
+    await f.writer.acquire();
+    paused.release();
+    expect(await accepted).toBeUndefined();
+    await f.writer.accept(text("replacement"));
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+      "message",
+      "replacement",
+    ]);
+  } finally {
+    paused.release();
+    if (accepted) await accepted;
+    await f.close();
+  }
+});
+
+// 判重确认失权后同步关闭输入门，不能让下一条小 delta 成功进入没有持久化能力的 merge。
+test("判重确认租约过期保留原错并关闭小文本输入", async () => {
+  const f = await authorityFixture({ maxBytes: 1 << 20 });
+  try {
+    await f.writer.accept(text());
+    await f.writer.seal();
+    const expired = new SyncProtocolError("LEASE_EXPIRED", { message: "duplicate confirmation lost lease" });
+    f.store.confirmWriter = () => Promise.reject(expired);
+    expect(await rejection(f.writer.accept(text()))).toBe(expired);
+    await expect(f.writer.accept(text("later"))).rejects.toMatchObject({ code: "WRITER_EPOCH_LOST" });
+  } finally {
+    await f.close();
+  }
+});
+
+// 关闭后的 unknown 仍可能已有正文，确认失败必须保留 unknown 及原始读错而非变成退休错误。
+test("对象已提交但关闭后确认失败保留 unknown 的原因", async () => {
+  const f = await authorityFixture();
+  const paused = gate();
+  const append = f.store.appendUpdates.bind(f.store);
+  const unavailable = new Error("object confirmation unavailable");
+  f.store.appendUpdates = async (input) => {
+    const result = await append(input);
+    expect(result.outcome).toBe("committed");
+    paused.enter();
+    await paused.released;
+    return { outcome: "unknown", frontiers: [] };
+  };
+  const accepted = rejection(f.writer.accept(contentObjectInput("object")));
+  try {
+    await withinDeadline(paused.entered);
+    await f.writer.close();
+    f.store.readUpdatesAfter = () => Promise.reject(unavailable);
+    paused.release();
+    expect(await accepted).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN", cause: unavailable });
+  } finally {
+    paused.release();
+    await accepted;
     await f.close();
   }
 });

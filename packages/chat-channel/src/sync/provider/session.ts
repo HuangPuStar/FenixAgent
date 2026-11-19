@@ -150,6 +150,11 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
     out: OutboundFrame[],
   ): boolean {
     const bytes = encodeSyncFrame(frame);
+    if (range !== null && bytes.length > deps.capacity.concurrency.connectionBodyWindowBytes) {
+      // 存量大 base 可能早于收紧后的档位；永久不可能获额的任务必须显式失败。
+      closeSession();
+      throw fail("CAPACITY_EXCEEDED", "committed data frame exceeds the connection body window");
+    }
     // bufferedAmount 取未结算字节作上界，理由见文件头偏差说明。
     if (!quota.tryReserve(taskClass, bytes.length, quota.snapshot().outstandingBytes)) return false;
     if (range === null) quota.release(taskClass, bytes.length);

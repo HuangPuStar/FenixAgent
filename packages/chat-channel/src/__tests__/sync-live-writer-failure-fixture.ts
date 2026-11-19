@@ -14,7 +14,11 @@ import { fixture } from "./sync-live-admission-fixture";
 
 /** 保留真实路由、租约和目录事务，只在事务边界控制时钟或回执。 */
 export async function writerFailureFixture(
-  options: { readonly capacity?: SyncCapacityProfile; readonly maxDelayMs?: number } = {},
+  options: {
+    readonly capacity?: SyncCapacityProfile;
+    readonly maxDelayMs?: number;
+    readonly maxTransactions?: number;
+  } = {},
 ) {
   const base = await fixture();
   await base.writer.close();
@@ -96,7 +100,7 @@ export async function writerFailureFixture(
       random: deterministicRandomSource("failure-rotation"),
       limits: RUNTIME_DOC_LIMITS,
       maxResidentMs: 600000,
-      maxTransactions: 1000,
+      maxTransactions: options.maxTransactions ?? 1000,
     },
   });
   await writer.acquire();

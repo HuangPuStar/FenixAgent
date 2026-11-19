@@ -18,12 +18,18 @@ export function isTextBatchNotWritten(error: unknown): boolean {
 }
 
 function markNotWritten(error: unknown): never {
-  if (typeof error === "object" && error !== null) notWritten.add(error);
-  throw error;
-}
-
-function forgetNotWritten(error: unknown): void {
-  if (typeof error === "object" && error !== null) notWritten.delete(error);
+  // Store adapter 可以复用异常实例；未写证明属于本次尝试，不能贴在共享的原始异常上。
+  const refusal =
+    error instanceof SyncProtocolError
+      ? new SyncProtocolError(error.code, {
+          message: error.message,
+          retryable: error.retryable,
+          safeContext: error.toFrameContext(),
+          cause: error,
+        })
+      : new Error("text batch was not written", { cause: error });
+  notWritten.add(refusal);
+  throw refusal;
 }
 
 /** 整个物理计划固定身份和摘要，复用既有未知提交探测，禁止重新规划已发出的批次。 */
@@ -68,7 +74,6 @@ export async function commitPlannedTextBatch(input: {
   );
   const batch = { batchId, slices: plan.slices, digest, refs };
   let storeEntered = false;
-  let confirmedStoreRefusal: unknown;
   try {
     await appendCommittedBatch({
       store: options.store,
@@ -94,10 +99,8 @@ export async function commitPlannedTextBatch(input: {
             expectedPointerRevision: plan.expectedPointerRevision,
           });
         } catch (error) {
-          forgetNotWritten(error);
           // 原子 Store 的 throw 保证未写；先前 unknown 仍由外层批次状态机升级为未知结果。
           if (error instanceof SyncProtocolError && error.code === "ADMISSION_REJECTED") {
-            confirmedStoreRefusal = error;
             markNotWritten(error);
           }
           throw error;
@@ -106,10 +109,6 @@ export async function commitPlannedTextBatch(input: {
     });
   } catch (error) {
     if (!storeEntered) markNotWritten(error);
-    if (error !== confirmedStoreRefusal) {
-      forgetNotWritten(confirmedStoreRefusal);
-      forgetNotWritten(error);
-    }
     throw error;
   }
 }
