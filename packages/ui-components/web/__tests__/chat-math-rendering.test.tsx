@@ -88,6 +88,58 @@ async function renderMessage(
 }
 
 describe("聊天正文的数学渲染", () => {
+  // 截图中的编号公式需要 display 模式，同行双美元不能被降成行内公式。
+  test.each([
+    ["静态消息", "static", false],
+    ["流式结束", "streaming", false],
+    ["流式生成中", "streaming", true],
+  ] as const)("%s 中同行编号公式保留公式与编号", async (_name, mode, isStreaming) => {
+    const formulas = [
+      String.raw`H(\Theta\mid Y)\;\le\;H(P_e)+P_e\log(M-1)\;\le\;\log 2+P_e\log M. \tag{2.1}`,
+      String.raw`P_e\;\ge\;1-\frac{I(\Theta;Y)+\log 2}{\log M}. \tag{2.2}`,
+      String.raw`\min_{i\neq j}d(\theta_i,\theta_j)\ge 2\delta. \tag{4.1}`,
+      String.raw`I(\Theta;Y)\;\le\;\frac{1}{M^2}\sum_{i,j}\mathrm{KL}(P_i\|P_j). \tag{4.2}`,
+      String.raw`\boxed{\;\inf_{\hat\theta}\sup_\theta\mathbb E_\theta[d]\;\ge\;\delta\Big(1-\frac{\frac{1}{M^2}\sum_{i,j}\mathrm{KL}(P_i\|P_j)+\log 2}{\log M}\Big).\;} \tag{4.3}`,
+      String.raw`(x_0-p)\cdot(x-p)\le 0\qquad\text{对所有 }x\in\mathcal C. \tag{1}`,
+    ];
+    const host = await renderMessage(
+      formulas.map((formula) => `**定理** $$${formula}$$ 后续说明。`).join("\n\n"),
+      mode,
+      isStreaming,
+    );
+
+    await waitFor(host, ".katex, .katex-error");
+
+    expect(host.querySelectorAll(".katex-error").length).toBe(0);
+    expect(host.querySelectorAll(".katex-display").length).toBe(6);
+    expect([...host.querySelectorAll("annotation")].map((node) => node.textContent)).toEqual(formulas);
+    expect(host.querySelectorAll(".tag").length).toBe(6);
+    expect(host.textContent).toContain("后续说明。");
+  });
+
+  // 开头环境不能被当作 math meta 丢弃，末尾结束符也不能混入矩阵并吞掉后文。
+  test.each([
+    ["静态消息", "static", false],
+    ["流式结束", "streaming", false],
+    ["流式生成中", "streaming", true],
+  ] as const)("%s 中矩阵与开闭定界符同行仍能渲染", async (_name, mode, isStreaming) => {
+    const matrix = String.raw`\begin{pmatrix}
+0.2225 & -0.1628 & -0.0599\\
+-0.1628 & 0.1851 & -0.0220\\
+-0.0599 & -0.0220 & 0.0819
+\end{pmatrix}`;
+    const host = await renderMessage(`用 P14 代入：\n\n$$${matrix}$$\n\n两个性质：\n\n- 对角线为正`, mode, isStreaming);
+
+    await waitFor(host, ".katex, .katex-error");
+
+    expect(host.querySelectorAll(".katex-error").length).toBe(0);
+    expect(host.querySelectorAll(".katex-display").length).toBe(1);
+    expect([...host.querySelectorAll("annotation")].map((node) => node.textContent)).toEqual([matrix]);
+    expect(host.querySelector(".mtable")).not.toBeNull();
+    expect([...host.querySelectorAll("p")].some((node) => node.textContent === "两个性质：")).toBe(true);
+    expect(host.querySelector("li")?.textContent).toBe("对角线为正");
+  });
+
   // 列表与引用中的代码仍是源码，不能被块公式容错改写显示、复制或下载内容。
   test.each([
     ["列表波浪线围栏", "- ~~~md\n  $$\n  x$$\n  ~~~", "$$\nx$$\n"],
@@ -95,12 +147,13 @@ describe("聊天正文的数学渲染", () => {
     ["嵌套列表围栏", "- 项目\n  - ~~~md\n    $$\n    x$$\n    ~~~", "$$\nx$$\n"],
     ["引用代码围栏", "> ~~~md\n> $$\n> x$$\n> ~~~", "$$\nx$$\n"],
     ["缩进代码", "    $$\n    x$$", "$$\nx$$\n"],
+    ["math-display 语言围栏", "```math-display\nx^2\n```", "x^2\n"],
   ])("%s 保留公式示例原文", async (_name, markdown, code) => {
     const host = await renderMessage(markdown);
-    await waitFor(host, "code");
+    await waitFor(host, "code, .katex");
 
-    expect([...host.querySelector("code")!.children].map((node) => node.textContent).join("\n")).toBe(code.trimEnd());
     expect(host.querySelectorAll(".katex").length).toBe(0);
+    expect([...host.querySelector("code")!.children].map((node) => node.textContent).join("\n")).toBe(code.trimEnd());
   });
 
   // 模型把块公式的结束符贴在公式后时，仍须显示公式，并保留紧随其后的正文和下一条公式。
@@ -135,6 +188,14 @@ describe("聊天正文的数学渲染", () => {
     ["未配对反引号后的公式", "示例 `\n\n$$\nx$$", ["x"]],
     ["代码后的公式", "~~~md\n$$\nx$$\n~~~\n\n$$\ny$$", ["y"]],
     ["公式后的代码", "$$\nx$$\n\n~~~md\n$$\ny$$\n~~~", ["x"]],
+    ["开头贴行", "$$x+y\n$$\n\n后文", ["x+y"]],
+    ["连续开头贴行", "$$x\ny\n$$\n$$a\nb\n$$", ["x\ny", "a\nb"]],
+    [
+      "矩阵开头贴行且使用 CRLF",
+      "$$\\begin{pmatrix}\r\n1 & 2\r\n\\end{pmatrix}\r\n$$",
+      ["\\begin{pmatrix}\n1 & 2\n\\end{pmatrix}"],
+    ],
+    ["缩进矩阵", "  $$\\begin{pmatrix}\n  1 & 2\n  \\end{pmatrix}$$", ["\\begin{pmatrix}\n1 & 2\n\\end{pmatrix}"]],
   ])("%s 保留独立公式的边界", async (_name, markdown, formulas) => {
     const host = await renderMessage(markdown);
     await waitFor(host, ".katex");
@@ -147,6 +208,35 @@ describe("聊天正文的数学渲染", () => {
         markdown.includes("~~~md\n$$\nx") ? "x$$" : "y$$",
       ]);
     }
+  });
+
+  // 开头修正后须重新识别代码边界，不能继续修改原先被公式吞掉的代码示例。
+  test("矩阵后的代码示例保留原文", async () => {
+    const host = await renderMessage(
+      "$$\\begin{pmatrix}\n1 & 2\n\\end{pmatrix}$$\n\n~~~md\n$$\\begin{pmatrix}\n3 & 4\n\\end{pmatrix}$$\n~~~",
+    );
+
+    await waitFor(host, ".katex, .katex-error");
+
+    expect(host.querySelectorAll(".katex-error").length).toBe(0);
+    expect(host.querySelectorAll(".katex").length).toBe(1);
+    expect([...host.querySelector("code")!.children].map((node) => node.textContent)).toEqual([
+      "$$\\begin{pmatrix}",
+      "3 & 4",
+      "\\end{pmatrix}$$",
+    ]);
+  });
+
+  // display 标记只属于双美元；普通行内公式及列表、引用中的双美元均保留各自模式。
+  test("混合上下文按美元定界符选择显示模式", async () => {
+    const host = await renderMessage("行内 $x^2$，行间 $$y^2$$。\n\n- $$a\\tag{A}$$\n\n> $$b\\tag{B}$$");
+
+    await waitFor(host, ".katex, .katex-error");
+
+    expect(host.querySelectorAll(".katex-error").length).toBe(0);
+    expect(host.querySelectorAll(".katex").length).toBe(4);
+    expect(host.querySelectorAll(".katex-display").length).toBe(3);
+    expect(host.querySelectorAll(".tag").length).toBe(2);
   });
 
   // 行内 `$…$` 与行间 `$$…$$` 都要真的渲染成公式节点：这是接入 math 插件的全部意义
