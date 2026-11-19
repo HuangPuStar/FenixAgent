@@ -4,7 +4,7 @@ import { deterministicRandomSource, sha256Digest } from "../sync/clock";
 import { createLiveWriter, type LiveInput } from "../sync/live/live-writer";
 import { RUNTIME_DOC_LIMITS } from "../sync/live/runtime-doc";
 import { buildDocId, scopeKey } from "../sync/protocol/identity";
-import type { WriterLease } from "../sync/store/types";
+import type { ProjectionStore, WriterLease } from "../sync/store/types";
 import { fixture } from "./sync-live-admission-fixture";
 
 /** 暂停真实 Store 边界；finally 释放后没有遗留事务。 */
@@ -63,10 +63,10 @@ export async function authorityFixture(options: { maxDelayMs?: number; maxBytes?
   let now = 1000;
   const clock = { now: () => now };
   let sequence = 0;
-  const makeWriter = () =>
+  const makeWriter = (store: ProjectionStore = base.store) =>
     createLiveWriter({
       scope: base.scope,
-      store: base.store,
+      store,
       clock,
       digest: sha256Digest,
       random: deterministicRandomSource(`authority-writer-${sequence++}`),

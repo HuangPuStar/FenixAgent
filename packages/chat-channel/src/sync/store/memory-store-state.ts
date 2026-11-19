@@ -12,7 +12,7 @@ import {
 import type { ContentUsage } from "./memory-content-usage";
 import { stripDerivedMemoryState } from "./memory-derived-state";
 import type { MemoryContentBatchState } from "./memory-live-content-batch";
-import { firstUpdateAfter } from "./memory-update-lookup";
+import { assertUpdateLedgerOrder, firstUpdateAfter } from "./memory-update-lookup";
 import type {
   CommitGenerationInput,
   DirectoryPage,
@@ -61,7 +61,7 @@ export interface CommitRecord {
   entryClosure: GenerationEntryRefs;
   retired: string[];
 }
-/** 可移植的提交快照；字节均为副本，调用方不能取得内部可变状态。 */
+/** 可移植提交快照；字节均为副本，增量为正安全整数且按每份 scope/doc 严格升序，跨 Doc 可交错。 */
 export interface CommittedStateSnapshot {
   scopes: SyncScopeRow[];
   generations: StoredGeneration[];
@@ -438,8 +438,9 @@ export class MemoryStoreState {
     };
   }
 
-  /** 恢复测试快照并重建带 scope 的索引；不恢复旧写者的租约。 */
+  /** 每份 scope/doc 增量须为严格升序的正安全整数，清理原状态前拒绝坏账本；不恢复旧写者租约。 */
   restoreFromCommittedState(snapshot: CommittedStateSnapshot): void {
+    assertUpdateLedgerOrder(snapshot.updates);
     this.scopes.clear();
     this.generations.clear();
     this.docs.clear();

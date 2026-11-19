@@ -1,9 +1,9 @@
 import type { AdmissionBudget } from "../capacity/admission";
 import { SyncProtocolError } from "../protocol/errors";
 import { parseDocId } from "../protocol/identity";
-import type { ProjectionStore } from "../store/types";
 import { liveContentTailDocId } from "./content-tail-identity";
 import { TextClaimCache } from "./text-claim-cache";
+import type { TextClaimStore } from "./text-claim-store";
 
 /** 文本索引只能指向从当前代次入口沿唯一 successor 路由可达的 live 内容块。 */
 export interface TextClaimLineage {
@@ -18,7 +18,7 @@ export interface TextClaimLineage {
 
 /** 只缓存文档身份；尾部增长时沿旧尾增量预检，不读取前驱正文或扫描同代次孤块。 */
 export function createTextClaimLineage(
-  store: ProjectionStore,
+  store: TextClaimStore,
   scopeKey: string,
   admission: AdmissionBudget,
 ): TextClaimLineage {

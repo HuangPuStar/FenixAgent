@@ -77,7 +77,8 @@ export function loadCoverageDoc(
     const check = (limit: number) => {
       if (bound.upperBytes <= limit) return;
       const active = requireValue();
-      snapshot = Y.encodeStateAsUpdate(active);
+      // pending 保持未知上界；同版本的更严限额复用已测字节，下一次 apply 后重新测量。
+      snapshot ??= Y.encodeStateAsUpdate(active);
       assertBytes(snapshot, limit);
       bound.calibrate(snapshot.byteLength, active);
     };

@@ -10,7 +10,7 @@ import {
 import { SyncProtocolError } from "../protocol/errors";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { parseDocId } from "../protocol/identity";
-import type { ProjectionStore } from "../store/types";
+import type { TextClaimReadStore } from "./text-claim-store";
 
 /** 单个存储返回值不能借读取页数绕过传输硬限，也不能先交给解码器再判定。 */
 function assertBounded(update: Uint8Array, limit = MAX_DOC_SNAPSHOT_BYTES): void {
@@ -25,7 +25,7 @@ function assertBounded(update: Uint8Array, limit = MAX_DOC_SNAPSHOT_BYTES): void
 
 /** 先取共享额度；封口块只读最终 canonical，活跃块逐条重放，消费回调仅能带走判定或身份。 */
 export async function readTextClaimDoc<T>(input: {
-  readonly store: ProjectionStore;
+  readonly store: TextClaimReadStore;
   readonly admission: AdmissionBudget;
   readonly scopeKey: string;
   readonly docId: string;
@@ -102,7 +102,14 @@ export async function readTextClaimDoc<T>(input: {
         growth?.release();
         growth = undefined;
       }
-      if (!update) return input.consume(current, lastSeq);
+      if (!update) {
+        // 清理期间空页不再证明尾部完整，sealing 必须读到元数据已锁定的终点。
+        if (state.state === "sealing" && state.finalSeq !== null && lastSeq !== state.finalSeq)
+          throw new SyncProtocolError("SEQUENCE_GAP", {
+            message: "text claim tail does not reach its pinned frontier",
+          });
+        return input.consume(current, lastSeq);
+      }
       assertBounded(update.bytes);
       bound.add(update.bytes);
       Y.applyUpdate(current, update.bytes);

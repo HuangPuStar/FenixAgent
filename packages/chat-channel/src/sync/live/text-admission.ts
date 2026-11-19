@@ -8,6 +8,7 @@ import type { MergeKey } from "./merge-buffer";
 import { isTextBatchNotWritten } from "./text-batch-commit";
 import { createTextClaim, isTextClaimInvalidated, type TextClaim } from "./text-claim";
 import { textClaimKey } from "./text-claim-history";
+import type { TextClaimStore } from "./text-claim-store";
 import type { WriterAuthority, WriterAuthorityToken } from "./writer-authority";
 import type { WriterTextBarrier } from "./writer-text-barrier";
 
@@ -84,16 +85,16 @@ export async function revalidateRetainedText(input: {
   const temporary = createTextClaim({
     scopeKey: input.scopeKey,
     digest: input.digest,
-    admission: { reserve: (pool, bytes) => input.admission.reserve(pool, bytes, input.credit) },
-    store: new Proxy(input.store, {
-      get(target, property) {
-        if (property === "readLiveTextCoverage" && target.readLiveTextCoverage)
-          return (query: Parameters<NonNullable<ProjectionStore["readLiveTextCoverage"]>>[0]) =>
-            target.readLiveTextCoverage!({ ...query, [WORKING_CREDIT]: input.credit });
-        const value: unknown = Reflect.get(target, property);
-        return typeof value === "function" ? value.bind(target) : value;
+    admission: {
+      reserve(pool, bytes) {
+        input.admission.assertWorkingCredit(input.credit);
+        // reset 后的前驱规模只能在读取时确定；只补本次局部短缺，global 拒绝仍保留原正文和已有信用。
+        if (pool === "controlIndex" && bytes > input.credit.availableBytes)
+          input.credit.growTo(input.credit.totalBytes + bytes - input.credit.availableBytes);
+        return input.admission.reserve(pool, bytes, input.credit);
       },
-    }),
+    },
+    store: retainedClaimStore(input.store, input.credit),
   });
   try {
     const replay = await temporary.claim({ ...input, ...key });
@@ -103,6 +104,18 @@ export async function revalidateRetainedText(input: {
   } finally {
     temporary.reset();
   }
+}
+
+/** 独立只读转发面保留注入对象的 receiver，冻结方法不经 Proxy 包装。 */
+function retainedClaimStore(store: ProjectionStore, credit: WorkingCredit): TextClaimStore {
+  return {
+    readGeneration: (...args) => store.readGeneration(...args),
+    readSuccessor: (...args) => store.readSuccessor(...args),
+    readDocStateAt: (...args) => store.readDocStateAt(...args),
+    readUpdatesAfter: (...args) => store.readUpdatesAfter(...args),
+    locateRefs: (...args) => store.locateRefs(...args),
+    readLiveTextCoverage: (query) => store.readLiveTextCoverage({ ...query, [WORKING_CREDIT]: credit }),
+  };
 }
 
 /** 旧投影重判同样进入新 token 的共享任务，旧回调只结清自己持有的 map。 */
@@ -137,6 +150,13 @@ async function admitClaim(
 ): Promise<void> {
   let snapshot = initial;
   for (let attempt = firstAttempt; ; attempt++) {
+    if (input.authority.isInstalled(snapshot.token)) {
+      const retained = input.pendingFlush(snapshot);
+      if (retained !== null) {
+        await retained;
+        return;
+      }
+    }
     let accepted: boolean | undefined;
     let invalidation: unknown;
     let advanced: TextAdmissionSnapshot | undefined;

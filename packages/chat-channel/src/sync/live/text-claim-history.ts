@@ -1,6 +1,6 @@
 import { SyncProtocolError } from "../protocol/errors";
-import type { ProjectionStore } from "../store/types";
 import { readTextClaimDoc } from "./text-claim-read";
+import type { TextClaimStore } from "./text-claim-store";
 import { records } from "./writer-support";
 
 /** 历史导入与 live 记录保留各自槽位语义，只共享最小的只读解析面。 */
@@ -17,7 +17,7 @@ export function textClaimKey(entryId: string, contentSlot: string): string {
 
 /** 旧块逐 Doc 加载 canonical 与连续 tail；调用方只缓存身份，不保留正文或 Y.Doc。 */
 export async function legacyLiveTextClaims(input: {
-  readonly store: ProjectionStore;
+  readonly store: TextClaimStore;
   readonly admission: AdmissionBudget;
   readonly scopeKey: string;
   readonly generation: string;

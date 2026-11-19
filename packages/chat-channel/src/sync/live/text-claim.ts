@@ -3,13 +3,13 @@ import type { AdmissionBudget, Reservation } from "../capacity/admission";
 import type { DigestFn } from "../clock";
 import { SyncProtocolError } from "../protocol/errors";
 import { parseDocId } from "../protocol/identity";
-import type { ProjectionStore } from "../store/types";
 import type { LiveRecordValue } from "./live-writer-types";
 import { TextClaimCache } from "./text-claim-cache";
 import { legacyLiveTextClaims, type StoredTextRecord, textClaimKey } from "./text-claim-history";
 import { type TextClaimIdentity, textClaimLookupId } from "./text-claim-identity";
 import { createTextClaimLineage, type TextClaimLineage } from "./text-claim-lineage";
 import { readTextClaimDoc } from "./text-claim-read";
+import type { TextClaimStore } from "./text-claim-store";
 import { records } from "./writer-support";
 
 /** 仅本声明生命周期的失效可重新判定，其他同码错误不提供安全重试证据。 */
@@ -49,7 +49,7 @@ export interface TextClaim {
 
 /** 索引命中仍核对 canonical + 连续 tail；损坏引用不能冒充已提交事实。 */
 async function indexedTextExists(
-  store: ProjectionStore,
+  store: TextClaimStore,
   digest: DigestFn,
   identity: TextClaimIdentity,
   lineage: TextClaimLineage,
@@ -112,7 +112,7 @@ async function indexedTextExists(
 
 /** 建立消息声明：新写入走持久索引；索引前旧 live 块只沿当前代次权威链逐 Doc 读取一次。 */
 export function createTextClaim(options: {
-  readonly store: ProjectionStore;
+  readonly store: TextClaimStore;
   readonly scopeKey: string;
   readonly digest: DigestFn;
   readonly admission: AdmissionBudget;

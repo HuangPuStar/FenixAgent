@@ -1,6 +1,7 @@
 import { SyncProtocolError } from "../protocol/errors";
 import type { ProjectionStore, WriterLease } from "../store/types";
 import { LIVE_WRITER_LEASE_TTL_MS } from "./live-writer-types";
+import { retainWriterFailure } from "./writer-failure";
 
 /** 每次安装投影都有独立身份，异步工作只持有当时实际取得的 fencing token。 */
 export interface WriterAuthorityToken {
@@ -12,6 +13,8 @@ export interface WriterAuthorityToken {
 export class WriterAuthority {
   private current: WriterAuthorityToken | null = null;
   private currentLease: WriterLease | null = null;
+  // 最后成功取得的 Store 令牌只供释放；失权后绝不能用它重新开放输入。
+  private ownedLease: WriterLease | null = null;
   private leaseLoss: unknown = null;
   private transition: Promise<void> | null = null;
   private queue: Promise<void> = Promise.resolve();
@@ -60,6 +63,7 @@ export class WriterAuthority {
   take(lease: WriterLease): WriterAuthorityToken {
     this.assertOpen();
     this.currentLease = lease;
+    this.ownedLease = lease;
     this.leaseLoss = null;
     this.current = { lease, generation: null };
     return this.current;
@@ -168,6 +172,7 @@ export class WriterAuthority {
       const lease = await this.store.renewWriter(token.lease, LIVE_WRITER_LEASE_TTL_MS);
       this.assertCurrent(token);
       this.currentLease = lease;
+      this.ownedLease = lease;
       return lease;
     } catch (error) {
       if (this.isCurrent(token)) {
@@ -208,9 +213,14 @@ export class WriterAuthority {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    const lease = this.currentLease;
+    const lease = this.ownedLease;
     this.currentLease = null;
-    if (lease !== null) await this.store.releaseWriter?.(lease);
+    this.ownedLease = null;
+    try {
+      if (lease !== null) await this.store.releaseWriter?.(lease);
+    } catch (error) {
+      throw this.leaseLoss === null ? error : retainWriterFailure(this.leaseLoss, error);
+    }
   }
 
   /** 即使尚未持有 lease，迟到的接管也必须被关闭状态拒绝。 */

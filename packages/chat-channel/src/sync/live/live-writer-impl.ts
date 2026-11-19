@@ -141,7 +141,7 @@ export class LiveWriterImpl implements LiveWriter {
     const delta = input.delta;
     if (delta === undefined) malformed("text-delta input requires a delta");
     const identity = { turnId, entryId, contentSlot, contentType };
-    if (input.idempotent === true) {
+    if (input.idempotent === true && delta.length > 0) {
       return await admitText({
         claim: this.textClaim,
         authority: this.authority,

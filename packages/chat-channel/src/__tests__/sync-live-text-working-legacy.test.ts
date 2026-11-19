@@ -63,6 +63,7 @@ test("同代重判信用覆盖另一owner追加并封口的legacy身份增长", 
     expect(f.admission.used("ingressSpool")).toBe(0);
     const committed = f.store.exportCommittedState();
     await f.writer.accept(text("retained"));
+    await f.writer.close();
     expect(f.store.exportCommittedState().updates).toEqual(committed.updates);
     expect(f.store.exportCommittedState().refs).toEqual(committed.refs);
   } finally {

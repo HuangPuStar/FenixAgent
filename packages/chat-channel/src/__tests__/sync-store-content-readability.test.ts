@@ -40,6 +40,8 @@ for (const prefix of [false, true])
       );
       const f = await indexedFixture(Y.encodeStateAsUpdate(current));
       try {
+        const baseline = { scopeKey: f.input.scopeKey, generation: f.input.generation, docIds: [f.ids[0]] };
+        expect((await f.store.readLiveTextCoverage(baseline)).size).toBe(1);
         expect((await write(f, atomic, { docId: f.ids[2], fromSeq: 2, updates: [update] })).outcome).toBe("committed");
         const final = await loadCommittedDoc(f.store, f.ids[2]);
         try {
