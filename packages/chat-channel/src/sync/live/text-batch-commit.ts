@@ -100,7 +100,12 @@ export async function commitPlannedTextBatch(input: {
           });
         } catch (error) {
           // 原子 Store 的 throw 保证未写；先前 unknown 仍由外层批次状态机升级为未知结果。
-          if (error instanceof SyncProtocolError && error.code === "ADMISSION_REJECTED") {
+          if (
+            error instanceof SyncProtocolError &&
+            (error.code === "ADMISSION_REJECTED" ||
+              error.code === "LEASE_EXPIRED" ||
+              error.code === "WRITER_EPOCH_LOST")
+          ) {
             markNotWritten(error);
           }
           throw error;

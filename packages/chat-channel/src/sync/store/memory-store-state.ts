@@ -1,4 +1,6 @@
 // 内存 adapter 的状态与快照复制；业务写入校验仍由 memory-store.ts 持有。
+
+import type { EncodedStateBoundState } from "../capacity/encoded-state-bound";
 import { SyncProtocolError } from "../protocol/errors";
 import {
   AccountedArrayMap,
@@ -29,6 +31,7 @@ import type {
 
 /** 内存文档的已提交前沿与生命周期元数据。 */
 export interface StoredDoc extends SyncDocRecord {
+  readonly encodedStateBound?: EncodedStateBoundState;
   readonly contentUsage?: ContentUsage;
   readonly textCoverage?: boolean;
   readonly textCoverageRevision?: number;

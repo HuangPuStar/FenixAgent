@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import * as Y from "yjs";
 import { AdmissionController } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
+import { TEXT_CLAIM_READ_BASE_BYTES } from "../sync/capacity/text-claim-reservations";
 import { sha256Digest } from "../sync/clock";
 import { readTextClaimDoc } from "../sync/live/text-claim-read";
 import { SyncProtocolError } from "../sync/protocol/errors";
@@ -80,21 +81,25 @@ for (const stage of ["base", "tail", "consume"] as const) {
     const doc = new Y.Doc(),
       snapshot = Y.encodeStateAsUpdate(doc);
     doc.destroy();
-    const failure = new Error(`${stage} unavailable`);
+    const failures = {
+      base: new Error("base unavailable"),
+      tail: new Error("tail unavailable"),
+      consume: new Error("consumer failed"),
+    };
     f.store.readDocStateAt = async () => {
-      if (stage === "base") throw failure;
+      if (stage === "base") throw failures.base;
       return base(snapshot);
     };
     f.store.readUpdatesAfter = async () => {
-      if (stage === "tail") throw failure;
+      if (stage === "tail") throw failures.tail;
       return [];
     };
     try {
       await expect(
         f.read(() => {
-          throw failure;
+          throw failures.consume;
         }),
-      ).rejects.toBe(failure);
+      ).rejects.toBe(failures[stage]);
       expect(f.admission.used("hotDocLive")).toBe(0);
       expect(f.admission.used("controlIndex")).toBe(0);
     } finally {
@@ -144,7 +149,7 @@ test("reset 后迟到的 canonical 回执不进入消费且释放临时额度", 
   }
 });
 
-// 四个解码峰值可并行占用默认热池，第五个必须在进入 Store 前拒绝，避免无界 pending key 放大内存。
+// 达到共享热池的解码峰值上限后，额外读取必须在 Store 前拒绝，断言失败也先释放全部门闩。
 test("并发 claim 正文读取自然受共享热池上限限制", async () => {
   const f = fixture(),
     paused = gate();
@@ -157,18 +162,23 @@ test("并发 claim 正文读取自然受共享热池上限限制", async () => {
     await paused.released;
     return base(snapshot);
   };
-  const pending = Array.from({ length: 4 }, () => rejection(f.read(() => true)));
+  const admitted = Math.floor(f.admission.available("hotDocLive") / TEXT_CLAIM_READ_BASE_BYTES);
+  const pending = Array.from({ length: admitted }, () => rejection(f.read(() => true)));
+  let extra: Promise<unknown> | undefined;
   try {
-    expect(reads).toBe(4);
-    await expect(f.read(() => true)).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
-    expect(reads).toBe(4);
+    expect(reads).toBe(admitted);
+    expect(admitted).toBe(2);
+    extra = rejection(f.read(() => true));
+    expect(reads).toBe(admitted);
+    expect(await withinDeadline(extra)).toMatchObject({ code: "ADMISSION_REJECTED" });
     paused.release();
-    expect(await Promise.all(pending)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(await Promise.all(pending)).toEqual(Array.from({ length: admitted }, () => undefined));
     expect(f.admission.used("hotDocLive")).toBe(0);
     expect(f.admission.used("controlIndex")).toBe(0);
   } finally {
     paused.release();
     await Promise.all(pending);
+    await extra;
     f.close();
   }
 });
@@ -239,7 +249,7 @@ test("canonical 与 tail 各自合规但累积正文超限时拒绝", async () =
   const update = Y.encodeStateAsUpdate(doc, vector);
   doc.destroy();
   f.store.readDocStateAt = async () => base(snapshot);
-  f.store.readUpdatesAfter = async () => [tail(update)];
+  f.store.readUpdatesAfter = async (_docId, seq) => (seq === 0 ? [tail(update)] : []);
   try {
     await expect(f.read(() => true)).rejects.toMatchObject({ code: "CAPACITY_EXCEEDED" });
     expect(f.admission.used("hotDocLive")).toBe(0);

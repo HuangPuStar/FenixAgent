@@ -408,6 +408,8 @@ export interface DirectHarness {
   readonly session: ReturnType<typeof createProviderSession>;
   readonly gateway: SyncFrameGateway;
   readonly transport: ProbeTransport;
+  /** 仅记录诚实客户端辅助函数发出的ACK，手动对抗回执不在此去重。 */
+  readonly directAcknowledged: Set<string>;
 }
 
 /**
@@ -461,7 +463,7 @@ export async function setupDirect(windowBytes = WINDOW_BYTES): Promise<DirectHar
     // 与 `createSyncScopeRuntime` 的装配同款：搁置位被顶替的数据帧由账本所有者自结算归还窗口字节。
     onDeliveryAbandoned: (deliveryId) => session.abandonDelivery(deliveryId),
   });
-  return { time, quota, ledger, session, gateway, transport };
+  return { time, quota, ledger, session, gateway, transport, directAcknowledged: new Set() };
 }
 
 /** 与 `scope-runtime.tick()` 同一顺序：先重试搁置位 → 再驱动会话 → 再扫 ACK 超时。 */
@@ -473,11 +475,10 @@ export async function driveSession(h: DirectHarness): Promise<void> {
 
 /** 诚实客户端：把真正收到的数据帧逐个回执一次。 */
 export async function ackDirect(h: DirectHarness): Promise<number> {
-  const acked = new Set<string>();
   let count = 0;
   for (const frame of decodedData(h.transport.sent)) {
-    if (acked.has(frame.deliveryId)) continue;
-    acked.add(frame.deliveryId);
+    if (h.directAcknowledged.has(frame.deliveryId)) continue;
+    h.directAcknowledged.add(frame.deliveryId);
     await h.gateway.onInboundBytes(encodeSyncFrame(ackFrame(frame)));
     count += 1;
   }

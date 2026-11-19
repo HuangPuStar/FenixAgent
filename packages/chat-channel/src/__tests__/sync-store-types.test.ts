@@ -73,9 +73,9 @@ const PROJECTION_STORE_METHODS = [
 /**
  * 每个方法的参数个数（原语签名的一部分：漏登记参数会让接线期传错实参）。
  *
- * `Record<ProjectionStoreMethodName, number>` 要求接口方法全部在此登记；接口新增方法却不登记即编译失败。
+ * 参数元组长度把原语签名与冻结表关联，新增必填参数也必须同步更新表。
  */
-const METHOD_ARITIES: Record<ProjectionStoreMethodName, number> = {
+const METHOD_ARITIES: { [K in ProjectionStoreMethodName]: Parameters<ProjectionStore[K]>["length"] } = {
   acquireWriter: 3,
   renewWriter: 2,
   confirmWriter: 2,

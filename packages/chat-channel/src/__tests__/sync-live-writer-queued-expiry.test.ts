@@ -122,7 +122,7 @@ async function replaceGeneration(f: Awaited<ReturnType<typeof writerFailureFixtu
 }
 
 for (const changedGeneration of [false, true]) {
-  // 接管先等旧队列全部按原错结清，不能让失败前缀之后的旧文本在新租约或新代次偷偷落盘。
+  // 旧回执先按原错结清；同代接管显式重放完整保留队列，真正换代才退休旧文本。
   test(`过期后立即接管会拒绝全部 200 个排队任务，换代=${changedGeneration}`, async () => {
     const f = await writerFailureFixture();
     const route = gate();
@@ -166,6 +166,7 @@ for (const changedGeneration of [false, true]) {
       await f.writer.accept(object("after"));
       expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
         '{"value":"before"}',
+        ...(!changedGeneration ? Array.from({ length: 200 }, (_, index) => `queued-${index}`) : []),
         '{"value":"after"}',
       ]);
       expect(appendsAfterExpiry).toBe(1);
@@ -194,7 +195,7 @@ test("可恢复接管等待旧队列时关闭会拒绝接管", async () => {
     const failure = await sealing;
     expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
     const acquired = rejection(f.writer.acquire());
-    await f.writer.close();
+    expect(await rejection(f.writer.close())).toBe(failure);
     expect(await acquired).toMatchObject({ code: "RESOURCE_RETIRED" });
     for (const pending of queued) expect(await pending).toBe(failure);
     expect(await f.readAll()).toEqual([]);
@@ -241,6 +242,9 @@ for (const action of ["seal", "rotateRuntime"] as const) {
       await f.writer.accept(object("after"));
       expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
         '{"value":"before"}',
+        "queued-a",
+        "queued-b",
+        "queued-c",
         '{"value":"after"}',
       ]);
       expect(appendsAfterExpiry).toBe(1);
@@ -297,6 +301,9 @@ test("排队冲刷过期在 SCOPE_BUSY 和重建期间保持原错", async () =>
     await acquired;
     await f.writer.accept(object("after"));
     expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+      "queued-a",
+      "queued-b",
+      "queued-c",
       '{"value":"after"}',
     ]);
   } finally {
@@ -353,6 +360,8 @@ for (const phase of ["route", "directory", "unknown"] as const) {
       await expect(f.writer.acquire()).rejects.toBe(failure);
       await expect(f.writer.accept(object("blocked"))).rejects.toBe(failure);
       expect(await f.readAll()).toEqual([]);
+      expect(await rejection(f.writer.close())).toBe(failure);
+      expect(f.admission.used("ingressSpool")).toBe(0);
     } finally {
       route.release();
       await f.close();
@@ -373,6 +382,8 @@ test("文本整批拒绝不发布正文且保留原始停写错误", async () =>
     expect(await f.readAll()).toEqual([]);
     await expect(f.writer.acquire()).rejects.toBe(failure);
     await expect(f.writer.accept(object("observe"))).rejects.toBe(failure);
+    expect(await rejection(f.writer.close())).toBe(failure);
+    expect(f.admission.used("ingressSpool")).toBe(0);
   } finally {
     await f.close();
   }

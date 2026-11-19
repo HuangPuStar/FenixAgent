@@ -6,6 +6,7 @@ import { type GenerationReplaceFrame, SYNC_PROTOCOL_VERSION } from "../sync/prot
 import type { SyncGenerationRecord } from "../sync/store/types";
 import { expectProtocolError, mirrorText, primaryOf, withHarness } from "./sync-acceptance-planes-fixture";
 import {
+  committedStateOf,
   duplicateRecordIds,
   type PlaneHarness,
   TEXT_SLOT,
@@ -40,9 +41,11 @@ describe("T11 两个写者竞争、租约过期与旧 epoch", () => {
       await harness.writeText("holder");
       const ownerBefore = await writerOwner(harness);
       const recordsBefore = await harness.canonicalRecords(harness.seedContentDocId);
+      const stateBefore = committedStateOf(harness.store);
 
       // 同一时刻只有一个有效写者：竞争者的输入被明确拒绝，不排队、不等待。
       const rejected = await expectProtocolError(() => rival.writeText("intruder"), "SCOPE_BUSY");
+      expect(committedStateOf(harness.store)).toEqual(stateBefore);
       expect(rejected.retryable).toBe(true);
       expect(await writerOwner(harness)).toBe(ownerBefore);
       // 被拒的输入一个字节都没有落地。
@@ -69,17 +72,23 @@ describe("T11 两个写者竞争、租约过期与旧 epoch", () => {
       await successor.subscribe();
 
       await harness.writeText("aaa");
-      const ownerBefore = await writerOwner(harness);
+      const before = await harness.store.readScopePointer(harness.scopeKey);
+      expect(before?.writerOwner).toBeTruthy();
       harness.time.advance(WRITER_LEASE_TTL_MS + 1);
       await harness.pump();
       // 租约到期即写权回到可用状态：接管者取得新 epoch 并成功写入。
       await successor.writeText("bbb");
-      expect(await writerOwner(harness)).not.toBe(ownerBefore);
+      const successorLease = await harness.store.readScopePointer(harness.scopeKey);
+      expect(successorLease?.writerOwner).toBeTruthy();
+      expect(successorLease?.writerOwner).not.toBe(before?.writerOwner);
+      expect(successorLease?.writerEpoch).toBeGreaterThan(before!.writerEpoch);
 
       // 旧写者的每一次新写入都被拒绝：不续租、不落字节，且失败被记住（不会在后续写入里「恢复」）。
       const fenced = await expectProtocolError(() => harness.writeText("ccc"), "LEASE_EXPIRED");
       expect(fenced.retryable).toBe(false);
+      expect(await harness.store.readScopePointer(harness.scopeKey)).toEqual(successorLease);
       await expectProtocolError(() => harness.writeText("ddd"), "LEASE_EXPIRED");
+      expect(await harness.store.readScopePointer(harness.scopeKey)).toEqual(successorLease);
 
       const records = await harness.canonicalRecords(harness.seedContentDocId);
       expect(textOfRecords(records, "turn-1:assistant", TEXT_SLOT)).toBe("aaabbb");
@@ -207,6 +216,9 @@ describe("T11 两个写者竞争、租约过期与旧 epoch", () => {
       expect(outcome.outcome).toBe("conflict");
       expect(outcome.currentGeneration).toBe(harness.seedGeneration);
       expect(outcome.pointerRevision).toBe(revision);
+      const storedPointer = await harness.store.readScopePointer(harness.scopeKey);
+      expect(storedPointer?.currentGeneration).toBe(harness.seedGeneration);
+      expect(storedPointer?.pointerRevision).toBe(revision);
       expect(await harness.currentPointerRevision()).toBe(revision);
       expect(await harness.generationState("gen-planes-stale-revision")).not.toBe("committed");
       // 已经落到客户端的已提交字节不受这次被拒的换代影响。

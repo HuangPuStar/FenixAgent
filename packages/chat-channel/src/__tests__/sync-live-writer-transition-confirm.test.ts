@@ -283,8 +283,8 @@ test("异步 claim 期间调用方修改原输入不改变已声明的消息身�
   }
 });
 
-// gate 必须同步停旧 timer；同 owner 有效租约不会换 Store epoch，迟到提交仍可能落地。
-test("接管开始后旧合并 timer 不再长出遗漏 drain 的提交", async () => {
+// gate 同步停旧 timer，但已确认缓冲由同代接管显式重放，不能当作旧 timer 噪声丢弃。
+test("接管停止旧 timer 后在新投影完整写回已确认缓冲", async () => {
   const f = await authorityFixture({ maxDelayMs: 5, maxBytes: 1024 });
   const paused = gate();
   const acquire = f.store.acquireWriter.bind(f.store);
@@ -311,7 +311,7 @@ test("接管开始后旧合并 timer 不再长出遗漏 drain 的提交", async 
     await acquiring;
     await f.writer.accept(text("second"));
     await f.writer.seal();
-    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual(["second"]);
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual(["first", "second"]);
   } finally {
     paused.release();
     if (acquiring) await rejection(acquiring);

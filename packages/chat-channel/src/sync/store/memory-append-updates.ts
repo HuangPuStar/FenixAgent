@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { contentDocOverflow } from "../capacity/content-doc-limits";
+import { createEncodedStateBound } from "../capacity/encoded-state-bound";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { commitAccountedSets } from "./memory-accounting";
@@ -84,16 +85,13 @@ export function appendMemoryUpdates(
       batchId: input.batchId,
       digest: input.digest,
     }));
-    // 便宜上界能证明安全时不重建；临界区按真实 Yjs 编码检查，整批提交前失败不污染任何 Doc。
-    const accountedBytes = state.updates.accountedBytes(key, "hotDocLive");
-    const bound =
-      doc.baseSnapshot.byteLength +
-      (accountedBytes === undefined
-        ? ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0)
-        : accountedBytes / 2) +
-      records.reduce((sum, item) => sum + item.bytes.byteLength, 0);
     let contentUsage = doc.contentUsage;
+    let rewroteRecords = false;
     const deltas = doc.kind === "content" ? records.map((record) => analyzeContentUpdate(record.bytes)) : [];
+    const encoded = createEncodedStateBound(doc.encodedStateBound ?? doc.baseSnapshot);
+    if (!doc.encodedStateBound) for (const item of ledger) encoded.add(item.bytes);
+    for (let index = 0; index < records.length; index++) encoded.add(records[index].bytes, deltas[index]?.encoding);
+    const bound = encoded.upperBytes;
     if (doc.kind === "content") {
       if (list.at(-1)!.fromSeq - doc.baseSeq > deps.capacity.inputs.maxTransactionsPerDoc)
         fail("CAPACITY_EXCEEDED", "content transaction capacity exceeded");
@@ -111,8 +109,12 @@ export function appendMemoryUpdates(
       try {
         Y.applyUpdate(projection, doc.baseSnapshot);
         for (const item of ledger) Y.applyUpdate(projection, item.bytes);
+        const priorRecords = doc.kind === "content" ? projection.getMap<unknown>("root").get("records") : undefined;
         for (const item of records) Y.applyUpdate(projection, item.bytes);
+        rewroteRecords =
+          priorRecords instanceof Y.Array && projection.getMap<unknown>("root").get("records") !== priorRecords;
         const snapshot = Y.encodeStateAsUpdate(projection);
+        encoded.calibrate(snapshot.byteLength, projection);
         assertSnapshotSize(snapshot);
         if (doc.kind === "content") {
           const overflow = contentDocOverflow({
@@ -132,21 +134,24 @@ export function appendMemoryUpdates(
     return {
       doc,
       records,
-      invalidatesCoverage: deltas.some(
-        (delta) =>
-          delta.deletes ||
-          delta.usage.hasLiveText ||
-          (delta.opaque &&
-            !(
-              doc.lastSeq === 0 &&
-              doc.baseSnapshot.length === 2 &&
-              doc.baseSnapshot[0] === 0 &&
-              doc.baseSnapshot[1] === 0
-            )),
-      ),
+      invalidatesCoverage:
+        rewroteRecords ||
+        deltas.some(
+          (delta) =>
+            delta.deletes ||
+            delta.usage.hasLiveText ||
+            (delta.opaque &&
+              !(
+                doc.lastSeq === 0 &&
+                doc.baseSnapshot.length === 2 &&
+                doc.baseSnapshot[0] === 0 &&
+                doc.baseSnapshot[1] === 0
+              )),
+        ),
       next: {
         ...doc,
         lastSeq: list.at(-1)!.fromSeq,
+        encodedStateBound: encoded.snapshot(),
         ...(doc.kind === "content" ? { contentUsage, textCoverage: undefined, textCoverageRevision: undefined } : {}),
       },
     };

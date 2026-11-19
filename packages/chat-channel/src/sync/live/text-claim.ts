@@ -135,7 +135,7 @@ export function createTextClaim(options: {
   ): Promise<void> {
     for (const docId of docIds) {
       if (docId === activeDocId) continue;
-      await readTextClaimDoc({
+      const loaded = await readTextClaimDoc({
         store,
         admission: options.admission,
         docId,
@@ -150,6 +150,8 @@ export function createTextClaim(options: {
           }
         },
       });
+      if (loaded === null)
+        throw new SyncProtocolError("DOC_NOT_FOUND", { message: "text claim history document has no committed state" });
     }
   }
 
@@ -187,10 +189,8 @@ export function createTextClaim(options: {
     return promise;
   }
 
-  /** 所有判重依据属于同一投影生命周期；仅成功判定才保留身份占位。 */
-  async function evaluate(input: Parameters<TextClaim["claim"]>[0]): Promise<boolean> {
-    const claimEpoch = epoch;
-    const claimLineage = lineage;
+  /** 等待中的同键调用也必须使用本投影的 content Doc，不能借首调用绕过身份校验。 */
+  function assertActiveWriterDoc(input: Parameters<TextClaim["claim"]>[0]): void {
     const activeIdentity = parseDocId(input.activeDoc.guid);
     if (
       activeIdentity.kind !== "content" ||
@@ -200,10 +200,17 @@ export function createTextClaim(options: {
       throw new SyncProtocolError("GENERATION_MISMATCH", {
         message: "text claim differs from its writer generation",
       });
-    generation = input.generation;
+  }
+
+  /** 所有判重依据属于同一投影生命周期；仅成功判定才保留身份占位。 */
+  async function evaluate(input: Parameters<TextClaim["claim"]>[0]): Promise<boolean> {
+    const claimEpoch = epoch;
+    const claimLineage = lineage;
+    assertActiveWriterDoc(input);
     const key = textClaimKey(input.entryId, input.contentSlot);
     if (claimed.has(key)) return false;
     claimed.add(key);
+    generation = input.generation;
     try {
       const active = records<StoredTextRecord>(input.activeDoc)?.toArray() ?? [];
       let exists = active.some(
@@ -258,6 +265,11 @@ export function createTextClaim(options: {
 
   return {
     claim(input) {
+      try {
+        assertActiveWriterDoc(input);
+      } catch (error) {
+        return Promise.reject(error);
+      }
       const key = JSON.stringify([input.generation, input.entryId, input.contentSlot]);
       const existing = pending.get(key);
       if (existing) return existing.then(() => false);

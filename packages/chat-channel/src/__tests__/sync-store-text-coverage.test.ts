@@ -1,7 +1,10 @@
 import { expect, spyOn, test } from "bun:test";
 import * as Y from "yjs";
+import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { sha256Digest } from "../sync/clock";
 import { textClaimLookupId } from "../sync/live/text-claim-identity";
+import { MemoryProjectionStore } from "../sync/store/memory-store";
+import type { SyncRefRecord } from "../sync/store/types";
 import { contentBatchFixture } from "./sync-store-content-batch-fixture";
 
 /** 一个真实跨块文本仅以最后一片建立身份索引，所有分片都由原子批次证明。 */
@@ -65,7 +68,7 @@ test("恢复覆盖证明只重建一次并拒绝调用方伪造标记", async ()
     }
     const broken = f.store.exportCommittedState();
     broken.refs = [];
-    for (const doc of broken.docs) Object.assign(doc, { textCoverage: true });
+    for (const doc of broken.docs) Object.assign(doc, { textCoverage: true, textCoverageRevision: 0 });
     f.store.restoreFromCommittedState(broken);
     expect((await f.store.readLiveTextCoverage(f.query)).size).toBe(0);
   } finally {
@@ -111,8 +114,10 @@ test("覆盖证明的元数据准备重校定位前像", async () => {
     const snapshot = f.store.exportCommittedState();
     f.store.restoreFromCommittedState(snapshot);
     const lease = await f.store.acquireWriter(f.input.scopeKey, f.input.owner, 1000);
+    const hotBefore = f.admission.used("hotDocLive");
     f.admission.beforeReserve = (pool) => {
-      if (pool !== "controlIndex" || apply.mock.calls.length === 0) return;
+      if (pool !== "controlIndex" || apply.mock.calls.length === 0 || f.admission.used("hotDocLive") !== hotBefore)
+        return;
       f.admission.beforeReserve = null;
       nested = f.store.appendUpdates({
         ...f.input,
@@ -136,7 +141,7 @@ test("覆盖证明的元数据准备重校定位前像", async () => {
 });
 
 for (const remaining of [1, 2]) {
-  // 候选解码及临时索引都必须先取共享额度，拒绝时零解码且不留下半份缓存或租约。
+  // 可选证明预算不足时保守交给 fallback，零解码且不留下半份缓存或租约。
   test(`覆盖证明在正文重建前取得临时预算，拒绝点=${remaining}`, async () => {
     const f = await indexedFixture();
     try {
@@ -146,7 +151,7 @@ for (const remaining of [1, 2]) {
         apply = spyOn(Y, "applyUpdate");
       try {
         f.admission.remaining = remaining;
-        await expect(f.store.readLiveTextCoverage(f.query)).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
+        expect((await f.store.readLiveTextCoverage({ ...f.query, docIds: [f.ids[0]] })).size).toBe(0);
         expect(apply.mock.calls.length).toBe(0);
         expect(f.store.exportCommittedState()).toEqual(before);
         expect(f.usage()).toEqual(usage);
@@ -157,6 +162,59 @@ for (const remaining of [1, 2]) {
       }
     } finally {
       f.store.dispose();
+    }
+  });
+}
+
+/** 仅在测试中修改已经观察的 ref 行，不触发代次或正文变化，单独检验 ref CAS。 */
+class RefOnlyMutationStore extends MemoryProjectionStore {
+  replaceRef(ref: SyncRefRecord): void {
+    this.refs.set(
+      [ref.scopeKey, ref.generation, ref.lookupKind, ref.lookupId, ref.contentSlot, ref.partIndex].join("\u0000"),
+      { ...ref },
+    );
+  }
+  revision(scopeKey: string, generation: string): number {
+    return this.generations.get(`${scopeKey}\u0000${generation}`)?.textCoverageRevision ?? 0;
+  }
+}
+
+for (const refuse of [false, true]) {
+  // 单独更换 ref 行时，即使最终缓存预算拒绝，旧证明仍必须复核前像并暴露竞态。
+  test(`覆盖准备独立复核 ref 行前像，缓存拒绝=${refuse}`, async () => {
+    const f = await indexedFixture(),
+      snapshot = f.store.exportCommittedState();
+    f.store.dispose();
+    const store = new RefOnlyMutationStore({
+      clock: { now: () => 1000 },
+      digest: sha256Digest,
+      capacity: DEFAULT_SYNC_CAPACITY,
+      memoryBudget: f.admission,
+      lifecycle: { sealGraceMs: 100, retireGraceMs: 100 },
+    });
+    store.restoreFromCommittedState(snapshot);
+    const apply = spyOn(Y, "applyUpdate");
+    let changed = false;
+    try {
+      const revision = store.revision(f.input.scopeKey, f.input.generation);
+      const hotBefore = f.admission.used("hotDocLive");
+      f.admission.beforeReserve = (pool) => {
+        if (pool !== "controlIndex" || apply.mock.calls.length === 0 || f.admission.used("hotDocLive") !== hotBefore)
+          return;
+        f.admission.beforeReserve = null;
+        changed = true;
+        store.replaceRef({ ...f.input.refs![0], recordId: "ghost" });
+        if (refuse) f.admission.remaining = 0;
+      };
+      await expect(store.readLiveTextCoverage({ ...f.query, docIds: [f.ids[0]] })).rejects.toMatchObject({
+        code: "SEQUENCE_GAP",
+      });
+      expect(changed).toBe(true);
+      expect(store.revision(f.input.scopeKey, f.input.generation)).toBe(revision);
+      expect((await store.readLiveTextCoverage(f.query)).size).toBe(0);
+    } finally {
+      apply.mockRestore();
+      store.dispose();
     }
   });
 }

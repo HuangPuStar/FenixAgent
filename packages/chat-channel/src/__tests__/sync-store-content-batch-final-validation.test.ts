@@ -78,11 +78,29 @@ test("最终摘要重入改写目录时拒绝旧计划并保留内层提交", as
   try {
     Y.applyUpdate(doc, (await f.store.readDocStateAt(rootId, 0))!.snapshot);
     bytes = captureChange(doc, () => setDirectoryLatestPageId(doc, null))!;
+    const expected = f.store.exportCommittedState();
+    expected.docs.find((value) => value.docId === rootId)!.lastSeq = 1;
+    expected.updates.push({
+      scopeKey: f.input.scopeKey,
+      generation: f.input.generation,
+      docId: rootId,
+      updateSeq: 1,
+      bytes: new Uint8Array(bytes),
+      batchId: "digest-root",
+      digest: "digest-root",
+    });
+    expected.batches.push({
+      scopeKey: f.input.scopeKey,
+      batchId: "digest-root",
+      digest: "digest-root",
+      frontiers: [{ docId: rootId, lastSeq: 1 }],
+    });
     f.admission.beforeReserve = () => {
       armed = true;
     };
     await expect(f.store.commitContentBatch(f.input)).rejects.toMatchObject({ code: "SEQUENCE_GAP" });
     expect((await nested)?.outcome).toBe("committed");
+    expect(f.store.exportCommittedState()).toEqual(expected);
     expect(await f.store.readUpdatesAfter(f.ids[0], 0, 10)).toHaveLength(0);
     expect(await f.store.readUpdatesAfter(rootId, 0, 10)).toHaveLength(1);
   } finally {

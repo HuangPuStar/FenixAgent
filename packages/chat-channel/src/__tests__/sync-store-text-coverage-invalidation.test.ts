@@ -105,6 +105,7 @@ for (const entry of ["create", "successor", "atomic", "sealed", "restore"] as co
     try {
       const snapshot = f.input.seals[0].finalSnapshot;
       const marker = {
+        encodedStateBound: { bytes: 0, splitBytes: 0, uncertain: false, composite: false },
         contentUsage: { recordCountUpper: 0, maxPayloadBytes: 0, hasLiveText: false },
         textCoverage: true,
         textCoverageRevision: 0,
@@ -154,7 +155,11 @@ for (const entry of ["create", "successor", "atomic", "sealed", "restore"] as co
       const exported = f.store.exportCommittedState();
       expect(
         exported.docs.every(
-          (doc) => !("contentUsage" in doc) && !("textCoverage" in doc) && !("textCoverageRevision" in doc),
+          (doc) =>
+            !("encodedStateBound" in doc) &&
+            !("contentUsage" in doc) &&
+            !("textCoverage" in doc) &&
+            !("textCoverageRevision" in doc),
         ),
       ).toBe(true);
       expect(exported.generations.every((generation) => !("textCoverageRevision" in generation))).toBe(true);
@@ -228,7 +233,7 @@ test("原子替换正文并重新定位同身份时保持跨块证明", async ()
     })!;
     loaded!.doc.destroy();
     const pointer = await f.store.readScopePointer(f.input.scopeKey);
-    await f.store.commitContentBatch({
+    const replaced = await f.store.commitContentBatch({
       ...f.input,
       batchId: "atomic-replace",
       digest: "atomic-replace",
@@ -239,6 +244,17 @@ test("原子替换正文并重新定位同身份时保持跨块证明", async ()
       seals: [],
       refs: [{ ...f.input.refs![0], recordId: "replacement" }],
     });
+    expect(replaced.outcome).toBe("committed");
+    expect(
+      (
+        await f.store.locateRefs({
+          generation: f.input.generation,
+          lookupKind: "live-text",
+          lookupId: f.input.refs![0].lookupId,
+          limit: 1,
+        })
+      )[0],
+    ).toMatchObject({ recordId: "replacement", docId: f.ids[2] });
     const apply = spyOn(Y, "applyUpdate");
     try {
       expect((await f.store.readLiveTextCoverage(f.query)).size).toBe(3);

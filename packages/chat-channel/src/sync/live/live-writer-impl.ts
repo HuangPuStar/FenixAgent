@@ -14,7 +14,6 @@ import {
   type Cursor,
   fail,
   malformed,
-  NOOP,
   overflowOfSlices,
   RUNTIME_KIND,
   type Slice,
@@ -22,11 +21,11 @@ import {
 import { rebuildLiveProjection } from "./live-writer-rebuild";
 import { applySemanticWrite, planSemanticWrite } from "./live-writer-semantic";
 import type { LiveInput, LiveRecordValue, LiveWriter, LiveWriterOptions, PendingBatch } from "./live-writer-types";
-import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
+import type { MergeFlushRequest, MergeKey } from "./merge-buffer";
 import { createRotationController, type RotationController } from "./rotation";
 import { buildRuntimeSuccessorState, createRuntimeDoc } from "./runtime-doc";
 import { createSealingMachine, type SealingMachine, type SealResult } from "./sealing";
-import { admitText, isRetryableTextRefusal, type TextAdmissionSnapshot } from "./text-admission";
+import { admitText, revalidateRetainedText, type TextAdmissionSnapshot } from "./text-admission";
 import { writeAtomicText } from "./text-batch-commit";
 import { createTextClaim, type TextClaim } from "./text-claim";
 import { WriterAuthority, type WriterAuthorityToken } from "./writer-authority";
@@ -40,13 +39,11 @@ export class LiveWriterImpl implements LiveWriter {
   private readonly owner: string;
   private readonly rotation: RotationController;
   private sealing: SealingMachine;
-  private merge: MergeBuffer;
   private failure: unknown = null;
+  private closing = false;
   /** 只认封口已证明未发布路由的那次错误，外围冲刷仍保留它供写入观测。 */
   private reacquirableFailure: SyncProtocolError | null = null;
-  private lastFlush: Promise<void> | null = null;
   private readonly textBarrier: WriterTextBarrier;
-  private schedulingRefusals = 0;
   private readonly authority: WriterAuthority;
   private readonly cursors = new Map<DocKind, Cursor>();
   /** 工具边界 occurrence 索引，轮转沿用，恢复时覆盖当前代次全部可达块。 */
@@ -61,17 +58,36 @@ export class LiveWriterImpl implements LiveWriter {
     const { store, digest, random } = this.options;
     this.scopeKey = scopeKey(options.scope);
     this.owner = `live_${hex(random, 8)}`;
-    this.textBarrier = new WriterTextBarrier(this.options.admission);
     this.rotation = createRotationController(options.rotation);
     this.sealing = createSealingMachine(this.options);
     this.directory = createDirectoryAppender({ store, scopeKey: this.scopeKey, digest, random });
     this.authority = new WriterAuthority(
       store,
       () => this.failure,
-      () => this.merge.dispose(),
+      () => this.textBarrier.pause(),
     );
     this.textClaim = createTextClaim({ store, scopeKey: this.scopeKey, digest, admission: this.options.admission });
-    this.merge = this.newMerge();
+    this.textBarrier = new WriterTextBarrier({
+      admission: this.options.admission,
+      clock: this.options.clock,
+      merge: this.options.merge,
+      capture: () => this.authority.captureTask(),
+      enqueue: (task) => this.authority.enqueue(task),
+      write: (request, token) => this.writeText(request, token),
+      shouldReplay: (key, token) =>
+        revalidateRetainedText({
+          claim: this.textClaim,
+          authority: this.authority,
+          token,
+          key,
+          activeDoc: this.cursor(CONTENT_KIND).doc,
+          historyDocIds: this.historyContentDocIds,
+        }),
+      isCurrent: (token) => this.authority.isCurrent(token),
+      onFailure: (error) => {
+        this.failure ??= error;
+      },
+    });
   }
   /** 等旧队列结清后取得写权并安装已提交投影。 */
   async acquire(): Promise<void> {
@@ -82,9 +98,10 @@ export class LiveWriterImpl implements LiveWriter {
       this.assertLive(false);
       await this.authority.acquire(this.scopeKey, this.owner);
       await this.rebuildFromCommitted();
-      this.assertLive(false);
       if (this.failure === this.reacquirableFailure) this.failure = null;
       this.reacquirableFailure = null;
+      await this.textBarrier.flush();
+      this.assertLive(false);
     });
   }
   /** 续租当前已安装投影的真实 fencing token。 */
@@ -132,7 +149,8 @@ export class LiveWriterImpl implements LiveWriter {
         entryId,
         contentSlot,
         snapshot: () => this.textSnapshot(),
-        admit: ({ generation }) => this.pushText(identity, delta, generation),
+        admit: ({ generation }) => this.pushText(identity, delta, generation, true),
+        pendingFlush: ({ generation }) => this.textBarrier.pending(generation, entryId, contentSlot),
       });
     }
     await this.pushText(identity, delta, this.authority.generation());
@@ -148,25 +166,21 @@ export class LiveWriterImpl implements LiveWriter {
     };
   }
   /** 同步接纳到当前 merge 后捕获本次冲刷回执，后续 await 不重新读取投影。 */
-  private pushText(identity: Omit<MergeKey, "generation">, delta: string, generation: string): Promise<void> | null {
-    const key: MergeKey = { generation, ...identity };
+  private pushText(
+    identity: Omit<MergeKey, "generation">,
+    delta: string,
+    generation: string,
+    idempotent = false,
+  ): Promise<void> | null {
     try {
-      this.textBarrier.assertInput(this.textKey(key));
+      return this.textBarrier.push({ generation, ...identity }, delta, idempotent);
     } catch (error) {
-      this.textClaim.release(identity.entryId, identity.contentSlot);
+      if (idempotent && !this.textBarrier.retains(generation, identity.entryId, identity.contentSlot))
+        this.textClaim.release(identity.entryId, identity.contentSlot);
       throw error;
     }
-    const previous = this.lastFlush;
-    const refusedBefore = this.schedulingRefusals;
-    this.merge.push(key, delta);
-    if (refusedBefore !== this.schedulingRefusals) {
-      // 回调已取走旧缓冲；此时留下的只有本次未获成功回执的新输入，可安全丢弃并交还调用方重试。
-      this.merge.dispose();
-      this.merge = this.newMerge();
-      this.textClaim.release(identity.entryId, identity.contentSlot);
-    }
-    return this.lastFlush === previous ? null : this.lastFlush;
   }
+
   /** 校验连续前沿并提交调用方提供的固定更新。 */
   async commit(pending: PendingBatch): Promise<CommitOutcome> {
     this.assertLive(true);
@@ -197,52 +211,38 @@ export class LiveWriterImpl implements LiveWriter {
       await this.authority.drain();
       this.authority.replace();
       await this.rebuildFromCommitted();
+      await this.textBarrier.flush();
     });
   }
-  /** 同步停输入，释放写权与当前投影的声明和拒绝索引。 */
+  /** 关闭先尝试结清已接纳正文；失败仍释放资源，并把原回执交给调用方。 */
   async close(): Promise<void> {
-    this.merge.dispose();
+    this.closing = true;
+    this.textBarrier.pause();
+    let failed = false;
+    let failure: unknown;
+    try {
+      await this.textBarrier.flush();
+    } catch (error) {
+      failed = true;
+      failure = error;
+    }
     try {
       await this.authority.close();
+    } catch (error) {
+      failure = failed ? retainWriterFailure(failure, error) : error;
+      failed = true;
     } finally {
       this.textClaim.reset();
       this.textBarrier.close();
     }
+    if (failed) throw failure;
   }
   /** 带屏障的公共动作：复核写者仍活着 → 冲刷已接收文本并等它落地（设计 §6.1「之前已接收的文本先完成写入」）→ 排队执行。 */
   private async run<T>(task: () => Promise<T>): Promise<T> {
     this.assertLive(true);
-    this.merge.barrier();
-    if (this.lastFlush !== null) await this.lastFlush;
-    this.textBarrier.assertReady();
+    await this.textBarrier.flush();
     this.assertLive(true);
     return await this.authority.enqueue(task);
-  }
-  private newMerge(): MergeBuffer {
-    const { clock, merge } = this.options;
-    return createMergeBuffer({ clock, ...merge, onFlush: (request) => this.scheduleText(request) });
-  }
-  /** 只记录实际执行冲刷的首错；队列门禁的延迟拒绝不得回写已恢复的状态，后台错误仍供后续输入观测。 */
-  private scheduleText(request: MergeFlushRequest): void {
-    const token = this.authority.captureTask();
-    this.lastFlush = this.textBarrier.enqueue({
-      key: this.textKey(request.key),
-      enqueue: (task) => this.authority.enqueue(task),
-      write: () => this.writeText(request, token),
-      isCurrent: () => this.authority.isCurrent(token),
-      onSchedulingRefusal: () => {
-        this.schedulingRefusals++;
-        this.textClaim.release(request.key.entryId, request.key.contentSlot);
-      },
-      onFailure: (error) => {
-        this.failure ??= error;
-      },
-    });
-    void this.lastFlush.catch(NOOP);
-  }
-  /** 固定长度身份用于有界拒绝索引，不在应急槽保存任意长的外部 entry。 */
-  private textKey(key: MergeKey): string {
-    return this.options.digest(new TextEncoder().encode(JSON.stringify(key)));
   }
   /** 同一次合并冲刷的正文、跨块封口和目录在一个提交点生效，失败不留下前缀。 */
   private async writeText(request: MergeFlushRequest, token: WriterAuthorityToken): Promise<void> {
@@ -264,11 +264,7 @@ export class LiveWriterImpl implements LiveWriter {
       }
       this.cursors.get(CONTENT_KIND)?.doc.destroy();
       this.cursors.set(CONTENT_KIND, cursor);
-      this.textBarrier.confirm(this.textKey(request.key));
     } catch (error) {
-      if (this.authority.isCurrent(token) && isRetryableTextRefusal(error)) {
-        this.textClaim.release(request.key.entryId, request.key.contentSlot);
-      }
       if (this.authority.isCurrent(token) && error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
         this.failure = error;
         this.reacquirableFailure = error;
@@ -455,9 +451,7 @@ export class LiveWriterImpl implements LiveWriter {
       this.cursors.set(kind, cursor);
     }
     this.textClaim.reset();
-    this.textBarrier.reset();
-    this.lastFlush = null;
-    this.merge = this.newMerge();
+    this.textBarrier.resume(projection.generation);
     this.rotation.reset();
   }
   private async loadCursor(docId: string, kind: DocKind): Promise<void> {
@@ -493,6 +487,7 @@ export class LiveWriterImpl implements LiveWriter {
     return error;
   }
   private assertLive(needLease: boolean): void {
+    if (this.closing) throw new SyncProtocolError("RESOURCE_RETIRED", { message: "live writer is closing" });
     this.authority.assertOpen();
     if (this.failure !== null && (needLease || this.failure !== this.reacquirableFailure)) throw this.failure;
     if (needLease) this.authority.capture();

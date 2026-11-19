@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { type DecodedStateUpdate, decodeStateUpdate } from "../capacity/encoded-state-bound";
 
 /** 仅内存 adapter 持有的保守上界；不是可移植快照中的可信事实。 */
 export interface ContentUsage {
@@ -12,6 +13,7 @@ export interface ContentDelta {
   readonly usage: ContentUsage;
   readonly deletes: boolean;
   readonly opaque: boolean;
+  readonly encoding: DecodedStateUpdate;
 }
 
 /** 一次解析同时估算容量并识别可能改写现存 canonical 文本的增量。 */
@@ -20,7 +22,9 @@ export function analyzeContentUpdate(update: Uint8Array): ContentDelta {
     maxPayloadBytes = 0,
     hasLiveText = false,
     opaque = false;
-  const decoded = Y.decodeUpdate(update);
+  const encoding = decodeStateUpdate(update),
+    decoded = encoding.decoded;
+  opaque = encoding.mapWrites;
   for (const struct of decoded.structs) {
     if (!(struct instanceof Y.Item)) {
       opaque = true;
@@ -40,7 +44,12 @@ export function analyzeContentUpdate(update: Uint8Array): ContentDelta {
       if (payload instanceof Uint8Array) maxPayloadBytes = Math.max(maxPayloadBytes, payload.byteLength);
     }
   }
-  return { usage: { recordCountUpper, maxPayloadBytes, hasLiveText }, deletes: decoded.ds.clients.size > 0, opaque };
+  return {
+    usage: { recordCountUpper, maxPayloadBytes, hasLiveText },
+    deletes: decoded.ds.clients.size > 0,
+    opaque,
+    encoding,
+  };
 }
 
 /** 包含隐藏和待接入内容，后续引用激活也不会低估记录或载荷。 */

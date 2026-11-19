@@ -38,6 +38,12 @@ test("重叠批次共享 Store 异常仍各自保持确定拒绝与未知结果"
     expect(refused).toMatchObject({ code: "ADMISSION_REJECTED", cause: shared });
     expect(first.store.exportCommittedState().refs).toEqual([]);
     expect(later.store.exportCommittedState().refs).toEqual([]);
+    const closing = await first.writer.close().catch((error: unknown) => error);
+    expect(closing).toMatchObject({ code: "ADMISSION_REJECTED", cause: shared });
+    expect(isTextBatchNotWritten(closing)).toBe(true);
+    expect(await later.writer.close().catch((error: unknown) => error)).toBe(undecided);
+    expect(first.admission.used("ingressSpool")).toBe(0);
+    expect(later.admission.used("ingressSpool")).toBe(0);
   } finally {
     await first.close();
     await later.close();
@@ -85,6 +91,8 @@ test("未知提交后复用旧拒绝对象仍保留未知结果停写", async ()
     expect(await f.readAll()).toEqual([]);
     await expect(f.append("A")).rejects.toBe(outcome);
     await expect(f.writer.acquire()).rejects.toBe(outcome);
+    expect(await f.writer.close().catch((error: unknown) => error)).toBe(outcome);
+    expect(f.admission.used("ingressSpool")).toBe(0);
   } finally {
     await f.close();
   }
@@ -140,6 +148,8 @@ for (const unknownFirst of [false, true]) {
       if (unknownFirst) {
         await expect(f.writer.acquire()).rejects.toBe(refused);
         await expect(f.append("A")).rejects.toBe(refused);
+        expect(await f.writer.close().catch((error: unknown) => error)).toBe(refused);
+        expect(f.admission.used("ingressSpool")).toBe(0);
       } else {
         await f.append("A");
         await f.append("A");
@@ -187,6 +197,8 @@ test("未知文本提交与失权不会持久化声明引用", async () => {
     expect(commits).toBe(1);
     expect(f.store.exportCommittedState().refs).toEqual([]);
     expect(await f.readAll()).toEqual([]);
+    expect(await f.writer.close().catch((error: unknown) => error)).toBe(outcome);
+    expect(f.admission.used("ingressSpool")).toBe(0);
   } finally {
     await f.close();
   }

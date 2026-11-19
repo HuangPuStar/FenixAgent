@@ -222,13 +222,14 @@ test("unknown 且查询到异摘要：写者停写", async () => {
     await fix.writer.accept(textDelta("entry-1", "hello"));
     await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
   };
-  await expect(first()).rejects.toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
+  const failure = await first().catch((error: unknown) => error);
+  expect(failure).toMatchObject({ code: "COMMIT_OUTCOME_UNKNOWN" });
   await expect(fix.writer.accept(textDelta("entry-1", "later"))).rejects.toMatchObject({
     code: "COMMIT_OUTCOME_UNKNOWN",
   });
   expect(updatesOf(fix, fix.runtimeId)).toHaveLength(0);
   expect(readRecords(fix, fix.contentId).map(textOf)).toEqual(["hello"]);
-  await fix.writer.close();
+  expect(await fix.writer.close().catch((error: unknown) => error)).toBe(failure);
 });
 
 // 记录超限只拆记录；Doc 仍有空间时不得无谓封口或生成空前驱块。
@@ -259,9 +260,10 @@ test("重拆仍超硬上限时报容量错误且不发布", async () => {
     await fix.writer.accept(textDelta("entry-1", "x".repeat(32)));
     await fix.writer.accept(semantic("tool", { entityId: "tool-1" }));
   };
-  await expect(overflow()).rejects.toMatchObject({ code: "CAPACITY_EXCEEDED" });
+  const failure = await overflow().catch((error: unknown) => error);
+  expect(failure).toMatchObject({ code: "CAPACITY_EXCEEDED" });
   expect(updatesOf(fix, fix.contentId)).toHaveLength(0);
-  await fix.writer.close();
+  expect(await fix.writer.close().catch((error: unknown) => error)).toBe(failure);
 });
 
 /** 造一份与写者同构的内容块更新：一条正文记录，用于驱动 `commit(pending)` 的公开路径。 */

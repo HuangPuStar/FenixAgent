@@ -2,11 +2,13 @@
 export function stripDerivedMemoryState<T extends object>(value: T) {
   const {
     contentUsage: _usage,
+    encodedStateBound: _encoded,
     textCoverage: _coverage,
     textCoverageRevision: _revision,
     ...portable
   } = value as T & {
     contentUsage?: unknown;
+    encodedStateBound?: unknown;
     textCoverage?: unknown;
     textCoverageRevision?: unknown;
   };

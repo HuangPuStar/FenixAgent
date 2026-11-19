@@ -37,6 +37,8 @@ export interface MergeBufferOptions {
   /** 字节阈值：任一到达即提交。 */
   readonly maxBytes: number;
   readonly onFlush: (request: MergeFlushRequest) => void;
+  /** 在当前增量进入缓冲前取得保留额度；拒绝不会改变已接纳的旧缓冲。 */
+  readonly beforeAppend?: (key: MergeKey, delta: string) => void;
 }
 
 /** 合并缓冲：同一时刻最多缓冲一个键，键一换就先冲刷，语义屏障因此只需看当前键。 */
@@ -95,8 +97,7 @@ export function createMergeBuffer(options: MergeBufferOptions): MergeBuffer {
    * 取走并清空当前缓冲。
    *
    * 必须在回调**之前**清空：回调抛错时若缓冲还在，同一段文本会被再次提交，而重复写入 Yjs
-   * 无法回滚（设计禁止重复业务副作用）。代价是失败后文本不再留在缓冲里，由调用方按已提交
-   * 边界恢复——这比制造重复内容更容易判定与修复。
+   * 无法回滚（设计禁止重复业务副作用）。调用方须在接纳前保留原窗口，失败后依据精确回执重试。
    */
   function takePending(): MergeFlushRequest | null {
     const entry = pending;
@@ -156,6 +157,7 @@ export function createMergeBuffer(options: MergeBufferOptions): MergeBuffer {
             throw new SyncProtocolError("MALFORMED_FRAME", { message: "flush callback re-entered without draining" });
           }
         }
+        options.beforeAppend?.(key, delta);
         const opened: PendingMerge = {
           key: { ...key },
           parts: [],
@@ -168,6 +170,8 @@ export function createMergeBuffer(options: MergeBufferOptions): MergeBuffer {
         // 定时器只在首增量设置一次；后续增量不重设，否则等价于 trailing debounce。
         opened.timer = setTimeout(() => flushIfCurrent(opened), maxDelayMs);
         target = opened;
+      } else {
+        options.beforeAppend?.(key, delta);
       }
       target.parts.push(delta);
       target.bytes += UTF8_ENCODER.encode(delta).length;

@@ -54,6 +54,7 @@ export interface LiveWriter {
   acquire(): Promise<void>;
   /** 续租当前写权；失权时清空本地租约但不把错误变成永久失败，调用方可重新竞争。 */
   renew(): Promise<void>;
+  /** 文本冲刷失败仍保留已接纳窗口，由恢复或屏障重试；跨调用重发需提供幂等身份，非幂等输入逐次追加。 */
   accept(input: LiveInput): Promise<void>;
   commit(pending: PendingBatch): Promise<CommitOutcome>;
   seal(): Promise<SealResult>;

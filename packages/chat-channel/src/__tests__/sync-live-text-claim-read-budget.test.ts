@@ -32,6 +32,9 @@ test("热池耗尽时 indexed claim 零正文读取且恢复后可重试", async
     expect(reads).toEqual([]);
     hold.release();
     await replacement.accept(text("indexed"));
+    const indexedDocId = f.store.exportCommittedState().refs[0]?.docId;
+    expect(indexedDocId).toBeDefined();
+    expect(reads).toContain(indexedDocId);
     expect((await f.readAll()).map((record) => record.entryId)).toEqual(["indexed"]);
     expect(f.store.exportCommittedState().refs).toHaveLength(1);
   } finally {
@@ -120,6 +123,7 @@ test("无覆盖证明的 legacy fallback 在热池耗尽时也不读取正文", 
     expect(reads).toEqual([]);
     hold.release();
     await f.append("legacy");
+    expect(reads).toContain(f.contentId);
     expect((await f.readAll()).map((record) => record.entryId)).toEqual(["legacy", "tail"]);
     expect(f.admission.used("persistSeal")).toBe(0);
   } finally {

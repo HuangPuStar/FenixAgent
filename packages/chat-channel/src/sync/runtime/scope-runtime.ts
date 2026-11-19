@@ -29,6 +29,7 @@ import { createLiveWriter } from "../live/live-writer";
 import { createRotationController, type RotationController } from "../live/rotation";
 import { registerSyncDiagnostics, syncDisconnects } from "../metrics";
 import { SyncProtocolError } from "../protocol/errors";
+import { MAX_DOC_SNAPSHOT_BYTES, MAX_FRAME_HEADER_BYTES } from "../protocol/frames";
 import type { SyncScope } from "../protocol/identity";
 import { createAckLedger } from "../provider/ack-ledger";
 import { createAckTimeoutTracker } from "../provider/ack-timeout";
@@ -171,8 +172,16 @@ export async function createSyncScopeRuntime(input: {
     quota,
     ledger,
     base: createBasePlanner({ store, digest }),
-    // 单批 tail 载荷上限取正文 Doc 的软载荷水位：base64 展开加帧头后仍在数据帧上限内（frames.ts 的 288KiB）。
-    tail: createTailPlanner({ store, digest, maxBatchBytes: config.capacity.inputs.activeSoftPayloadBytes }),
+    // 合并更新保留被删除的内容；按连接窗口扣除最大帧头与base64封装，避免可分别发送的更新合并后永久超窗。
+    tail: createTailPlanner({
+      store,
+      digest,
+      maxBatchBytes: Math.min(
+        config.capacity.inputs.activeSoftPayloadBytes,
+        MAX_DOC_SNAPSHOT_BYTES,
+        Math.floor((config.capacity.concurrency.connectionBodyWindowBytes - MAX_FRAME_HEADER_BYTES - 13) / 4) * 3,
+      ),
+    }),
   });
   const control = createControlGovernor({
     clock,
@@ -402,7 +411,12 @@ export async function createSyncScopeRuntime(input: {
           message: "no transport is bound to this scope runtime",
         });
       }
-      await bound.onInboundBytes(bytes);
+      try {
+        await bound.onInboundBytes(bytes);
+      } catch (error) {
+        if (session.state === "closed") bound.close("provider session closed after inbound failure");
+        throw error;
+      }
     },
 
     async tick(): Promise<void> {
@@ -415,8 +429,13 @@ export async function createSyncScopeRuntime(input: {
         // 该调用可能在搁置超期时终止连接（随后 `connectionClosed` 置位），因此会话驱动要再判一次。
         bound.driveWithheld();
         if (!connectionClosed) {
-          for (const frame of await session.tick()) bound.sendOutbound(frame);
-          bound.scanTimeouts();
+          try {
+            for (const frame of await session.tick()) bound.sendOutbound(frame);
+            bound.scanTimeouts();
+          } catch (error) {
+            if (session.state === "closed") bound.close("provider session closed during tick");
+            throw error;
+          }
         }
       }
       // 空闲期也要续租，但必须遵守续租间隔；tick 的 100ms 节拍不得变成持续存储写。

@@ -128,3 +128,33 @@ test("缓存预演后替换现有记录不会绕过 payload 上限", async () =>
     await f.close();
   }
 });
+
+// pending-only apply 不发 update 事件，缓存仍须看见待集成字节并拒绝沿当前块继续写入。
+test("pending-only 更新不能绕过语义编码上界", async () => {
+  const f = await planFixture(),
+    source = new Y.Doc();
+  source.clientID = 54321;
+  try {
+    const capacity = {
+      ...DEFAULT_SYNC_CAPACITY,
+      inputs: { ...DEFAULT_SYNC_CAPACITY.inputs, activeHardEncodedBytes: 2000 },
+    };
+    expect(f.plan({ capacity })).toMatchObject({ rotateContent: false, overflow: null });
+    source.getText("missing").insert(0, "x");
+    const vector = Y.encodeStateVector(source);
+    source.getText("missing").insert(1, "y".repeat(4096));
+    const update = Y.encodeStateAsUpdate(source, vector);
+    let events = 0;
+    f.content.on("update", () => {
+      events++;
+    });
+    Y.applyUpdate(f.content, update);
+    expect(events).toBe(0);
+    expect(f.content.store.pendingStructs).not.toBeNull();
+    expect(Y.encodeStateAsUpdate(f.content).length).toBeGreaterThan(2000);
+    expect(f.plan({ capacity })).toMatchObject({ rotateContent: true, overflow: null });
+  } finally {
+    source.destroy();
+    await f.close();
+  }
+});

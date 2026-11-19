@@ -91,6 +91,7 @@ test("同键并发 admission 共享首次入 merge 的冲刷失败", async () =>
     paused.release();
     await first;
     await second;
+    expect(await rejection(f.writer.close())).toBe(failure);
     await f.close();
   }
 });
@@ -154,6 +155,7 @@ test("旧 admission 重建后与新同键冲刷共享失败且不提前确认成
     flush.release();
     await first;
     await second;
+    expect(await rejection(f.writer.close())).toBe(failure);
     await f.close();
   }
 });

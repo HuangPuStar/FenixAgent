@@ -402,7 +402,7 @@ export function validateCapacityProfile(profile: unknown): void {
   }
 
   const minimumTextPlan = minimumTextPlanReservations(inputs);
-  for (const pool of ["hotDocLive", "persistSeal"] as const)
+  for (const pool of ["hotDocLive", "persistSeal", "controlIndex", "ingressSpool"] as const)
     assertFitsCapacity(
       `minimum live text plan ${pool}`,
       minimumTextPlan[pool],

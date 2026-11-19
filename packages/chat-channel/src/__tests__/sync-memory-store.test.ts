@@ -1,120 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
-import { type Clock, sha256Digest } from "../sync/clock";
-import { SyncProtocolError } from "../sync/protocol/errors";
-import { MemoryProjectionStore } from "../sync/store/memory-store";
+import { sha256Digest } from "../sync/clock";
 import type {
   CommitGenerationInput,
-  CreateDocInput,
   CreateGenerationInput,
   RegisterSuccessorInput,
   SealDocInput,
-  SyncDocRecord,
-  SyncGenerationRecord,
-  WriterLease,
 } from "../sync/store/types";
 
-class TestClock implements Clock {
-  private current: number;
-
-  constructor(current = 1_000) {
-    this.current = current;
-  }
-
-  now(): number {
-    return this.current;
-  }
-
-  advance(milliseconds: number): void {
-    this.current += milliseconds;
-  }
-}
-
-const SCOPE = "org-1/session-1";
-const LIFECYCLE = { sealGraceMs: 100, retireGraceMs: 100 } as const;
-
-function bytes(value: string): Uint8Array {
-  return new TextEncoder().encode(value);
-}
-
-function makeStore(clock: TestClock): MemoryProjectionStore {
-  return new MemoryProjectionStore({
-    clock,
-    digest: sha256Digest,
-    capacity: DEFAULT_SYNC_CAPACITY,
-    lifecycle: LIFECYCLE,
-  });
-}
-
-function generation(generationId = "gen-1", loadId = "load-1"): SyncGenerationRecord {
-  return {
-    scopeKey: SCOPE,
-    generation: generationId,
-    acpSessionId: "acp-session",
-    loadId,
-    state: "staging",
-    importEndOrdinal: null,
-    entryRefs: {
-      controlDocId: `${generationId}-control`,
-      directoryDocId: `${generationId}-directory`,
-      runtimeDocId: `${generationId}-runtime`,
-      contentDocIds: [],
-    },
-    createdAt: 1_000,
-  };
-}
-
-function makeDoc(generationId = "gen-1", docId = "doc-1", kind: SyncDocRecord["kind"] = "runtime"): SyncDocRecord {
-  const snapshot = bytes(`${docId}-snapshot`);
-  return {
-    scopeKey: SCOPE,
-    generation: generationId,
-    docId,
-    kind,
-    state: "active",
-    snapshot,
-    hash: sha256Digest(snapshot),
-    baseSeq: 0,
-    finalSeq: null,
-    blockIndex: kind === "content" ? 0 : null,
-    ordinalStart: kind === "content" ? 0 : null,
-    ordinalEnd: kind === "content" ? 0 : null,
-    dependsOn: [],
-  };
-}
-
-async function setupStore(): Promise<{ store: MemoryProjectionStore; clock: TestClock; lease: WriterLease }> {
-  const clock = new TestClock();
-  const store = makeStore(clock);
-  const lease = await store.acquireWriter(SCOPE, "writer-a", 100);
-  await store.createGeneration({ scopeKey: SCOPE, epoch: lease.epoch, generation: generation() });
-  return { store, clock, lease };
-}
-
-async function createDoc(store: MemoryProjectionStore, lease: WriterLease, doc = makeDoc()): Promise<void> {
-  const input: CreateDocInput = { scopeKey: SCOPE, epoch: lease.epoch, doc };
-  await store.createDoc(input);
-}
-
-function appendInput(
-  lease: WriterLease,
-  overrides: Partial<Parameters<MemoryProjectionStore["appendUpdates"]>[0]> = {},
-) {
-  return {
-    scopeKey: SCOPE,
-    epoch: lease.epoch,
-    owner: lease.owner,
-    batchId: "batch-1",
-    digest: "digest-1",
-    expectedFrontiers: [{ docId: "doc-1", lastSeq: 0 }],
-    updates: [{ docId: "doc-1", fromSeq: 1, bytes: bytes("update-1") }],
-    ...overrides,
-  };
-}
-
-async function expectCode(action: Promise<unknown>, code: SyncProtocolError["code"]): Promise<void> {
-  await expect(action).rejects.toMatchObject({ code });
-}
+import {
+  appendInput,
+  bytes,
+  createDoc,
+  expectCode,
+  generation,
+  makeDoc,
+  makeStore,
+  SCOPE,
+  setupStore,
+  TestClock,
+} from "./sync-memory-store-fixture";
 
 describe("MemoryProjectionStore", () => {
   // 同一 scope 的未过期租约拒绝不同 owner，确保单写权不会被并发写者绕过。

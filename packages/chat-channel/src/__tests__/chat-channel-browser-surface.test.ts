@@ -303,6 +303,7 @@ describe("sync-client 子路径浏览器可达面", () => {
   test("值导入闭包只含 client、protocol 与纯容量预算模块", () => {
     expect(relFiles).toEqual([
       "sync/capacity/profile.ts",
+      "sync/capacity/text-claim-reservations.ts",
       "sync/capacity/text-plan-reservations.ts",
       "sync/client/apply-queue.ts",
       "sync/client/doc-hub.ts",

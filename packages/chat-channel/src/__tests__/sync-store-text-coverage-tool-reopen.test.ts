@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import * as Y from "yjs";
 import { captureChange } from "../sync/live/change-capture";
 import { loadCommittedDoc } from "../sync/live/committed-doc";
 import { records } from "../sync/live/writer-support";
@@ -8,10 +9,21 @@ import { textClaimHandoffFixture } from "./sync-live-text-claim-handoff-fixture"
 // 普通工具追加只撤回当前块证明，不能让大量已索引前驱在后续接管时重新回放。
 test("千块索引历史经过通用工具追加后两次接管均跳过旧正文", async () => {
   const reads: string[] = [];
+  const coverageReplays: number[] = [];
   const f = await textClaimHandoffFixture(
     (store) =>
       new Proxy(store, {
         get(target, property) {
+          if (property === "readLiveTextCoverage")
+            return async (...args: Parameters<typeof store.readLiveTextCoverage>) => {
+              const apply = spyOn(Y, "applyUpdate");
+              try {
+                return await target.readLiveTextCoverage(...args);
+              } finally {
+                coverageReplays.push(apply.mock.calls.length);
+                apply.mockRestore();
+              }
+            };
           if (property === "readDocStateAt")
             return async (...args: Parameters<typeof store.readDocStateAt>) => {
               reads.push(args[0]);
@@ -60,7 +72,6 @@ test("千块索引历史经过通用工具追加后两次接管均跳过旧正�
       ).outcome,
     ).toBe("committed");
     for (const entry of ["fresh-first", "fresh-second"]) {
-      await f.reopen();
       const predecessors = new Set(
         f.store
           .exportCommittedState()
@@ -68,8 +79,12 @@ test("千块索引历史经过通用工具追加后两次接管均跳过旧正�
           .map((doc) => doc.docId),
       );
       reads.length = 0;
+      coverageReplays.length = 0;
+      await f.reopen();
       await f.append(entry);
       expect(reads.filter((doc) => predecessors.has(doc))).toEqual([]);
+      // 仅工具触及的旧尾块可能需要补证，已证明的千块历史不能在 Store 内部被偷偷重放。
+      expect(coverageReplays.reduce((sum, count) => sum + count, 0)).toBeLessThanOrEqual(8);
     }
     await f.append("indexed-500");
     expect((await f.readAll()).filter((record) => record.kind === "text")).toHaveLength(1002);

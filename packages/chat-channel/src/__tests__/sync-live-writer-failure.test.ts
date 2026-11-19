@@ -120,12 +120,11 @@ test("屏障文本批次提交前过期仍可接管并完整重试", async () =>
     ]);
     await f.writer.acquire();
     await f.writer.accept(object("after"));
-    await f.writer.accept(bufferedText());
     await f.writer.seal();
     expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
       JSON.stringify({ value: "x".repeat(1000) }),
-      JSON.stringify({ value: "after" }),
       "y".repeat(1000),
+      JSON.stringify({ value: "after" }),
     ]);
   } finally {
     await f.close();
@@ -161,7 +160,11 @@ test("后台文本批次提交前过期保留原错且允许重新接管", async
     expect(await f.store.readSuccessor(scopeKey(f.scope), f.contentId)).toMatchObject({ state: "active", route: null });
     await f.writer.acquire();
     await f.writer.accept(object("after"));
-    expect(await f.readAll()).toHaveLength(2);
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+      JSON.stringify({ value: "x".repeat(1000) }),
+      "y".repeat(1000),
+      JSON.stringify({ value: "after" }),
+    ]);
   } finally {
     clearTimeout(deadline);
     await f.close();
@@ -190,7 +193,11 @@ test("冲刷过期后接管被占用仍保留原错直到成功重建", async ()
     }
     await f.writer.acquire();
     await f.writer.accept(object("after"));
-    expect(await f.readAll()).toHaveLength(2);
+    expect((await f.readAll()).map((record) => new TextDecoder().decode(record.payload))).toEqual([
+      JSON.stringify({ value: "x".repeat(1000) }),
+      "y".repeat(1000),
+      JSON.stringify({ value: "after" }),
+    ]);
   } finally {
     await f.close();
   }
@@ -237,6 +244,8 @@ for (const { phase, committed, failProbe } of [
         JSON.stringify({ value: "x".repeat(1000) }),
         ...(committed ? ["y".repeat(1000)] : []),
       ]);
+      expect(await f.writer.close().catch((error: unknown) => error)).toBe(failure);
+      expect(f.admission.used("ingressSpool")).toBe(0);
     } finally {
       f.faults.failTextBatchProbe = false;
       await f.close();

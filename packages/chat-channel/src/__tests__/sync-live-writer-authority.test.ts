@@ -211,11 +211,13 @@ test("已提交文本回执迟到关闭后仍成功且不重复写", async () =>
     return result;
   };
   const accepted = rejection(f.writer.accept(text()));
+  let closing: Promise<unknown> | undefined;
   try {
     await withinDeadline(paused.entered);
-    await f.writer.close();
+    closing = rejection(f.writer.close());
     paused.release();
     expect(await accepted).toBeUndefined();
+    expect(await closing).toBeUndefined();
     f.store.commitContentBatch = commit;
     const replacement = f.makeWriter();
     try {
@@ -228,6 +230,7 @@ test("已提交文本回执迟到关闭后仍成功且不重复写", async () =>
   } finally {
     paused.release();
     await accepted;
+    if (closing) await closing;
     await f.close();
   }
 });

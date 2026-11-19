@@ -1,9 +1,9 @@
 import * as Y from "yjs";
 import type { Reservation } from "../capacity/admission";
-import { TEXT_DOCUMENT_METADATA_BYTES } from "../capacity/text-plan-reservations";
 import type { DigestFn } from "../clock";
 import { textClaimLookupId } from "../live/text-claim-identity";
 import { commitAccountedSets } from "./memory-accounting";
+import { isCoverageBudgetRefusal, loadCoverageDoc } from "./memory-coverage-loader";
 import type { MemoryContentBatchState } from "./memory-live-content-batch";
 import { compositeKey, fail, type StoredDoc } from "./memory-store-state";
 import { coverageRevision } from "./memory-text-coverage-revision";
@@ -42,48 +42,26 @@ export function textLookupIds(
   return result;
 }
 
-/** 恢复后的证明仅由当前 canonical 与实际索引重建；一次只持有一个候选和一个索引目标。 */
+/** 证明只暂留身份和行前像；候选销毁后才加载其它目标，默认池无需同时容纳两个正文。 */
 export function readMemoryTextCoverage(
   query: LiveTextCoverageQuery,
   state: MemoryContentBatchState,
   digest: DigestFn,
 ): ReadonlySet<string> {
-  const queryBytes = query.docIds.reduce((sum, id) => sum + 128 + id.length * 2, 128);
-  const queryCharge = state.memoryBudget?.reserve("controlIndex", queryBytes * 2);
+  let queryCharge: Reservation | undefined;
   try {
-    const result = new Set<string>();
-    const generationKey = compositeKey(query.scopeKey, query.generation);
-    const generation = state.generations.get(generationKey);
+    const queryBytes = query.docIds.reduce((sum, id) => sum + 128 + id.length * 2, 128);
+    try {
+      queryCharge = state.memoryBudget?.reserve("controlIndex", queryBytes * 2);
+    } catch (error) {
+      if (isCoverageBudgetRefusal(error)) return new Set();
+      throw error;
+    }
+    const result = new Set<string>(),
+      generationKey = compositeKey(query.scopeKey, query.generation),
+      generation = state.generations.get(generationKey);
     if (!generation) return result;
     const revision = coverageRevision(generation);
-    const load = (doc: StoredDoc) => {
-      const ledger = state.updates.get(compositeKey(doc.scopeKey, doc.docId)) ?? [];
-      const encodedBytes = doc.baseSnapshot.byteLength + ledger.reduce((sum, item) => sum + item.bytes.byteLength, 0);
-      const charges: Reservation[] = [];
-      // 更新可能含密集小结构；编码字节同时覆盖解码放大、身份集和 canonical 定位临时 Map。
-      try {
-        const hot = state.memoryBudget?.reserve("hotDocLive", TEXT_DOCUMENT_METADATA_BYTES + encodedBytes * 64);
-        if (hot) charges.push(hot);
-        const indexes = state.memoryBudget?.reserve("controlIndex", 4096 + encodedBytes * 16);
-        if (indexes) charges.push(indexes);
-      } catch (error) {
-        for (const charge of charges) charge.release();
-        throw error;
-      }
-      const value = new Y.Doc();
-      const dispose = () => {
-        value.destroy();
-        for (const charge of charges) charge.release();
-      };
-      try {
-        Y.applyUpdate(value, doc.baseSnapshot);
-        for (const update of ledger) Y.applyUpdate(value, update.bytes);
-        return { value, dispose };
-      } catch (error) {
-        dispose();
-        throw error;
-      }
-    };
     for (const id of new Set(query.docIds)) {
       const key = compositeKey(query.scopeKey, id),
         doc = state.docs.get(key);
@@ -92,61 +70,99 @@ export function readMemoryTextCoverage(
         result.add(id);
         continue;
       }
-      const loaded = load(doc),
-        value = loaded.value;
-      const observedRefs = new Map<string, SyncRefRecord>();
-      const observedDocs = new Map<string, StoredDoc>([[key, doc]]);
+      const loaded = loadCoverageDoc(doc, state);
+      if (!loaded) continue;
+      const observedRefs = new Map<string, SyncRefRecord>(),
+        observedDocs = new Map<string, StoredDoc>([[key, doc]]),
+        targets = new Map<StoredDoc, SyncRefRecord[]>();
       let covered = true;
       try {
-        const identities = textLookupIds(Y.encodeStateAsUpdate(value), query.scopeKey, query.generation, digest);
-        if (!identities) covered = false;
-        for (const lookupId of identities ?? []) {
-          const refKey = [query.scopeKey, query.generation, "live-text", lookupId, 0, 0].join("\u0000");
-          const ref = state.refs.get(refKey);
-          const targetKey = ref && compositeKey(query.scopeKey, ref.docId),
-            target = targetKey && state.docs.get(targetKey);
-          if (
-            !ref ||
-            !target ||
-            target.generation !== query.generation ||
-            target.kind !== "content" ||
-            target.state === "retired"
-          ) {
+        // 此作用域不向后携带 canonical 对象或 payload，只留下身份和已计费的存储行指针。
+        (() => {
+          const value = loaded.value,
+            canonical = canonicalContentRecords(value),
+            identities = textLookupIds(loaded.snapshot(), query.scopeKey, query.generation, digest);
+          if (!identities) {
             covered = false;
-            break;
+            return;
           }
-          observedRefs.set(refKey, ref);
-          observedDocs.set(targetKey, target);
-          const targetLoaded = target === doc ? null : load(target);
-          const targetValue = targetLoaded?.value ?? value;
-          try {
-            if (!validLiveTextRef(ref, canonicalContentRecords(targetValue).get(ref.recordId), digest)) {
+          for (const lookupId of identities) {
+            const refKey = [query.scopeKey, query.generation, "live-text", lookupId, 0, 0].join("\u0000"),
+              ref = state.refs.get(refKey);
+            const targetKey = ref && compositeKey(query.scopeKey, ref.docId),
+              target = targetKey && state.docs.get(targetKey);
+            if (
+              !ref ||
+              !target ||
+              target.generation !== query.generation ||
+              target.kind !== "content" ||
+              target.state === "retired"
+            ) {
               covered = false;
               break;
             }
-          } finally {
-            targetLoaded?.dispose();
+            observedRefs.set(refKey, ref);
+            observedDocs.set(targetKey, target);
+            if (target === doc) {
+              if (!validLiveTextRef(ref, canonical.get(ref.recordId), digest)) {
+                covered = false;
+                break;
+              }
+            } else {
+              const refs = targets.get(target) ?? [];
+              refs.push(ref);
+              targets.set(target, refs);
+            }
           }
-        }
+        })();
+        loaded.releaseBody();
+        if (covered)
+          for (const [target, refs] of targets) {
+            const other = loadCoverageDoc(target, state);
+            if (!other) {
+              covered = false;
+              break;
+            }
+            try {
+              const valid = (() => {
+                const canonical = canonicalContentRecords(other.value);
+                return refs.every((ref) => validLiveTextRef(ref, canonical.get(ref.recordId), digest));
+              })();
+              if (!valid) {
+                covered = false;
+                break;
+              }
+            } finally {
+              other.dispose();
+            }
+          }
+        commitAccountedSets((pending) => {
+          if (covered)
+            try {
+              pending.push(
+                state.docs.prepareSharing(key, { ...doc, textCoverage: true, textCoverageRevision: revision }, [
+                  "transportCache",
+                ]),
+              );
+            } catch (error) {
+              if (!isCoverageBudgetRefusal(error)) throw error;
+              covered = false;
+            }
+          if (
+            state.generations.get(generationKey) !== generation ||
+            coverageRevision(generation) !== revision ||
+            [...observedDocs].some(([k, before]) => state.docs.get(k) !== before) ||
+            [...observedRefs].some(([k, before]) => state.refs.get(k) !== before)
+          )
+            fail("SEQUENCE_GAP", "text coverage changed during admission");
+        });
+        if (covered) result.add(id);
       } finally {
+        targets.clear();
+        observedDocs.clear();
+        observedRefs.clear();
         loaded.dispose();
       }
-      let valid = true;
-      commitAccountedSets((pending) => {
-        if (covered)
-          pending.push(
-            state.docs.prepareSharing(key, { ...doc, textCoverage: covered, textCoverageRevision: revision }, [
-              "transportCache",
-            ]),
-          );
-        valid =
-          state.generations.get(generationKey) === generation &&
-          coverageRevision(generation) === revision &&
-          [...observedDocs].every(([k, before]) => state.docs.get(k) === before) &&
-          [...observedRefs].every(([k, before]) => state.refs.get(k) === before);
-        if (!valid) fail("SEQUENCE_GAP", "text coverage changed during admission");
-      });
-      if (covered && valid) result.add(id);
     }
     if (state.generations.get(generationKey) !== generation || coverageRevision(generation) !== revision)
       fail("SEQUENCE_GAP", "text coverage generation changed during admission");

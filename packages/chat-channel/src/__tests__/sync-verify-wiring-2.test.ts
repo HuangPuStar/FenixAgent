@@ -280,7 +280,8 @@ describe("V2 出帧网关：终态收敛与可重入", () => {
       seen.add(frame.deliveryId);
     }
     expect(duplicated).toEqual([]);
-    expect(updateGaps(h.transport.sent, CONTENT_DOC, baseSeqOf(h, CONTENT_DOC) + 1)).toEqual([]);
+    expect(delivered.some((frame) => frame.type === "DOC_UPDATE" && frame.docId === WRITE_DOC)).toBe(true);
+    expect(updateGaps(h.transport.sent, WRITE_DOC, baseSeqOf(h, WRITE_DOC) + 1)).toEqual([]);
   });
 });
 

@@ -149,6 +149,7 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
     range: { readonly docId: string; readonly fromSeq: number; readonly toSeq: number } | null,
     out: OutboundFrame[],
   ): boolean {
+    if (state === "closed") return false;
     const bytes = encodeSyncFrame(frame);
     if (range !== null && bytes.length > deps.capacity.concurrency.connectionBodyWindowBytes) {
       // 存量大 base 可能早于收紧后的档位；永久不可能获额的任务必须显式失败。
@@ -216,7 +217,7 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
   /** 推进一个 Doc：待通告 RESYNC → 探窗口 → 未发 base → 等 base 回执 → 补发 BASE_READY → 续发 tail，每次只做当前该做的那一步；被额度拒绝或还在等回执时停在
    *  原处，下一次由 ACK/tick 从同一位置重试，不需要待发队列（存储是内容权威）。返回该 Doc 是否已追平。 */
   async function pumpDoc(doc: DocAttempt, out: OutboundFrame[]): Promise<boolean> {
-    if (doc.busy) return false;
+    if (state === "closed" || doc.busy) return false;
     doc.busy = true;
     try {
       const current = manifest;
@@ -311,16 +312,22 @@ export function createProviderSession(deps: ProviderSessionDeps): ProviderSessio
     const out: OutboundFrame[] = [];
     const current = manifest;
     if (state === "closed" || current === null) return out;
-    if (pendingGenerationNotice) {
-      const frame: GenerationReplaceFrame = { type: "GENERATION_REPLACE", protocolVersion, ...current.entry };
-      if (emit(frame, identity.createDeliveryId(random), "control", null, out)) pendingGenerationNotice = false;
+    try {
+      if (pendingGenerationNotice) {
+        const frame: GenerationReplaceFrame = { type: "GENERATION_REPLACE", protocolVersion, ...current.entry };
+        if (emit(frame, identity.createDeliveryId(random), "control", null, out)) pendingGenerationNotice = false;
+      }
+      for (const doc of [...attempts.values()]) {
+        if (out.length >= MAX_FRAMES_PER_PASS) break;
+        if (await pumpDoc(doc, out)) quota.clearDirty(doc.docId);
+      }
+      refreshState();
+      return out;
+    } catch (error) {
+      // 本趟未交接的帧已推进游标或控制状态，丢弃输出后必须清账终止，不能留下无ACK期限的投递。
+      if (out.length > 0) closeSession();
+      throw error;
     }
-    for (const doc of [...attempts.values()]) {
-      if (out.length >= MAX_FRAMES_PER_PASS) break;
-      if (await pumpDoc(doc, out)) quota.clearDirty(doc.docId);
-    }
-    refreshState();
-    return out;
   }
 
   async function handshake(input: HandshakeInput): Promise<readonly OutboundFrame[]> {

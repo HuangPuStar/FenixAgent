@@ -138,7 +138,11 @@ export async function textClaimHandoffFixture(wrap: (store: ProjectionStore) => 
         const context = `generation=${committed.currentGeneration}, pointerRevision=${committed.pointerRevision}`;
         requireCommitted("commitGeneration", committed.outcome, context);
         const current = await store.readScopePointer(key);
-        if (current?.currentGeneration !== generation || current.pointerRevision !== committed.pointerRevision)
+        if (
+          committed.currentGeneration !== generation ||
+          current?.currentGeneration !== generation ||
+          current.pointerRevision !== committed.pointerRevision
+        )
           throw new Error(`replacement pointer differs: ${context}`);
       } finally {
         await store.releaseWriter?.(lease);

@@ -137,7 +137,11 @@ export class WriterAuthority {
     try {
       await this.store.confirmWriter(token.lease, generation);
     } catch (error) {
-      if (this.isCurrent(token) && error instanceof SyncProtocolError && error.code === "LEASE_EXPIRED") {
+      if (
+        this.isCurrent(token) &&
+        error instanceof SyncProtocolError &&
+        (error.code === "LEASE_EXPIRED" || error.code === "WRITER_EPOCH_LOST")
+      ) {
         this.currentLease = null;
         this.leaseLoss = error;
       }

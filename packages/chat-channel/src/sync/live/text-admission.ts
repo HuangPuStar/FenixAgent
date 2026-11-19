@@ -1,5 +1,6 @@
 import type * as Y from "yjs";
 import { SyncProtocolError } from "../protocol/errors";
+import type { MergeKey } from "./merge-buffer";
 import { isTextBatchNotWritten } from "./text-batch-commit";
 import { isTextClaimInvalidated, type TextClaim } from "./text-claim";
 import { textClaimKey } from "./text-claim-history";
@@ -35,8 +36,28 @@ export function admitText(input: {
   readonly contentSlot: string;
   readonly snapshot: () => TextAdmissionSnapshot;
   readonly admit: (snapshot: TextAdmissionSnapshot) => Promise<void> | null;
+  readonly pendingFlush: (snapshot: TextAdmissionSnapshot) => Promise<void> | null;
 }): Promise<void> {
   return coalesceAdmission(input, input.snapshot(), 0);
+}
+
+/** 同代新 token 重放前重新核对 canonical；只有已提交身份和当前写权共同成立才能退休原正文。 */
+export async function revalidateRetainedText(input: {
+  readonly claim: TextClaim;
+  readonly authority: WriterAuthority;
+  readonly token: WriterAuthorityToken;
+  readonly key: MergeKey;
+  readonly activeDoc: Y.Doc;
+  readonly historyDocIds: readonly string[];
+}): Promise<boolean> {
+  const { authority, token, key } = input;
+  authority.assertCurrent(token);
+  if (token.generation !== key.generation)
+    throw new SyncProtocolError("GENERATION_MISMATCH", { message: "retained text crosses its installed projection" });
+  const replay = await input.claim.claim({ ...input, ...key });
+  authority.assertCurrent(token);
+  if (!replay) await authority.confirm(token, key.generation);
+  return replay;
 }
 
 /** 旧投影重判同样进入新 token 的共享任务，旧回调只结清自己持有的 map。 */
@@ -101,6 +122,11 @@ async function admitClaim(
     if (invalidation === undefined && advanced === undefined && input.authority.isInstalled(snapshot.token)) {
       if (accepted) {
         await input.admit(snapshot);
+        return;
+      }
+      const pending = input.pendingFlush(snapshot);
+      if (pending !== null) {
+        await pending;
         return;
       }
       try {

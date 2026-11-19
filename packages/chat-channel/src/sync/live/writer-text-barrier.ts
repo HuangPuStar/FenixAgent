@@ -1,127 +1,278 @@
 import type { AdmissionController, Reservation } from "../capacity/admission";
-import { isRetryableTextRefusal } from "./text-admission";
+import { textInputReservations } from "../capacity/text-plan-reservations";
+import type { Clock } from "../clock";
+import { SyncProtocolError } from "../protocol/errors";
+import { createMergeBuffer, type MergeBuffer, type MergeFlushRequest, type MergeKey } from "./merge-buffer";
+import { isTextBatchNotWritten } from "./text-batch-commit";
+import type { WriterAuthorityToken } from "./writer-authority";
 
-const ENTRY_BYTES = 256;
+type FlushState = "buffered" | "ready" | "queued" | "writing" | "refused";
 
-/** 已排队正文先占有界索引额度；拒绝只阻挡屏障，匹配正文成功后即可重试语义。 */
+/** 窗口对象即重放身份；同 key 的后续窗口不能替它确认，更不能覆盖它的原文。 */
+interface RetainedFlush {
+  readonly key: MergeKey;
+  readonly idempotent: boolean;
+  readonly holds: Reservation[];
+  revalidate: boolean;
+  request: MergeFlushRequest | null;
+  state: FlushState;
+  attempt: Promise<void> | null;
+  error: unknown;
+  notWritten: boolean;
+}
+
+/** 合并、保留与提交队列共享一个 owner，接纳前计费，只有确定提交或显式退休才释放正文。 */
 export class WriterTextBarrier {
-  private readonly reservations = new Set<Reservation>();
-  private readonly active = new Set<Reservation>();
-  private readonly retainedHolds = new Set<Reservation>();
-  private readonly refusals = new Map<string, { readonly error: unknown; readonly holds: Set<Reservation> }>();
-  /** 首次接纳文本前先计提固定槽，排队池耗尽后仍能记录一次拒绝。 */
-  private overflowSlot: Reservation | null = null;
-  private overflow: { readonly key: string; readonly error: unknown } | null = null;
+  private readonly entries: RetainedFlush[] = [];
+  private buffered: RetainedFlush | null = null;
+  private merge: MergeBuffer;
+  private paused = false;
+  private closed = false;
+  private lastScheduled: Promise<void> | null = null;
+  private incoming: { holds: Reservation[]; idempotent: boolean } | null = null;
 
-  constructor(private readonly admission: AdmissionController) {}
-
-  /** 排队前预留；调用方将同步失败转成可观察回执，timer 不得抛未处理异常。 */
-  reserve(): Reservation {
-    this.ensureSlot();
-    const hold = this.admission.reserve("controlIndex", ENTRY_BYTES);
-    this.reservations.add(hold);
-    return hold;
+  constructor(
+    private readonly options: {
+      readonly admission: AdmissionController;
+      readonly clock: Clock;
+      readonly merge: { readonly maxDelayMs: number; readonly maxBytes: number };
+      readonly capture: () => WriterAuthorityToken;
+      readonly enqueue: (task: () => Promise<void>) => Promise<void>;
+      readonly write: (request: MergeFlushRequest, token: WriterAuthorityToken) => Promise<void>;
+      readonly shouldReplay: (key: MergeKey, token: WriterAuthorityToken) => Promise<boolean>;
+      readonly isCurrent: (token: WriterAuthorityToken) => boolean;
+      readonly onFailure: (error: unknown) => void;
+    },
+  ) {
+    this.merge = this.createMerge();
   }
 
-  /** 排队、拒绝保留和回收共用捕获投影的判据，旧异步结算不能写回新投影。 */
-  enqueue(input: {
-    readonly key: string;
-    readonly enqueue: (task: () => Promise<void>) => Promise<void>;
-    readonly write: () => Promise<void>;
-    readonly isCurrent: () => boolean;
-    readonly onSchedulingRefusal: () => void;
-    readonly onFailure: (error: unknown) => void;
-  }): Promise<void> {
-    let hold: Reservation;
-    const reusable = [...(this.refusals.get(input.key)?.holds ?? [])].find((entry) => !this.active.has(entry));
+  /** 新增量只在未阻塞的输入门内接纳；已拒绝窗口由显式屏障或幂等重发重试。 */
+  push(key: MergeKey, delta: string, idempotent = false): Promise<void> | null {
+    if (this.closed || this.paused)
+      throw new SyncProtocolError("WRITER_EPOCH_LOST", { message: "text input is paused" });
+    const head = this.entries[0];
+    if (head?.state === "refused") throw head.error;
+    if (delta.length === 0) return null;
+    // 在 key switch 冲刷旧窗口之前取得新输入全部额度，拒绝连旧 timer 都不改变。
+    const holds = this.reserveInput(key, delta);
+    const previous = this.lastScheduled;
+    this.incoming = { holds, idempotent };
     try {
-      hold = reusable ?? this.reserve();
-      this.active.add(hold);
-    } catch (error) {
-      this.refuseOverflow(input.key, error);
-      input.onSchedulingRefusal();
-      return Promise.reject(error);
+      // 幂等用户消息与流式 chunk 不能共用窗口，否则恢复判重会连合法后继一起退休。
+      if (this.buffered !== null && this.buffered.idempotent !== idempotent) this.merge.barrier();
+      this.merge.push(key, delta);
+    } finally {
+      if (this.incoming !== null) for (const hold of this.incoming.holds) hold.release();
+      this.incoming = null;
     }
-    const task = input.enqueue(() =>
-      input.write().catch((error: unknown) => {
-        if (input.isCurrent()) {
-          if (isRetryableTextRefusal(error)) {
-            this.refuse(input.key, error, hold);
-          } else input.onFailure(error);
-        }
-        throw error;
-      }),
+    return this.lastScheduled === previous ? null : this.lastScheduled;
+  }
+
+  /** 保留正文仍拥有该身份；后续新 chunk 拒绝不得释放原来幂等输入的声明。 */
+  retains(generation: string, entryId: string, contentSlot: string): boolean {
+    return this.entries.some(
+      (entry) =>
+        entry.idempotent &&
+        entry.key.generation === generation &&
+        entry.key.entryId === entryId &&
+        entry.key.contentSlot === contentSlot,
     );
-    return task.finally(() => {
-      this.active.delete(hold);
-      if (!this.retainedHolds.has(hold)) this.release(hold);
+  }
+
+  /** 重发共享已开始的精确 attempt；尚未触发冲刷的缓冲不被判重确认意外冲刷。 */
+  pending(generation: string, entryId: string, contentSlot: string): Promise<void> | null {
+    let target: RetainedFlush | undefined;
+    for (let index = this.entries.length - 1; index >= 0; index--) {
+      const entry = this.entries[index]!;
+      if (
+        entry.request !== null &&
+        entry.idempotent &&
+        entry.key.generation === generation &&
+        entry.key.entryId === entryId &&
+        entry.key.contentSlot === contentSlot
+      ) {
+        target = entry;
+        break;
+      }
+    }
+    if (!target) return null;
+    if (target.state === "queued" || target.state === "writing") return target.attempt;
+    return this.flushThrough(target);
+  }
+
+  /** 一次显式调用最多重试队首一次；所有后继都等该原窗口确实提交后才执行。 */
+  async flush(): Promise<void> {
+    if (this.closed) return;
+    const retrying = this.entries[0]?.state === "refused";
+    this.collectBuffered();
+    const target = this.entries.at(-1);
+    if (target) await this.flushThrough(target, retrying);
+  }
+
+  /** 冻结只停止 timer 和新输入，旧缓冲转换成已计费 request，不丢已确认的正文。 */
+  pause(): void {
+    if (this.closed || this.paused) return;
+    this.paused = true;
+    this.merge.barrier();
+    this.merge.dispose();
+  }
+
+  /** 同代重建保留确定未写窗口；真正换代才退休旧代正文，未知回执始终停写。 */
+  resume(generation: string): void {
+    for (const entry of [...this.entries]) {
+      if (entry.key.generation !== generation) this.remove(entry);
+      else if (entry.error !== null && !entry.notWritten) throw entry.error;
+      else entry.revalidate = entry.idempotent;
+    }
+    this.paused = false;
+    this.merge = this.createMerge();
+  }
+
+  /** 调用方已尝试显式结清或已得到失败回执，退休时释放本 owner 的全部保留额度。 */
+  close(): void {
+    this.closed = true;
+    this.merge.dispose();
+    for (const entry of [...this.entries]) this.remove(entry);
+  }
+
+  private createMerge(): MergeBuffer {
+    return createMergeBuffer({
+      ...this.options.merge,
+      clock: this.options.clock,
+      beforeAppend: (key, delta) => this.retain(key, delta),
+      onFlush: (request) => this.acceptFlush(request),
     });
   }
 
-  /** 已有未写正文时只接受其重试，防止无关新输入持续积累拒绝。 */
-  assertInput(key: string): void {
-    this.ensureSlot();
-    if (this.refusals.has(key) || this.overflow?.key === key) return;
-    this.assertReady();
+  /** 字符串、合并副本和任务元数据均在缓冲变更前计费，拒绝只回滚本次预留。 */
+  private reserveInput(key: MergeKey, delta: string): Reservation[] {
+    const holds: Reservation[] = [];
+    try {
+      const budget = textInputReservations(
+        Object.values(key).reduce((sum, value) => sum + value.length, 0),
+        delta.length,
+      );
+      holds.push(this.options.admission.reserve("controlIndex", budget.controlIndex));
+      holds.push(this.options.admission.reserve("ingressSpool", budget.ingressSpool));
+    } catch (error) {
+      for (const hold of holds) hold.release();
+      throw error;
+    }
+    return holds;
   }
 
-  /** 所有已接纳正文均确认后才可发布语义事件。 */
-  assertReady(): void {
-    if (this.overflow !== null) throw this.overflow.error;
-    for (const refusal of this.refusals.values()) throw refusal.error;
+  private retain(key: MergeKey, _delta: string): void {
+    const incoming = this.incoming;
+    if (incoming === null) throw new Error("merge append has no input reservation");
+    this.incoming = null;
+    if (this.buffered === null) {
+      this.buffered = {
+        key: { ...key },
+        idempotent: incoming.idempotent,
+        holds: [],
+        revalidate: false,
+        request: null,
+        state: "buffered",
+        attempt: null,
+        error: null,
+        notWritten: true,
+      };
+      this.entries.push(this.buffered);
+    }
+    this.buffered.holds.push(...incoming.holds);
   }
 
-  /** 未提交证明与原额度一起保留，同一 key 的其他拒绝不能覆盖更早的记录。 */
-  refuse(key: string, error: unknown, hold: Reservation): void {
-    const refusal = this.refusals.get(key) ?? { error, holds: new Set<Reservation>() };
-    refusal.holds.add(hold);
-    this.retainedHolds.add(hold);
-    this.refusals.set(key, refusal);
+  private acceptFlush(request: MergeFlushRequest): void {
+    const entry = this.buffered;
+    if (entry === null) throw new Error("merge flush has no retained input");
+    this.buffered = null;
+    entry.request = { ...request, key: entry.key };
+    entry.state = "ready";
+    if (!this.paused) this.start(entry);
   }
 
-  /** 同步排队额度拒绝最多一项；它生效后输入门立即阻止无关 key。 */
-  refuseOverflow(key: string, error: unknown): void {
-    this.overflow ??= { key, error };
+  /** collect 不自动排队，避免显式重试把后继窗口排在待重试队首之前。 */
+  private collectBuffered(): void {
+    const paused = this.paused;
+    this.paused = true;
+    this.merge.barrier();
+    this.paused = paused;
   }
 
-  /** 仅 Store 已确认的匹配重试可以消除拒绝，并归还原任务的索引额度。 */
-  confirm(key: string): void {
-    const refusal = this.refusals.get(key);
-    if (refusal)
-      for (const hold of refusal.holds) {
-        this.retainedHolds.delete(hold);
-        // 同 key 的后继重试可能已借用此占用并排队，必须等该任务自身结清再归还。
-        if (!this.active.has(hold)) this.release(hold);
+  private async flushThrough(target: RetainedFlush, retrying = true): Promise<void> {
+    if (retrying && this.entries[0]?.state === "refused") {
+      // 原队列可能还有未执行的后继；先让它们观察旧拒绝，再按 FIFO 启动新的 attempt。
+      await Promise.allSettled(
+        this.entries
+          .filter((entry) => entry.state === "queued" || entry.state === "writing")
+          .map((entry) => entry.attempt!),
+      );
+    }
+    const end = this.entries.indexOf(target);
+    if (end < 0) return;
+    const prefix = this.entries.slice(0, end + 1);
+    for (const entry of prefix) {
+      if (entry.request === null) continue;
+      if (entry.state !== "queued" && entry.state !== "writing") {
+        if (entry.error !== null && !entry.notWritten) throw entry.error;
+        this.start(entry);
       }
-    this.refusals.delete(key);
-    if (this.overflow?.key === key) this.overflow = null;
+    }
+    const results = await Promise.allSettled(prefix.map((entry) => entry.attempt!));
+    for (const result of results) if (result.status === "rejected") throw result.reason;
   }
 
-  /** 旧任务结清只释放自己的占用，不修改已安装投影上的拒绝状态。 */
-  release(hold: Reservation): void {
-    hold.release();
-    this.reservations.delete(hold);
-    this.active.delete(hold);
+  /** 写入前重校窗口身份，native writer queue 吞掉 rejection 也不能让后继越过队首。 */
+  private start(entry: RetainedFlush): void {
+    const token = this.options.capture();
+    entry.state = "queued";
+    let entered = false;
+    const attempt = this.options
+      .enqueue(async () => {
+        if (this.entries[0] !== entry)
+          throw this.entries[0]?.error ?? new Error("text flush is behind its retained predecessor");
+        entry.state = "writing";
+        if (entry.revalidate) {
+          const replay = await this.options.shouldReplay(entry.key, token);
+          entry.revalidate = false;
+          if (!replay) {
+            this.remove(entry);
+            return;
+          }
+        }
+        entered = true;
+        await this.options.write(entry.request!, token);
+        this.remove(entry);
+      })
+      .catch((error: unknown) => {
+        if (this.entries.includes(entry)) {
+          entry.state = "refused";
+          entry.error = error;
+          entry.notWritten = !entered || isTextBatchNotWritten(error);
+          if (
+            entered &&
+            this.options.isCurrent(token) &&
+            (!entry.notWritten ||
+              !(error instanceof SyncProtocolError) ||
+              (error.code !== "ADMISSION_REJECTED" &&
+                error.code !== "LEASE_EXPIRED" &&
+                error.code !== "WRITER_EPOCH_LOST"))
+          )
+            this.options.onFailure(error);
+        }
+        throw error;
+      });
+    entry.attempt = attempt;
+    this.lastScheduled = attempt;
+    void attempt.catch(() => {});
   }
 
-  /** 重建代次时清除旧投影的全部任务占用，迟到 release 仍保持幂等。 */
-  reset(): void {
-    for (const hold of this.reservations) hold.release();
-    this.reservations.clear();
-    this.active.clear();
-    this.retainedHolds.clear();
-    this.refusals.clear();
-    this.overflow = null;
-  }
-
-  /** 关闭释放固定应急槽，不能留下已退休 writer 的索引占用。 */
-  close(): void {
-    this.reset();
-    this.overflowSlot?.release();
-    this.overflowSlot = null;
-  }
-
-  private ensureSlot(): void {
-    this.overflowSlot ??= this.admission.reserve("controlIndex", ENTRY_BYTES);
+  private remove(entry: RetainedFlush): void {
+    const index = this.entries.indexOf(entry);
+    if (index >= 0) this.entries.splice(index, 1);
+    if (this.buffered === entry) this.buffered = null;
+    for (const hold of entry.holds) hold.release();
+    entry.holds.length = 0;
   }
 }

@@ -7,6 +7,7 @@ import { createSealingMachine, type SealRequest } from "../sync/live/sealing";
 import { buildDocId, scopeKey } from "../sync/protocol/identity";
 import { MemoryProjectionStore } from "../sync/store/memory-store";
 import type { ProjectionStore, SealDocInput, SyncDocRecord } from "../sync/store/types";
+import { exactSealingSnapshot, SealingAdmission } from "./sync-sealing-admission-fixture";
 
 const SCOPE = { organizationId: "r6", rcsSessionId: "quota" };
 const KEY = scopeKey(SCOPE);
@@ -15,7 +16,7 @@ const clock = { now: () => 1000 };
 
 /** 真实预算与当前代次；只有回执故障使用委托，不替换存储的提交行为。 */
 async function fixture(baseSnapshot?: Uint8Array) {
-  const admission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+  const admission = new SealingAdmission(DEFAULT_SYNC_CAPACITY);
   const store = new MemoryProjectionStore({
     clock,
     digest: sha256Digest,
@@ -68,6 +69,7 @@ async function fixture(baseSnapshot?: Uint8Array) {
     retired: [],
   });
   const edit = new Y.Doc();
+  edit.clientID = 67890;
   edit.getText("body").insert(0, "tail");
   const bytes = Y.encodeStateAsUpdate(edit);
   edit.destroy();
@@ -154,9 +156,25 @@ test("路由额度确定拒绝时原子撤销 successor，释放额度后可重�
 
 // 最后一份前驱元数据也必须预留成功，差一字节不能留下先准备成功的新后继与路由。
 test("原子路由在全部元数据精确边界提交，拒绝可重复且无部分登记", async () => {
+  const probe = await fixture();
+  let boundary: Awaited<ReturnType<SealingAdmission["measurePeak"]>>;
+  try {
+    boundary = await probe.admission.measurePeak("controlIndex", () =>
+      probe.store.registerSuccessor({
+        scopeKey: KEY,
+        epoch: probe.lease.epoch,
+        predecessorDocId: probe.a,
+        successorDocId: probe.b,
+        expectedLastSeq: 1,
+        successorDoc: probe.record(probe.b),
+      }),
+    );
+  } finally {
+    probe.store.dispose();
+  }
+  expectReleased(probe.admission);
   const f = await fixture();
-  // 新后继/ledger/route 2612 + sealing 前驱元数据 1964 = 4576 字节峰值。
-  const blocker = leaveAvailable(f.admission, "controlIndex", 4575);
+  const blocker = leaveAvailable(f.admission, "controlIndex", boundary.peakBytes - 1);
   let exact: ReturnType<typeof leaveAvailable> | undefined;
   const before = f.store.exportCommittedState();
   const charged = usage(f.admission);
@@ -175,9 +193,9 @@ test("原子路由在全部元数据精确边界提交，拒绝可重复且无�
       expect(usage(f.admission)).toEqual(charged);
     }
     blocker.release();
-    exact = leaveAvailable(f.admission, "controlIndex", 4576);
+    exact = leaveAvailable(f.admission, "controlIndex", boundary.peakBytes);
     await expect(f.store.registerSuccessor(input)).resolves.toEqual({ outcome: "committed" });
-    expect(f.admission.available("controlIndex")).toBe(1972);
+    expect(f.admission.available("controlIndex")).toBe(boundary.releasedBytes);
     const committed = usage(f.admission);
     await expect(f.store.registerSuccessor(input)).resolves.toEqual({ outcome: "already-committed" });
     expect(usage(f.admission)).toEqual(committed);
@@ -192,18 +210,23 @@ test("原子路由在全部元数据精确边界提交，拒绝可重复且无�
 
 // 封口共享原有 base 缓冲，新 transport 仅须容纳 40 KiB 的 final，不应再次申请 32 KiB 的 base。
 test("32 KiB base 在 48 KiB transport 余量内能完成 40 KiB 封口", async () => {
-  const f = await fixture(new Uint8Array(32 * 1024).fill(7));
+  const base = exactSealingSnapshot(32 * 1024, "b"),
+    expectedBase = base.slice();
+  const f = await fixture(base);
   await f.registerRoute();
   const blocker = leaveAvailable(f.admission, "transportCache", 48 * 1024);
   const before = f.admission.used("transportCache");
-  const final = new Uint8Array(40 * 1024).fill(9);
+  const final = exactSealingSnapshot(40 * 1024, "f"),
+    expectedFinal = final.slice();
   try {
     await expect(f.store.sealDoc(f.sealInput(final))).resolves.toEqual({ outcome: "committed", finalSeq: 1 });
     expect(f.admission.used("transportCache")).toBe(before + 40 * 1024);
-    expect((await f.store.readDocStateAt(f.a, 0))?.snapshot[0]).toBe(7);
+    expect((await f.store.readDocStateAt(f.a, 0))?.snapshot).toEqual(expectedBase);
     expect((await f.store.readDocStateAt(f.a, 1))?.snapshot).toEqual(final);
     final.fill(3);
-    expect((await f.store.readDocStateAt(f.a, 1))?.snapshot[0]).toBe(9);
+    base.fill(3);
+    expect((await f.store.readDocStateAt(f.a, 0))?.snapshot).toEqual(expectedBase);
+    expect((await f.store.readDocStateAt(f.a, 1))?.snapshot).toEqual(expectedFinal);
   } finally {
     blocker.release();
     f.store.dispose();
@@ -213,9 +236,9 @@ test("32 KiB base 在 48 KiB transport 余量内能完成 40 KiB 封口", async 
 
 // 差 1 字节必须无副作用；归还该字节后，同一已登记路由应在精确边界重试成功。
 test("封口在 final 字节精确边界重试，失败不改变状态、指针或池额度", async () => {
-  const f = await fixture(new Uint8Array(32 * 1024).fill(7));
+  const f = await fixture(exactSealingSnapshot(32 * 1024, "b"));
   await f.registerRoute();
-  const final = new Uint8Array(40 * 1024).fill(9);
+  const final = exactSealingSnapshot(40 * 1024, "f");
   const blocker = leaveAvailable(f.admission, "transportCache", final.byteLength - 1);
   let exact: ReturnType<typeof leaveAvailable> | undefined;
   const before = f.store.exportCommittedState();
@@ -244,12 +267,12 @@ test("封口在 final 字节精确边界重试，失败不改变状态、指针�
 
 // transport 先取得而后续元数据申请失败时，必须归还新 quota 并保留原 base charge。
 test("封口元数据拒绝不会泄漏已预留 final 字节，释放后重试成功", async () => {
-  const f = await fixture(new Uint8Array(32 * 1024).fill(7));
+  const f = await fixture(exactSealingSnapshot(32 * 1024, "b"));
   await f.registerRoute();
   const blocker = leaveAvailable(f.admission, "controlIndex", 1);
   const before = f.store.exportCommittedState();
   const charged = usage(f.admission);
-  const final = new Uint8Array(40 * 1024).fill(9);
+  const final = exactSealingSnapshot(40 * 1024, "f");
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       await expect(f.store.sealDoc(f.sealInput(final))).rejects.toMatchObject({ code: "ADMISSION_REJECTED" });
@@ -315,12 +338,11 @@ for (const mismatch of ["kind", "state", "used", "base"] as const) {
   test(`原子后继登记拒绝复用不匹配的既有目标：${mismatch}`, async () => {
     const f = await fixture();
     const candidate = f.record(f.b);
+    const otherBase = exactSealingSnapshot(64, "m");
     const target = {
       ...candidate,
       ...(mismatch === "kind" ? { kind: "content" as const } : {}),
-      ...(mismatch === "base"
-        ? { snapshot: new Uint8Array([0, 0, 0]), hash: sha256Digest(new Uint8Array([0, 0, 0])) }
-        : {}),
+      ...(mismatch === "base" ? { snapshot: otherBase, hash: sha256Digest(otherBase) } : {}),
     };
     if (mismatch === "state")
       await f.store.putSealedIfAbsent({

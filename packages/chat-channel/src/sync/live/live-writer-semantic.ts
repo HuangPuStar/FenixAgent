@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { contentStatsOverflow } from "../capacity/content-doc-limits";
+import { createEncodedStateBound, type EncodedStateBound } from "../capacity/encoded-state-bound";
 import { MAX_DOC_SNAPSHOT_BYTES } from "../protocol/frames";
 import { boundaryPayload } from "./boundary-index";
 import { captureSlice } from "./change-capture";
@@ -97,36 +98,46 @@ export function planSemanticWrite(input: {
   }
 }
 
-/** WeakMap 只持有固定大小计数；增量相加是整篇编码的保守上界，不保存快照或正文。 */
-const ENCODED_BOUNDS = new WeakMap<Y.Doc, { bytes: number }>();
+/** 仅缓存含拆分余量的数值证明，跨入口的任意 Yjs 更新也不能绕过真实编码检查。 */
+const ENCODED_BOUNDS = new WeakMap<Y.Doc, EncodedStateBound>();
 function encodedUpperBound(doc: Y.Doc): number {
   let bound = ENCODED_BOUNDS.get(doc);
   if (!bound) {
-    bound = { bytes: Y.encodeStateAsUpdate(doc).byteLength };
+    const snapshot = Y.encodeStateAsUpdate(doc);
+    bound = createEncodedStateBound(snapshot);
+    bound.calibrate(snapshot.byteLength, doc);
     ENCODED_BOUNDS.set(doc, bound);
     const observed = bound;
     doc.on("update", (update: Uint8Array) => {
-      observed.bytes += update.byteLength;
+      observed.add(update);
     });
   }
-  return bound.bytes;
+  // pending-only apply 不发 update 事件；未集成结构仍进入快照，须交给精确检查点计提。
+  return doc.store.pendingStructs !== null || doc.store.pendingDs !== null
+    ? Number.POSITIVE_INFINITY
+    : bound.upperBytes;
+}
+
+/** pending 快照补齐事件流不可见的结构信用，直到依赖集成后才允许清零。 */
+function calibrateMeasured(doc: Y.Doc, snapshot: Uint8Array): void {
+  const bound = ENCODED_BOUNDS.get(doc);
+  if (doc.store.pendingStructs !== null || doc.store.pendingDs !== null) bound?.add(snapshot);
+  bound?.calibrate(snapshot.byteLength, doc);
 }
 
 /** 临近硬限才精确编码，并校准累计上界，避免旧 delete set 被反复累计。 */
 function exactSize(doc: Y.Doc): number {
   encodedUpperBound(doc);
-  const size = Y.encodeStateAsUpdate(doc).byteLength;
-  const bound = ENCODED_BOUNDS.get(doc);
-  if (bound) bound.bytes = size;
-  return size;
+  const snapshot = Y.encodeStateAsUpdate(doc);
+  calibrateMeasured(doc, snapshot);
+  return snapshot.byteLength;
 }
 
 /** 当前 clientID 必须沿用，才能精确包含实际 append 的 varint 与 struct 开销。 */
 function exactCandidateSize(source: Y.Doc, mutate: (doc: Y.Doc) => void): number {
   const snapshot = Y.encodeStateAsUpdate(source);
   encodedUpperBound(source);
-  const bound = ENCODED_BOUNDS.get(source);
-  if (bound) bound.bytes = snapshot.byteLength;
+  calibrateMeasured(source, snapshot);
   const candidate = new Y.Doc();
   try {
     Y.applyUpdate(candidate, snapshot);
@@ -154,8 +165,10 @@ function semanticContentOverflow(
     const standaloneBytes = Y.encodeStateAsUpdate(candidate).byteLength;
     let encodedBytes = rotate ? standaloneBytes : encodedUpperBound(current.doc) + standaloneBytes + 32;
     const hard = Math.min(MAX_DOC_SNAPSHOT_BYTES, options.capacity.inputs.activeHardEncodedBytes);
-    if (!rotate && encodedBytes > hard) encodedBytes = exactCandidateSize(current.doc, (doc) => records(doc, values));
-    const existing = rotate ? [] : (records<unknown>(current.doc)?.toArray() ?? []);
+    const currentRecords = rotate ? undefined : records<unknown>(current.doc);
+    if (!rotate && (encodedBytes > hard || !(currentRecords instanceof Y.Array)))
+      encodedBytes = exactCandidateSize(current.doc, (doc) => records(doc, values));
+    const existing = currentRecords?.toArray() ?? [];
     return contentStatsOverflow(
       {
         encodedBytes,

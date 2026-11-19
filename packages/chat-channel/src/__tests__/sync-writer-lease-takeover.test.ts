@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Y from "yjs";
+import { AdmissionController } from "../sync/capacity/admission";
 import { DEFAULT_SYNC_CAPACITY } from "../sync/capacity/profile";
 import { type Clock, deterministicRandomSource, sha256Digest } from "../sync/clock";
 import {
@@ -190,7 +191,13 @@ function semantic(kind: "tool", entityId: string): LiveInput {
   };
 }
 
-function newWriter(time: TestClock, store: MemoryProjectionStore, seedValue: string): LiveWriter {
+/** 让调用方观察实际额度账目，关闭失败后仍须完整归还已接纳窗口。 */
+function newWriter(
+  time: TestClock,
+  store: MemoryProjectionStore,
+  seedValue: string,
+  admission: AdmissionController,
+): LiveWriter {
   const rotation: RotationControllerOptions = {
     clock: time,
     random: deterministicRandomSource(`${seedValue}-rotation`),
@@ -205,6 +212,7 @@ function newWriter(time: TestClock, store: MemoryProjectionStore, seedValue: str
     digest: sha256Digest,
     random: deterministicRandomSource(seedValue),
     capacity: DEFAULT_SYNC_CAPACITY,
+    admission,
     merge: { maxDelayMs: 600_000, maxBytes: 1 },
     limits: RUNTIME_DOC_LIMITS,
     rotation,
@@ -267,13 +275,15 @@ describe("第二写者接管", () => {
     const store = createStore(time, config);
     await seed(store, time);
 
-    const first = newWriter(time, store, "writer-first");
+    const firstAdmission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+    const secondAdmission = new AdmissionController(DEFAULT_SYNC_CAPACITY);
+    const first = newWriter(time, store, "writer-first", firstAdmission);
     await first.acquire();
     await first.accept(textDelta("entry-first", "from-first"));
     await first.accept(semantic("tool", "tool-first"));
 
     time.advance(LIVE_WRITER_LEASE_TTL_MS + 1);
-    const second = newWriter(time, store, "writer-second");
+    const second = newWriter(time, store, "writer-second", secondAdmission);
     await second.acquire();
     await second.accept(textDelta("entry-second", "from-second"));
     await second.accept(semantic("tool", "tool-second"));
@@ -289,7 +299,18 @@ describe("第二写者接管", () => {
 
     expect(rejection?.code).toBe("LEASE_EXPIRED");
     expect(committedTexts(store, CONTENT_DOC)).toEqual(["from-first", "from-second"]);
-    await first.close();
+    const closeRejection = await first.close().then(
+      () => null,
+      (error: unknown) => asProtocolError(error),
+    );
+    expect(closeRejection).toBe(rejection);
+    expect(closeRejection?.cause).toBe(rejection?.cause);
+    expect(firstAdmission.used("controlIndex")).toBe(0);
+    expect(firstAdmission.used("ingressSpool")).toBe(0);
+    expect(committedTexts(store, CONTENT_DOC)).toEqual(["from-first", "from-second"]);
+    await second.renew();
     await second.close();
+    expect(secondAdmission.used("controlIndex")).toBe(0);
+    expect(secondAdmission.used("ingressSpool")).toBe(0);
   });
 });

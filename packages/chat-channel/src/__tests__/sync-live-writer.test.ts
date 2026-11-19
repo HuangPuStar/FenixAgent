@@ -129,10 +129,11 @@ test("租约过期后旧 epoch 写入被拒并停写", async () => {
     await fix.writer.accept(textDelta("entry-1", "after"));
     await fix.writer.accept(semantic("error", { entityId: "err-1" }));
   };
-  await expect(expired()).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
+  const failure = await expired().catch((error: unknown) => error);
+  expect(failure).toMatchObject({ code: "LEASE_EXPIRED" });
   await expect(fix.writer.accept(textDelta("entry-1", "later"))).rejects.toMatchObject({ code: "LEASE_EXPIRED" });
   expect(readRecords(fix, fix.contentId).map(textOf)).toEqual(["before"]);
-  await fix.writer.close();
+  expect(await fix.writer.close().catch((error: unknown) => error)).toBe(failure);
 });
 
 // 轮换产出 (oldDocId, newDocId, requiredBaseSeq)：旧版封口后不再接受写入，未结束实体必须被搬运到新块。

@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { contentDocOverflow, contentRecordIds } from "../capacity/content-doc-limits";
+import { measuredEncodedStateBound } from "../capacity/encoded-state-bound";
 import type { SyncCapacityProfile } from "../capacity/profile";
 import type { Clock, DigestFn } from "../clock";
 import {
@@ -333,6 +334,7 @@ export function commitMemoryContentBatch(
     );
     try {
       const snapshot = Y.encodeStateAsUpdate(value);
+      const encodedStateBound = measuredEncodedStateBound(snapshot, value);
       if (doc.kind === "content")
         textIdentities.set(id, {
           before: doc.textCoverage === true && doc.textCoverageRevision === revision ? beforeText : null,
@@ -379,6 +381,7 @@ export function commitMemoryContentBatch(
         seal
           ? {
               ...doc,
+              encodedStateBound,
               lastSeq,
               state: "sealed",
               finalSeq: lastSeq,
@@ -386,7 +389,12 @@ export function commitMemoryContentBatch(
               hash: seal.finalHash,
               sealedAt: deps.clock.now(),
             }
-          : { ...doc, lastSeq, ...(doc.kind === "content" ? { contentUsage: contentUpdateUsage(snapshot) } : {}) },
+          : {
+              ...doc,
+              lastSeq,
+              encodedStateBound,
+              ...(doc.kind === "content" ? { contentUsage: contentUpdateUsage(snapshot) } : {}),
+            },
       );
       if (expected.has(id)) frontiers.push({ docId: id, lastSeq });
     } finally {

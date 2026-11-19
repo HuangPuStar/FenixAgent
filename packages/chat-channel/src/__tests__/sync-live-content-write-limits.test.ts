@@ -88,9 +88,12 @@ test("满内容块的 final 描述符轮换后与实体移除原子提交", asyn
         finalDescriptor: { kind: "tool", contentRef: "existing", digest: "digest", byteLength: 0, completedAt: 1000 },
       }),
     );
-    expect(f.store.exportCommittedState().docs.filter((doc) => doc.kind === "content")).toHaveLength(2);
+    const contentDocs = f.store.exportCommittedState().docs.filter((doc) => doc.kind === "content");
+    expect(contentDocs).toHaveLength(2);
     expect((await f.readAll()).map((record) => record.kind)).toEqual(["text", "final"]);
-    expect(finalBatch?.updates.map((update) => update.docId)).toHaveLength(2);
+    const successor = contentDocs.find((doc) => doc.blockIndex === 1);
+    expect(successor).toBeDefined();
+    expect(finalBatch?.updates.map((update) => update.docId).sort()).toEqual([successor!.docId, f.runtimeId].sort());
     const runtime = await loadCommittedDoc(f.store, f.runtimeId);
     if (!runtime) throw new Error("missing runtime");
     try {
