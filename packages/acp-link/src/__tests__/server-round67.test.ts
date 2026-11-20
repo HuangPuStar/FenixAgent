@@ -180,7 +180,7 @@ describe("createAcpClient round 67 内存传输分支", () => {
     expect(FakeWebSocket.instances[1]?.url).toBe("ws://registry.invalid/base/acp/file-ws?secret=round%2067%2Fsecret");
   });
 
-  // 文件连接打开时只向文件通道登记机器标识。
+  // 文件连接声明实际支持的条件覆盖和内容版本，服务端据此阻止旧节点被静默降级。
   test("文件连接打开时发送文件注册帧", async () => {
     createClient();
     await waitForSockets(1);
@@ -190,7 +190,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
     await Bun.sleep(0);
     const fileSocket = FakeWebSocket.instances[1];
     fileSocket?.open();
-    expect(JSON.parse(fileSocket?.sent[0] ?? "")).toEqual({ type: "register" });
+    expect(JSON.parse(fileSocket?.sent[0] ?? "")).toEqual({
+      type: "register",
+      capabilities: { uploadOverwrite: true, contentVersion: true },
+    });
   });
 
   // 重复注册必须关闭旧文件连接，避免旧连接泄漏。

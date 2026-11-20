@@ -39,12 +39,24 @@ export interface AgentFileScope {
 }
 /** 写操作可选参数（契约占位，P2 落地）：opId 幂等键 / ifMatch 条件写 / 审计字段 */
 export interface FileWriteOptions {
+  /** SHA-256 content condition checked at the file execution point. */
+  expectedVersion?: string;
   /** 仅创建：执行点原子排他打开，同名路径不得覆盖。 */
   createOnly?: boolean;
   opId?: string;
   ifMatch?: string;
   actorId?: string;
   source?: "user" | "agent" | "api";
+}
+/** Upload replacement requires an explicit opt-in; default uploads remain exclusive. */
+export interface FileUploadOptions extends FileWriteOptions {
+  /** Abort the underlying write before atomic replacement. */
+  signal?: AbortSignal;
+  overwrite?: boolean;
+}
+/** Content versions are opt-in to avoid hashing ordinary previews and directory trees. */
+export interface FileReadOptions {
+  includeVersion?: boolean;
 }
 export type ReadMode = "text" | "binary" | "auto";
 /** mtimeMs：ETag 派生用（§4.2 read 指纹）；远程数据源无 mtime → 缺省（路由层退化为 size-only 弱指纹） */
@@ -57,6 +69,7 @@ export type ReadResult =
       size: number;
       encoding: string;
       mtimeMs?: number;
+      version?: string;
     }
   | {
       type: "binary";
@@ -66,6 +79,7 @@ export type ReadResult =
       mimeType: string;
       stream: NodeJS.ReadableStream;
       mtimeMs?: number;
+      version?: string;
     };
 export interface TreeResult {
   paths: string[];
@@ -75,6 +89,7 @@ export interface TreeResult {
   errors?: { path: string; message: string }[];
 }
 export interface StatResult {
+  version?: string;
   size: number;
   isDirectory: boolean;
   modifiedAt: number;
@@ -82,17 +97,26 @@ export interface StatResult {
   isText?: boolean;
 }
 export interface WriteResult {
+  /** The content version actually committed, included for conditional editor saves. */
+  version?: string;
   name: string;
   path: string;
   size: number;
 }
 export interface UploadFileInput {
+  expectedVersion?: string;
   name: string;
   content: Uint8Array;
   relativePath?: string;
 }
 export interface UploadResult {
-  files: Array<{ name: string; path: string; size: number }>;
+  files: Array<{ name: string; path: string; size: number; version?: string }>;
+}
+/** The first upload failure retains the exact completed and unattempted targets. */
+export interface UploadFailureDetails {
+  completedFiles: UploadResult["files"];
+  failedFile: string;
+  remainingFiles: string[];
 }
 /** 统一错误码（§2.4）；version_conflict 为 W12b 预留 */
 export type FileErrorType =
@@ -115,6 +139,7 @@ export class FileServiceError extends Error {
     /** 409 version_conflict 时携带的当前版本（§4.4 覆盖可感知性，响应回显给消费者）；
      *  其他错误类型为 undefined */
     public readonly currentVersion?: { etag: string; mtimeMs: number; size: number },
+    public readonly details?: UploadFailureDetails,
   ) {
     super(message);
     this.name = "FileServiceError";

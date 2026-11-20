@@ -1,20 +1,12 @@
 import { spawn } from "node:child_process";
-import {
-  link,
-  lstat,
-  mkdir,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
-import { uploadWorkspaceFileExclusive } from "@fenix/plugin-sdk/secure-workspace-upload";
+import { link, lstat, mkdir, readdir, realpath, rename, rm, rmdir, stat, unlink } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
+import { opRead, opReadBinary, opStat, opUpload, opWrite } from "./file-content-operations";
+import { FileOpError, type FileOpResult, isErrnoException } from "./file-operation-errors";
+import { isWithinRoot, resolveAndValidate, shouldHideWorkspaceEntry } from "./file-operation-paths";
+
+export { setUploadBeforeWriteHookForTest } from "./file-content-operations";
+
 import { buildWorkspaceZipEnv } from "./workspace-zip-env.js";
 
 // 双向Base64消息共用128MiB预算，原文件为协议元信息保留余量。
@@ -33,31 +25,11 @@ export interface FileEntry {
 }
 
 interface FileOpMessage {
+  op_id?: string;
   type: "file_op";
   request_id: string;
   operation: string;
   params: Record<string, unknown>;
-}
-
-interface FileOpResult {
-  type: "file_op_result";
-  request_id: string;
-  status: "ok" | "error";
-  data?: unknown;
-  error?: string;
-  error_code?: "payload_too_large" | "operation_timeout" | "unsafe_symlink" | "busy" | "path_conflict";
-  status_code?: 409 | 413 | 429 | 503;
-}
-
-class FileOpError extends Error {
-  constructor(
-    message: string,
-    readonly errorCode: NonNullable<FileOpResult["error_code"]>,
-    readonly statusCode: NonNullable<FileOpResult["status_code"]>,
-  ) {
-    super(message);
-    this.name = "FileOpError";
-  }
 }
 
 // ============================================================================
@@ -80,151 +52,10 @@ export { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js"
  * - "" → {workspace}
  * Returns the absolute resolved path, or null if path escapes workspace.
  */
-function resolveAndValidate(workspace: string, relativePath: string): string | null {
-  const resolved = resolve(workspace, relativePath);
-
-  // Path traversal check: resolved must start with workspace
-  if (!resolved.startsWith(`${workspace}/`) && resolved !== workspace) {
-    return null;
-  }
-
-  return resolved;
-}
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-const TEXT_EXTENSIONS = new Set([
-  ".txt",
-  ".md",
-  ".json",
-  ".js",
-  ".ts",
-  ".tsx",
-  ".jsx",
-  ".css",
-  ".html",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".toml",
-  ".ini",
-  ".cfg",
-  ".conf",
-  ".sh",
-  ".bash",
-  ".zsh",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".java",
-  ".c",
-  ".cpp",
-  ".h",
-  ".hpp",
-  ".cs",
-  ".php",
-  ".swift",
-  ".kt",
-  ".scala",
-  ".lua",
-  ".pl",
-  ".r",
-  ".sql",
-  ".csv",
-  ".log",
-  ".env",
-  ".gitignore",
-  ".dockerignore",
-  ".editorconfig",
-  ".prettierrc",
-  ".eslintrc",
-  ".biome",
-  ".tsconfig",
-  ".makefile",
-  ".cmake",
-  ".gradle",
-  ".properties",
-  ".lock",
-  ".map",
-  ".wasm",
-  ".vue",
-  ".svelte",
-]);
-
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".bmp": "image/bmp",
-  ".pdf": "application/pdf",
-  ".html": "text/html",
-  ".htm": "text/html",
-  ".css": "text/css",
-  ".js": "text/javascript",
-  ".json": "application/json",
-  ".xml": "text/xml",
-  ".zip": "application/zip",
-  ".tar": "application/x-tar",
-  ".gz": "application/gzip",
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".eot": "application/vnd.ms-fontobject",
-};
-
-/**
- * @deprecated 文件树展示过滤已统一下沉到主服务 `src/routes/web/fs.ts`；
- * 如果后续主服务的过滤没有问题，这里可以移除。
- */
-const HIDDEN_WORKSPACE_ENTRIES = new Set([".opencode", ".claude", ".peri", "CLAUDE.md"]);
-
-/**
- * @deprecated 文件树展示过滤已统一下沉到主服务 `src/routes/web/fs.ts`；
- * 如果后续主服务的过滤没有问题，这里可以移除。
- */
-function shouldHideWorkspaceEntry(fullPath: string): boolean {
-  const name = basename(fullPath);
-  return HIDDEN_WORKSPACE_ENTRIES.has(name);
-}
-
-/**
- * Check if a file is text by reading first 8KB and looking for null bytes.
- * Uses extension hint as a fast path.
- */
-async function _isTextFile(filePath: string): Promise<boolean> {
-  const ext = filePath.lastIndexOf(".") >= 0 ? filePath.slice(filePath.lastIndexOf(".")).toLowerCase() : "";
-  if (TEXT_EXTENSIONS.has(ext)) return true;
-
-  try {
-    const _buffer = Buffer.alloc(8192);
-    const handle = await readFile(filePath);
-    const chunk = handle.subarray(0, 8192);
-    // Check for null bytes (binary indicator)
-    for (let i = 0; i < chunk.length; i++) {
-      if (chunk[i] === 0) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Get MIME type from file extension */
-function getMimeType(filePath: string): string {
-  const ext = filePath.lastIndexOf(".") >= 0 ? filePath.slice(filePath.lastIndexOf(".")).toLowerCase() : "";
-  return MIME_TYPES[ext] ?? "application/octet-stream";
-}
 
 // ============================================================================
 // Operations
@@ -260,170 +91,6 @@ async function opList(workspace: string, params: Record<string, unknown>): Promi
   }
 
   return { entries };
-}
-
-async function opStat(
-  workspace: string,
-  params: Record<string, unknown>,
-): Promise<{ size: number; isDirectory: boolean; modifiedAt: number }> {
-  const filePath = resolveAndValidate(workspace, params.path as string);
-  if (!filePath) throw new Error("Invalid path: path traversal detected");
-
-  const info = await stat(filePath);
-  return { size: info.size, isDirectory: info.isDirectory(), modifiedAt: info.mtimeMs };
-}
-
-async function opRead(
-  workspace: string,
-  params: Record<string, unknown>,
-): Promise<{ name: string; path: string; content: string; size: number; encoding: string }> {
-  const filePath = resolveAndValidate(workspace, params.path as string);
-  if (!filePath) throw new Error("Invalid path: path traversal detected");
-
-  const content = await readFile(filePath, "utf-8");
-  const info = await stat(filePath);
-  const name = basename(filePath);
-  const relPath = relative(workspace, filePath);
-
-  return { name, path: relPath, content, size: info.size, encoding: "utf-8" };
-}
-
-async function opReadBinary(
-  workspace: string,
-  params: Record<string, unknown>,
-): Promise<{ name: string; path: string; data: string; size: number; mimeType: string }> {
-  const filePath = resolveAndValidate(workspace, params.path as string);
-  if (!filePath) throw new Error("Invalid path: path traversal detected");
-
-  const info = await stat(filePath);
-  if (info.size > MAX_DOWNLOAD_BYTES) {
-    throw new FileOpError("File exceeds 92MB download limit", "payload_too_large", 413);
-  }
-  const buffer = await readFile(filePath);
-  // 文件可能在stat后增长，编码前再次检查实际读到的字节数。
-  if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
-    throw new FileOpError("File exceeds 92MB download limit", "payload_too_large", 413);
-  }
-  const name = basename(filePath);
-  const relPath = relative(workspace, filePath);
-
-  return {
-    name,
-    path: relPath,
-    data: buffer.toString("base64"),
-    size: buffer.byteLength,
-    mimeType: getMimeType(filePath),
-  };
-}
-
-async function opWrite(
-  workspace: string,
-  params: Record<string, unknown>,
-): Promise<{ name: string; path: string; size: number }> {
-  const filePath = resolveAndValidate(workspace, params.path as string);
-  if (!filePath) throw new Error("Invalid path: path traversal detected");
-
-  const content = params.content as string;
-  await mkdir(resolve(filePath, ".."), { recursive: true });
-  await writeFile(filePath, content, "utf-8");
-
-  const name = basename(filePath);
-  const relPath = relative(workspace, filePath);
-
-  return { name, path: relPath, size: Buffer.byteLength(content, "utf-8") };
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
-}
-
-function normalizeUploadRelativePath(value: unknown): string | null {
-  if (value === undefined || value === "") return "";
-  if (typeof value !== "string" || !value.trim() || value === ".") return null;
-  if (isAbsolute(value) || win32.isAbsolute(value)) return null;
-  for (const segment of value.split(/[\\/]+/)) {
-    if (segment === "..") return null;
-    for (const char of segment) {
-      const code = char.charCodeAt(0);
-      if (code <= 0x1f || code === 0x7f || (code >= 0x80 && code <= 0x9f)) return null;
-    }
-  }
-  return value;
-}
-
-async function assertUploadDestination(workspace: string, destination: string): Promise<void> {
-  const workspaceRealPath = await realpath(workspace);
-  if (!isWithinRoot(workspace, destination)) throw new Error("Invalid file path: target escapes workspace");
-
-  const rel = relative(workspace, destination);
-  let current = workspace;
-  for (const segment of rel.split(sep).slice(0, -1)) {
-    current = join(current, segment);
-    try {
-      if ((await lstat(current)).isSymbolicLink()) {
-        throw new FileOpError("Upload target contains a symbolic link", "unsafe_symlink", 503);
-      }
-    } catch (error) {
-      if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
-      break;
-    }
-  }
-
-  const parentRealPath = await realpath(resolve(destination, ".."));
-  if (!isWithinRoot(workspaceRealPath, parentRealPath)) {
-    throw new FileOpError("Upload target resolves outside workspace", "unsafe_symlink", 503);
-  }
-  try {
-    if ((await lstat(destination)).isSymbolicLink()) {
-      throw new FileOpError("Upload target is a symbolic link", "unsafe_symlink", 503);
-    }
-  } catch (error) {
-    if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
-  }
-}
-
-async function opUpload(
-  workspace: string,
-  params: Record<string, unknown>,
-): Promise<{ files: Array<{ name: string; path: string; size: number }> }> {
-  const dirPath = resolveAndValidate(workspace, (params.dir as string) || "");
-  if (!dirPath) throw new Error("Invalid dir: path traversal detected");
-
-  const files = params.files as Array<{ name: string; content: string; relativePath?: string }>;
-  const normalizedFiles = files.map((file) => {
-    const normalizedRelativePath = normalizeUploadRelativePath(file.relativePath);
-    const normalizedName = normalizeUploadRelativePath(file.name);
-    if (normalizedRelativePath === null || normalizedName === null) {
-      throw new Error("Invalid upload path: expected a non-blank relative path without '..' or control characters");
-    }
-    return { file, relPath: normalizedRelativePath || normalizedName };
-  });
-  const results: Array<{ name: string; path: string; size: number }> = [];
-
-  for (const { file, relPath } of normalizedFiles) {
-    const targetPath = resolve(dirPath, relPath);
-    if (!isWithinRoot(dirPath, targetPath)) {
-      throw new Error(`Invalid file path: ${relPath} escapes target directory`);
-    }
-
-    const buffer = Buffer.from(file.content, "base64");
-    try {
-      await uploadWorkspaceFileExclusive(workspace, relative(workspace, targetPath), buffer, async () => {
-        await uploadBeforeWriteHook?.(targetPath);
-        await assertUploadDestination(workspace, targetPath);
-      });
-    } catch (error) {
-      if (isErrnoException(error) && ["ELOOP", "ENOTDIR"].includes(error.code ?? ""))
-        throw new FileOpError("Upload target contains a symbolic link", "unsafe_symlink", 503);
-      throw error;
-    }
-
-    const name = basename(targetPath);
-    const displayPath = relative(workspace, targetPath);
-    results.push({ name, path: displayPath, size: buffer.length });
-  }
-
-  return { files: results };
 }
 
 async function opDelete(workspace: string, params: Record<string, unknown>): Promise<{ ok: boolean }> {
@@ -546,7 +213,6 @@ const MAX_ZIP_BYTES = MAX_DOWNLOAD_BYTES;
 const ZIP_TIMEOUT_MS = 101_000;
 const MAX_CONCURRENT_ZIPS = 1;
 const activeFileOps = new Map<string, { controller: AbortController; operation: string }>();
-let uploadBeforeWriteHook: ((targetPath: string) => Promise<void>) | undefined;
 let zipBeforeSpawnHook: (() => Promise<void>) | undefined;
 
 const ZIP_FROM_CWD_SCRIPT = `
@@ -563,11 +229,6 @@ fi
 exec zip -r -y -q - .
 `;
 
-function isWithinRoot(root: string, target: string): boolean {
-  const rel = relative(root, target);
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-}
-
 async function assertZipTreeHasNoSymlinks(directory: string): Promise<void> {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
@@ -577,11 +238,6 @@ async function assertZipTreeHasNoSymlinks(directory: string): Promise<void> {
     }
     if (entry.isDirectory()) await assertZipTreeHasNoSymlinks(entryPath);
   }
-}
-
-/** 仅供上传竞态回归测试在 mkdir 和落点复检之间稳定替换路径。 */
-export function setUploadBeforeWriteHookForTest(hook?: (targetPath: string) => Promise<void>): void {
-  uploadBeforeWriteHook = hook;
 }
 
 /** 仅供竞态回归测试在校验和 spawn 之间稳定替换路径。 */
@@ -734,10 +390,10 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
         data = await opReadBinary(workspace, params);
         break;
       case "write":
-        data = await opWrite(workspace, params);
+        data = await opWrite(workspace, params, msg.op_id, controller.signal);
         break;
       case "upload":
-        data = await opUpload(workspace, params);
+        data = await opUpload(workspace, params, msg.op_id, controller.signal);
         break;
       case "delete":
         data = await opDelete(workspace, params);
@@ -780,7 +436,9 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
       request_id,
       status: "error",
       error: (err as Error).message,
-      ...(err instanceof FileOpError ? { error_code: err.errorCode, status_code: err.statusCode } : {}),
+      ...(err instanceof FileOpError
+        ? { error_code: err.errorCode, status_code: err.statusCode, ...(err.details ? { data: err.details } : {}) }
+        : {}),
     };
   } finally {
     activeFileOps.delete(request_id);
