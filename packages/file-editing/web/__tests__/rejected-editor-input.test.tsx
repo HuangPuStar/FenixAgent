@@ -50,11 +50,17 @@ let controller: FileEditingController;
 let client: EditingClient;
 let writes: string[];
 let restoreEditorFactory = () => {};
-function Probe({ path }: { path: string }) {
+function Probe({
+  path,
+  onQuoteSelection,
+}: {
+  path: string;
+  onQuoteSelection?: (selection: { text: string; location?: string } | null) => void;
+}) {
   controller = useFileEditing({ environmentId: "env", client });
   return (
     <I18nextProvider i18n={i18n}>
-      <EditingPane controller={controller} path={path} />
+      <EditingPane controller={controller} path={path} onQuoteSelection={onQuoteSelection} />
     </I18nextProvider>
   );
 }
@@ -95,6 +101,31 @@ beforeEach(() => {
     closeOffice: unavailable,
     discardOffice: unavailable,
   };
+});
+
+// 编辑面板必须把选区回调传至真实源码编辑器，不能仅让预览入口可用。
+test("source editing pane exposes the captured editor selection to its host", async () => {
+  const received: string[] = [];
+  act(() =>
+    root.render(
+      <Probe
+        path="code.ts"
+        onQuoteSelection={(selection) => {
+          if (selection) received.push(selection.text);
+        }}
+      />,
+    ),
+  );
+  await until(() => host.querySelector(".cm-editor") !== null);
+  const dom = host.querySelector<HTMLElement>(".cm-editor");
+  const view = dom && EditorView.findFromDOM(dom);
+  if (!view) throw new Error("Missing source editor");
+  act(() => view.dispatch({ selection: { anchor: 0, head: 4 } }));
+  act(() => view.contentDOM.dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
+  const quote = document.querySelector<HTMLButtonElement>('[data-selection-action="quote"]');
+  expect(quote).not.toBeNull();
+  act(() => quote?.click());
+  expect(received).toEqual(["orig"]);
 });
 afterEach(async () => {
   act(() => root.unmount());

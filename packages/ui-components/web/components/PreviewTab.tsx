@@ -22,9 +22,13 @@ import type { PageFullscreenState } from "../ui/use-page-fullscreen";
 import { FileViewerPreview } from "./preview/FileViewerPreview";
 import type { PreviewFetch } from "./preview/preview-source";
 
+import type { TextSelection } from "./text-selection";
+
 export interface PreviewTabProps {
   /** 环境标识；缺省时空态区显示加载态（等待宿主补齐上下文）。 */
   envId: string | null;
+  active?: boolean;
+  onQuoteSelection?: (selection: TextSelection | null) => void;
   /** 选中的 workspace 相对路径；缺省时显示「选择文件以预览」。 */
   filePath: string | null;
   /**
@@ -45,11 +49,13 @@ export interface PreviewTabProps {
 
 export function PreviewTab({
   envId,
+  active,
   filePath,
   buildPreviewUrl,
   fetchPreview,
   toolbarActions,
   fullscreenState,
+  onQuoteSelection,
 }: PreviewTabProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
@@ -72,11 +78,13 @@ export function PreviewTab({
       <FileViewerPreview
         key={filePath}
         envId={envId}
+        active={active}
         filePath={filePath}
         buildPreviewUrl={buildPreviewUrl}
         fetchPreview={fetchPreview}
         toolbarActions={toolbarActions}
         fullscreenState={fullscreenState}
+        onQuoteSelection={onQuoteSelection}
       />
     </div>
   );

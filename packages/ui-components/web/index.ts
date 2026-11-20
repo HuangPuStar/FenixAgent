@@ -32,6 +32,7 @@ export * from "./chat/lib/chat-derived-state";
 export * from "./chat/lib/chat-render-layout";
 export * from "./chat/lib/context-queue";
 export * from "./chat/lib/extract-changed-files";
+export * from "./chat/lib/file-quotes";
 export * from "./chat/lib/session-actions";
 export * from "./chat/lib/session-grouping";
 export * from "./chat/lib/simplify-model-display-name";
@@ -103,6 +104,8 @@ export * from "./components/preview/html-plugin";
 export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
 export * from "./components/preview-rail";
+export * from "./components/selection-context-menu";
+export * from "./components/text-selection";
 // config —— 配置型业务无关容器
 export * from "./config/AdminKeyGate";
 export * from "./config/BatchActionBar";

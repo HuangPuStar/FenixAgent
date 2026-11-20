@@ -1,0 +1,18 @@
+{
+  "name": "Fenix conversation quote",
+  "guid": "asc.{F38A98E2-B103-4F85-A572-03DF251BB15F}",
+  "version": "1.0.3",
+  "variations": [
+    {
+      "description": "Quote selected text in the conversation",
+      "url": "index.html?v=1.0.3",
+      "EditorsSupport": ["word", "cell", "slide"],
+      "isViewer": true,
+      "isVisual": false,
+      "isSystem": true,
+      "initDataType": "none",
+      "initData": "",
+      "buttons": []
+    }
+  ]
+}

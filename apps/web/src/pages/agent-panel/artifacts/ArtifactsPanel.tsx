@@ -5,8 +5,10 @@ import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod
 import { TasksPanel } from "@fenix/resource-task/web";
 import { TracePanel } from "@fenix/resource-trace/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { FileQuoteInput } from "@fenix/ui-components/chat/lib/file-quotes";
 import { Button } from "@fenix/ui-components/ui/button";
 import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
+import { dispatchWorkspaceSelection } from "@fenix/web-runtime/lib/workspace-selection-events";
 import { Globe, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
@@ -156,6 +158,13 @@ function ArtifactsPanelView({
     handleFilesChanged,
   } = useArtifactsFiles({ envId, changedFiles, isFilesMode, onEnterFilesMode: enterFilesMode });
 
+  const referenceSelection = useCallback(
+    (selection: FileQuoteInput | null) => {
+      if (envId) dispatchWorkspaceSelection(envId, sessionId ?? null, selection);
+    },
+    [envId, sessionId],
+  );
+
   // agent 切换：回到 Files 模式（站点列表、选中态与角标各由对应 hook 复位）
   useEffect(() => {
     setTopMode("files");
@@ -212,6 +221,7 @@ function ArtifactsPanelView({
           onCloseFile={handleCloseFile}
           onOpenFile={openFile}
           onReferenceFile={handleReferenceFile}
+          onQuoteSelection={referenceSelection}
           onFilesChanged={handleFilesChanged}
         />
       </div>

@@ -561,5 +561,24 @@
   "tree": {
     "loading": "Loading...",
     "showMore": "+{{count}} more"
+  },
+  "fileQuotes": {
+    "actions": "Selected text",
+    "copy": "Copy",
+    "copyFailed": "Could not copy the selected text",
+    "add": "Add to conversation…",
+    "title": "Add to conversation",
+    "comment": "Comment (optional)",
+    "commentPlaceholder": "Add an optional comment…",
+    "confirm": "Add",
+    "cancel": "Cancel",
+    "invalid": "This selection cannot be added. Check its source and comment.",
+    "limit": "The quote exceeds the conversation limit. Shorten the comment or remove another quote.",
+    "unsaved": "From unsaved changes",
+    "lines": "Lines {{start}}–{{end}}",
+    "source": "Source",
+    "slide": "Slide {{number}}",
+    "tooLarge": "Select a smaller range to add it to the conversation.",
+    "unavailable": "Could not read the selection. Select the text and try again."
   }
 }

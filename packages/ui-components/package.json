@@ -659,7 +659,10 @@
     "./ui/use-roving-list-navigation": {
       "types": "./web/ui/use-roving-list-navigation.ts",
       "default": "./web/ui/use-roving-list-navigation.ts"
-    }
+    },
+    "./components/selection-context-menu": "./web/components/selection-context-menu.tsx",
+    "./components/text-selection": "./web/components/text-selection.ts",
+    "./chat/lib/file-quotes": "./web/chat/lib/file-quotes.ts"
   },
   "scripts": {
     "dev": "vite",

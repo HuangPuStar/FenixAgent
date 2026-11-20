@@ -17,7 +17,9 @@ export function usePageFullscreen(active = true): PageFullscreenState {
   useEffect(() => {
     if (!fullscreen || !active) return;
     const handleEscape = (event: KeyboardEvent) => {
-      const modal = document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"]');
+      const modal = document.querySelector(
+        '[role="dialog"][aria-modal="true"], [role="alertdialog"], [data-selection-menu="true"]',
+      );
       if (event.key === "Escape" && !modal) setFullscreen(false);
     };
     // Editors and file trees can stop key propagation before it reaches the document.

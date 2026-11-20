@@ -1,3 +1,6 @@
+import { SelectionContextMenu } from "@fenix/ui-components/components/selection-context-menu";
+import { hitsVisibleTextSelection, type TextSelection } from "@fenix/ui-components/components/text-selection";
+import { UI_COMPONENTS_NS } from "@fenix/ui-components/i18n";
 import { Button } from "@fenix/ui-components/ui/button";
 import type { EditorView } from "codemirror";
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +24,8 @@ export interface FileEditorProps {
   onChange: (value: string) => void;
   onSave?: () => void;
   className?: string;
+  active?: boolean;
+  onQuoteSelection?: (selection: TextSelection) => void;
 }
 const theme = {
   "&": {
@@ -44,8 +49,18 @@ const theme = {
     { backgroundColor: "color-mix(in srgb, var(--color-brand) 25%, transparent)" },
 };
 /** Mounts CodeMirror lazily and releases each instance symmetrically in StrictMode. */
-export function FileEditor({ value, language, readOnly = false, onChange, onSave, className }: FileEditorProps) {
+export function FileEditor({
+  value,
+  language,
+  readOnly = false,
+  onChange,
+  onSave,
+  className,
+  active = true,
+  onQuoteSelection,
+}: FileEditorProps) {
   const { t } = useTranslation(FILE_EDITING_NS);
+  const { t: tUI } = useTranslation(UI_COMPONENTS_NS);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const current = useRef(value);
@@ -117,7 +132,28 @@ export function FileEditor({ value, language, readOnly = false, onChange, onSave
     }
   });
   return (
-    <div className={className}>
+    <SelectionContextMenu
+      className={className}
+      active={active}
+      onQuote={onQuoteSelection}
+      readSelection={(event) => {
+        const view = viewRef.current;
+        if (!view?.dom.contains(event.target as Node)) return null;
+        const range = view.state.selection.main;
+        if (range.empty || view.state.selection.ranges.length !== 1) return null;
+        if (!hitsVisibleTextSelection(view.dom, event, ".cm-selectionBackground")) return null;
+        const keyboard = event.clientX === 0 && event.clientY === 0 && event.button === 0;
+        const position = keyboard ? range.from : view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (position === null || position < range.from || position > range.to) return null;
+        return {
+          text: view.state.sliceDoc(range.from, range.to),
+          location: tUI("fileQuotes.lines", {
+            start: view.state.doc.lineAt(range.from).number,
+            end: view.state.doc.lineAt(range.to > range.from ? range.to - 1 : range.to).number,
+          }),
+        };
+      }}
+    >
       <div ref={containerRef} className={failed ? "hidden" : "h-full"} />
       {failed && (
         <div role="alert" className="flex items-center gap-2 p-4 text-sm text-red-500">
@@ -127,6 +163,6 @@ export function FileEditor({ value, language, readOnly = false, onChange, onSave
           </Button>
         </div>
       )}
-    </div>
+    </SelectionContextMenu>
   );
 }

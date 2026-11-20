@@ -1,6 +1,7 @@
 import { hkdfSync } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import { EditingError, type OfficeSession } from "../../../contracts";
+import quotePlugin from "../../../office-plugin/config.json";
 import type { EditingPolicy, EditingSessionRecord } from "../session-state";
 
 /** Configured provider and trusted callback base; never derived from request headers. */
@@ -84,6 +85,12 @@ export class OfficeProvider {
       editorConfig: {
         lang: lang?.startsWith("en") ? "en-US" : "zh-CN",
         mode: "edit",
+        plugins: {
+          autostart: [quotePlugin.guid],
+          pluginsData: [
+            `${this.url.href.replace(/\/$/, "")}/sdkjs-plugins/${quotePlugin.guid.slice(4)}/config.json?v=${encodeURIComponent(quotePlugin.version)}`,
+          ],
+        },
         callbackUrl: `${this.base}/office/callbacks/${callbackToken}`,
         user: { id: record.scope.userId, name: record.scope.userId },
         coEditing: { mode: "strict", change: false },

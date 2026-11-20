@@ -561,5 +561,24 @@
   "tree": {
     "loading": "加载中…",
     "showMore": "+{{count}} 更多"
+  },
+  "fileQuotes": {
+    "actions": "选中文字",
+    "copy": "复制",
+    "copyFailed": "复制选中文字失败",
+    "add": "添加到对话…",
+    "title": "添加到对话",
+    "comment": "评论（可选）",
+    "commentPlaceholder": "添加可选评论…",
+    "confirm": "添加",
+    "cancel": "取消",
+    "invalid": "无法添加此选区，请检查来源和评论。",
+    "limit": "引用超出当前对话额度，请缩短评论或移除其他引用。",
+    "unsaved": "来自未保存修改",
+    "lines": "第 {{start}}–{{end}} 行",
+    "source": "来源",
+    "slide": "第 {{number}} 张幻灯片",
+    "tooLarge": "请选择更小的区域后添加到对话。",
+    "unavailable": "无法读取选区，请重新选择文字后重试。"
   }
 }

@@ -10,11 +10,13 @@ import {
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import {
+  canSerializeChatQuotes,
   limitQuotedText,
   MAX_QUOTE_COUNT,
   MAX_TOTAL_QUOTED_TEXT_LENGTH,
   serializeChatQuotes,
 } from "../lib/context-queue";
+import type { FileQuoteInput } from "../lib/file-quotes";
 import type { AvailableCommand, ChatInputMessage, UserMessageImage } from "../types";
 import type { McpOption } from "./CommandMenu";
 import { type ComposerExternalSubscribe, useComposerExternalInput } from "./composer-effects";
@@ -182,6 +184,7 @@ export interface UseComposerHandlersOptions {
   onNotice?: ComposerNoticeHandler;
   /** 外部输入订阅（源实现为 3 个 window 事件监听）。 */
   subscribeExternal?: ComposerExternalSubscribe;
+  onFileSelection?: (selection: FileQuoteInput | null) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
 }
@@ -227,6 +230,7 @@ export function useComposerHandlers({
   onNewSession,
   onNotice,
   subscribeExternal,
+  onFileSelection,
   textareaRef,
   fileInputRef,
 }: UseComposerHandlersOptions): ComposerHandlers {
@@ -238,7 +242,6 @@ export function useComposerHandlers({
     addImages,
     attachments,
     addAttachments,
-    quotes,
     updateQuotes,
     readQuotes,
     selectedMcpIds,
@@ -319,7 +322,12 @@ export function useComposerHandlers({
       if (!quotedText) return;
       quoteSequenceRef.current += 1;
       const id = `chat-quote-${Date.now()}-${quoteSequenceRef.current}`;
-      updateQuotes((current) => [...current, { id, text: quotedText, omittedCharacterCount }]);
+      const quote = { id, text: quotedText, omittedCharacterCount };
+      if (currentQuotes.some((value) => value.source) && !canSerializeChatQuotes([...currentQuotes, quote])) {
+        notify("info", t("fileQuotes.limit"));
+        return;
+      }
+      updateQuotes((current) => [...current, quote]);
       if (omittedCharacterCount > 0) {
         notify("info", t("chat.components.composerAssets.quoteTruncated", { count: omittedCharacterCount }));
       }
@@ -337,6 +345,7 @@ export function useComposerHandlers({
       textareaRef.current?.focus();
     },
     onQuote: handleQuote,
+    onFileSelection,
     // 待发送队列「取回」：把退回的草稿追加到已有正文之后，保留用户正在写的内容。
     // 覆盖或忽略非空草稿都会让已从队列撤出的消息失去落点（连续取回第二条时会直接丢失）。
     onRestoreDraft: (prompt) => {
@@ -356,9 +365,13 @@ export function useComposerHandlers({
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
-    if ((!trimmed && images.length === 0 && attachments.length === 0 && quotes.length === 0) || disabled) return;
-
-    const quoteContext = serializeChatQuotes(quotes);
+    const currentQuotes = readQuotes();
+    if ((!trimmed && images.length === 0 && attachments.length === 0 && currentQuotes.length === 0) || disabled) return;
+    if (currentQuotes.some((quote) => quote.source) && !canSerializeChatQuotes(currentQuotes)) {
+      notify("info", t("fileQuotes.limit"));
+      return;
+    }
+    const quoteContext = serializeChatQuotes(currentQuotes);
 
     onSubmit({
       text: trimmed,
@@ -378,7 +391,9 @@ export function useComposerHandlers({
     text,
     images,
     attachments,
-    quotes,
+    readQuotes,
+    notify,
+    t,
     selectedMcpIds,
     mcps,
     disabled,

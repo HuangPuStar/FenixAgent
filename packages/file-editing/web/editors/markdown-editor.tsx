@@ -1,6 +1,9 @@
+import { SelectionContextMenu } from "@fenix/ui-components/components/selection-context-menu";
+import { hitsVisibleTextSelection, type TextSelection } from "@fenix/ui-components/components/text-selection";
 import { Button } from "@fenix/ui-components/ui/button";
 import type { Crepe as CrepeInstance } from "@milkdown/crepe";
 import type { Node as ProseNode } from "@milkdown/kit/prose/model";
+import type { EditorView } from "@milkdown/kit/prose/view";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FILE_EDITING_NS } from "../i18n/namespace";
@@ -69,10 +72,21 @@ export interface MarkdownEditorProps {
   /** Register a synchronous draft flush before switching editors or saving. */
   onRegisterFlush?: (flush: () => void) => () => void;
   className?: string;
+  active?: boolean;
+  onQuoteSelection?: (selection: TextSelection) => void;
 }
 /** Creates rich Markdown only after its DOM exists; initialization never marks a draft dirty. */
-export function MarkdownEditor({ value, readOnly = false, onChange, onRegisterFlush, className }: MarkdownEditorProps) {
+export function MarkdownEditor({
+  value,
+  readOnly = false,
+  onChange,
+  onRegisterFlush,
+  className,
+  active = true,
+  onQuoteSelection,
+}: MarkdownEditorProps) {
   const { t } = useTranslation(FILE_EDITING_NS);
+  const viewRef = useRef<EditorView | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const current = useRef(value);
   const callbacks = useRef({ onChange, onRegisterFlush });
@@ -158,6 +172,7 @@ export function MarkdownEditor({ value, readOnly = false, onChange, onRegisterFl
           await instance.create();
           if (disposed) return;
           synchronizedDoc = instance.editor.action((ctx) => ctx.get(editorViewCtx).state.doc);
+          viewRef.current = instance.editor.action((ctx) => ctx.get(editorViewCtx));
           ready = true;
           instance.setReadonly(readOnly);
           unregisterFlush = callbacks.current.onRegisterFlush?.(flush);
@@ -169,6 +184,7 @@ export function MarkdownEditor({ value, readOnly = false, onChange, onRegisterFl
       });
     return () => {
       disposed = true;
+      viewRef.current = null;
       unregisterFlush?.();
       // Crepe mutates its host while creating; destroy only after that asynchronous work settles.
       void initialized
@@ -183,7 +199,23 @@ export function MarkdownEditor({ value, readOnly = false, onChange, onRegisterFl
     };
   }, [revision, readOnly, t]);
   return (
-    <div className={className} style={theme}>
+    <SelectionContextMenu
+      className={className}
+      style={theme}
+      active={active}
+      onQuote={onQuoteSelection}
+      readSelection={(event) => {
+        const view = viewRef.current;
+        if (!view?.dom.contains(event.target as Node)) return null;
+        const { from, to, empty } = view.state.selection;
+        if (empty) return null;
+        if (!hitsVisibleTextSelection(view.dom, event)) return null;
+        const keyboard = event.clientX === 0 && event.clientY === 0 && event.button === 0;
+        const pos = keyboard ? from : view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        if (pos === undefined || pos < from || pos > to) return null;
+        return { text: view.state.doc.textBetween(from, to, "\n") };
+      }}
+    >
       <div ref={container} className={failed ? "hidden" : "h-full"} />
       {failed && (
         <div role="alert" className="flex items-center gap-2 p-4 text-sm text-red-500">
@@ -193,6 +225,6 @@ export function MarkdownEditor({ value, readOnly = false, onChange, onRegisterFl
           </Button>
         </div>
       )}
-    </div>
+    </SelectionContextMenu>
   );
 }

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fenix conversation quote</title>
+    <script src="../v1/plugins.js"></script>
+    <script>
+      const version = new URL(location.href).searchParams.get("v") ?? "";
+      for (const file of ["selection.js", "main.js"]) {
+        const script = document.createElement("script");
+        script.src = `${file}?v=${encodeURIComponent(version)}`;
+        script.async = false;
+        document.head.append(script);
+      }
+    </script>
+  </head>
+  <body></body>
+</html>

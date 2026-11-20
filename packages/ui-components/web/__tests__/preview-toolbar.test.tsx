@@ -55,6 +55,7 @@ afterAll(() => {
 async function mount(
   filePath = "user/report.html",
   fetchPreview: PreviewFetch = async () => new Response("<h1>report</h1>"),
+  onQuoteSelection?: Parameters<typeof FileViewerPreview>[0]["onQuoteSelection"],
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -69,6 +70,7 @@ async function mount(
           buildPreviewUrl={buildPreviewUrl}
           fetchPreview={fetchPreview}
           toolbarActions={<button type="button">Edit</button>}
+          onQuoteSelection={onQuoteSelection}
         />
       </I18nextProvider>,
     );
@@ -86,6 +88,55 @@ test("preview toolbar exposes an icon download with the original filename alongs
   expect(download?.download).toBe("report.html");
   expect(download?.textContent).toBe("");
   expect(download?.parentElement?.textContent).toBe("Edit");
+});
+
+// 加载错误是界面提示，不能作为文件原文添加到对话。
+test("preview error messages keep their native context menu", async () => {
+  const host = await mount(
+    "probe.txt",
+    async () => new Response("", { status: 503 }),
+    () => {},
+  );
+  const message = host.querySelector('[role="alert"] span');
+  if (!message) throw new Error("Expected preview load error");
+  const range = document.createRange();
+  range.selectNodeContents(message);
+  document.getSelection()?.removeAllRanges();
+  document.getSelection()?.addRange(range);
+  const event = new win.MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  act(() => message.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
+  expect(document.querySelector('[data-selection-action="quote"]')).toBeNull();
+});
+
+// 文档预览的渲染/源码标签不是文件正文。
+test("document preview tabs cannot be quoted as file contents", async () => {
+  const host = await mount(
+    "note.md",
+    async () => new Response("# Title\n\nBody"),
+    () => {},
+  );
+  const tab = host.querySelector('[role="tab"]');
+  if (!tab) throw new Error("Expected document preview tabs");
+  const range = document.createRange();
+  range.selectNodeContents(tab);
+  document.getSelection()?.removeAllRanges();
+  document.getSelection()?.addRange(range);
+  const event = new win.MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  act(() => tab.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
+});
+
+// 刷新使旧正文快照失效，必须先撤销待确认的引用。
+test("preview Refresh cancels the pending file selection", async () => {
+  const received: unknown[] = [];
+  const host = await mount(
+    "note.md",
+    async () => new Response("# Heading\n\nBody"),
+    (selection) => received.push(selection),
+  );
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')?.click());
+  expect(received).toEqual([null]);
 });
 
 // 全屏只扩展页面内区域，退出不能重建 HTML iframe，避免丢失预览位置和内部状态。

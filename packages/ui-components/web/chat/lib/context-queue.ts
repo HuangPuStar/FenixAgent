@@ -1,3 +1,5 @@
+import { isWorkspaceRelativeFilePath } from "../../lib/workspace-relative-path";
+
 /**
  * Chat 引用（选中文本 → 隐藏上下文）的解析、预览与长度限制。
  *
@@ -26,9 +28,66 @@ export interface LimitedQuotedText {
 }
 
 /** 序列化进 system-reminder 的单条聊天引用结构。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
-export type SerializedChatQuote = LimitedQuotedText;
+export interface SerializedChatQuote extends LimitedQuotedText {
+  source?: FileQuoteSource;
+  comment?: string;
+}
+
+/** Display-only provenance; it never authorizes file access. */
+export interface FileQuoteSource {
+  path: string;
+  location?: string;
+  unsaved?: boolean;
+}
+
+/** Validate optional provenance at the message and browser-event boundaries. */
+export function parseFileQuoteSource(value: unknown): FileQuoteSource | undefined {
+  if (!value || typeof value !== "object") return;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source.path !== "string" ||
+    !source.path ||
+    source.path.length > 1024 ||
+    source.path.includes("\\") ||
+    !isWorkspaceRelativeFilePath(source.path) ||
+    /^[a-z]:/i.test(source.path)
+  )
+    return;
+  if (
+    source.location !== undefined &&
+    (typeof source.location !== "string" ||
+      source.location.length > 160 ||
+      [...source.location].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127))
+  )
+    return;
+  if (source.unsaved !== undefined && typeof source.unsaved !== "boolean") return;
+  return {
+    path: source.path,
+    ...(typeof source.location === "string" && source.location ? { location: source.location } : {}),
+    ...(source.unsaved === true ? { unsaved: true } : {}),
+  };
+}
 
 const CHAT_QUOTES_PREFIX = "Chat quotes for this turn (JSON): ";
+
+function encodeChatQuotes(quotes: SerializedChatQuote[]): string {
+  const payload = quotes.map((quote) => ({
+    text: quote.text,
+    omittedCharacterCount: quote.omittedCharacterCount,
+    ...(quote.source
+      ? { source: { path: quote.source.path, location: quote.source.location, unsaved: quote.source.unsaved } }
+      : {}),
+    ...(quote.comment ? { comment: quote.comment } : {}),
+  }));
+  return CHAT_QUOTES_PREFIX + JSON.stringify(payload).replaceAll("<", "\\u003c");
+}
+
+/** Test the complete escaped payload before accepting or submitting file-bearing drafts. */
+export function canSerializeChatQuotes(quotes: SerializedChatQuote[]): boolean {
+  return (
+    quotes.length <= MAX_QUOTE_COUNT && Array.from(encodeChatQuotes(quotes)).length <= MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH
+  );
+}
 
 /** 生成仅供界面展示的短预览，不把完整长引用挂到 DOM 属性中。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function createQuotePreview(text: string, maximumLength = 240): string {
@@ -55,11 +114,11 @@ export function serializeChatQuotes(quotes: SerializedChatQuote[]): string | und
   const accepted: SerializedChatQuote[] = [];
   for (const quote of quotes.slice(0, MAX_QUOTE_COUNT)) {
     const candidate = [...accepted, quote];
-    const serialized = `${CHAT_QUOTES_PREFIX}${JSON.stringify(candidate)}`;
+    const serialized = encodeChatQuotes(candidate);
     if (Array.from(serialized).length > MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH) break;
     accepted.push(quote);
   }
-  return accepted.length > 0 ? `${CHAT_QUOTES_PREFIX}${JSON.stringify(accepted)}` : undefined;
+  return accepted.length > 0 ? encodeChatQuotes(accepted) : undefined;
 }
 
 /** 从 system-reminder 内容中读取 Chat 引用；其他内部提醒不会被误投影成引用卡。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
@@ -75,10 +134,15 @@ export function parseChatQuotes(text: string): SerializedChatQuote[] {
       if (!item || typeof item !== "object") return [];
       const candidate = item as Record<string, unknown>;
       if (typeof candidate.text !== "string" || typeof candidate.omittedCharacterCount !== "number") return [];
+      const source = parseFileQuoteSource(candidate.source);
       return [
         {
           text: createQuotePreview(candidate.text, MAX_QUOTED_TEXT_LENGTH),
           omittedCharacterCount: Math.max(0, candidate.omittedCharacterCount),
+          ...(source ? { source } : {}),
+          ...(typeof candidate.comment === "string"
+            ? { comment: Array.from(candidate.comment).slice(0, 1000).join("") }
+            : {}),
         },
       ];
     });

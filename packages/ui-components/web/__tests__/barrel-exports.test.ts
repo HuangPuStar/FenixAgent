@@ -11,16 +11,9 @@ const packageExports = (
 ).exports;
 
 /**
- * barrel 冒烟测试：只断言公共出口的名称与非空性，不渲染组件、不 mock 模块、不做 UI 结构断言。
- *
- * 期望清单按 `web/` 下的分组划分：`components` / `config` / `layout` / `lib` / `ui` 对应同名目录，
- * `barrel` 分组收纳「未被上述分组覆盖」的根 barrel 出口（原 ai-elements 基元与 chat 组各层模块）。
- * 清单刻意保持显式：模块被删除、导出被改名、barrel 少写一行 `export *`，都会在这里以具体名字失败，
- * 而不是等消费方运行时才发现。仅类型导出（TreeNodeData、DataTableProps、TagRendererConfig 等）在
- * 运行时不可见，由 `tsc` 的编译期检查覆盖，故不列在此处。
- *
- * 维护约定：`web/index.ts` 增删模块或改变导出名时必须同步本清单；末条数量断言用于发现「清单未同步」，
- * 逐名断言则负责发现「导出变少」，两者互补。清单按 ASCII 序排列（大写在前），便于用排序快速核对差异。
+ * 显式清单同时检查出口缺失和意外增加；类型出口由 tsc 检查，不列入运行时数量。
+ * components/config/layout/lib/ui 按目录分组，barrel 收纳其余根出口。
+ * 修改公开出口时同步此清单，组内按 ASCII 排序。
  */
 const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
   barrel: [
@@ -125,6 +118,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "Reasoning",
     "ReasoningContent",
     "ReasoningTrigger",
+    "SelectionContextMenu",
     "SessionModeSelector",
     "SessionSelectFallbackProvider",
     "Shimmer",
@@ -148,6 +142,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "buildChatRenderItems",
     "buildPromptText",
     "canDeleteSession",
+    "canSerializeChatQuotes",
     "cardKindToStyle",
     "classifyToolSemantic",
     "computeStats",
@@ -165,6 +160,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "getRunningInstances",
     "groupByRecency",
     "groupBySpace",
+    "hitsVisibleTextSelection",
     "isHindsightTool",
     "isVisibleContentBlock",
     "isWorkspaceRelativeFilePath",
@@ -174,8 +170,11 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "normalizeToolName",
     "orderInstancesByRunningStatus",
     "parseChatQuotes",
+    "parseFileQuoteSource",
+    "prepareFileQuote",
     "prepareImageContent",
     "processImageFiles",
+    "readDomTextSelection",
     "semanticToToolCardKind",
     "serializeChatQuotes",
     "simplifyModelDisplayName",

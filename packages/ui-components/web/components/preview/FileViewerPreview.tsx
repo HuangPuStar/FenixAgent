@@ -63,9 +63,15 @@ import "@open-file-viewer/core/style.css";
 // 第三方内容区域的样式覆盖。
 import "./overrides.css";
 
+import { SelectionContextMenu } from "../selection-context-menu";
+import type { TextSelection } from "../text-selection";
+
 export interface FileViewerPreviewProps {
   /** 环境标识；默认 URL 构建器用它拼宿主文件代理路由。 */
   envId: string;
+  /** 隐藏面板不保留选区菜单。 */
+  active?: boolean;
+  onQuoteSelection?: (selection: TextSelection | null) => void;
   /** workspace 相对路径（同时用于展示文件名与推断 MIME）。 */
   filePath: string;
   /**
@@ -174,6 +180,7 @@ class FileViewerErrorBoundary extends Component<{ children: ReactNode; fallbackT
 /** 按工作区文件类型装配预览插件，并通过宿主注入的取数能力加载、取消及重试预览。 */
 export function FileViewerPreview({
   envId,
+  active = true,
   filePath,
   buildPreviewUrl = defaultBuildPreviewUrl,
   fetchPreview,
@@ -181,6 +188,7 @@ export function FileViewerPreview({
   locale,
   toolbarActions,
   fullscreenState,
+  onQuoteSelection,
 }: FileViewerPreviewProps) {
   const { t, i18n } = useTranslation(UI_COMPONENTS_NS);
   const localFullscreen = usePageFullscreen(!fullscreenState);
@@ -204,6 +212,10 @@ export function FileViewerPreview({
   // 「文件预览加载失败 (500)」这类写死中文。
   const [loadError, setLoadError] = useState<{ status?: number } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const refresh = () => {
+    onQuoteSelection?.(null);
+    setReloadKey((key) => key + 1);
+  };
 
   useEffect(() => {
     const separator = previewUrl.includes("?") ? "&" : "?";
@@ -253,11 +265,7 @@ export function FileViewerPreview({
             ? t("fileTree.preview.loadFailedUnknown")
             : t("fileTree.preview.loadFailed", { status: loadError.status })}
         </span>
-        <button
-          type="button"
-          className="text-xs text-primary hover:underline"
-          onClick={() => setReloadKey((key) => key + 1)}
-        >
+        <button type="button" className="text-xs text-primary hover:underline" onClick={refresh}>
           {t("fileTree.preview.retry")}
         </button>
       </div>
@@ -271,18 +279,25 @@ export function FileViewerPreview({
   } else {
     const viewer = (
       <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
-        <FileViewer
-          file={previewSource}
-          fileName={fileName}
-          mimeType={mimeType}
-          plugins={plugins}
-          height="100%"
-          fit="width"
-          toolbar={false}
-          theme="auto"
-          locale={previewLocale}
-          messages={previewMessages}
-        />
+        <SelectionContextMenu
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          active={active}
+          resetKey={reloadKey}
+          onQuote={onQuoteSelection}
+        >
+          <FileViewer
+            file={previewSource}
+            fileName={fileName}
+            mimeType={mimeType}
+            plugins={plugins}
+            height="100%"
+            fit="width"
+            toolbar={false}
+            theme="auto"
+            locale={previewLocale}
+            messages={previewMessages}
+          />
+        </SelectionContextMenu>
       </FileViewerErrorBoundary>
     );
 
@@ -292,7 +307,13 @@ export function FileViewerPreview({
     content =
       isDocument && previewSource instanceof Blob ? (
         <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
-          <DocumentPreview kind={category} blob={previewSource} markdownView={viewer} />
+          <DocumentPreview
+            kind={category}
+            blob={previewSource}
+            markdownView={viewer}
+            active={active}
+            onQuoteSelection={onQuoteSelection}
+          />
         </FileViewerErrorBoundary>
       ) : (
         viewer
@@ -312,7 +333,7 @@ export function FileViewerPreview({
           size="icon-sm"
           aria-label={t("fileTree.refresh")}
           title={t("fileTree.refresh")}
-          onClick={() => setReloadKey((key) => key + 1)}
+          onClick={refresh}
         >
           <RefreshCw aria-hidden="true" className={previewSource === null ? "animate-spin" : undefined} />
         </Button>

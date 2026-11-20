@@ -8,8 +8,10 @@ import {
 } from "@fenix/file-editing/web";
 import { FILE_EDITING_NS } from "@fenix/file-editing/web/i18n";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { FileQuoteInput } from "@fenix/ui-components/chat/lib/file-quotes";
 import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
 import { classifyFile } from "@fenix/ui-components/components/preview/preview-source";
+import type { TextSelection } from "@fenix/ui-components/components/text-selection";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { usePageFullscreen } from "@fenix/ui-components/ui/use-page-fullscreen";
@@ -35,6 +37,7 @@ interface ArtifactsFilesWorkspaceProps {
   changedFiles: ChangedFile[];
   active?: boolean;
   editingClient?: EditingClient;
+  onQuoteSelection?: (selection: FileQuoteInput | null) => void;
   onRegisterBeforeLeave?: (guard: (() => Promise<boolean>) | null) => void;
   onSelectFile: (path: string) => void;
   onCloseFile: (path: string) => void;
@@ -94,6 +97,7 @@ export function ArtifactsFilesWorkspace({
   onCloseFile,
   onOpenFile,
   onReferenceFile,
+  onQuoteSelection,
   onFilesChanged,
 }: ArtifactsFilesWorkspaceProps) {
   const { t: tEditing } = useTranslation(FILE_EDITING_NS);
@@ -302,8 +306,34 @@ export function ArtifactsFilesWorkspace({
         {isEditing ? <Eye aria-hidden="true" /> : <Pencil aria-hidden="true" />}
       </Button>
     ) : null;
+  const quoteContext = useRef({ active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false });
+  quoteContext.current = { active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false };
+  const referenceSelection = useCallback(
+    (selection: TextSelection | null) => {
+      const current = quoteContext.current;
+      if (!selection) {
+        onQuoteSelection?.(null);
+        return;
+      }
+      if (current.active && current.activeFile)
+        onQuoteSelection?.({
+          text: selection.text,
+          source: {
+            path: current.activeFile,
+            ...(selection.location ? { location: selection.location } : {}),
+            ...(current.dirty ? { unsaved: true } : {}),
+          },
+        });
+    },
+    [onQuoteSelection],
+  );
+  useEffect(() => {
+    void [activeFile, active, envId, isEditing, previewRefresh];
+    return () => onQuoteSelection?.(null);
+  }, [activeFile, active, envId, isEditing, previewRefresh, onQuoteSelection]);
   const preview = (
     <PreviewTab
+      active={active && !isEditing}
       key={`${envId}:${activeFile}:${previewRefresh}`}
       envId={envId}
       filePath={environmentReady ? activeFile : null}
@@ -311,6 +341,7 @@ export function ArtifactsFilesWorkspace({
       fetchPreview={readPreviewSource}
       toolbarActions={previewActions}
       fullscreenState={fullscreenState}
+      onQuoteSelection={onQuoteSelection && active ? referenceSelection : undefined}
     />
   );
   return (
@@ -369,6 +400,7 @@ export function ArtifactsFilesWorkspace({
               )}
               {kind === "text" && activeFile && !fallbackError ? (
                 <EditingPane
+                  onQuoteSelection={onQuoteSelection && active ? referenceSelection : undefined}
                   key={`${envId}:${activeFile}`}
                   controller={editing}
                   path={activeFile}
@@ -393,6 +425,9 @@ export function ArtifactsFilesWorkspace({
                   className={path === activeFile && !fallbackError ? "min-h-0 flex-1" : "hidden"}
                 >
                   <EditingPane
+                    onQuoteSelection={
+                      onQuoteSelection && active && isEditing && path === activeFile ? referenceSelection : undefined
+                    }
                     controller={editing}
                     path={path}
                     kind="office"

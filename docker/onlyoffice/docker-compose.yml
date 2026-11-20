@@ -13,6 +13,7 @@ services:
       ALLOW_PRIVATE_IP_ADDRESS: "true"
       ALLOW_META_IP_ADDRESS: "false"
     volumes:
+      - ./plugins/conversation-quote:/var/www/onlyoffice/documentserver/sdkjs-plugins/{F38A98E2-B103-4F85-A572-03DF251BB15F}:ro
       - ./data/logs:/var/log/onlyoffice
       - ./data/data:/var/www/onlyoffice/Data
       - ./data/lib:/var/lib/onlyoffice

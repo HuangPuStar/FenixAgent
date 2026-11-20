@@ -1,3 +1,4 @@
+import type { TextSelection } from "@fenix/ui-components/components/text-selection";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
@@ -27,6 +28,7 @@ export interface EditingPaneProps {
   /** Shares the host's fullscreen choice when switching between preview and editing. */
   fullscreenState?: PageFullscreenState;
   className?: string;
+  onQuoteSelection?: (selection: TextSelection | null) => void;
 }
 /** Presents editor-local loading, save receipts, conflicts and retriable failures. */
 export function EditingPane({
@@ -37,6 +39,7 @@ export function EditingPane({
   onPreview,
   downloadUrl,
   fullscreenState,
+  onQuoteSelection,
   className = "",
 }: EditingPaneProps) {
   const { t } = useTranslation(FILE_EDITING_NS);
@@ -54,6 +57,7 @@ export function EditingPane({
     void save(path);
   }, [path, save]);
   const refreshCurrent = async () => {
+    onQuoteSelection?.(null);
     markdownFlush.current?.();
     if (buffer?.saving) await save(path);
     if (!(await controller.requestReload(path))) return;
@@ -89,6 +93,11 @@ export function EditingPane({
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [saveCurrent, active]);
+  useEffect(() => {
+    void markdownMode;
+    void officeSessionId;
+    return () => onQuoteSelection?.(null);
+  }, [markdownMode, officeSessionId, onQuoteSelection]);
   if (!buffer && controller.error)
     return (
       <div role="alert" className="flex items-center gap-2 p-3 text-sm text-red-500">
@@ -289,6 +298,8 @@ export function EditingPane({
             {buffer.kind === "office" && buffer.session ? (
               <OfficeEditor
                 session={buffer.session}
+                active={active && !expiredOffice}
+                onQuoteSelection={onQuoteSelection}
                 onPrepareSave={(prepare) => controller.registerOfficeSave(path, prepare)}
                 onDirty={(dirty) => controller.markOfficeDirty(path, dirty)}
                 onError={setProviderError}
@@ -299,6 +310,8 @@ export function EditingPane({
               />
             ) : isMarkdownRichTextFile(path) && markdownMode === "visual" ? (
               <LazyMarkdownEditor
+                active={active}
+                onQuoteSelection={onQuoteSelection}
                 value={buffer.content}
                 readOnly={buffer.deleted}
                 onChange={(content) => controller.updateContent(path, content)}
@@ -312,6 +325,8 @@ export function EditingPane({
               />
             ) : (
               <FileEditor
+                active={active}
+                onQuoteSelection={onQuoteSelection}
                 value={buffer.content}
                 language={getEditorLanguage(path)}
                 readOnly={buffer.deleted}

@@ -4,8 +4,9 @@ import { Quote } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { QuoteContent } from "../composer/quote-content";
 import { QuoteTruncatedBadge } from "../composer/quote-truncated-badge";
-import { createQuotePreview, type SerializedChatQuote } from "../lib/context-queue";
+import type { SerializedChatQuote } from "../lib/context-queue";
 
 interface ChatQuoteMessageProps {
   quote: SerializedChatQuote;
@@ -30,10 +31,14 @@ export const ChatQuoteMessage = memo(function ChatQuoteMessage({ quote, index }:
     <details className="group relative" data-slot="chat-quote-message">
       <summary className="chat-quote-summary inline-flex min-h-6.5 cursor-pointer list-none items-center gap-1.25 rounded-full border border-slate-200 bg-sky-50 px-2.5 py-0.75 text-3xs font-bold text-slate-500">
         <Quote aria-hidden="true" />
-        <span>{t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}</span>
+        <span>
+          {quote.source
+            ? quote.source.path.split("/").pop()
+            : t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}
+        </span>
       </summary>
-      <div className="chat-quote-preview absolute right-0 z-20 hidden max-h-33 overflow-hidden rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-slate-600 group-hover:block group-focus-within:block group-open:block">
-        <p className="m-0 text-xs leading-normal wrap-anywhere">{createQuotePreview(quote.text)}</p>
+      <div className="chat-quote-preview absolute right-0 z-20 hidden max-h-60 min-w-64 overflow-auto rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-slate-600 group-hover:block group-focus-within:block group-open:block">
+        <QuoteContent quote={quote} />
         <QuoteTruncatedBadge omittedCharacterCount={quote.omittedCharacterCount} />
       </div>
     </details>

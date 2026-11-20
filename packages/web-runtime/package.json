@@ -76,6 +76,10 @@
     "./types/config": {
       "types": "./web/types/config.ts",
       "default": "./web/types/config.ts"
+    },
+    "./lib/workspace-selection-events": {
+      "types": "./web/lib/workspace-selection-events.ts",
+      "default": "./web/lib/workspace-selection-events.ts"
     }
   },
   "scripts": {
