@@ -93,6 +93,16 @@ export interface ChatPanelRuntime {
   /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */
   autoReconnecting: boolean;
   /**
+   * 有界自动重试已耗尽（传输层 `exhausted`）：自动重连提示必须结束，
+   * 渲染层展示明确的停止原因与重连入口。
+   */
+  reconnectExhausted: boolean;
+  /**
+   * 显式重连入口：清零有界重试计数并立即建连，保留面板、草稿与会话身份；
+   * 不重发任何结果未知的 prompt。
+   */
+  retryConnection: () => void;
+  /**
    * 最近一次终态关闭的 UI 语义码（策略表的 `uiCode`），非终态断开或新连接开始时为 null。
    *
    * 为什么单列一项而不是复用 `classifiedError`：`uiCode` 描述的是**连接为什么结束**（用户主动停止、

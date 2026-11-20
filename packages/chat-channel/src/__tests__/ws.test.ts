@@ -173,7 +173,8 @@ describe("createYjsWsClient", () => {
     expect(FakeWebSocket.instances).toHaveLength(6);
     expect(reconnectDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
     expect(timers).toHaveLength(0);
-    expect(states.at(-1)).toBe("error");
+    // 耗尽态与终态关闭码区分：上层据此停止“正在重连”提示并提供显式重启入口。
+    expect(states.at(-1)).toBe("exhausted");
   });
 
   // 连接曾成功恢复后，下一次断线应从最短退避时间重新开始。
@@ -556,6 +557,58 @@ describe("createYjsWsClient", () => {
   test("未连接时发送返回 false", () => {
     const client = createClient();
     expect(client.send({ type: "keep_alive" })).toBe(false);
+  });
+
+  // 连续 6 次短连接断连后必须发布明确的「重试耗尽」状态，而不是可被误读为终态关闭的 error。
+  test("重试耗尽发布 exhausted 状态且不再安排下一次连接", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      FakeWebSocket.instances[attempt]?.open();
+      FakeWebSocket.instances[attempt]?.closeFromServer(1006, "temporary_network_outage");
+      if (attempt < 5) runNextTimer();
+    }
+
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    expect(timers).toHaveLength(0);
+    expect(states.at(-1)).toBe("exhausted");
+  });
+
+  // 耗尽后显式 restart 必须清零失败计数并从 1s 档重新开始，而不是卡在 30s 或立即再次耗尽。
+  test("耗尽后 restart 重新开始有界重试并重置退避", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      FakeWebSocket.instances[attempt]?.open();
+      FakeWebSocket.instances[attempt]?.closeFromServer(1006, "temporary_network_outage");
+      if (attempt < 5) runNextTimer();
+    }
+
+    client.restart();
+
+    expect(FakeWebSocket.instances).toHaveLength(7);
+    expect(states.at(-1)).toBe("connecting");
+    FakeWebSocket.instances[6]?.open();
+    FakeWebSocket.instances[6]?.closeFromServer(1006, "temporary_network_outage");
+    expect(timers[0]?.delay).toBe(1000);
+    expect(states.at(-1)).toBe("disconnected");
+  });
+
+  // 显式 disconnect 是终态：后续 restart 不得把已销毁的客户端重新拉起。
+  test("disconnect 后 restart 不建立新连接", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(1006, "connection_lost");
+    const pending = timers[0];
+    client.disconnect();
+
+    client.restart();
+
+    expect(pending?.cleared).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });
 

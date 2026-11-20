@@ -36,11 +36,15 @@ export function shouldAutoReconnectOnVisible(
   // 确定性永久失败：自动重连（含页面从隐藏切回可见触发的一次连接）无意义，仅保留手动重试按钮。
   // max_sessions_reached 不在此列：实例被释放后切回前台可自动恢复，重试有成功机会。
   // environment_unavailable（4004）与 machine_unavailable 同理：重试相同 URL 永远失败。
+  // instance_stopped（4002）与 unauthorized（4003）是显式停止/权限拒绝：自动重启会覆盖用户意图或
+  // 重复使用无效凭据，必须由用户显式操作恢复。
   if (
     errorCode === "machine_unavailable" ||
     errorCode === "auto_start_disabled" ||
     errorCode === "launch_spec_build_failed" ||
-    errorCode === "environment_unavailable"
+    errorCode === "environment_unavailable" ||
+    errorCode === "instance_stopped" ||
+    errorCode === "unauthorized"
   ) {
     return false;
   }
