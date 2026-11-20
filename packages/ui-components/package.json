@@ -652,6 +652,10 @@
       "types": "./web/ui/tree.tsx",
       "default": "./web/ui/tree.tsx"
     },
+    "./ui/use-page-fullscreen": {
+      "types": "./web/ui/use-page-fullscreen.ts",
+      "default": "./web/ui/use-page-fullscreen.ts"
+    },
     "./ui/use-roving-list-navigation": {
       "types": "./web/ui/use-roving-list-navigation.ts",
       "default": "./web/ui/use-roving-list-navigation.ts"

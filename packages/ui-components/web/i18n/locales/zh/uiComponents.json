@@ -437,6 +437,7 @@
     "preview": {
       "download": "下载",
       "fullscreen": "全屏",
+      "exitFullscreen": "退出全屏",
       "loading": "加载中...",
       "noFileSelected": "选择文件以预览",
       "retry": "重试",

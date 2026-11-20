@@ -14,9 +14,11 @@
  *    需要这些定制时直接用 `FileViewerPreview`。
  */
 
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { Spinner } from "../ui/spinner";
+import type { PageFullscreenState } from "../ui/use-page-fullscreen";
 import { FileViewerPreview } from "./preview/FileViewerPreview";
 import type { PreviewFetch } from "./preview/preview-source";
 
@@ -35,9 +37,20 @@ export interface PreviewTabProps {
    * 本组件是包内 tab 容器，自身不取数，只把它转交给 `FileViewerPreview`；须为稳定引用（见其同名 prop）。
    */
   fetchPreview: PreviewFetch;
+  /** 与预览下载、全屏共用右上角工具栏的宿主操作。 */
+  toolbarActions?: ReactNode;
+  /** 工作台持有全屏状态，保证切换预览与编辑不退出全屏。 */
+  fullscreenState?: PageFullscreenState;
 }
 
-export function PreviewTab({ envId, filePath, buildPreviewUrl, fetchPreview }: PreviewTabProps) {
+export function PreviewTab({
+  envId,
+  filePath,
+  buildPreviewUrl,
+  fetchPreview,
+  toolbarActions,
+  fullscreenState,
+}: PreviewTabProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
   if (!envId || !filePath) {
@@ -62,6 +75,8 @@ export function PreviewTab({ envId, filePath, buildPreviewUrl, fetchPreview }: P
         filePath={filePath}
         buildPreviewUrl={buildPreviewUrl}
         fetchPreview={fetchPreview}
+        toolbarActions={toolbarActions}
+        fullscreenState={fullscreenState}
       />
     </div>
   );

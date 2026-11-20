@@ -58,6 +58,12 @@ export function isRecoverableCtrlSpa404(request: Request, error: unknown, status
 
 const requestIds = new WeakMap<Request, string>();
 
+/** Office references grant file access, so neither malformed routes nor extra suffixes are logged. */
+function officeLogPath(pathname: string): string | undefined {
+  const match = /^\/office\/(documents|callbacks)(?:\/|$)/.exec(pathname);
+  return match ? `/office/${match[1]}/[REDACTED]` : undefined;
+}
+
 /** 请求 ID 与 OTel trace ID 分离，不接受客户端标识作为授权依据。 */
 export function deriveRequestId({ request }: { request: Request }) {
   const requestId = nextRequestId();
@@ -81,7 +87,13 @@ export function logResponse({
   const status = resolveResponseStatus(set.status, responseValue ?? response);
   const pathname = new URL(request.url).pathname;
   if (pathname === "/health") return;
-  const fields = { method: request.method, status, requestId: requestIds.get(request) };
+  const officePath = officeLogPath(pathname);
+  const fields = {
+    method: request.method,
+    status,
+    requestId: requestIds.get(request),
+    ...(officePath ? { path: officePath } : {}),
+  };
   if (status >= 500) logger.error("HTTP 响应", fields);
   else if (status >= 400) logger.warn("HTTP 响应", fields);
   else if (isPollingPath(pathname)) logger.debug("HTTP 响应", fields);
@@ -152,6 +164,19 @@ export function logError({
   const url = new URL(request.url);
   if (id) {
     set.headers["X-Request-Id"] = id;
+  }
+
+  const officePath = officeLogPath(url.pathname);
+  if (officePath) {
+    // Provider/parser errors can embed the URL and signed callback body in messages, causes or stacks.
+    logger.error("Office HTTP request failed", {
+      method: request.method,
+      path: officePath,
+      status,
+      requestId: id,
+      errorType: err instanceof ValidationError ? "ValidationError" : err instanceof Error ? "Error" : typeof err,
+    });
+    return;
   }
 
   if (isRecoverableCtrlSpa404(request, err, status)) {

@@ -45,7 +45,8 @@
     },
     "contextMenu": {
       "delete": "删除"
-    }
+    },
+    "unsaved": "未保存"
   },
   "guide": {
     "title": "Machine 本地连接指引",

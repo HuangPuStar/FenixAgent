@@ -18,8 +18,7 @@
  *    （见「已知限制」第 9 条）。
  * 5. 错误边界的兜底提示（源实现写死中文「预览组件加载失败」）纳入包内字典、由调用方按当前语言传入：
  *    它同样渲染给用户看，不再是「不随语言变化」的例外。
- * 6. `overrides.css` 与组件同目录并由本文件 import（工具栏置底等外观修正），
- *    缺失会导致预览工具栏回到顶部。
+ * 6. `overrides.css` 与组件同目录，保留预览内容的边框和代码操作修正；工具栏由本组件提供。
  * 7. 取数函数 `fetchPreview` 为**必填 prop**（源实现在组件内直调全局 `fetch` 读宿主文件代理路由，
  *    并用 `= fetch` 作 `preview-source` 的默认参数）：本包不得依赖 `@fenix/web-runtime`，因此取数只能
  *    由宿主注入，且刻意不保留全局 `fetch` 兜底——兜底会让组件重新直连后端并自行拼 URL（§5.8）。
@@ -36,11 +35,14 @@ import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
 import type { TFunction } from "i18next";
+import { Download, Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { Button } from "../../ui/button";
 import { ErrorFallback } from "../../ui/error-fallback";
+import { type PageFullscreenState, usePageFullscreen } from "../../ui/use-page-fullscreen";
 import { DocumentPreview } from "./DocumentPreview";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { markdownMathPlugin } from "./markdown-math-plugin";
@@ -58,7 +60,7 @@ import {
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
-// 包内样式覆盖（工具栏置底等）
+// 第三方内容区域的样式覆盖。
 import "./overrides.css";
 
 export interface FileViewerPreviewProps {
@@ -86,6 +88,10 @@ export interface FileViewerPreviewProps {
   messages?: Partial<PreviewMessages>;
   /** 预览器 locale（第三方格式化与内置词典都按它取）。缺省跟随当前语言：`zh*` → `zh-CN`，其余 → `en-US`。 */
   locale?: PreviewLocale;
+  /** 宿主文件操作，与下载和全屏共用右上角工具栏。 */
+  toolbarActions?: ReactNode;
+  /** 工作台在预览与编辑之间共享的全屏状态。 */
+  fullscreenState?: PageFullscreenState;
 }
 
 /**
@@ -173,8 +179,12 @@ export function FileViewerPreview({
   fetchPreview,
   messages,
   locale,
+  toolbarActions,
+  fullscreenState,
 }: FileViewerPreviewProps) {
   const { t, i18n } = useTranslation(UI_COMPONENTS_NS);
+  const localFullscreen = usePageFullscreen(!fullscreenState);
+  const { fullscreen, toggleFullscreen, fullscreenClassName } = fullscreenState ?? localFullscreen;
   // 缺省文案随语言重建（`t` 只在切语言时换身份），传入 `messages` 的宿主不受影响
   const previewMessages = useMemo(() => messages ?? buildDefaultPreviewMessages(t), [messages, t]);
   // locale 缺省跟随当前语言：第三方的日期/数字格式与内置词典都按它取，固定 zh-CN 会让英文界面出现中文格式
@@ -196,8 +206,10 @@ export function FileViewerPreview({
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    const separator = previewUrl.includes("?") ? "&" : "?";
+    const requestUrl = reloadKey === 0 ? previewUrl : `${previewUrl}${separator}retry=${reloadKey}`;
     if (!loadAsBlob) {
-      setPreviewSource(previewUrl);
+      setPreviewSource(requestUrl);
       setLoadError(null);
       return;
     }
@@ -205,11 +217,10 @@ export function FileViewerPreview({
     const controller = new AbortController();
     setPreviewSource(null);
     setLoadError(null);
-    // 重试参数：URL 可能由自定义构建器提供、未必带 query，故按是否已含 `?` 选择分隔符
-    const separator = previewUrl.includes("?") ? "&" : "?";
-    const requestUrl = reloadKey === 0 ? previewUrl : `${previewUrl}${separator}retry=${reloadKey}`;
     void loadByteAccuratePreviewSource(requestUrl, fetchPreview, { signal: controller.signal })
-      .then(setPreviewSource)
+      .then((source) => {
+        if (!controller.signal.aborted) setPreviewSource(source);
+      })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         console.error("[FileViewerPreview] 预览源加载失败", error);
@@ -217,21 +228,6 @@ export function FileViewerPreview({
       });
     return () => controller.abort();
   }, [fetchPreview, loadAsBlob, previewUrl, reloadKey]);
-
-  const toolbar = useMemo(
-    () => ({
-      zoom: false,
-      rotate: false,
-      download: true,
-      fullscreen: true,
-      search: false,
-      labels: {
-        download: t("fileTree.preview.download"),
-        fullscreen: t("fileTree.preview.fullscreen"),
-      },
-    }),
-    [t],
-  );
 
   const plugins = useMemo(
     () =>
@@ -247,8 +243,9 @@ export function FileViewerPreview({
     [fetchPreview],
   );
 
+  let content: ReactNode;
   if (loadError) {
-    return (
+    content = (
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3" role="alert">
         {/* 文案取包内字典：状态码来自 PreviewSourceError（宿主域模块抛的其它错误只有通用文案，原始错误进 console） */}
         <span className="text-xs font-medium text-red-500">
@@ -265,43 +262,81 @@ export function FileViewerPreview({
         </button>
       </div>
     );
-  }
-
-  if (previewSource === null) {
-    return (
+  } else if (previewSource === null) {
+    content = (
       <div className="flex-1 flex items-center justify-center p-4" role="status">
         <span className="text-xs text-text-muted">{t("fileTree.preview.loading")}</span>
       </div>
     );
-  }
-
-  const viewer = (
-    <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
-      <FileViewer
-        file={previewSource}
-        fileName={fileName}
-        mimeType={mimeType}
-        plugins={plugins}
-        height="100%"
-        fit="width"
-        toolbar={toolbar}
-        theme="auto"
-        locale={previewLocale}
-        messages={previewMessages}
-      />
-    </FileViewerErrorBoundary>
-  );
-
-  // 文档类按 Blob 加载（`shouldLoadPreviewAsBlob`）：拿到字节后交给文档容器统一处理
-  // 空文件 / 字节上限 / 源码回退；markdown 的渲染模式仍交给上面这个既有预览器。
-  // 同样套错误边界：LaTeX 渲染层或按需 chunk 出错时降级范围止于预览面板，不牵连整个 artifacts 面板。
-  if (isDocument && previewSource instanceof Blob) {
-    return (
+  } else {
+    const viewer = (
       <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
-        <DocumentPreview kind={category} blob={previewSource} markdownView={viewer} />
+        <FileViewer
+          file={previewSource}
+          fileName={fileName}
+          mimeType={mimeType}
+          plugins={plugins}
+          height="100%"
+          fit="width"
+          toolbar={false}
+          theme="auto"
+          locale={previewLocale}
+          messages={previewMessages}
+        />
       </FileViewerErrorBoundary>
     );
+
+    // 文档类按 Blob 加载（`shouldLoadPreviewAsBlob`）：拿到字节后交给文档容器统一处理
+    // 空文件 / 字节上限 / 源码回退；markdown 的渲染模式仍交给上面这个既有预览器。
+    // 同样套错误边界：LaTeX 渲染层或按需 chunk 出错时降级范围止于预览面板，不牵连整个 artifacts 面板。
+    content =
+      isDocument && previewSource instanceof Blob ? (
+        <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
+          <DocumentPreview kind={category} blob={previewSource} markdownView={viewer} />
+        </FileViewerErrorBoundary>
+      ) : (
+        viewer
+      );
   }
 
-  return viewer;
+  return (
+    <section
+      aria-label={filePath}
+      data-page-fullscreen={fullscreen}
+      className={`flex h-full min-h-0 min-w-0 flex-col ${fullscreenClassName}`}
+    >
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border px-3 py-2">
+        {toolbarActions}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("fileTree.refresh")}
+          title={t("fileTree.refresh")}
+          onClick={() => setReloadKey((key) => key + 1)}
+        >
+          <RefreshCw aria-hidden="true" className={previewSource === null ? "animate-spin" : undefined} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" asChild>
+          <a
+            href={previewUrl}
+            download={fileName}
+            aria-label={t("fileTree.preview.download")}
+            title={t("fileTree.preview.download")}
+          >
+            <Download aria-hidden="true" />
+          </a>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t(fullscreen ? "fileTree.preview.exitFullscreen" : "fileTree.preview.fullscreen")}
+          title={t(fullscreen ? "fileTree.preview.exitFullscreen" : "fileTree.preview.fullscreen")}
+          onClick={toggleFullscreen}
+        >
+          {fullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+        </Button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{content}</div>
+    </section>
+  );
 }

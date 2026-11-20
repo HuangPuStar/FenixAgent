@@ -68,6 +68,20 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 内建），穿透检测能力未被放行削弱。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
+  // 文件编辑器的按需浏览器运行时；服务端与 Node 依赖继续由独立断言拒绝。
+  ["codemirror", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-css", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-html", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-javascript", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-json", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-markdown", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-python", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-sql", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@codemirror/lang-yaml", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@milkdown/crepe", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@milkdown/kit", "独立文件编辑包的浏览器编辑器依赖"],
+  ["remark-frontmatter", "独立文件编辑包的浏览器编辑器依赖"],
+  ["@tanstack/react-router", "工作区离开保护复用宿主浏览器路由"],
   ["radix-ui", "浏览器无样式原语（公共 ui/progress 的传递依赖）"],
   ["react", "React 运行时（本包 peerDependency，宿主注入）"],
   ["react-dom", "React DOM 运行时（本包 peerDependency；ui-components 的菜单/门户组件传递依赖）"],
@@ -100,7 +114,15 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
-const graph = walkValueGraph(WEB_ENTRY);
+// 普通入口与工作台窄口均接受完整浏览器安全检查，编辑器依赖只由 Machine 自己维护。
+const entryGraphs = [
+  walkValueGraph(WEB_ENTRY),
+  walkValueGraph(join(WEB_ROOT, "components", "artifacts-files-workspace.tsx")),
+];
+const graph = {
+  files: [...new Set(entryGraphs.flatMap((entry) => entry.files))],
+  references: entryGraphs.flatMap((entry) => entry.references),
+};
 /** 违规定位用仓库根相对路径：图现在跨包（web-runtime），包内相对路径会产生 `../../` 噪音。 */
 const describeRef = (ref: { from: string; specifier: string }): string => `${repoPath(ref.from)} → ${ref.specifier}`;
 const offendersOf = (references: ReadonlyArray<{ from: string; specifier: string }>): string[] =>
@@ -116,6 +138,24 @@ const reachedPackageFiles = new Set(
 const externals = graph.references.filter((ref) => ref.kind === "external");
 
 describe("machine web 入口浏览器可达面", () => {
+  // 机器注册和普通文件 API 的消费方不应因根入口转出而加载编辑器及其路由依赖。
+  test("普通入口不加载文件编辑运行时", () => {
+    const rootGraph = walkValueGraph(WEB_ENTRY);
+    expect(
+      rootGraph.files.filter(
+        (file) => file.includes("/packages/file-editing/") || file.endsWith("/artifacts-files-workspace.tsx"),
+      ),
+    ).toEqual([]);
+  });
+
+  // 只有真正装配文件工作台的宿主才通过明确的公开出口加载完整编辑能力。
+  test("文件工作台经独立出口公开", () => {
+    const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
+      exports?: Record<string, string>;
+    };
+    expect(pkg.exports?.["./web/workspace"]).toBe("./web/components/artifacts-files-workspace.tsx");
+  });
+
   // 遍历有效性自检：图若解析失败会退化为「只有入口文件」，后续断言全部假绿。
   test("遍历有效性自检：包内模块与跨包 exports 目标都在到达集合中", () => {
     for (const expected of [
@@ -247,16 +287,16 @@ describe("machine web 入口浏览器可达面", () => {
 
   // 入口导出面：跨包消费方（agent-config 编辑器直连；宿主 route adapter 为 identity 组织机器页注入）
   // 取用的是 registryApi 与它的类型；2026-09-24 起宿主文件域消费方取用的是 fs 客户端、上传 hook、
-  // 事件通道，以及 D2 第二批迁入的文件工作区与 Files 编排 hook（宿主 `ArtifactsPanel` 经本入口装配）。
+  // 事件通道与 Files 编排 hook；完整工作台由宿主从独立出口装配。
   // 导出面缩水会让消费方退回深层路径（那些路径不在 exports 里）。
-  test("入口转出 registryApi、文件域客户端、上传 hook 与文件工作区", () => {
+  test("入口转出 registryApi、文件域客户端与上传 hook", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain('from "./api/registry"');
     expect(source).toContain('from "./api/fs"');
     expect(source).toContain('from "./api/file-events"');
     expect(source).toContain('from "./hooks/use-file-uploads"');
     expect(source).toContain('from "./hooks/use-artifacts-files"');
-    expect(source).toContain('from "./components/artifacts-files-workspace"');
+    expect(source).not.toContain('from "./components/artifacts-files-workspace"');
     // `use-drag-counter` 的两个调用点都在包内，按「没有第二个消费者就不导出」不转出。
     expect(source).not.toContain('from "./hooks/use-drag-counter"');
     expect(source).toMatch(/export\s+\*/);

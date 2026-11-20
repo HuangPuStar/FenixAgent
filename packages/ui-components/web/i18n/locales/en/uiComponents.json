@@ -437,6 +437,7 @@
     "preview": {
       "download": "Download",
       "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
       "loading": "Loading...",
       "noFileSelected": "Select a file to preview",
       "retry": "Retry",

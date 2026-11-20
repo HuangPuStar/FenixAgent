@@ -99,6 +99,7 @@ export default defineConfig({
         },
       },
       "/api": "http://localhost:3000",
+      "/office": "http://localhost:3000",
       "/acp": { target: "http://localhost:3000", ws: true },
     },
   },

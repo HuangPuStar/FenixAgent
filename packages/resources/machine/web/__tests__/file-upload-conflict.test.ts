@@ -17,6 +17,30 @@ afterEach(() => {
 });
 
 describe("文件冲突反馈", () => {
+  // XHR 与普通 request 必须同样把覆盖批次的部分成功交给调用方处理。
+  test("覆盖上传错误保留已完成与未执行文件", async () => {
+    const details = {
+      completedFiles: [{ name: "a.txt", path: "user/a.txt", size: 1 }],
+      failedFile: "user/b.txt",
+      remainingFiles: ["user/c.txt"],
+    };
+    class PartialXhr {
+      upload = {};
+      status = 409;
+      responseText = JSON.stringify({ error: { code: "version_conflict", message: "changed" }, data: details });
+      onload: (() => void) | null = null;
+      open() {}
+      setRequestHeader() {}
+      abort() {}
+      send() {
+        this.onload?.();
+      }
+    }
+    globalThis.XMLHttpRequest = PartialXhr as unknown as typeof XMLHttpRequest;
+    await expect(
+      uploadFiles("environment", [new File(["save"], "b.txt")], { overwrite: true, onProgress: () => {} }),
+    ).rejects.toMatchObject({ code: "version_conflict", data: details });
+  });
   // 带进度的XHR上传必须同样保留冲突code，不能因不同传输方式显示泛化失败。
   test("进度上传 ApiError 保留冲突 code", async () => {
     class ConflictXhr {

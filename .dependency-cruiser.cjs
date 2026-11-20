@@ -39,6 +39,13 @@ const workspacePackageRoots = getWorkspacePackageRoots();
 module.exports = {
   forbidden: [
     {
+      name: "file-editing-not-to-host-domains",
+      comment: "可替换的编辑包只消费注入端口，类型引用也不得反向绑定 Machine、runtime 或宿主。",
+      severity: "error",
+      from: { path: "(?:^|/)packages/file-editing/" },
+      to: { path: "(?:^|/)(?:packages/(?:resources|agent-runtime)/|apps/)" },
+    },
+    {
       name: "no-circular",
       comment: "workspace 模块依赖必须有向无环。违规按「规则 + 包对」登记在架构例外台账中。",
       severity: "error",

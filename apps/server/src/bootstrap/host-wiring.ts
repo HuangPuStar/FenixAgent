@@ -39,7 +39,7 @@ import {
 import type { AppConfig } from "../config";
 import { db } from "../db";
 import type { ServerEnv } from "../env-loader";
-import { getRedisConnection } from "../services/cache";
+import { ensureRedisConnection } from "../services/cache";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { buildModuleConfigs } from "./module-configs";
 import { resolveWorkspacePathFromEnv } from "./workspace-path";
@@ -77,9 +77,8 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
   initializeApplicationInfrastructure({
     database: db,
     // Redis 同样是进程能力：宿主是唯一建连点，包经 `getRedisConnection()` 取用（未配置 `RCS_REDIS_URL` 时
-    // 返回 null，调用方跳过快照持久化）。这里传 provider 而不是连接本身——`services/cache` 首次 `getCache()`
-    // 才建连，装配期取值会把「尚未建连」固化成永久 null。
-    redisConnection: () => getRedisConnection(),
+    // 返回 null）。provider 在实际取用时按需初始化共享连接，模块不依赖缓存命名空间的创建顺序。
+    redisConnection: ensureRedisConnection,
     moduleConfigs: buildModuleConfigs(env, appConfig),
   });
   registerIdentityDirectory(createIdentityDirectory());

@@ -56,6 +56,7 @@ import {
   agentChatResources,
   agentConcurrencyResources,
 } from "@fenix/agent-runtime/web/i18n";
+import { FILE_EDITING_NS, fileEditingResources } from "@fenix/file-editing/web/i18n";
 import {
   APIKEY_NS,
   apikeyResources,
@@ -138,6 +139,7 @@ const hostResources = {
  */
 const packageResources = {
   en: {
+    [FILE_EDITING_NS]: fileEditingResources.en,
     [AGENTS_NS]: agentResources.en,
     [AGENT_CHAT_NS]: agentChatResources.en,
     [AGENT_CONCURRENCY_NS]: agentConcurrencyResources.en,
@@ -165,6 +167,7 @@ const packageResources = {
     [UI_COMPONENTS_NS]: uiComponentsResources.en,
   },
   zh: {
+    [FILE_EDITING_NS]: fileEditingResources.zh,
     [AGENTS_NS]: agentResources.zh,
     [AGENT_CHAT_NS]: agentChatResources.zh,
     [AGENT_CONCURRENCY_NS]: agentConcurrencyResources.zh,

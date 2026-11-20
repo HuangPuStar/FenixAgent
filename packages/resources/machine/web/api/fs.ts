@@ -40,15 +40,17 @@ interface FileContent {
   content: string;
   size: number;
   encoding: string;
+  version?: string;
 }
 
 /** 文件上传响应 */
 interface FileUploadResponse {
-  files: Array<{ name: string; path: string; size: number }>;
+  files: Array<{ name: string; path: string; size: number; version?: string }>;
 }
 
 /** 文件写入响应 */
 interface FileWriteResult {
+  version?: string;
   name: string;
   path: string;
   size: number;
@@ -80,6 +82,10 @@ export const MAX_UPLOAD_BATCH_SIZE_BYTES = 20 * 1024 * 1024;
 
 /** 文件上传请求参数。 */
 export interface UploadFilesOptions {
+  overwrite?: boolean;
+  fileConditions?: Array<{ expectedVersion?: string }>;
+  /** Reuse this ID when retrying a request with the same files and conditions. */
+  opId?: string;
   targetDir?: string;
   relativePaths?: string[];
   onProgress?: (percent: number) => void;
@@ -87,10 +93,15 @@ export interface UploadFilesOptions {
 }
 
 /** 构造统一上传表单，文件夹层级仅通过 relativePaths 表达。 */
-export function buildUploadFormData(files: File[], relativePaths?: string[]): FormData {
+export function buildUploadFormData(
+  files: File[],
+  relativePaths?: string[],
+  fileConditions?: Array<{ expectedVersion?: string }>,
+): FormData {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
   if (relativePaths) formData.append("relativePaths", JSON.stringify(relativePaths));
+  if (fileConditions) formData.append("fileConditions", JSON.stringify(fileConditions));
   return formData;
 }
 
@@ -103,14 +114,14 @@ export async function uploadFiles(
   files: File[],
   options: UploadFilesOptions = {},
 ): Promise<FileUploadResponse> {
-  const formData = buildUploadFormData(files, options.relativePaths);
+  const formData = buildUploadFormData(files, options.relativePaths, options.fileConditions);
   if (!options.onProgress) {
     return unwrap(
-      request<FileUploadResponse>(buildUploadUrl(environmentId, options.targetDir), {
+      request<FileUploadResponse>(buildUploadUrl(environmentId, options.targetDir, options.overwrite), {
         method: "POST",
         body: formData,
         timeout: UPLOAD_TIMEOUT_MS,
-        opId: randomUUID(),
+        opId: options.opId ?? randomUUID(),
         signal: options.signal,
       }),
     );
@@ -155,6 +166,7 @@ export async function uploadFiles(
           new ApiError(
             payload.error?.message ?? `请求失败 (${xhr.status})`,
             payload.error?.code ?? payload.error?.type ?? "UNKNOWN",
+            payload.data,
           ),
         ),
       );
@@ -163,9 +175,9 @@ export async function uploadFiles(
     xhr.onabort = () => settle(() => reject(new DOMException("Upload cancelled", "AbortError")));
     xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.ontimeout = () => settle(() => reject(new ApiError("请求超时", "NETWORK_ERROR")));
-    xhr.open("POST", buildUploadUrl(environmentId, options.targetDir));
+    xhr.open("POST", buildUploadUrl(environmentId, options.targetDir, options.overwrite));
     xhr.withCredentials = true;
-    xhr.setRequestHeader("x-file-op-id", randomUUID());
+    xhr.setRequestHeader("x-file-op-id", options.opId ?? randomUUID());
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) {
       abort();
@@ -222,14 +234,20 @@ export type TreeRevalidation =
  *
  * @param id - 环境 ID
  * @param etag - 上次响应携带的 ETag；为空表示无条件请求
+ * @param signal - 新请求或环境换代时取消过期的回源
  */
-export async function revalidateWorkspaceTree(id: string, etag?: string | null): Promise<TreeRevalidation> {
+export async function revalidateWorkspaceTree(
+  id: string,
+  etag?: string | null,
+  signal?: AbortSignal,
+): Promise<TreeRevalidation> {
   const headers: Record<string, string> = {};
   if (etag) headers["If-None-Match"] = etag;
 
   const response = await fetch(`/web/environments/${encodeURIComponent(id)}/fs/tree`, {
     credentials: "include",
     headers,
+    signal,
   });
   if (response.status === 304) return { status: "not-modified" };
   if (!response.ok) {
@@ -280,9 +298,9 @@ export function encodeWorkspaceUrlPath(path: string): string {
  * @param id - 环境 ID
  * @param targetDir - 目标目录（相对于 workspace 根），缺省或空串表示 workspace 根
  */
-export function buildUploadUrl(id: string, targetDir?: string): string {
+export function buildUploadUrl(id: string, targetDir?: string, overwrite?: boolean): string {
   const dir = targetDir ? encodeWorkspaceUrlPath(targetDir.replace(/^\/+/, "")) : "";
-  return `/web/environments/${encodeURIComponent(id)}/fs/${dir}`;
+  return `/web/environments/${encodeURIComponent(id)}/fs/${dir}${overwrite !== undefined ? `?overwrite=${overwrite}` : ""}`;
 }
 
 /**
@@ -337,9 +355,11 @@ export const fsApi = {
    * @param id - 环境 ID
    * @param subpath - 文件路径（相对于 workspace 根）
    */
-  readFile: (id: string, subpath: string) =>
+  readFile: (id: string, subpath: string, options?: { includeVersion?: boolean; signal?: AbortSignal }) =>
     request<FileContent | undefined>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
       params: { id },
+      query: options?.includeVersion ? { includeVersion: true, mode: "text" } : undefined,
+      signal: options?.signal,
     }),
 
   /**
@@ -349,14 +369,23 @@ export const fsApi = {
    * @param subpath - 文件路径（相对于 workspace 根）
    * @param content - 要写入的文本内容
    */
-  writeFile: (id: string, subpath: string, content: string, signal?: AbortSignal) =>
+  writeFile: (
+    id: string,
+    subpath: string,
+    content: string,
+    signal?: AbortSignal,
+    options?: { expectedVersion?: string; opId?: string },
+  ) =>
     request<FileWriteResult>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
       method: "PUT",
       params: { id },
-      body: { content },
+      body: {
+        content,
+        ...(options?.expectedVersion !== undefined ? { expectedVersion: options.expectedVersion } : {}),
+      },
       signal,
       timeout: WRITE_TIMEOUT_MS,
-      opId: randomUUID(),
+      opId: options?.opId ?? randomUUID(),
     }),
 
   /** 原子创建空文件；同名路径返回冲突，保留原内容。 */

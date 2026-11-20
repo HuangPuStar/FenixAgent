@@ -1,5 +1,6 @@
 import { SiteFrame, SiteTabsBar, useArtifactsSites } from "@fenix/agent-config/web";
-import { ArtifactsFilesWorkspace, useArtifactsFiles } from "@fenix/resource-machine/web";
+import { useArtifactsFiles } from "@fenix/resource-machine/web";
+import { ArtifactsFilesWorkspace } from "@fenix/resource-machine/web/workspace";
 import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod-view/web";
 import { TasksPanel } from "@fenix/resource-task/web";
 import { TracePanel } from "@fenix/resource-trace/web";
@@ -7,7 +8,7 @@ import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-
 import { Button } from "@fenix/ui-components/ui/button";
 import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { Globe, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
@@ -23,6 +24,8 @@ interface ArtifactsPanelProps {
   /** 实例 uid（前端路由的 sessionId 段）；Trace 面板据此定位要读的观测会话。 */
   sessionId?: string | null;
   changedFiles?: ChangedFile[];
+  /** 宿主折叠时停用交互，重新展开时恢复当前编辑器。 */
+  active?: boolean;
   /** ProdView 模块配置，控制面板 tab 的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
   /** 面板相对 Chat 的布局方式。窄屏由父级强制传入 floating。 */
@@ -42,7 +45,7 @@ interface ArtifactsPanelProps {
  *
  * 归属（2026-09-24 台账 D2，2026-09-25 收尾）：本文件是**宿主壳层的跨包装配**，留在 `apps/web`
  * （前端规范 §2.5「跨包装配是壳的职责」）。两条数据流都已归位各自的 owner 包——文件域是
- * `@fenix/resource-machine/web` 的 `ArtifactsFilesWorkspace` / `useArtifactsFiles`，站点域是
+ * `@fenix/resource-machine/web/workspace` 的工作台及 `@fenix/resource-machine/web` 的文件状态 hook，站点域是
  * `@fenix/agent-config/web` 的 `useArtifactsSites`（收尾迁出：壳可以持有 tab 状态与回调，但 §2.5
  * 明令「壳不做取数」，站点取数是最后一条残留在壳里的取数）。本文件只剩模式切换与渲染装配，
  * 装配的站点组件（`SiteTabsBar` / `SiteFrame` / `MountSiteDialog`）来自 `@fenix/agent-config/web`，
@@ -80,6 +83,7 @@ function ArtifactsPanelView({
   agentConfigId: agentConfigIdProp,
   sessionId = null,
   changedFiles = [],
+  active = true,
   modulesConfig,
   layoutMode = "floating",
   canDock = true,
@@ -93,6 +97,15 @@ function ArtifactsPanelView({
 
   const [topMode, setTopMode] = useState<TopMode>("files");
   const isFilesMode = topMode === "files";
+  const leaveFilesRef = useRef<(() => Promise<boolean>) | null>(null);
+  const registerBeforeLeave = useCallback((guard: (() => Promise<boolean>) | null) => {
+    leaveFilesRef.current = guard;
+  }, []);
+  const handleClose = useCallback(() => {
+    void (async () => {
+      if (await (leaveFilesRef.current?.() ?? Promise.resolve(true))) onClose?.();
+    })();
+  }, [onClose]);
 
   const availableModes = useMemo<TopMode[]>(() => {
     // 无 `modulesConfig` = 控制台自己的聊天页：五种模式全给。
@@ -172,7 +185,7 @@ function ArtifactsPanelView({
         layoutMode={layoutMode}
         canDock={canDock}
         onLayoutModeChange={onLayoutModeChange}
-        onClose={onClose}
+        onClose={onClose ? handleClose : undefined}
       />
 
       {/* 加载中/错误提示仅在 Sites 模式下展示，避免在 Files/Tasks/Views 模式下干扰 */}
@@ -187,8 +200,10 @@ function ArtifactsPanelView({
 
       {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Trace 模式：观测调用链；
           Sites 模式：二级 site tab + iframe */}
-      {isFilesMode ? (
+      <div className={isFilesMode ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
         <ArtifactsFilesWorkspace
+          active={active && isFilesMode}
+          onRegisterBeforeLeave={registerBeforeLeave}
           envId={envId}
           openFiles={openFiles}
           activeFile={activeFile}
@@ -199,54 +214,56 @@ function ArtifactsPanelView({
           onReferenceFile={handleReferenceFile}
           onFilesChanged={handleFilesChanged}
         />
-      ) : topMode === "tasks" ? (
-        <TasksPanel agentId={agentConfigId} />
-      ) : topMode === "views" ? (
-        <ProdViewsPanel agentId={agentConfigId} />
-      ) : topMode === "trace" ? (
-        <TracePanel environmentId={envId} sessionId={sessionId} />
-      ) : sites.length === 0 ? (
-        // Sites 模式 + 未绑定任何 site：空状态提示 + 直接挂载入口（agentConfigId 就绪时显示）
-        <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <Globe className="h-10 w-10 text-text-dim" />
-          <div>
-            <p className="text-sm font-medium text-text-primary">{t("panelMode.sitesEmptyTitle")}</p>
-            <p className="mt-1 text-xs text-text-muted">{t("panelMode.sitesEmptyHint")}</p>
-          </div>
-          {agentConfigId && (
-            <Button variant="outline" size="sm" onClick={handleMount} className="mt-1">
-              <Plus className="h-3.5 w-3.5" />
-              {tAgents("panelMode.mountSite")}
-            </Button>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* 二级 site tab：仅在 Sites 模式且有有效 activeSiteId 时挂载 */}
-          {validActiveSiteId && (
-            <SiteTabsBar
-              activeSiteId={validActiveSiteId}
-              sites={sites}
-              currentAgentConfigId={agentConfigId}
-              onChange={handleSiteChange}
-              onMountClick={handleMount}
-              onUnmountClick={handleUnmountClick}
-            />
-          )}
-          {/* SiteFrame：占满剩余空间，切 site 时 key 变化触发重挂载 */}
-          {activeSite && (
-            <div className="flex-1 min-h-0 min-w-0">
-              <SiteFrame
-                key={activeSite.remoteAppId}
-                remoteAppId={activeSite.remoteAppId}
-                name={activeSite.name}
-                createdByAgentConfigId={activeSite.createdByAgentConfigId}
-                createdByAgentConfigName={activeSite.createdByAgentConfigName}
-              />
+      </div>
+      {!isFilesMode &&
+        (topMode === "tasks" ? (
+          <TasksPanel agentId={agentConfigId} />
+        ) : topMode === "views" ? (
+          <ProdViewsPanel agentId={agentConfigId} />
+        ) : topMode === "trace" ? (
+          <TracePanel environmentId={envId} sessionId={sessionId} />
+        ) : sites.length === 0 ? (
+          // Sites 模式 + 未绑定任何 site：空状态提示 + 直接挂载入口（agentConfigId 就绪时显示）
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <Globe className="h-10 w-10 text-text-dim" />
+            <div>
+              <p className="text-sm font-medium text-text-primary">{t("panelMode.sitesEmptyTitle")}</p>
+              <p className="mt-1 text-xs text-text-muted">{t("panelMode.sitesEmptyHint")}</p>
             </div>
-          )}
-        </>
-      )}
+            {agentConfigId && (
+              <Button variant="outline" size="sm" onClick={handleMount} className="mt-1">
+                <Plus className="h-3.5 w-3.5" />
+                {tAgents("panelMode.mountSite")}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* 二级 site tab：仅在 Sites 模式且有有效 activeSiteId 时挂载 */}
+            {validActiveSiteId && (
+              <SiteTabsBar
+                activeSiteId={validActiveSiteId}
+                sites={sites}
+                currentAgentConfigId={agentConfigId}
+                onChange={handleSiteChange}
+                onMountClick={handleMount}
+                onUnmountClick={handleUnmountClick}
+              />
+            )}
+            {/* SiteFrame：占满剩余空间，切 site 时 key 变化触发重挂载 */}
+            {activeSite && (
+              <div className="flex-1 min-h-0 min-w-0">
+                <SiteFrame
+                  key={activeSite.remoteAppId}
+                  remoteAppId={activeSite.remoteAppId}
+                  name={activeSite.name}
+                  createdByAgentConfigId={activeSite.createdByAgentConfigId}
+                  createdByAgentConfigName={activeSite.createdByAgentConfigName}
+                />
+              </div>
+            )}
+          </>
+        ))}
 
       <ArtifactsDialogs
         agentConfigId={agentConfigId}
