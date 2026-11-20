@@ -78,6 +78,12 @@ export function isTerminalWebSocketCloseCode(code: number): boolean {
 /** 为单个 server 的 SDK 连接注入适配；不修改共享原型或其他 server 的连接。 */
 export type AcpConnectionAdapter = (connection: acp.ClientSideConnection) => acp.ClientSideConnection;
 
+/**
+ * initialize 握手的默认 deadline。正常冷启动允许较慢的引擎初始化，但挂起的进程必须在
+ * 有界时间内失败并释放，否则后续重连会一直复用同一个永不落定的启动。
+ */
+export const DEFAULT_AGENT_INITIALIZE_TIMEOUT_MS = 60_000;
+
 export interface ServerConfig {
   port: number;
   host: string;
@@ -87,6 +93,8 @@ export interface ServerConfig {
   env?: Record<string, string>;
   /** 可选的连接适配入口；未设置时直接使用原始 SDK 连接。 */
   adaptConnection?: AcpConnectionAdapter;
+  /** initialize 握手 deadline（毫秒），默认 {@link DEFAULT_AGENT_INITIALIZE_TIMEOUT_MS}。 */
+  initializeTimeoutMs?: number;
   rcsUrl?: string;
   rcsSecret?: string;
   tenantId?: string;
@@ -926,6 +934,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   let connecting: Promise<void> | null = null;
   let stopped = false;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  // 每次启动递增：迟到的 initialize/exit/closed 回调据此识别自己是否已过期。
+  let startupGeneration = 0;
+  const initializeTimeoutMs = config.initializeTimeoutMs ?? DEFAULT_AGENT_INITIALIZE_TIMEOUT_MS;
 
   // --- Helpers (closures over local `clients`) ---
 
@@ -1200,9 +1211,21 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
+  /** 新启动必须重新协商能力：旧代缓存会让等待方误判尚未初始化的连接已就绪。 */
+  function clearAgentCapabilities(): void {
+    state.agentCapabilities = null;
+    state.promptCapabilities = null;
+    state.modelState = null;
+    state.modeState = null;
+  }
+
   async function startAgent(): Promise<void> {
+    // 每次启动都换代：迟到的 initialize/exit/closed 回调只能影响自己那一代。
+    const generation = ++startupGeneration;
+    clearAgentCapabilities();
     if (state.process) {
       await stopAgentProcess(state.process);
+      if (generation !== startupGeneration || stopped) return;
       state.process = null;
       state.connection = null;
     }
@@ -1217,98 +1240,132 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       disconnectAnnounced = true;
       relayRouter.broadcast({ type: "status", payload: { connected: false, agentPid } });
     };
+    let agentProcess: ChildProcess | null = null;
+    let connection: acp.ClientSideConnection | null = null;
     try {
       console.log("spawning agent:", command, args);
 
-      const agentProcess = spawn(command, args, {
+      agentProcess = spawn(command, args, {
         cwd,
         stdio: ["pipe", "pipe", "inherit"],
         env: buildAgentProcessEnv(extraEnv),
       });
 
-      state.process = agentProcess;
-      agentPid = agentProcess.pid;
+      const child = agentProcess;
+      state.process = child;
+      agentPid = child.pid;
 
       // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcessByStdio 不继承 EventEmitter，需 cast 监听 exit
-      (agentProcess as any).on("exit", (code: number | null) => {
+      (child as any).on("exit", (code: number | null) => {
         console.log("agent process exited:", code);
-        if (state.process === agentProcess) {
+        // 进程身份即启动代次：旧进程的退出绝不能清空新代状态。
+        if (state.process === child) {
           state.process = null;
           state.connection = null;
           announceDisconnect();
         }
       });
 
-      const input = Writable.toWeb(agentProcess.stdin!) as unknown as WritableStream<Uint8Array>;
-      const output = Readable.toWeb(agentProcess.stdout!) as unknown as ReadableStream<Uint8Array>;
+      const input = Writable.toWeb(child.stdin!) as unknown as WritableStream<Uint8Array>;
+      const output = Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>;
 
       const stream = acp.ndJsonStream(input, output);
       const rawConnection = new acp.ClientSideConnection((_agent) => createClient(state), stream);
-      const connection = config.adaptConnection ? config.adaptConnection(rawConnection) : rawConnection;
+      connection = config.adaptConnection ? config.adaptConnection(rawConnection) : rawConnection;
 
       state.connection = connection;
 
       const periMeta = buildPeriCapabilityMeta();
-      const initResult = await connection.initialize({
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientInfo: { name: "zed", version: "1.0.0" },
-        clientCapabilities: {
-          fs: { readTextFile: true, writeTextFile: true },
-          // 声明支持 form 模式 elicitation（AskUserQuestion）：ACP 要求 client 在
-          // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
-          // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
-          elicitation: { form: {} },
-          // Peri Task View capability（_meta.peri.*，见 peri-task-capability.ts）
-          ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
-        },
-      });
+      let initializeTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const initResult = await Promise.race([
+          connection.initialize({
+            protocolVersion: acp.PROTOCOL_VERSION,
+            clientInfo: { name: "zed", version: "1.0.0" },
+            clientCapabilities: {
+              fs: { readTextFile: true, writeTextFile: true },
+              // 声明支持 form 模式 elicitation（AskUserQuestion）：ACP 要求 client 在
+              // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
+              // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
+              elicitation: { form: {} },
+              // Peri Task View capability（_meta.peri.*，见 peri-task-capability.ts）
+              ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
+            },
+          }),
+          // 对端不再响应时必须由本侧收口，否则 connecting 永不落定、重连也只能等待。
+          new Promise<never>((_resolve, reject) => {
+            initializeTimer = setTimeout(() => {
+              reject(new Error(`Agent initialize timed out after ${initializeTimeoutMs}ms`));
+            }, initializeTimeoutMs);
+          }),
+          // 握手期 EOF 是终态，无需等满 deadline 才让上层得知启动失败。
+          connection.closed.then(() => {
+            throw new Error("Agent connection closed during initialization");
+          }),
+        ]);
 
-      if (stopped || state.process !== agentProcess || state.connection !== connection) {
-        return;
+        if (stopped || generation !== startupGeneration || state.process !== child || state.connection !== connection) {
+          return;
+        }
+
+        const agentCaps = initResult.agentCapabilities;
+        // 透传 SDK 返回的全部 capabilities，包括 configOptions 等未知字段
+        state.agentCapabilities = agentCaps ?? null;
+        state.promptCapabilities = agentCaps?.promptCapabilities ?? null;
+        agentInfo = initResult.agentInfo;
+
+        console.log(
+          "agent initialized:",
+          `protocolVersion=${initResult.protocolVersion}`,
+          `loadSession=${!!state.agentCapabilities?.loadSession}`,
+          `sessionList=${!!state.agentCapabilities?.sessionCapabilities?.list}`,
+          `sessionResume=${!!state.agentCapabilities?.sessionCapabilities?.resume}`,
+          `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
+          // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
+          `elicitationForm=true`,
+          `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
+          `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
+        );
+
+        relayRouter.broadcast({
+          type: "status",
+          payload: {
+            connected: true,
+            agentInfo: initResult.agentInfo,
+            capabilities: state.agentCapabilities,
+            agentPid,
+          },
+        });
+
+        connection.closed.then(() => {
+          if (generation !== startupGeneration || state.connection !== connection) return;
+          console.log("agent connection closed");
+          state.connection = null;
+          announceDisconnect();
+        });
+      } finally {
+        if (initializeTimer !== undefined) clearTimeout(initializeTimer);
       }
-
-      const agentCaps = initResult.agentCapabilities;
-      // 透传 SDK 返回的全部 capabilities，包括 configOptions 等未知字段
-      state.agentCapabilities = agentCaps ?? null;
-      state.promptCapabilities = agentCaps?.promptCapabilities ?? null;
-      agentInfo = initResult.agentInfo;
-
-      console.log(
-        "agent initialized:",
-        `protocolVersion=${initResult.protocolVersion}`,
-        `loadSession=${!!state.agentCapabilities?.loadSession}`,
-        `sessionList=${!!state.agentCapabilities?.sessionCapabilities?.list}`,
-        `sessionResume=${!!state.agentCapabilities?.sessionCapabilities?.resume}`,
-        `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
-        // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
-        `elicitationForm=true`,
-        `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
-        `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
-      );
-
-      relayRouter.broadcast({
-        type: "status",
-        payload: {
-          connected: true,
-          agentInfo: initResult.agentInfo,
-          capabilities: state.agentCapabilities,
-          agentPid,
-        },
-      });
-
-      connection.closed.then(() => {
-        if (state.connection !== connection) return;
-        console.log("agent connection closed");
-        state.connection = null;
-        announceDisconnect();
-      });
     } catch (error) {
-      // EOF 会使在途 initialize 拒绝，不能在这里抢先 SIGTERM 破坏 close 的 drain。
-      if (stopped) return;
-      if (state.process) await stopAgentProcess(state.process);
-      state.process = null;
-      state.connection = null;
+      // 已被新代接管的旧启动只需静默退出，不能停止或清空新代进程。
+      if (stopped || generation !== startupGeneration) return;
+      // 失败代不再有可用的对端，在途授权与提问必须显式取消，不能留下悬空 Promise。
+      cancelPendingPermissions(state);
+      for (const elicitation of elicitations.values()) elicitation.cancelAll();
+      try {
+        if (agentProcess && state.process === agentProcess) await stopAgentProcess(agentProcess);
+      } catch (stopError) {
+        // 退出未确认也必须释放本代句柄，否则下一次 connect 会继续复用挂起的启动。
+        console.error("agent process stop failed:", stopError instanceof Error ? stopError.message : typeof stopError);
+      } finally {
+        if (generation === startupGeneration) {
+          if (agentProcess && state.process === agentProcess) state.process = null;
+          if (connection && state.connection === connection) state.connection = null;
+          clearAgentCapabilities();
+        }
+      }
       console.error("agent connect failed:", (error as Error).message);
+      announceDisconnect();
       relayRouter.broadcast({
         type: "error",
         payload: {
