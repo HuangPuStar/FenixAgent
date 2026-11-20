@@ -1,4 +1,11 @@
-import { EDITING_DEFAULTS, EditingError, type OfficeSessionStatus } from "../../contracts";
+import {
+  EDITING_DEFAULTS,
+  type EditingClient,
+  EditingError,
+  type FileReference,
+  type OfficeSession,
+  type OfficeSessionStatus,
+} from "../../contracts";
 import { editingError } from "./editing-errors";
 import type { EditingStore } from "./editing-store";
 
@@ -11,7 +18,7 @@ function pending(store: EditingStore) {
   }
   return result;
 }
-function delay(signal: AbortSignal): Promise<void> {
+function delay(signal: AbortSignal, interval: number = EDITING_DEFAULTS.pollIntervalMs): Promise<void> {
   return new Promise((resolve, reject) => {
     const aborted = () => {
       clearTimeout(timer);
@@ -20,10 +27,28 @@ function delay(signal: AbortSignal): Promise<void> {
     const timer = setTimeout(() => {
       signal.removeEventListener("abort", aborted);
       resolve();
-    }, EDITING_DEFAULTS.pollIntervalMs);
+    }, interval);
     signal.addEventListener("abort", aborted, { once: true });
     if (signal.aborted) aborted();
   });
+}
+/** Wait briefly for OnlyOffice's final close callback to release an existing file claim. */
+export async function openOfficeSession(
+  client: Pick<EditingClient, "openOffice">,
+  file: FileReference,
+  signal: AbortSignal,
+): Promise<OfficeSession> {
+  const deadline = Date.now() + 10000;
+  for (let attempt = 0; ; attempt++) {
+    signal.throwIfAborted();
+    try {
+      return await client.openOffice(file, signal);
+    } catch (error) {
+      if (!(error instanceof EditingError) || error.code !== "busy" || attempt >= 10 || Date.now() >= deadline)
+        throw error;
+      await delay(signal, Math.min(1000, deadline - Date.now()));
+    }
+  }
 }
 function statusFailure(status: OfficeSessionStatus): EditingError | null {
   if (status.conflict || status.state === "conflict")

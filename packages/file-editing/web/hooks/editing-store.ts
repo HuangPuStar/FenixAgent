@@ -9,9 +9,11 @@ import { editingError } from "./editing-errors";
 import {
   acknowledgeOfficeOverwrite,
   closeOfficeBuffer,
+  openOfficeSession,
   refreshOfficeBuffer,
   saveOfficeBuffer,
 } from "./office-operations";
+import { checkExternalTextChange } from "./text-file-changes";
 import type { EditableKind, EditingBuffer, EditingGuard, EditingSaveReceipt, OfficeSavePreparation } from "./types";
 
 /** Stable snapshot consumed by React's external-store subscription. */
@@ -39,6 +41,7 @@ export class EditingStore {
   private readonly requests = new Map<string, AbortController>();
   private readonly officePreparations = new Map<string, OfficeSavePreparation>();
   private readonly writes = new Map<string, WriteAttempt>();
+  private readonly pendingChanges = new Set<string>();
   private readonly accessed = new Map<string, number>();
   private accessCounter = 0;
   private readonly operations = new Map<string, Promise<boolean>>();
@@ -80,6 +83,7 @@ export class EditingStore {
     this.operations.clear();
     this.closures.clear();
     this.writes.clear();
+    this.pendingChanges.clear();
     this.guardDone?.(false);
     this.guardDone = null;
     this.guardTargets = [];
@@ -97,6 +101,9 @@ export class EditingStore {
     const next = { ...buffer, ...update };
     if (next.content === buffer.content) this.bufferSizes.set(next, this.contentBytes(buffer));
     this.publish({ buffers: { ...this.snapshot.buffers, [path]: next } });
+    // A write's own event and later external changes can arrive before its receipt; coalesce them.
+    if (buffer.saving && update.saving === false && this.pendingChanges.delete(path))
+      void (next.dirty ? checkExternalTextChange(this, path) : this.load(path));
   }
   buffer(path: string) {
     return this.snapshot.buffers[path];
@@ -193,7 +200,7 @@ export class EditingStore {
     this.patch(path, { loading: true, error: null });
     try {
       if (buffer.kind === "office") {
-        const session = await this.client.openOffice(this.file(path), request.signal);
+        const session = await openOfficeSession(this.client, this.file(path), request.signal);
         if (!request.valid()) {
           await this.client.discardOffice(session.id);
           return;
@@ -450,28 +457,15 @@ export class EditingStore {
       if (valid()) this.publish({ guard: { ...guard, busy: false, error: editingError(error) } });
     }
   };
-  private async checkExternalChange(path: string) {
-    const buffer = this.buffer(path);
-    if (!buffer) return;
-    const request = this.request(path);
-    try {
-      const latest = await this.client.readText(this.file(path), request.signal);
-      if (request.valid() && this.buffer(path)?.version === buffer.version && latest.version !== buffer.version)
-        this.patch(path, { conflict: true });
-    } catch (error) {
-      if (!request.valid()) return;
-      const failure = editingError(error);
-      this.patch(path, { error: failure, deleted: failure.code === "not-found" });
-    }
-  }
   notifyFileChange = (change: EditingFileChange) => {
     for (const buffer of Object.values(this.snapshot.buffers)) {
       if (
         buffer.kind === "text" &&
-        !buffer.saving &&
         (change.kind === "invalidate-all" || change.paths.some((path) => matches(buffer.path, path)))
-      )
-        void (buffer.dirty ? this.checkExternalChange(buffer.path) : this.load(buffer.path));
+      ) {
+        if (buffer.saving) this.pendingChanges.add(buffer.path);
+        else void (buffer.dirty ? checkExternalTextChange(this, buffer.path) : this.load(buffer.path));
+      }
     }
   };
   notifyPathChange = (change: EditingPathChange) => {
