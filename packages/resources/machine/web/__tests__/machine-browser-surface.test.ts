@@ -102,6 +102,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["react-file-icon", "文件类型图标（components/file-icon-helper，tab 与列表都用它）"],
   ["react-arborist", "虚拟化树（components/file-tree-arborist，文件树的渲染内核）"],
   ["react-resizable-panels", "可拖拽分栏（ui/resizable，文件树 / 预览分栏；本包同时以类型导入其句柄类型）"],
+  ["pdfjs-dist", "Mozilla 官方浏览器 PDF 渲染与文字层，按需加载；构建工具入口不在浏览器图中"],
   ["@open-file-viewer/core", "预览内核（components/preview/* 的渲染器；随样式表一起被浏览器加载）"],
   ["@open-file-viewer/react", "预览 React 绑定（components/preview/FileViewerPreview 的生产路径）"],
   [

@@ -353,7 +353,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 6.2 iframe 沙箱
 - **Markdown / Agent 输出里的 `<iframe>`**：**必须**去掉 `allow-same-origin`（它与 `allow-scripts` 同开时 iframe 内脚本可读写父页面 DOM 与存储——**等价于没有沙箱**），且对 `src` 做协议与域名校验；现为 `ui-components` 的 `IframePreview` 两处 `sandbox="allow-scripts allow-popups"`，`src` 过协议白名单（`http:` / `https:` / 相对地址 / `data:`），模型自带的 `sandbox` 被剔除，并有包内用例。
 - **用户自己的站点**（`siteUrl`、`SiteFrame`）：可保留 `allow-same-origin`，但**必须**带 `referrerPolicy`（现为 `no-referrer`：`SiteFrame.tsx`、`AgentSitesCard.tsx`）。
-- **同源文件预览**（pdf / office 转 pdf）：可用 `srcDoc` 或同源 URL，`sandbox` 可选——现三处无 `sandbox`（同源，风险低）：knowledge 的 `ResourcePreviewContent.tsx` 两处、`ui-components/web/components/preview/native-pdf-plugin.ts`；**knowledge 的 HTML 预览不算这一类**：它是用户上传的 UGC，`srcDoc` + 固定 `sandbox="allow-scripts"`（不带 `allow-same-origin`：`srcdoc` 继承父页面源，与 `allow-scripts` 组合即可自行摘掉 sandbox）；工作区预览器的 `html-plugin.ts` 同为 UGC 且同源，固定 `sandbox="allow-scripts"` + `referrerpolicy="no-referrer"`。
+- **同源文件预览**（pdf / office 转 pdf）：可用 `srcDoc` 或同源 URL，`sandbox` 可选——knowledge 的 `ResourcePreviewContent.tsx` 两处无 `sandbox`（同源）；工作区 PDF 使用不执行文档脚本的 PDF.js 官方查看组件；**knowledge 的 HTML 预览不算这一类**：它是用户上传的 UGC，`srcDoc` + 固定 `sandbox="allow-scripts"`（不带 `allow-same-origin`：`srcdoc` 继承父页面源，与 `allow-scripts` 组合即可自行摘掉 sandbox）；工作区预览器的 `html-plugin.ts` 同为 UGC 且同源，固定 `sandbox="allow-scripts"` + `referrerpolicy="no-referrer"`。
 - 新增 iframe **必须**显式写出 `sandbox` 属性并说明取值理由；外链 `target="_blank"` 现状 6 处全带 `rel`（`message.tsx` 两处 Markdown 链接与媒体链接为 `noopener noreferrer`，knowledge 预览与下载、站点目录、模型网关管理台为 `noreferrer`）——规范未单列该条，按现状记录，不构成偏离。
 
 ### 6.3 凭据与本地存储
@@ -459,7 +459,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - 硬编码用户可见文案：实测 505 行 / 103 文件（口径 = 字符串字面量 + JSX 文本中的中文，排除注释、测试与字典文件；含 1 条诊断日志串，属下一条「不属违规」类）；其中 `model-management` 的两个生产目录页（`AlgorithmsPage.tsx` 228、`VerticalModelsPage.tsx` 73）301 处 — 数据表改为从字典按 id 取（`models.algorithms.<id>.*` / `models.vertical.<id>.*`）。
 - `ui-components/web/chat/mocks/**`（`mock-fixtures.ts` 31、`mock-conversation.ts` 42、`mock-stream-script.ts` 21、`mock-reducer.ts` 2）96 处 — **不入字典、保留**（demo / 用例的样本数据，非生产渲染路径）。
 - `ui-components` chat 叙述层与少量默认值 30 处（`web/chat/narrators/*.ts` 的 `verb` 14 与兜底串 4 属**纯函数模块**；`HindsightToolCard.tsx` 6、`ChatHeader.tsx` 2、`chat-header-session-row.tsx` 的 `aria-label`、`useDragUpload.ts` 2、`CitationLink.tsx` 的 `title` 默认值同类）— 叙述层收 `t` 参数（`narrate(tool, t)`）、组件默认值改由调用方注入。
-- `ui-components` 预览插件（`html-plugin.ts` 5、`native-pdf-plugin.ts` 2）7 处，已登记在该包 README「已知限制」第 12 条 — 插件工厂接受文案参数。
+- `ui-components` 预览插件（`html-plugin.ts`）5 处，已登记在该包 README「已知限制」第 12 条 — 插件工厂接受文案参数。
 - `agent-config` 兜底文案 12 处（`AgentManagementPage.tsx` 8、`AgentHomePage.tsx` 3、`SiteFrame.tsx` 的 `title`）— 删掉 `defaultValue` 兜底（靠 i18n 测试保证键齐），默认提示模板与 `title` 改走 `t()`。
 - 首屏静态加载全部语言与全部 namespace — 按 route / feature 拆分懒加载。
 - 语言切换没有 UI 组件（检测、`rcs-lang` 持久化与 `fallbackLng` 都是宿主启动决策）— 补语言切换 UI。

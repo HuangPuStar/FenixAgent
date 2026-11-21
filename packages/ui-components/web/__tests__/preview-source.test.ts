@@ -55,12 +55,12 @@ describe("文本预览源 — 保留响应的真实字节大小", () => {
     expect((source as Blob).size).toBe(bytes.byteLength);
   });
 
-  // 仅文本类型改为 Blob；依赖原始 URL 的 PDF、HTML 和媒体预览保持现有加载链路
-  test("只为文本预览加载 Blob", () => {
+  // 文本和 PDF 由宿主读取原始字节；HTML 与媒体保留原始 URL。
+  test("文本和 PDF 预览从宿主加载 Blob，HTML 保留隔离页面 URL", () => {
     expect(shouldLoadPreviewAsBlob("user/a.txt")).toBe(true);
     expect(shouldLoadPreviewAsBlob("user/a.md")).toBe(true);
     expect(shouldLoadPreviewAsBlob("user/a.html")).toBe(false);
-    expect(shouldLoadPreviewAsBlob("user/a.pdf")).toBe(false);
+    expect(shouldLoadPreviewAsBlob("user/a.pdf")).toBe(true);
   });
 
   // 非成功响应必须在进入预览器前显式失败，否则错误页会被当作文件内容展示

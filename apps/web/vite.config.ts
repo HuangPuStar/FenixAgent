@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pdfAssetsPlugin } from "@fenix/ui-components/vite/pdf-assets-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
@@ -15,6 +16,7 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    pdfAssetsPlugin(),
   ],
   base: "/ctrl/",
   resolve: {

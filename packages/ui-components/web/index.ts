@@ -101,7 +101,6 @@ export * from "./components/file-tree-view";
 export * from "./components/PreviewTab";
 export * from "./components/preview/FileViewerPreview";
 export * from "./components/preview/html-plugin";
-export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
 export * from "./components/preview-rail";
 export * from "./components/selection-context-menu";

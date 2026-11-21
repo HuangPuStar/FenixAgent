@@ -222,7 +222,6 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "isLatexExtension",
     "isMarkdownExtension",
     "loadByteAccuratePreviewSource",
-    "nativePdfPlugin",
     "shouldLoadPreviewAsBlob",
     "shouldRenderDocumentContent",
     "withWorkspaceFileExtension",

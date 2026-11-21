@@ -170,6 +170,7 @@
     "nanoid": "^5.1.11",
     "node-schedule": "^2.1.1",
     "openai": "^6.42.0",
+    "pdfjs-dist": "6.5.438",
     "pg": "^8.23.0",
     "pino": "10.3.1",
     "pino-pretty": "13.1.3",

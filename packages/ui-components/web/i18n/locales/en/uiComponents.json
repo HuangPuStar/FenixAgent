@@ -465,6 +465,20 @@
         "source": "Source",
         "remoteUrl": "Remote URL",
         "localFile": "Local file"
+      },
+      "pdf": {
+        "controls": "PDF reading controls",
+        "previous": "Previous page",
+        "next": "Next page",
+        "pageNumber": "Page number",
+        "zoomOut": "Zoom out",
+        "zoomIn": "Zoom in",
+        "fitWidth": "Fit width",
+        "rotate": "Rotate clockwise",
+        "page": "Page {{page}}",
+        "pages": "Pages {{first}}–{{last}}",
+        "encrypted": "This PDF is password protected. Download it to open with a password.",
+        "invalid": "Unable to read this PDF. Retry or download the original file."
       }
     },
     "refresh": "Refresh",

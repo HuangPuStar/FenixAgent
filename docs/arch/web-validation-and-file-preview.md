@@ -22,4 +22,4 @@
 
 仅以一个点开头的扩展名文件（如 `.csv`、`.pdf`、`.html`）继续按第三方库的扩展名语义识别，传给插件的扩展名不含前导点。
 
-PDF、HTML、表格、图片和文本继续复用既有插件。路径的 URL 编码由文件 API 层负责；插件适配不解码或重新编码源地址。HTML 渲染保持 `sandbox="allow-scripts"`，不放开同源权限。
+PDF 保持现有 PreviewPlugin 接口，内部使用 Mozilla PDF.js 官方 PDFViewer；字节由宿主注入的 fetchPreview 加载，解析器与样式仅打开 PDF 时加载，worker、CMap、标准字体、ICC 和 wasm 由 ui-components 的 Vite 插件按安装版本本地发布。引用仅接管当前 PDF 文字层中的有效选区，并附带单页或跨页页码。HTML、表格、图片和文本继续复用既有插件。路径的 URL 编码由文件 API 层负责；插件适配不解码或重新编码源地址。HTML 渲染保持 `sandbox="allow-scripts"`，不放开同源权限。

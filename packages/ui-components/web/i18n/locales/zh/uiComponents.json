@@ -465,6 +465,20 @@
         "source": "来源",
         "remoteUrl": "远程 URL",
         "localFile": "本地文件"
+      },
+      "pdf": {
+        "controls": "PDF 阅读控制",
+        "previous": "上一页",
+        "next": "下一页",
+        "pageNumber": "页码",
+        "zoomOut": "缩小",
+        "zoomIn": "放大",
+        "fitWidth": "适应宽度",
+        "rotate": "顺时针旋转",
+        "page": "第 {{page}} 页",
+        "pages": "第 {{first}}–{{last}} 页",
+        "encrypted": "此 PDF 已加密，请下载后使用密码打开。",
+        "invalid": "无法读取此 PDF，请重试或下载原文件。"
       }
     },
     "refresh": "刷新",

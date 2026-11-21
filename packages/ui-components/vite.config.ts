@@ -2,6 +2,7 @@ import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { pdfAssetsPlugin } from "./vite/pdf-assets-plugin";
 
 const pkgRoot = __dirname;
 
@@ -17,7 +18,7 @@ const pkgRoot = __dirname;
  */
 export default defineConfig({
   root: pkgRoot,
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), pdfAssetsPlugin()],
   resolve: {
     alias: [
       { find: /^@fenix\/ui-components\/styles\.css$/, replacement: path.resolve(pkgRoot, "web/styles/theme.css") },

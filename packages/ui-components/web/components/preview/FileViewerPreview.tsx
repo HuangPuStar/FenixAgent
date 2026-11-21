@@ -2,7 +2,7 @@
  * 文件预览器（从 apps/web 的 `agent-panel/preview/FileViewerPreview.tsx` 复制并纯化）。
  *
  * 依赖 `@open-file-viewer/core` + `@open-file-viewer/react` 渲染，配套两个本地插件
- * （`html-plugin` 渲染 HTML、`native-pdf-plugin` 走浏览器原生 PDF），并按文件类型决定
+ * （`html-plugin` 渲染 HTML、`pdf-plugin` 懒加载官方 PDF.js 查看器），并按文件类型决定
  * 是否以 Blob 形式加载（保留原始字节数，见 `preview-source.ts`）。
  *
  * 纯化取舍：
@@ -37,7 +37,7 @@ import { FileViewer } from "@open-file-viewer/react";
 import type { TFunction } from "i18next";
 import { Download, Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import type { ErrorInfo, ReactNode } from "react";
-import { Component, useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
@@ -46,7 +46,8 @@ import { type PageFullscreenState, usePageFullscreen } from "../../ui/use-page-f
 import { DocumentPreview } from "./DocumentPreview";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { markdownMathPlugin } from "./markdown-math-plugin";
-import { nativePdfPlugin } from "./native-pdf-plugin";
+import { pdfPreviewPlugin } from "./pdf-plugin";
+import { readPdfTextSelection } from "./pdf-selection";
 import {
   classifyFile,
   getPreviewMimeType,
@@ -191,6 +192,8 @@ export function FileViewerPreview({
   onQuoteSelection,
 }: FileViewerPreviewProps) {
   const { t, i18n } = useTranslation(UI_COMPONENTS_NS);
+  const quoteCallback = useRef(onQuoteSelection);
+  quoteCallback.current = onQuoteSelection;
   const localFullscreen = usePageFullscreen(!fullscreenState);
   const { fullscreen, toggleFullscreen, fullscreenClassName } = fullscreenState ?? localFullscreen;
   // 缺省文案随语言重建（`t` 只在切语言时换身份），传入 `messages` 的宿主不受影响
@@ -245,14 +248,16 @@ export function FileViewerPreview({
     () =>
       [
         imagePlugin(),
-        nativePdfPlugin(),
+        pdfPreviewPlugin(async () =>
+          (await import("./pdf-runtime")).createPdfPlugin(t, () => quoteCallback.current?.(null)),
+        ),
         officePlugin(),
         htmlPreviewPlugin(fetchPreview),
         // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
         markdownMathPlugin(),
         textPlugin(),
       ].map(withWorkspaceFileExtension),
-    [fetchPreview],
+    [fetchPreview, t],
   );
 
   let content: ReactNode;
@@ -284,6 +289,16 @@ export function FileViewerPreview({
           active={active}
           resetKey={reloadKey}
           onQuote={onQuoteSelection}
+          readSelection={
+            category === "pdf"
+              ? (event) =>
+                  readPdfTextSelection(event, (first, last) =>
+                    first === last
+                      ? t("fileTree.preview.pdf.page", { page: first })
+                      : t("fileTree.preview.pdf.pages", { first, last }),
+                  )
+              : undefined
+          }
         >
           <FileViewer
             file={previewSource}
