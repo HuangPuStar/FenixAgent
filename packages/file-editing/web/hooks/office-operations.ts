@@ -76,6 +76,23 @@ export async function closeOfficeBuffer(store: EditingStore, path: string, revok
     return false;
   }
 }
+
+/** Failed revocation must release its canceled local save without acknowledging unsaved content. */
+export async function finishOfficeGuard(store: EditingStore, path: string, discard: boolean): Promise<boolean> {
+  const session = store.buffer(path)?.session;
+  if (!session) return true;
+  const request = store.request(path);
+  try {
+    await (discard
+      ? store.client.discardOffice(session.id, request.signal)
+      : store.client.closeOffice(session.id, request.signal));
+    return request.valid();
+  } catch (error) {
+    if (!request.valid()) return false;
+    if (discard) store.releaseCancelledOfficeSave(path);
+    throw error;
+  }
+}
 /** Waits for a matching committed save receipt; command acceptance alone never clears dirty. */
 export async function saveOfficeBuffer(store: EditingStore, path: string): Promise<boolean> {
   const buffer = store.buffer(path);

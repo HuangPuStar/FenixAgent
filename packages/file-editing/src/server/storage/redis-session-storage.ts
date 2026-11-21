@@ -108,6 +108,14 @@ class RedisEditingSessionStorage implements EditingSessionStorage {
       this.keys(record)[0] !== key
     )
       throw new EditingError("unavailable", "Invalid Office session storage record");
+    // Redis Lua cjson round-trips an empty JSON array as an empty object.
+    for (const field of ["completed", "requests"] as const) {
+      const value: unknown = record[field];
+      if (Array.isArray(value)) continue;
+      if (!value || typeof value !== "object" || Object.keys(value).length !== 0)
+        throw new EditingError("unavailable", "Invalid Office session storage list");
+      record[field] = [];
+    }
     return record;
   }
   async put(record: EditingSessionRecord, lease: EditingLease): Promise<void> {

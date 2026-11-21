@@ -58,6 +58,14 @@ async function performCommit(input: OfficeFileCommit, controller: AbortControlle
   if (!current || !isWritable(current, input.now()))
     throw new EditingError("expired", "Office write permission was revoked");
   if (current.commitOwner && current.commitOwner !== lease.owner) {
+    const previous = current.commitAttempt;
+    if (
+      !previous ||
+      previous.id !== input.result.id ||
+      previous.opId !== input.result.opId ||
+      previous.digest !== input.result.digest
+    )
+      throw new EditingError("unavailable", "The previous workspace save has not been confirmed");
     const confirmed = await readCommitted(input, controller.signal);
     if (!confirmed)
       throw new EditingError(
@@ -67,10 +75,12 @@ async function performCommit(input: OfficeFileCommit, controller: AbortControlle
     delete record.commitOwner;
     delete record.commitExpiresAt;
     delete record.commitUnknown;
+    delete record.commitAttempt;
     await storage.put(record, lease);
     return confirmed;
   }
   record.commitOwner = lease.owner;
+  record.commitAttempt = { id: input.result.id, opId: input.result.opId, digest: input.result.digest };
   await storage.put(record, lease);
   let settled = false;
   try {
@@ -121,11 +131,13 @@ async function performCommit(input: OfficeFileCommit, controller: AbortControlle
       delete record.commitOwner;
       delete record.commitExpiresAt;
       delete record.commitUnknown;
+      delete record.commitAttempt;
       const latest = await storage.get(record.id);
       if (latest?.commitOwner === lease.owner) {
         delete latest.commitOwner;
         delete latest.commitExpiresAt;
         delete latest.commitUnknown;
+        delete latest.commitAttempt;
         await storage.put(latest, lease);
       }
     }

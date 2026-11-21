@@ -173,7 +173,7 @@ beforeEach(async () => {
     send() {}
   };
   win.localStorage.clear();
-  globalThis.fetch = async (input) =>
+  const mockFetch = async (input: Parameters<typeof fetch>[0]) =>
     String(input).includes("/fs/tree")
       ? new Response(JSON.stringify({ success: true, data: { paths: [], mtimes: {}, sizes: {} } }), {
           headers: { "content-type": "application/json" },
@@ -181,6 +181,7 @@ beforeEach(async () => {
       : String(input).includes(".txt")
         ? new Response("Read-only preview", { headers: { "content-type": "text/plain" } })
         : new Response("Preview unavailable", { status: 404 });
+  globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect });
   ({ ArtifactsFilesWorkspace: Workspace } = await import("../components/artifacts-files-workspace"));
   host = document.createElement("div");
   document.body.appendChild(host);

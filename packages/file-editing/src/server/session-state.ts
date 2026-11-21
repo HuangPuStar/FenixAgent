@@ -39,11 +39,14 @@ export interface EditingSessionRecord {
   expiresAt: number;
   hardExpiresAt: number;
   closingUntil?: number;
+  /** Provider reconnection deadline; status polling must not extend it. */
+  disconnectedUntil?: number;
   revoked: boolean;
   terminal: boolean;
   commitOwner?: string;
   commitExpiresAt?: number;
   commitUnknown?: boolean;
+  commitAttempt?: Pick<SavedResult, "id" | "opId" | "digest">;
   pending?: SaveGeneration;
   saveId?: string;
   requests: SaveGeneration[];

@@ -73,6 +73,7 @@ let state: ComposerState;
 let quotes: ReturnType<typeof useFileQuotes>;
 let handlers: ReturnType<typeof useComposerHandlers>;
 const submissions: unknown[] = [];
+const notices: unknown[] = [];
 function Harness({ sessionId, showDialog }: { sessionId: string | null; showDialog: boolean }) {
   state = useComposerState({ defaultDraft: "existing draft" });
   quotes = useFileQuotes(state, sessionId);
@@ -85,6 +86,7 @@ function Harness({ sessionId, showDialog }: { sessionId: string | null; showDial
     supportsImages: false,
     fileReferenceEnabled: false,
     onSubmit: (message) => submissions.push(message),
+    onNotice: (notice) => notices.push(notice),
     textareaRef: { current: null },
     fileInputRef: { current: null },
   });
@@ -104,6 +106,23 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   document.body.replaceChildren();
+  notices.length = 0;
+});
+
+// 纯聊天引用也受转义后预算约束，拒绝发送必须提示并完整保留正文和引用。
+test.each(["", "keep this draft"])("retains an oversized chat quote and its draft %j", (draft) => {
+  mount("session-a");
+  submissions.length = 0;
+  const quote = { id: "chat-only", text: "<".repeat(4000), omittedCharacterCount: 0 };
+  act(() => {
+    state.setText(draft);
+    state.updateQuotes([quote]);
+  });
+  act(() => handlers.handleSubmit());
+  expect(submissions).toHaveLength(0);
+  expect(state.text).toBe(draft);
+  expect(state.quotes).toEqual([quote]);
+  expect(notices).toEqual([{ level: "info", message: en.fileQuotes.limit }]);
 });
 
 // 紧凑评论输入支持回车添加，保留选区、来源和草稿，不触发消息发送。

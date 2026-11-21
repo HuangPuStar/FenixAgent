@@ -44,6 +44,85 @@ beforeEach(async () => {
 });
 afterEach(() => store.suspend());
 
+// 放弃请求失败后必须恢复未保存状态和保存入口，不能永远停留在保存中。
+test("failed discard releases the interrupted Office save for retry", async () => {
+  const polling = deferred<OfficeSession>();
+  const entered = deferred<void>();
+  client.getSession = async () => {
+    entered.resolve();
+    return polling.promise;
+  };
+  client.discardOffice = async () => {
+    throw new EditingError("unavailable", "Discard failed");
+  };
+  store.markOfficeDirty("office.docx", true);
+  const saving = store.save("office.docx");
+  await entered.promise;
+  const leaving = store.beforeLeave();
+  try {
+    await store.resolveGuard("discard");
+    expect(store.getSnapshot().guard).toMatchObject({ busy: false, error: { code: "unavailable" } });
+    expect(store.buffer("office.docx")).toMatchObject({ saving: false, dirty: true });
+    await store.resolveGuard("cancel");
+    expect(await leaving).toBe(false);
+    polling.resolve(session);
+    await saving;
+    client.getSession = async () => ({ ...session, saveId: "saved-close", version: "v2", lastSavedAt: 1 });
+    expect(await store.save("office.docx")).toBe(true);
+  } finally {
+    polling.resolve(session);
+    await saving;
+  }
+});
+
+// 删除通知使放弃请求失效时，应结束本次离开并保留草稿，不能锁死确认框。
+test.each([false, true])("deletion during Office discard settles the guard (abort=%s)", async (rejectOnAbort) => {
+  const cleanup = deferred<void>();
+  const entered = deferred<void>();
+  client.discardOffice = async (_id, signal) => {
+    entered.resolve();
+    if (rejectOnAbort)
+      return new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    return cleanup.promise;
+  };
+  store.markOfficeDirty("office.docx", true);
+  const leaving = store.beforeLeave();
+  const discarding = store.resolveGuard("discard");
+  await entered.promise;
+  store.notifyPathChange({ moved: [], deleted: ["office.docx"] });
+  cleanup.resolve();
+  await discarding;
+  expect(store.getSnapshot().guard).toBeNull();
+  expect(await leaving).toBe(false);
+  expect(store.buffer("office.docx")).toMatchObject({ dirty: true, deleted: true });
+});
+
+// 旧环境的放弃回调不能关闭新环境正在等待的确认框。
+test("an invalidated Office discard leaves a replacement environment guard unchanged", async () => {
+  const cleanup = deferred<void>();
+  const entered = deferred<void>();
+  client.discardOffice = async () => {
+    entered.resolve();
+    return cleanup.promise;
+  };
+  store.markOfficeDirty("office.docx", true);
+  const oldLeave = store.beforeLeave();
+  const discarding = store.resolveGuard("discard");
+  await entered.promise;
+  store.connect("another-environment");
+  await store.ensureLoaded("office.docx", "office");
+  store.markOfficeDirty("office.docx", true);
+  const newLeave = store.beforeLeave();
+  cleanup.resolve();
+  await discarding;
+  expect(await oldLeave).toBe(false);
+  expect(store.getSnapshot().guard).toMatchObject({ paths: ["office.docx"], busy: false });
+  await store.resolveGuard("cancel");
+  expect(await newLeave).toBe(false);
+});
+
 // 保存回执已清脏后关闭必须直接结束会话，不能再弹出未保存提示。
 test("saved Office closes without an unsaved-changes prompt", async () => {
   store.markOfficeDirty("office.docx", true);

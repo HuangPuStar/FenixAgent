@@ -82,7 +82,7 @@ function encodeChatQuotes(quotes: SerializedChatQuote[]): string {
   return CHAT_QUOTES_PREFIX + JSON.stringify(payload).replaceAll("<", "\\u003c");
 }
 
-/** Test the complete escaped payload before accepting or submitting file-bearing drafts. */
+/** Test the complete escaped payload before accepting or submitting quote drafts. */
 export function canSerializeChatQuotes(quotes: SerializedChatQuote[]): boolean {
   return (
     quotes.length <= MAX_QUOTE_COUNT && Array.from(encodeChatQuotes(quotes)).length <= MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH

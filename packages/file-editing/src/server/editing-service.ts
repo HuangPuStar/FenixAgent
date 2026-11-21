@@ -29,6 +29,7 @@ import type { EditingLease, EditingSessionStorage } from "./session-storage";
 import { createMemoryEditingSessionStorage } from "./storage/memory-session-storage";
 
 const logger = createLogger("file-editing");
+const OFFICE_RECONNECT_WINDOW_MS = 100_000;
 /** Dependencies injected by the host; file routing, authorization and persistence stay outside. */
 export interface EditingServiceOptions {
   config: EditingServiceConfig;
@@ -135,6 +136,11 @@ class OfficeEditingService implements EditingService {
     return this.storage.withLease(id, async (lease) => {
       const record = await this.owned(owner, id);
       this.active(record);
+      if ((record.commitOwner || record.commitUnknown) && record.commitAttempt?.opId !== opId)
+        throw new EditingError(
+          "unavailable",
+          "The previous workspace save must be confirmed before starting another save",
+        );
       record.requests = record.requests.filter((request) => this.now() - request.createdAt < this.policy.receiptTtlMs);
       const duplicate = record.requests.find((request) => request.opId === opId);
       if (duplicate && (record.state !== "save-failed" || record.pending?.id !== duplicate.id))
@@ -254,14 +260,22 @@ class OfficeEditingService implements EditingService {
         await this.storage.put(record, lease);
         if (fields.status === 1) {
           this.active(record);
+          delete record.disconnectedUntil;
+          this.touch(record);
           await this.storage.put(record, lease);
           return { error: 0 };
         }
         if (fields.status === 4) {
           this.active(record);
-          record.terminal = true;
-          record.state = "closed";
-          delete record.pending;
+          if (record.closingUntil !== undefined || record.terminal) {
+            record.terminal = true;
+            record.state = "closed";
+            delete record.pending;
+            delete record.disconnectedUntil;
+          } else {
+            record.disconnectedUntil ??= this.now() + OFFICE_RECONNECT_WINDOW_MS;
+            this.touch(record);
+          }
           await this.storage.put(record, lease);
           return { error: 0 };
         }
@@ -381,7 +395,11 @@ class OfficeEditingService implements EditingService {
   }
   private touch(record: EditingSessionRecord): void {
     if (isWritable(record, this.now()))
-      record.expiresAt = Math.min(record.hardExpiresAt, record.closingUntil ?? this.now() + this.policy.idleTtlMs);
+      record.expiresAt = Math.min(
+        record.hardExpiresAt,
+        record.closingUntil ?? this.now() + this.policy.idleTtlMs,
+        record.disconnectedUntil ?? record.hardExpiresAt,
+      );
   }
   private expire(record: EditingSessionRecord): void {
     record.state = "expired";

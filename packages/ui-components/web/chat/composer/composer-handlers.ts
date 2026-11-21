@@ -323,7 +323,7 @@ export function useComposerHandlers({
       quoteSequenceRef.current += 1;
       const id = `chat-quote-${Date.now()}-${quoteSequenceRef.current}`;
       const quote = { id, text: quotedText, omittedCharacterCount };
-      if (currentQuotes.some((value) => value.source) && !canSerializeChatQuotes([...currentQuotes, quote])) {
+      if (!canSerializeChatQuotes([...currentQuotes, quote])) {
         notify("info", t("fileQuotes.limit"));
         return;
       }
@@ -367,7 +367,7 @@ export function useComposerHandlers({
     const trimmed = text.trim();
     const currentQuotes = readQuotes();
     if ((!trimmed && images.length === 0 && attachments.length === 0 && currentQuotes.length === 0) || disabled) return;
-    if (currentQuotes.some((quote) => quote.source) && !canSerializeChatQuotes(currentQuotes)) {
+    if (!canSerializeChatQuotes(currentQuotes)) {
       notify("info", t("fileQuotes.limit"));
       return;
     }

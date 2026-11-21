@@ -9,6 +9,7 @@ import { editingError } from "./editing-errors";
 import {
   acknowledgeOfficeOverwrite,
   closeOfficeBuffer,
+  finishOfficeGuard,
   openOfficeSession,
   refreshOfficeBuffer,
   saveOfficeBuffer,
@@ -279,6 +280,11 @@ export class EditingStore {
     });
     return operation;
   };
+  /** A canceled attempt must not keep failed discard recovery attached to an obsolete save promise. */
+  releaseCancelledOfficeSave(path: string) {
+    this.operations.delete(path);
+    this.patch(path, { saving: false });
+  }
   private async saveText(path: string): Promise<boolean> {
     const buffer = this.buffer(path);
     if (!buffer) return false;
@@ -411,11 +417,14 @@ export class EditingStore {
   resolveGuard = async (choice: "save" | "discard" | "cancel") => {
     const guard = this.snapshot.guard;
     if (!guard || guard.busy) return;
-    if (choice === "cancel") {
+    const finish = (allowed: boolean) => {
       const done = this.guardDone;
       this.guardDone = null;
       this.publish({ guard: null });
-      done?.(false);
+      done?.(allowed);
+    };
+    if (choice === "cancel") {
+      finish(false);
       return;
     }
     const epoch = this.epoch;
@@ -433,11 +442,10 @@ export class EditingStore {
         if (choice === "save" && this.buffer(path)?.dirty) throw new EditingError("busy", "unsavedChanges");
         if (buffer.kind === "office" && buffer.session) {
           const generation = this.buffer(path)?.generation;
-          const request = this.request(path);
-          await (choice === "discard" || this.guardAction === "refresh"
-            ? this.client.discardOffice(buffer.session.id, request.signal)
-            : this.client.closeOffice(buffer.session.id, request.signal));
-          if (!request.valid()) return;
+          if (!(await finishOfficeGuard(this, path, choice === "discard" || this.guardAction === "refresh"))) {
+            if (valid()) finish(false);
+            return;
+          }
           if (choice === "save" && (this.buffer(path)?.dirty || this.buffer(path)?.generation !== generation))
             throw new EditingError("busy", "unsavedChanges");
         }
@@ -449,10 +457,7 @@ export class EditingStore {
             throw this.buffer(path)?.error ?? new EditingError("unavailable", "unsavedChanges");
         }
       }
-      const done = this.guardDone;
-      this.guardDone = null;
-      this.publish({ guard: null });
-      done?.(true);
+      finish(true);
     } catch (error) {
       if (valid()) this.publish({ guard: { ...guard, busy: false, error: editingError(error) } });
     }
