@@ -9,7 +9,7 @@ export const FileChangeKindSchema = z.enum(["write", "delete", "mkdir", "rename"
 export type FileChangeKind = z.infer<typeof FileChangeKindSchema>;
 
 /** 变更来源（契约先行审计字段，本期只定义不落库） */
-export const FileChangeSourceSchema = z.enum(["user", "agent", "api"]);
+export const FileChangeSourceSchema = z.enum(["user", "agent", "api", "external"]);
 export type FileChangeSource = z.infer<typeof FileChangeSourceSchema>;
 
 /** 订阅帧：声明要订阅的环境列表，服务端逐环境校验访问权 */
@@ -45,6 +45,7 @@ export const FileBatchChangeSchema = z.object({
   kind: FileChangeKindSchema,
   source: FileChangeSourceSchema,
   actor_id: z.string().optional(),
+  to: z.string().optional(),
 });
 export type FileBatchChange = z.infer<typeof FileBatchChangeSchema>;
 

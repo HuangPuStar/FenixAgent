@@ -38,6 +38,7 @@ let api: ReturnType<typeof useFileTreeOperations>;
 let changed: WorkspaceFilesChange[];
 let selected: string[];
 let refreshes: number;
+let beforeMutation: Parameters<typeof useFileTreeOperations>[0]["beforeMutation"];
 const tree = parsePathsToTree(["docs/a.md", "a.md", "b.md", "c.md", "target/a.md"]);
 const renameSpy = spyOn(fsApi, "rename");
 const deleteSpy = spyOn(fsApi, "batchDelete");
@@ -49,6 +50,7 @@ function Harness({ envId }: { envId: string }) {
   api = useFileTreeOperations({
     envId,
     enabled: true,
+    beforeMutation,
     getTree: () => tree,
     onChanged: (change) => changed.push(change),
     onSelectionChange: (paths) => {
@@ -79,6 +81,7 @@ beforeEach(() => {
   changed = [];
   selected = [];
   refreshes = 0;
+  beforeMutation = undefined;
   renameSpy.mockReset();
   deleteSpy.mockReset();
   successSpy.mockClear();
@@ -285,4 +288,71 @@ describe("文件写操作编排", () => {
     expect(refreshes).toBe(0);
     expect(api.busy).toBe(false);
   });
+});
+
+// 裁决期间离开再回到同一环境，也不能让旧的文件操作恢复执行。
+test.each([
+  "rename",
+  "move",
+  "delete",
+] as const)("pending %s guard cannot survive an environment round trip", async (operation) => {
+  const gate = Promise.withResolvers<boolean>();
+  beforeMutation = () => gate.promise;
+  render();
+  if (operation === "delete") act(() => api.requestDelete(["b.md"]));
+  let result!: Promise<boolean>;
+  act(() => {
+    result =
+      operation === "rename"
+        ? api.renamePath("b.md", "new.md")
+        : operation === "move"
+          ? api.moveToDirectory(["b.md"], "target")
+          : api.confirmDelete();
+  });
+  render("env-b");
+  render("env-a");
+  let allowed = true;
+  await act(async () => {
+    gate.resolve(true);
+    allowed = await result;
+  });
+  expect(allowed).toBe(false);
+  expect(renameSpy).not.toHaveBeenCalled();
+  expect(deleteSpy).not.toHaveBeenCalled();
+  expect(changed).toEqual([]);
+});
+
+// 卸载后收到的保存裁决不能再执行旧请求或更新已经消失的界面。
+test("pending mutation guard cannot resume after unmount", async () => {
+  const gate = Promise.withResolvers<boolean>();
+  beforeMutation = () => gate.promise;
+  render();
+  let result!: Promise<boolean>;
+  act(() => {
+    result = api.renamePath("b.md", "new.md");
+  });
+  act(() => root.unmount());
+  root = createRoot(document.createElement("div"));
+  let allowed = true;
+  await act(async () => {
+    gate.resolve(true);
+    allowed = await result;
+  });
+  expect(allowed).toBe(false);
+  expect(renameSpy).not.toHaveBeenCalled();
+});
+
+// 裁决回调的异常必须走现有失败反馈，不能成为 void 点击处理器的未处理 rejection。
+test("mutation guard rejection is visible and never performs the write", async () => {
+  beforeMutation = async () => {
+    throw new Error("Cannot confirm editor state");
+  };
+  render();
+  let allowed = true;
+  await act(async () => {
+    allowed = await api.renamePath("b.md", "new.md");
+  });
+  expect(allowed).toBe(false);
+  expect(renameSpy).not.toHaveBeenCalled();
+  expect(errorSpy.mock.calls[0]?.[0]).toBe("Cannot confirm editor state");
 });

@@ -8,7 +8,15 @@ import { getEnvironmentById } from "../environment-port";
 import { getMachineSandboxRoutePort, type SandboxRouteResult } from "../sandbox-route-port";
 import { waitForFileWsConnection } from "../transport/file-op-retry";
 import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
-import { REMOTE_UPLOAD_LIMIT_MESSAGE, REMOTE_UPLOAD_MAX_BYTES } from "./file-types";
+import {
+  type FileReadOptions,
+  FileServiceError,
+  type FileUploadOptions,
+  type FileWriteOptions,
+  REMOTE_UPLOAD_LIMIT_MESSAGE,
+  REMOTE_UPLOAD_MAX_BYTES,
+} from "./file-types";
+import { assertContentCapability, throwContentResponseError, verifySnapshot } from "./remote-file-content";
 
 type RemoteMachineResolutionInput = {
   /**
@@ -138,11 +146,27 @@ export async function remoteStat(
   machineId: string,
   envId: string,
   filePath: string,
-): Promise<{ size: number; isDirectory: boolean; modifiedAt: number }> {
+  options?: FileReadOptions,
+): Promise<{ size: number; isDirectory: boolean; modifiedAt: number; version?: string }> {
   assertFileWsAvailable(machineId);
-  const result = await sendFileOpAndWait(machineId, "stat", { path: filePath, environmentId: envId });
-  if (result.status === "error") throw new Error(result.error as string);
-  return result.data as { size: number; isDirectory: boolean; modifiedAt: number };
+  if (options?.includeVersion) assertContentCapability(machineId);
+  const result = await sendFileOpAndWait(machineId, "stat", {
+    path: filePath,
+    environmentId: envId,
+    ...(options?.includeVersion ? { includeVersion: true } : {}),
+  });
+  if (result.status === "error") {
+    if (options?.includeVersion) throwContentResponseError(result);
+    throw new Error(result.error as string);
+  }
+  const info = result.data as { size: number; isDirectory: boolean; modifiedAt: number; version?: string };
+  if (
+    options?.includeVersion &&
+    !info.isDirectory &&
+    (typeof info.version !== "string" || !/^[a-f0-9]{64}$/.test(info.version))
+  )
+    throw new AppError("远程文件版本无效", "remote_response_invalid", 503);
+  return info;
 }
 
 /** 读取远程文本文件 */
@@ -150,11 +174,29 @@ export async function remoteReadFile(
   machineId: string,
   envId: string,
   filePath: string,
-): Promise<{ name: string; path: string; content: string; size: number; encoding: string }> {
+  options?: FileReadOptions,
+): Promise<{ name: string; path: string; content: string; size: number; encoding: string; version?: string }> {
   assertFileWsAvailable(machineId);
-  const result = await sendFileOpAndWait(machineId, "read", { path: filePath, environmentId: envId });
-  if (result.status === "error") throw new Error(result.error as string);
-  return result.data as { name: string; path: string; content: string; size: number; encoding: string };
+  if (options?.includeVersion) assertContentCapability(machineId);
+  const result = await sendFileOpAndWait(machineId, "read", {
+    path: filePath,
+    environmentId: envId,
+    ...(options?.includeVersion ? { includeVersion: true } : {}),
+  });
+  if (result.status === "error") {
+    if (options?.includeVersion) throwContentResponseError(result);
+    throw new Error(result.error as string);
+  }
+  const snapshot = result.data as { content?: string; data?: string; version?: string };
+  if (options?.includeVersion) verifySnapshot(Buffer.from(snapshot.content ?? ""), snapshot.version);
+  return result.data as {
+    name: string;
+    path: string;
+    content: string;
+    size: number;
+    encoding: string;
+    version?: string;
+  };
 }
 
 /** 读取远程二进制文件（base64） */
@@ -162,16 +204,25 @@ export async function remoteReadBinaryFile(
   machineId: string,
   envId: string,
   filePath: string,
-): Promise<{ name: string; path: string; data: string; size: number; mimeType: string }> {
+  options?: FileReadOptions,
+): Promise<{ name: string; path: string; data: string; size: number; mimeType: string; version?: string }> {
   assertFileWsAvailable(machineId);
-  const result = await sendFileOpAndWait(machineId, "read_binary", { path: filePath, environmentId: envId });
+  if (options?.includeVersion) assertContentCapability(machineId);
+  const result = await sendFileOpAndWait(machineId, "read_binary", {
+    path: filePath,
+    environmentId: envId,
+    ...(options?.includeVersion ? { includeVersion: true } : {}),
+  });
   if (result.status === "error") {
+    if (options?.includeVersion) throwContentResponseError(result);
     if (result.errorCode === "payload_too_large" && result.statusCode === 413) {
       throw new AppError("单文件下载上限 92MB", "payload_too_large", 413);
     }
     throw new Error(result.error as string);
   }
-  return result.data as { name: string; path: string; data: string; size: number; mimeType: string };
+  const snapshot = result.data as { content?: string; data?: string; version?: string };
+  if (options?.includeVersion) verifySnapshot(Buffer.from(snapshot.data ?? "", "base64"), snapshot.version);
+  return result.data as { name: string; path: string; data: string; size: number; mimeType: string; version?: string };
 }
 
 /** 写入远程文本文件；仅创建复用既有排他上传协议，opId 与审计字段继续透传。 */
@@ -180,9 +231,9 @@ export async function remoteWriteFile(
   envId: string,
   filePath: string,
   content: string,
-  options?: FileOpOptions,
+  options?: FileOpOptions & Pick<FileWriteOptions, "expectedVersion">,
   createOnly = false,
-): Promise<{ name: string; path: string; size: number }> {
+): Promise<{ name: string; path: string; size: number; version?: string }> {
   if (createOnly) {
     const name = filePath.slice(filePath.lastIndexOf("/") + 1);
     const result = await remoteUploadFiles(
@@ -201,19 +252,28 @@ export async function remoteWriteFile(
     return result.files[0];
   }
   assertFileWsAvailable(machineId);
+  if (options?.expectedVersion !== undefined) assertContentCapability(machineId, true);
   const result = await sendFileOpAndWait(
     machineId,
     "write",
     {
       path: filePath,
       content,
+      ...(options?.expectedVersion !== undefined ? { expectedVersion: options.expectedVersion } : {}),
       environmentId: envId,
     },
-    undefined,
+    120_000,
     options,
   );
-  if (result.status === "error") throw new Error(result.error as string);
-  return result.data as { name: string; path: string; size: number };
+  if (result.status === "error") {
+    if (options?.expectedVersion !== undefined) throwContentResponseError(result);
+    if (result.errorCode === "version_conflict")
+      throw new FileServiceError("文件内容或类型已变化，请刷新后重试", "version_conflict", 409);
+    throw new Error(result.error as string);
+  }
+  const saved = result.data as { name: string; path: string; size: number; version?: string };
+  if (options?.expectedVersion !== undefined) verifySnapshot(Buffer.from(content), saved.version);
+  return saved;
 }
 
 /**
@@ -224,10 +284,12 @@ export async function remoteUploadFiles(
   machineId: string,
   envId: string,
   dir: string,
-  files: Array<{ name: string; content: string; relativePath: string }>,
-  options?: FileOpOptions,
-): Promise<{ files: Array<{ name: string; path: string; size: number }> }> {
+  files: Array<{ name: string; content: string; relativePath: string; expectedVersion?: string }>,
+  options?: FileOpOptions & Pick<FileUploadOptions, "overwrite">,
+): Promise<{ files: Array<{ name: string; path: string; size: number; version?: string }> }> {
   assertFileWsAvailable(machineId);
+  if (options?.overwrite || files.some((file) => file.expectedVersion !== undefined))
+    assertContentCapability(machineId, true);
   let totalBytes = 0;
   for (const file of files) {
     const padding = file.content.endsWith("==") ? 2 : file.content.endsWith("=") ? 1 : 0;
@@ -247,25 +309,30 @@ export async function remoteUploadFiles(
     {
       dir,
       files,
+      ...(options?.overwrite !== undefined ? { overwrite: options.overwrite } : {}),
       environmentId: envId,
     },
     120_000,
     options,
   );
   if (result.status === "error") {
+    if (options?.overwrite) throwContentResponseError(result);
     if (result.errorCode === "path_conflict" && result.statusCode === 409) {
       throw new AppError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
     }
     throw new Error(result.error as string);
   }
 
-  const data = result.data as { files?: Array<{ name?: unknown; path?: unknown; size?: unknown }> } | undefined;
+  const data = result.data as
+    | { files?: Array<{ name?: unknown; path?: unknown; size?: unknown; version?: string }> }
+    | undefined;
   if (!data || !Array.isArray(data.files) || data.files.length !== files.length) {
     throw new AppError("远程文件服务返回了无效的上传结果，请升级远程运行时后重试", "remote_response_invalid", 503);
   }
   const expectedPrefix = dir ? `${dir.replace(/\/+$/, "")}/` : "";
   for (let index = 0; index < files.length; index++) {
     const actual = data.files[index];
+    if (options?.overwrite && actual) verifySnapshot(Buffer.from(files[index].content, "base64"), actual.version);
     const expectedPath = `${expectedPrefix}${files[index].relativePath}`;
     if (
       !actual ||
@@ -277,7 +344,7 @@ export async function remoteUploadFiles(
       throw new AppError("远程文件服务返回了错误的上传路径，请升级远程运行时后重试", "remote_response_invalid", 503);
     }
   }
-  return { files: data.files as Array<{ name: string; path: string; size: number }> };
+  return { files: data.files as Array<{ name: string; path: string; size: number; version?: string }> };
 }
 
 /** 删除远程文件（options.opId 幂等键透传，§7.2） */

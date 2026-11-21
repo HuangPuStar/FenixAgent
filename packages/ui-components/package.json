@@ -404,10 +404,6 @@
       "types": "./web/components/preview/html-plugin.ts",
       "default": "./web/components/preview/html-plugin.ts"
     },
-    "./components/preview/native-pdf-plugin": {
-      "types": "./web/components/preview/native-pdf-plugin.ts",
-      "default": "./web/components/preview/native-pdf-plugin.ts"
-    },
     "./components/preview/preview-source": {
       "types": "./web/components/preview/preview-source.ts",
       "default": "./web/components/preview/preview-source.ts"
@@ -652,9 +648,20 @@
       "types": "./web/ui/tree.tsx",
       "default": "./web/ui/tree.tsx"
     },
+    "./ui/use-page-fullscreen": {
+      "types": "./web/ui/use-page-fullscreen.ts",
+      "default": "./web/ui/use-page-fullscreen.ts"
+    },
     "./ui/use-roving-list-navigation": {
       "types": "./web/ui/use-roving-list-navigation.ts",
       "default": "./web/ui/use-roving-list-navigation.ts"
+    },
+    "./components/selection-context-menu": "./web/components/selection-context-menu.tsx",
+    "./components/text-selection": "./web/components/text-selection.ts",
+    "./chat/lib/file-quotes": "./web/chat/lib/file-quotes.ts",
+    "./vite/pdf-assets-plugin": {
+      "types": "./vite/pdf-assets-plugin.ts",
+      "default": "./vite/pdf-assets-plugin.ts"
     }
   },
   "scripts": {

@@ -11,10 +11,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NotFoundError } from "@fenix/platform-sdk";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import type { MachineEnvironmentRecord } from "../environment-port";
 import { closeAllFileEventsClients, handleFileEventsOpen } from "../routes/web/file-events";
 import { destroyEnvironmentQueue, publishFileEvent } from "../services/file-event-queue";
-import { initializeMachineModuleConfig, stubMachineEnvironment } from "../testing";
+import { initializeMachineModuleConfig, stubFileWsTransport, stubMachineEnvironment } from "../testing";
 import type { WsConnection } from "../transport/ws-types";
 
 const ORG_ID = "org-1";
@@ -39,6 +40,7 @@ function createMockWs(): WsConnection & { messages: string[] } {
 /** 把一条环境记录表达成生产归属规则（缺失 / 跨组织 / agent 绑定环境非本人 → NotFoundError）。 */
 function stubOwnershipRule(records: MachineEnvironmentRecord[]): void {
   stubMachineEnvironment({
+    getEnvironmentById: async (environmentId) => records.find((item) => item.id === environmentId),
     getOwnedEnvironment: async (environmentId, organizationId, userId) => {
       const record = records.find((item) => item.id === environmentId);
       if (!record || record.organizationId !== organizationId) throw new NotFoundError("环境不存在");
@@ -69,7 +71,12 @@ function framesOf(ws: { messages: string[] }): Record<string, unknown>[] {
 }
 
 beforeEach(() => {
-  initializeMachineModuleConfig();
+  // 本组仅验证订阅授权；远端工作区不创建本地目录观察器。
+  initializeMachineModuleConfig({ defaultMachineId: "subscription-test-machine" });
+  stubDb({
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "subscription-test-machine" }] }) }) }),
+  });
+  stubFileWsTransport({ isFileWsConnected: () => true });
 });
 
 afterEach(() => {

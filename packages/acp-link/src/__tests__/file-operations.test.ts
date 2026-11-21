@@ -46,6 +46,113 @@ afterEach(async () => {
 });
 
 describe("handleFileOp", () => {
+  // 文本写入不经过 Base64 编码，不能继承上传文件的 92 MiB 容量限制。
+  test("旧文本写入保留超过 92 MiB 的能力", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const content = "x".repeat(92 * 1024 * 1024 + 1);
+    expect(await handleFileOp(createMessage(environmentId, "write", { path: "large.txt", content }))).toMatchObject({
+      status: "ok",
+      data: { size: content.length },
+    });
+    expect(await Bun.file(join(workspace, "large.txt")).size).toBe(content.length);
+  });
+  // 目录别名可指向工作区内部，但最终文件链接仍不能借文本保存跟随或截断。
+  test("文本写入保留内部目录别名并拒绝符号链接目标", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "docs"));
+    await symlink(join(workspace, "docs"), join(workspace, "alias"));
+    expect(
+      await handleFileOp(createMessage(environmentId, "write", { path: "alias/deep/file.txt", content: "data" })),
+    ).toMatchObject({ status: "ok" });
+    expect(await readFile(join(workspace, "docs/deep/file.txt"), "utf8")).toBe("data");
+    const version = "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7";
+    expect(
+      await handleFileOp(createMessage(environmentId, "read", { path: "alias/deep/file.txt", includeVersion: true })),
+    ).toMatchObject({ status: "ok", data: { content: "data", version } });
+    await symlink(join(workspace, "docs/deep/file.txt"), join(workspace, "docs/linked.txt"));
+    expect(
+      await handleFileOp(
+        createMessage(environmentId, "write", {
+          path: "alias/linked.txt",
+          content: "changed",
+          expectedVersion: version,
+        }),
+      ),
+    ).toMatchObject({ status: "error", error_code: "version_conflict" });
+    expect(await readFile(join(workspace, "docs/deep/file.txt"), "utf8")).toBe("data");
+  });
+  // 编辑文本快照拒绝伪装为文本的二进制扩展，支持表格文本和 Markdown 派生格式。
+  test("版本化文本读取支持编辑格式并明确拒绝二进制", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await writeFile(join(workspace, "image.png"), "plain bytes");
+    expect(
+      await handleFileOp(createMessage(environmentId, "read", { path: "image.png", includeVersion: true })),
+    ).toMatchObject({ status: "error", error_code: "validation_error" });
+    for (const extension of ["csv", "tsv", "mdx", "markdown"]) {
+      await writeFile(join(workspace, `note.${extension}`), "\ufeff你好");
+      expect(
+        await handleFileOp(createMessage(environmentId, "read", { path: `note.${extension}`, includeVersion: true })),
+      ).toMatchObject({ status: "ok", data: { content: "\ufeff你好", size: 9 } });
+    }
+  });
+  // 机器端必须在写入点校验内容版本，返回保存回执并安全重放相同操作。
+  test("覆盖上传使用内容版本且幂等重试不覆盖后续编辑", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await writeFile(join(workspace, "data.txt"), "first");
+    const read = await handleFileOp(createMessage(environmentId, "read", { path: "data.txt", includeVersion: true }));
+    expect(read).toMatchObject({
+      status: "ok",
+      data: { version: "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e" },
+    });
+    const message = createMessage(environmentId, "upload", {
+      dir: "",
+      overwrite: true,
+      files: [
+        {
+          name: "data.txt",
+          content: Buffer.from("saved").toString("base64"),
+          expectedVersion: (read.data as { version: string }).version,
+        },
+      ],
+    });
+    const result = await handleFileOp({ ...message, op_id: "save-1" });
+    expect(result).toMatchObject({
+      status: "ok",
+      data: { files: [{ path: "data.txt", size: 5, version: expect.stringMatching(/^[a-f0-9]{64}$/) }] },
+    });
+    await writeFile(join(workspace, "data.txt"), "other");
+    expect(await handleFileOp({ ...message, op_id: "save-1" })).toEqual(result);
+    expect(await readFile(join(workspace, "data.txt"), "utf8")).toBe("other");
+    expect(await handleFileOp({ ...message, op_id: "save-2" })).toMatchObject({
+      status: "error",
+      error_code: "version_conflict",
+      status_code: 409,
+    });
+  });
+
+  // 覆盖批次失败必须明确已完成、失败和未执行的文件。
+  test("覆盖上传返回部分成功并在写入前拒绝重复目标", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const file = (name: string, expectedVersion?: string) => ({ name, content: "", expectedVersion });
+    const result = await handleFileOp(
+      createMessage(environmentId, "upload", {
+        overwrite: true,
+        files: [file("a.txt"), file("b.txt", "0".repeat(64)), file("c.txt")],
+      }),
+    );
+    expect(result).toMatchObject({
+      status: "error",
+      error_code: "version_conflict",
+      data: { completedFiles: [{ path: "a.txt" }], failedFile: "b.txt", remainingFiles: ["c.txt"] },
+    });
+    expect(await Bun.file(join(workspace, "c.txt")).exists()).toBe(false);
+    expect(
+      await handleFileOp(
+        createMessage(environmentId, "upload", { overwrite: true, files: [file("d.txt"), file("d.txt")] }),
+      ),
+    ).toMatchObject({ status: "error", error_code: "validation_error" });
+    expect(await Bun.file(join(workspace, "d.txt")).exists()).toBe(false);
+  });
   // 链接可以出现在路径树中，但不得读取 workspace 外目标的元数据。
   test("文件树不暴露外部 symbolic link 目标的大小", async () => {
     const { workspace, environmentId } = await createWorkspace();

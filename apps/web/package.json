@@ -27,7 +27,8 @@
     "@fenix/resource-trace": "workspace:*",
     "@fenix/resource-workflow-v2": "workspace:*",
     "@fenix/ui-components": "workspace:*",
-    "@fenix/web-runtime": "workspace:*"
+    "@fenix/web-runtime": "workspace:*",
+    "@fenix/file-editing": "workspace:*"
   },
   "devDependencies": {
     "@fenix/chat-channel": "workspace:*"

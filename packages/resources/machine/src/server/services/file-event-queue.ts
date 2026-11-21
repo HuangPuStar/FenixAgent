@@ -24,7 +24,7 @@ import { error as logError, warn as logWarn } from "@fenix/logger";
 export type FileChangeKind = "write" | "delete" | "mkdir" | "rename" | "upload";
 
 /** 变更来源（契约先行审计字段，本期只定义不落库） */
-export type FileChangeSource = "user" | "agent" | "api";
+export type FileChangeSource = "user" | "agent" | "api" | "external";
 
 /** file_changed_batch 中的单条变更（增量语义，不是 invalidate_all） */
 export interface FileBatchChange {
@@ -32,6 +32,7 @@ export interface FileBatchChange {
   kind: FileChangeKind;
   source: FileChangeSource;
   actor_id?: string;
+  to?: string;
 }
 
 /**

@@ -50,8 +50,6 @@ interface ChatWorkspaceArtifactsProps {
   agentId: string | null;
   /** 实例 uid（URL 的 sessionId 段）；Trace 面板据此定位要读的观测会话。 */
   sessionId: string | null;
-  /** 实例重启版本：重启后 ArtifactsPanel 必须重建（挂在它的 `key` 上）。 */
-  agentRestartVersion: number;
   /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
   /** 聊天区（keep-alive 槽位）。 */
@@ -88,13 +86,7 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  * 首次访问即从 `localStorage` 读取偏好（`useState(readArtifactsWidth)` 语义与迁移前逐字一致）；
  * 存储不可用（隐私模式）时降级为默认值，不影响布局可用性。
  */
-export function ChatWorkspaceArtifacts({
-  agentId,
-  sessionId,
-  agentRestartVersion,
-  modulesConfig,
-  children,
-}: ChatWorkspaceArtifactsProps) {
+export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, children }: ChatWorkspaceArtifactsProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
 
   const artifactsCollapsedRef = useRef(true);
@@ -256,7 +248,7 @@ export function ChatWorkspaceArtifacts({
           <aside
             // 末尾留空格再拼 `${…}`：Tailwind 的扫描器按原文取候选词，紧贴的 `min-w-80${` 会被当成一个
             // 非法词丢掉（`min-w-80` 不再生成任何声明，且静态检查与构建期都不报错）。
-            className={`artifacts-shell relative z-30 min-h-0 shrink-0 min-w-80 ${artifactsCollapsed ? "hidden" : ""}`}
+            className={`artifacts-shell relative z-30 min-h-0 shrink-0 min-w-80 has-[[data-page-fullscreen=true]]:z-50 ${artifactsCollapsed ? "hidden" : ""}`}
             data-layout={effectiveLayout}
             style={{
               width: artifactsWidth,
@@ -293,8 +285,10 @@ export function ChatWorkspaceArtifacts({
                 updateArtifactsWidth(artifactsWidth + (event.key === "ArrowLeft" ? 16 : -16));
               }}
             />
+            {/* 文件草稿归环境，Agent 进程重启不能重建编辑器或销毁尚未同步的 Office iframe。 */}
             <ArtifactsPanel
-              key={`${agentId}-${agentRestartVersion}`}
+              key={agentId}
+              active={!artifactsCollapsed}
               envId={agentId}
               agentConfigId={agentConfigId}
               sessionId={sessionId}

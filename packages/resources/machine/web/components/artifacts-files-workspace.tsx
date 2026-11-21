@@ -1,20 +1,44 @@
+import { type EditingCapabilities, type EditingClient, EditingError } from "@fenix/file-editing/contracts";
+import {
+  type EditableKind,
+  EditingDialogs,
+  EditingPane,
+  type FileEditingController,
+  useFileEditing,
+} from "@fenix/file-editing/web";
+import { FILE_EDITING_NS } from "@fenix/file-editing/web/i18n";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { FileQuoteInput } from "@fenix/ui-components/chat/lib/file-quotes";
 import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
-import { useCallback, useRef, useState } from "react";
+import { classifyFile } from "@fenix/ui-components/components/preview/preview-source";
+import type { TextSelection } from "@fenix/ui-components/components/text-selection";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
+import { usePageFullscreen } from "@fenix/ui-components/ui/use-page-fullscreen";
+import { useBlocker, useRouter } from "@tanstack/react-router";
+import { Eye, Pencil } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { machineEditingClient } from "../api/file-editing";
 import { buildPreviewSourceUrl, readPreviewSource } from "../api/fs";
 import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
 import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
-import type { WorkspaceFilesChange } from "../lib/workspace-file-operations";
+import { remapWorkspaceFilePath, type WorkspaceFilesChange } from "../lib/workspace-file-operations";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab } from "./FileTreeTab";
 import { FileTreeLayoutToggle } from "./file-tree-layout-toggle";
 import { FileTreeWorkbench } from "./file-tree-workbench";
 
+/** Host callbacks keep navigation and layout ownership outside the editing package. */
 interface ArtifactsFilesWorkspaceProps {
   envId: string | null;
   openFiles: string[];
   activeFile: string | null;
   changedFiles: ChangedFile[];
+  active?: boolean;
+  editingClient?: EditingClient;
+  onQuoteSelection?: (selection: FileQuoteInput | null) => void;
+  onRegisterBeforeLeave?: (guard: (() => Promise<boolean>) | null) => void;
   onSelectFile: (path: string) => void;
   onCloseFile: (path: string) => void;
   onOpenFile: (path: string) => void;
@@ -31,101 +55,399 @@ function readFileTreeWidth(): number {
   }
 }
 
-/**
- * Files mode keeps the explorer and preview in one VS Code-like workbench.
- *
- * 布局（2026-10-15）：文件树有「浮动 / 固定」两种模式，几何归 `FileTreeWorkbench`，本组件只做装配——
- * - 两种模式共用一棵 DOM（切模式不重建预览与树，见 `file-tree-workbench.tsx` 的说明）；
- * - 模式判定与持久化（`fenix:file-tree-layout`）：`useFileTreeLayout`，未手动选择时小屏浮动、大屏固定；
- * - 模式切换控件在树的面板标题栏（`FileTreeTab` → `FileTreeView` 的 `headerActions` 槽）；
- * - 浮动模式下树的显隐由预览区左缘的常驻切换按钮负责（工作台渲染），首屏在小屏默认收起。
- *
- * 归属（2026-09-24，台账 `ce-standards-todo.md` D2）：由宿主
- * `apps/web/src/shell/artifacts/artifacts-files-workspace.tsx` 迁入（该簇 2026-09-28 归位到
- * `apps/web/src/pages/agent-panel/artifacts/`，本文件不在其中），预览源的 URL 与取数改经同包
- * `api/fs.ts`（§5.8：组件不拼后端 URL、不裸调 fetch）。宿主 `ArtifactsPanel` 经
- * `@fenix/resource-machine/web` 消费本组件。
- */
+/** Classifies editable formats using the same file categories as the read-only preview. */
+export function classifyWorkspaceEditor(
+  path: string,
+  office?: EditingCapabilities["office"] | null,
+): EditableKind | null {
+  const extension = path.split(".").pop()?.toLowerCase() ?? "";
+  if (office?.enabled && office.extensions.some((value) => value.replace(/^\./, "").toLowerCase() === extension))
+    return "office";
+  const category = classifyFile(path);
+  return ["code", "markdown", "html", "latex"].includes(category) || extension === "csv" || extension === "tsv"
+    ? "text"
+    : null;
+}
+
+/** Router-free embeds use the same workspace; only router-backed hosts register a blocker. */
+function WorkspaceNavigationGuard({ controller }: { controller: FileEditingController }) {
+  const guarded =
+    controller.dirtyPaths.length > 0 || Object.values(controller.buffers).some((buffer) => buffer.kind === "office");
+  useBlocker({
+    disabled: !guarded,
+    enableBeforeUnload: false,
+    shouldBlockFn: async ({ current, next }) => {
+      if (current.pathname === next.pathname) return false;
+      return !(await controller.beforeLeave());
+    },
+  });
+  return null;
+}
+
+/** Keeps editor drafts and Office iframes alive independently of the host's small tab LRU. */
 export function ArtifactsFilesWorkspace({
   envId,
   openFiles,
   activeFile,
   changedFiles,
+  active = true,
+  editingClient = machineEditingClient,
+  onRegisterBeforeLeave,
   onSelectFile,
   onCloseFile,
   onOpenFile,
   onReferenceFile,
+  onQuoteSelection,
   onFilesChanged,
 }: ArtifactsFilesWorkspaceProps) {
+  const { t: tEditing } = useTranslation(FILE_EDITING_NS);
+  const fullscreenState = usePageFullscreen(active);
+  const router = useRouter({ warn: false });
   const { mode: treeLayout, isWideViewport, toggleMode } = useFileTreeLayout();
-  // 首屏：小屏（<1024px）默认浮动 → 收起，只露切换按钮、内容区最大化；大屏维持「固定 + 展开」。
-  // 用惰性初值而不是 effect：首帧就该是最终形态，否则会闪一下展开态。
   const [treeOpen, setTreeOpen] = useState(() => treeLayout === "docked" || isWideViewport);
   const initialFileTreeWidthRef = useRef(readFileTreeWidth());
+  const [treeRefresh, setTreeRefresh] = useState(0);
+  const [previewRefresh, setPreviewRefresh] = useState(0);
+  const [environmentVisit, setEnvironmentVisit] = useState(envId);
+  const [editingFiles, setEditingFiles] = useState<string[]>([]);
+  const [capabilityRetry, setCapabilityRetry] = useState(0);
+  const [capabilities, setCapabilities] = useState<{
+    environmentId: string | null;
+    office: EditingCapabilities["office"] | null;
+    error: Error | null;
+    loading: boolean;
+  }>({ environmentId: envId, office: null, error: null, loading: !!envId });
+  const capabilityGeneration = useRef(0);
+  const onSaved = useCallback(
+    (file: { path: string }) => {
+      setTreeRefresh((value) => value + 1);
+      setPreviewRefresh((value) => value + 1);
+      if (file.path === activeFile && !openFiles.includes(file.path)) onOpenFile(file.path);
+    },
+    [activeFile, openFiles, onOpenFile],
+  );
+  const editing = useFileEditing({ environmentId: envId ?? "", client: editingClient, onSaved });
+  const { beforeLeave, guardPaths, notifyFileChange, notifyPathChange } = editing;
+  useEffect(() => {
+    setEnvironmentVisit(envId);
+    setEditingFiles([]);
+  }, [envId]);
+  useEffect(() => {
+    void capabilityRetry;
+    const generation = ++capabilityGeneration.current;
+    const abort = new AbortController();
+    setCapabilities({ environmentId: envId, office: null, error: null, loading: !!envId });
+    if (envId)
+      void editingClient
+        .capabilities(envId, abort.signal)
+        .then((value) => {
+          if (!abort.signal.aborted && generation === capabilityGeneration.current)
+            setCapabilities({ environmentId: envId, office: value.office, error: null, loading: false });
+        })
+        .catch((error: unknown) => {
+          if (!abort.signal.aborted && generation === capabilityGeneration.current)
+            setCapabilities({
+              environmentId: envId,
+              office: null,
+              error: error instanceof Error ? error : new EditingError("unavailable", String(error)),
+              loading: false,
+            });
+        });
+    return () => {
+      abort.abort();
+    };
+  }, [envId, editingClient, capabilityRetry]);
+  useEffect(() => {
+    onRegisterBeforeLeave?.(beforeLeave);
+    return () => onRegisterBeforeLeave?.(null);
+  }, [beforeLeave, onRegisterBeforeLeave]);
 
-  const overlayOpen = treeLayout === "floating" && treeOpen;
+  const environmentReady = environmentVisit === envId;
+  const effectiveFiles = useMemo(
+    () => [
+      ...new Set([
+        ...openFiles,
+        ...editing.dirtyPaths,
+        ...Object.values(editing.buffers)
+          .filter((buffer) => buffer.kind === "office")
+          .map((buffer) => buffer.path),
+      ]),
+    ],
+    [openFiles, editing.dirtyPaths, editing.buffers],
+  );
+  const dirtyPaths = useMemo(() => new Set(editing.dirtyPaths), [editing.dirtyPaths]);
+  useEffect(() => {
+    setEditingFiles((paths) => {
+      const kept = paths.filter((path) => path === activeFile || effectiveFiles.includes(path));
+      return kept.length === paths.length ? paths : kept;
+    });
+  }, [effectiveFiles, activeFile]);
+  const office = capabilities.environmentId === envId ? capabilities.office : null;
+  const activeBuffer = activeFile ? editing.buffers[activeFile] : undefined;
+  const editableKind =
+    envId && activeFile && environmentReady
+      ? activeBuffer?.session || activeBuffer?.dirty
+        ? activeBuffer.kind
+        : classifyWorkspaceEditor(activeFile, office)
+      : null;
+  const isEditing = Boolean(
+    activeFile && (editingFiles.includes(activeFile) || activeBuffer?.dirty || activeBuffer?.session),
+  );
+  const kind = isEditing ? editableKind : null;
+  const fallbackError =
+    activeBuffer &&
+    !activeBuffer.dirty &&
+    !activeBuffer.session &&
+    ["too-large", "not-editable", "unavailable"].includes(activeBuffer.error?.code ?? "")
+      ? activeBuffer.error
+      : null;
+  const officePaths = environmentReady
+    ? [
+        ...new Set([
+          ...Object.values(editing.buffers)
+            .filter((buffer) => buffer.kind === "office" && (buffer.session || !buffer.error))
+            .map((buffer) => buffer.path),
+          ...(kind === "office" && activeFile && !fallbackError ? [activeFile] : []),
+        ]),
+      ]
+    : [];
 
+  const closeFile = useCallback(
+    (path: string) => {
+      void (async () => {
+        if (!(await editing.requestClose(path))) return;
+        setEditingFiles((paths) => paths.filter((file) => file !== path));
+        onCloseFile(path);
+        if (activeFile === path) {
+          const next = effectiveFiles.find((candidate) => candidate !== path);
+          if (next) onSelectFile(next);
+        }
+      })();
+    },
+    [editing.requestClose, onCloseFile, activeFile, effectiveFiles, onSelectFile],
+  );
+  const returnToPreview = useCallback(
+    async (path: string) => {
+      if (!(await guardPaths([path]))) return;
+      setEditingFiles((paths) => paths.filter((file) => file !== path));
+      setPreviewRefresh((value) => value + 1);
+    },
+    [guardPaths],
+  );
+  const beforeMutation = useCallback(
+    (paths: readonly string[], mutation: "move" | "delete") => {
+      if (mutation === "delete") return guardPaths(paths);
+      const guarded = Object.values(editing.buffers)
+        .filter(
+          (buffer) =>
+            (buffer.kind === "office" || buffer.saving) &&
+            paths.some((path) => buffer.path === path || buffer.path.startsWith(`${path}/`)),
+        )
+        .map((buffer) => buffer.path);
+      return guardPaths(guarded);
+    },
+    [editing.buffers, guardPaths],
+  );
+  const filesChanged = useCallback(
+    (change: WorkspaceFilesChange) => {
+      notifyPathChange(change);
+      setEditingFiles((paths) =>
+        paths.map((path) => remapWorkspaceFilePath(path, change)).filter((path): path is string => path !== null),
+      );
+      onFilesChanged(change);
+      setPreviewRefresh((value) => value + 1);
+    },
+    [notifyPathChange, onFilesChanged],
+  );
+  const externalChange = useCallback(
+    (change: Parameters<typeof notifyFileChange>[0]) => {
+      notifyFileChange(change);
+      setPreviewRefresh((value) => value + 1);
+    },
+    [notifyFileChange],
+  );
+  const manualRefresh = useCallback(() => externalChange({ kind: "invalidate-all", paths: [] }), [externalChange]);
   const handleTreeWidthChange = useCallback((width: number) => {
     try {
       localStorage.setItem("fenix:file-tree-width", String(width));
     } catch {
-      // Width persistence is optional.
+      /* Optional layout preference. */
     }
   }, []);
-
   const toggleTree = useCallback(() => setTreeOpen((open) => !open), []);
   const closeTree = useCallback(() => setTreeOpen(false), []);
-
-  // 手选切模式后必须保持可见：从固定切到浮动却看不到树，等于点了没有反馈（用户逐条确认过）。
   const switchLayoutMode = useCallback(() => {
     setTreeOpen(true);
     toggleMode();
   }, [toggleMode]);
-
-  return (
-    <FileTreeWorkbench
-      layout={treeLayout}
-      initialTreeWidth={initialFileTreeWidthRef.current}
-      onTreeWidthChange={handleTreeWidthChange}
-      treeOpen={treeOpen}
-      onToggleTree={toggleTree}
-      tree={
-        <FileTreeTab
-          key={envId ?? "no-environment"}
-          envId={envId}
-          onPreviewFile={onOpenFile}
-          onReferenceFile={onReferenceFile}
-          onFilesChanged={onFilesChanged}
-          headerActions={<FileTreeLayoutToggle mode={treeLayout} onToggleMode={switchLayoutMode} />}
-        />
+  const officeCandidate =
+    activeFile &&
+    (classifyFile(activeFile) === "office" ||
+      (classifyFile(activeFile) === "table" && !/\.(csv|tsv)$/i.test(activeFile)));
+  const pendingOffice = officeCandidate && capabilities.loading;
+  const previewActions =
+    (!isEditing || fallbackError) && (editableKind || pendingOffice) ? (
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={tEditing(isEditing ? "preview" : "edit")}
+        title={tEditing(isEditing ? "preview" : "edit")}
+        disabled={pendingOffice || !editableKind}
+        onClick={() => {
+          if (!activeFile || !editableKind) return;
+          if (isEditing) {
+            void returnToPreview(activeFile);
+            return;
+          }
+          setEditingFiles((paths) => [...new Set([...paths, activeFile])]);
+          void editing.ensureLoaded(activeFile, editableKind);
+        }}
+      >
+        {isEditing ? <Eye aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+      </Button>
+    ) : null;
+  const quoteContext = useRef({ active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false });
+  quoteContext.current = { active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false };
+  const referenceSelection = useCallback(
+    (selection: TextSelection | null) => {
+      const current = quoteContext.current;
+      if (!selection) {
+        onQuoteSelection?.(null);
+        return;
       }
-      preview={
-        <>
-          <FileTabsBar
-            openFiles={openFiles}
-            activeFile={activeFile}
-            changedFiles={changedFiles}
-            onSelectFile={onSelectFile}
-            onCloseFile={onCloseFile}
-            onPreviewChangedFile={onOpenFile}
-          />
-          {/* 点预览区收起浮层：遮罩只盖预览内容区（不含 tab 栏），既满足「点文件树以外区域收起」，
-              又不至于让带浮层时连 tab 都点不动。不做 Esc 关闭、也不做选中文件后自动收起。 */}
-          <div className="relative flex-1 min-h-0 min-w-0">
-            {/* 预览源文件的 URL 与取数都注入自本包的 fs 客户端（§5.8：组件不拼后端 URL、不裸调 fetch）；
-                预览 tab 内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
-            <PreviewTab
-              envId={envId}
-              filePath={activeFile}
-              buildPreviewUrl={buildPreviewSourceUrl}
-              fetchPreview={readPreviewSource}
-            />
-            {overlayOpen && (
-              <div data-slot="file-tree-overlay-backdrop" className="absolute inset-0 z-10" onClick={closeTree} />
-            )}
-          </div>
-        </>
-      }
+      if (current.active && current.activeFile)
+        onQuoteSelection?.({
+          text: selection.text,
+          source: {
+            path: current.activeFile,
+            ...(selection.location ? { location: selection.location } : {}),
+            ...(current.dirty ? { unsaved: true } : {}),
+          },
+        });
+    },
+    [onQuoteSelection],
+  );
+  useEffect(() => {
+    void [activeFile, active, envId, isEditing, previewRefresh];
+    return () => onQuoteSelection?.(null);
+  }, [activeFile, active, envId, isEditing, previewRefresh, onQuoteSelection]);
+  const preview = (
+    <PreviewTab
+      active={active && !isEditing}
+      key={`${envId}:${activeFile}:${previewRefresh}`}
+      envId={envId}
+      filePath={environmentReady ? activeFile : null}
+      buildPreviewUrl={buildPreviewSourceUrl}
+      fetchPreview={readPreviewSource}
+      toolbarActions={previewActions}
+      fullscreenState={fullscreenState}
+      onQuoteSelection={onQuoteSelection && active ? referenceSelection : undefined}
     />
+  );
+  return (
+    <>
+      {router && <WorkspaceNavigationGuard controller={editing} />}
+      <FileTreeWorkbench
+        layout={treeLayout}
+        initialTreeWidth={initialFileTreeWidthRef.current}
+        onTreeWidthChange={handleTreeWidthChange}
+        treeOpen={treeOpen}
+        onToggleTree={toggleTree}
+        tree={
+          <FileTreeTab
+            key={envId ?? "no-environment"}
+            envId={envId}
+            onPreviewFile={onOpenFile}
+            onReferenceFile={onReferenceFile}
+            onFilesChanged={filesChanged}
+            onExternalFileChange={externalChange}
+            onManualRefresh={manualRefresh}
+            refreshVersion={treeRefresh}
+            beforeMutation={beforeMutation}
+            headerActions={<FileTreeLayoutToggle mode={treeLayout} onToggleMode={switchLayoutMode} />}
+          />
+        }
+        preview={
+          <>
+            <FileTabsBar
+              openFiles={environmentReady ? effectiveFiles : openFiles}
+              activeFile={activeFile}
+              changedFiles={changedFiles}
+              dirtyPaths={dirtyPaths}
+              onSelectFile={onSelectFile}
+              onCloseFile={closeFile}
+              onPreviewChangedFile={onOpenFile}
+            />
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+              {((isEditing && fallbackError) || (capabilities.error && officeCandidate)) && (
+                <div role="alert" className="flex items-center gap-2 border-b border-border p-3 text-sm text-red-500">
+                  <span>
+                    {tEditing(fallbackError?.message ?? capabilities.error?.message ?? "loadFailed", {
+                      defaultValue: fallbackError?.message ?? capabilities.error?.message,
+                    })}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (isEditing && fallbackError && activeFile) void editing.reload(activeFile);
+                      else setCapabilityRetry((value) => value + 1);
+                    }}
+                  >
+                    {tEditing("retry")}
+                  </Button>
+                </div>
+              )}
+              {kind === "text" && activeFile && !fallbackError ? (
+                <EditingPane
+                  onQuoteSelection={onQuoteSelection && active ? referenceSelection : undefined}
+                  key={`${envId}:${activeFile}`}
+                  controller={editing}
+                  path={activeFile}
+                  kind="text"
+                  fullscreenState={fullscreenState}
+                  downloadUrl={envId ? buildPreviewSourceUrl(envId, activeFile) : undefined}
+                  active={active}
+                  onPreview={() => {
+                    void returnToPreview(activeFile);
+                  }}
+                />
+              ) : kind !== "office" || fallbackError ? (
+                isEditing && pendingOffice ? (
+                  <Spinner variant="panel" label={tEditing("loading")} />
+                ) : (
+                  preview
+                )
+              ) : null}
+              {officePaths.map((path) => (
+                <div
+                  key={`${envId}:${path}`}
+                  className={path === activeFile && !fallbackError ? "min-h-0 flex-1" : "hidden"}
+                >
+                  <EditingPane
+                    onQuoteSelection={
+                      onQuoteSelection && active && isEditing && path === activeFile ? referenceSelection : undefined
+                    }
+                    controller={editing}
+                    path={path}
+                    kind="office"
+                    fullscreenState={path === activeFile ? fullscreenState : undefined}
+                    downloadUrl={envId ? buildPreviewSourceUrl(envId, path) : undefined}
+                    active={active && isEditing && path === activeFile}
+                    onPreview={() => {
+                      void returnToPreview(path);
+                    }}
+                  />
+                </div>
+              ))}
+              {treeLayout === "floating" && treeOpen && (
+                <div data-slot="file-tree-overlay-backdrop" className="absolute inset-0 z-10" onClick={closeTree} />
+              )}
+            </div>
+          </>
+        }
+      />
+      <EditingDialogs controller={editing} />
+    </>
   );
 }

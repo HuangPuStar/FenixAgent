@@ -25,6 +25,8 @@ export interface FileEventsFrame {
   kind: FileEventsFrameKind;
   /** 事件所属 environment；已由本模块按订阅目标过滤，调用方无需再比对。 */
   environmentId: string;
+  /** Changed paths include rename destinations; invalidate_all has an unknown scope. */
+  paths: string[];
 }
 
 export interface FileEventsHandlers {
@@ -65,12 +67,26 @@ export function openFileEventsConnection(environmentId: string, handlers: FileEv
 
   socket.onmessage = (event) => {
     try {
-      const frame = JSON.parse(String(event.data)) as { type?: string; environment_id?: string };
+      const frame = JSON.parse(String(event.data)) as {
+        type?: string;
+        environment_id?: string;
+        path?: string;
+        to?: string;
+        changes?: Array<{ path?: string; to?: string }>;
+      };
       if (frame.environment_id !== environmentId) return;
       if (frame.type === "invalidate_all") {
-        handlers.onFrame({ kind: "invalidate_all", environmentId });
+        handlers.onFrame({ kind: "invalidate_all", environmentId, paths: [] });
       } else if (frame.type === "file_changed" || frame.type === "file_changed_batch") {
-        handlers.onFrame({ kind: "file_changed", environmentId });
+        const paths =
+          frame.type === "file_changed"
+            ? [frame.path, frame.to]
+            : (frame.changes ?? []).flatMap((change) => [change.path, change.to]);
+        handlers.onFrame({
+          kind: "file_changed",
+          environmentId,
+          paths: paths.filter((path): path is string => typeof path === "string" && path.length > 0),
+        });
       }
     } catch (error) {
       // 后台推送路径：畸形帧只影响本次刷新（§5.8 三类豁免之一），保留诊断上下文即可。

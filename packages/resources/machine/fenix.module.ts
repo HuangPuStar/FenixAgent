@@ -64,6 +64,24 @@ export const moduleManifest = {
   envDefinitions: [
     {
       moduleId: "machine",
+      key: "ONLYOFFICE_PUBLIC_URL",
+      schema: z.string().default(""),
+      defaultValue: "",
+      secret: false,
+      restartRequired: true,
+      description: "Office 文档服务地址；与 ONLYOFFICE_JWT_SECRET 同时配置才启用在线编辑。",
+    },
+    {
+      moduleId: "machine",
+      key: "ONLYOFFICE_JWT_SECRET",
+      schema: z.string().default(""),
+      defaultValue: "",
+      secret: true,
+      restartRequired: true,
+      description: "与 Office 文档服务共享的随机 JWT 密钥（至少 32 字符）；回源密钥自动按用途派生。",
+    },
+    {
+      moduleId: "machine",
       key: "RCS_FILE_WS_IDENTITY_STRICT",
       // 与宿主 env.ts:125-128 逐字等价：先补默认字符串再归一为布尔，空串/未设置都落在宽松 false。
       schema: z
@@ -89,6 +107,19 @@ export const moduleManifest = {
     },
   ],
   contributions: [
+    {
+      id: "machine.web-file-editing",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMachineWebFileEditingRoutes(host)),
+    },
+    {
+      id: "machine.office-protocol",
+      kind: "app-route",
+      slot: "app",
+      value: () => import("./src/server/assembly").then((assembly) => assembly.createMachineOfficeProtocolRoutes()),
+    },
     {
       id: "machine.web-fs",
       kind: "app-route",
@@ -118,5 +149,5 @@ export const moduleManifest = {
         import("./src/server/assembly").then((assembly) => assembly.createMachineApiWorkspaceRoutes(host)),
     },
   ],
-  create: () => import("./src/module").then((module) => module.createMachineModule()),
+  create: (context) => import("./src/module").then((module) => module.createMachineModule(context)),
 } satisfies ModuleManifest;

@@ -19,6 +19,8 @@ interface FileTabsBarProps {
   activeFile: string | null;
   /** 本次会话被 Agent 修改的文件列表，用于左侧 badge + popover */
   changedFiles: ChangedFile[];
+  /** Draft markers come from the editing controller, including files evicted by the tab LRU. */
+  dirtyPaths?: ReadonlySet<string>;
   /** 选中某个 tab（点击 tab 或从 popover 中选） */
   onSelectFile: (path: string) => void;
   /** 关闭某个 tab（点击 tab 上的 ×） */
@@ -46,6 +48,7 @@ export function FileTabsBar({
   openFiles,
   activeFile,
   changedFiles,
+  dirtyPaths,
   onSelectFile,
   onCloseFile,
   onPreviewChangedFile,
@@ -135,6 +138,15 @@ export function FileTabsBar({
                 </span>
               }
               label={<span className="truncate max-w-35">{fileName}</span>}
+              trailing={
+                dirtyPaths?.has(path) ? (
+                  <span
+                    role="img"
+                    className="h-1.5 w-1.5 rounded-full bg-orange-400"
+                    aria-label={t("fileTree.unsaved")}
+                  />
+                ) : undefined
+              }
               onSelect={() => onSelectFile(path)}
               onClose={() => onCloseFile(path)}
               closeLabel={t("fileTree.closeTab")}

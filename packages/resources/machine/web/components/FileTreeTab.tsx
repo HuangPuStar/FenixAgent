@@ -34,6 +34,10 @@ interface FileTreeTabProps {
   onReferenceFile: (path: string, name: string) => void;
   onFilesChanged: (change: WorkspaceFilesChange) => void;
   headerActions?: ReactNode;
+  onExternalFileChange?: (change: { kind: "paths" | "invalidate-all"; paths: readonly string[] }) => void;
+  onManualRefresh?: () => void;
+  refreshVersion?: number;
+  beforeMutation?: (paths: readonly string[], kind: "move" | "delete") => Promise<boolean>;
 }
 
 /** 文件树装配：读取与事件、上传、交互和写操作分别由各自 hook 管理。 */
@@ -43,6 +47,10 @@ export function FileTreeTab({
   onReferenceFile,
   onFilesChanged,
   headerActions,
+  onExternalFileChange,
+  onManualRefresh,
+  refreshVersion = 0,
+  beforeMutation,
 }: FileTreeTabProps) {
   const { t } = useTranslation(MACHINE_NS);
   const treeDataRef = useRef<ParsedFileNode[]>([]);
@@ -54,6 +62,7 @@ export function FileTreeTab({
   const [searchExpandedPaths, setSearchExpandedPaths] = useState<string[]>([]);
   const [stale, setStale] = useState(false);
   const [download, setDownload] = useState<{ path: string; isDir: boolean; error: boolean } | null>(null);
+  const cancelEventsRef = useRef<(() => void) | null>(null);
   const downloadControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
@@ -66,9 +75,14 @@ export function FileTreeTab({
     setTreeVersion((version) => version + 1);
   }, []);
 
-  const { loading, refresh: refreshTree } = useRequest(() => unwrap(fsApi.tree(envId!)), {
+  const {
+    loading,
+    refresh: refreshTree,
+    cancel: cancelRequestedTree,
+  } = useRequest(() => unwrap(fsApi.tree(envId!)), {
     ready: !!envId,
-    refreshDeps: [envId],
+    onBefore: () => cancelEventsRef.current?.(),
+    refreshDeps: [envId, refreshVersion],
     onSuccess: (data) => applyTree(data?.paths ?? [], data?.mtimes, data?.sizes),
     onError: (error) => {
       console.error("Failed to load file tree:", error);
@@ -79,7 +93,20 @@ export function FileTreeTab({
     console.error("Failed to revalidate file tree:", error);
     setStale(true);
   }, []);
-  useFileTreeEvents({ envId, applyTree, onUnavailable: handleEventsUnavailable });
+  const applyEventTree = useCallback(
+    (paths: string[], mtimes?: Record<string, number>, sizes?: Record<string, number>) => {
+      cancelRequestedTree();
+      applyTree(paths, mtimes, sizes);
+    },
+    [cancelRequestedTree, applyTree],
+  );
+  const events = useFileTreeEvents({
+    envId,
+    applyTree: applyEventTree,
+    onUnavailable: handleEventsUnavailable,
+    onFileChanged: onExternalFileChange,
+  });
+  cancelEventsRef.current = events.cancelRevalidation;
 
   const uploadTargetRef = useRef<string | undefined>(undefined);
   const mutationLock = useFileMutationLock(envId);
@@ -110,6 +137,7 @@ export function FileTreeTab({
     onChanged: onFilesChanged,
     onSelectionChange: (paths) => interactions.setSelectedPaths(paths),
     refreshTree,
+    beforeMutation,
   });
   const interactions = useFileTreeInteractions({
     envId,
@@ -217,7 +245,10 @@ export function FileTreeTab({
         onClearSelection={interactions.clearSelection}
         onToggle={handleToggle}
         onSearchChange={handleSearchChange}
-        onRefresh={refreshTree}
+        onRefresh={() => {
+          refreshTree();
+          onManualRefresh?.();
+        }}
         onUploadClick={(target) => {
           uploadTargetRef.current = target;
           uploads.fileInputRef.current?.click();

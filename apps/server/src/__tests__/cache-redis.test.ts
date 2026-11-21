@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import KeyvRedis from "@keyv/redis";
-import { clearAllCache, closeCache, getCache, getCacheBackend, getRedisConnection } from "../services/cache";
+import {
+  clearAllCache,
+  closeCache,
+  ensureRedisConnection,
+  getCache,
+  getCacheBackend,
+  getRedisConnection,
+} from "../services/cache";
 
 const originalEnv = {
   RCS_REDIS_URL: process.env.RCS_REDIS_URL,
@@ -24,6 +31,30 @@ afterEach(async () => {
 });
 
 describe("Redis 缓存适配", () => {
+  // 实时通道可先于任何缓存命名空间初始化共享连接，缓存随后复用它，关闭仍保持只读查询为空。
+  test.each(["redis", "redis-cluster"] as const)("%s 连接可按需初始化并与缓存共享", async (backend) => {
+    if (backend === "redis-cluster") process.env.RCS_REDIS_CLUSTER = "127.0.0.1:7000";
+    expect(getRedisConnection()).toBeNull();
+    const connection = ensureRedisConnection();
+    expect(connection).not.toBeNull();
+    expect(connection?.status).toBe("wait");
+    expect(ensureRedisConnection()).toBe(connection);
+    getCache("redis-lazy-connection");
+    expect(getRedisConnection()).toBe(connection);
+    expect(getCacheBackend()).toBe(backend);
+    await closeCache();
+    expect(getRedisConnection()).toBeNull();
+    expect(ensureRedisConnection()).not.toBe(connection);
+  });
+
+  // 未配置 Redis 时基础设施按需取用仍返回空连接，不能凭空切换部署后端。
+  test("未配置 Redis 时按需初始化保持内存模式", () => {
+    delete process.env.RCS_REDIS_URL;
+    expect(ensureRedisConnection()).toBeNull();
+    expect(getRedisConnection()).toBeNull();
+    expect(getCacheBackend()).toBe("memory");
+  });
+
   // 缓存使用 node-redis 协议，原有 ioredis 能力仍提供给实时通道。
   test("Keyv 使用官方客户端并按命名空间复用适配器", () => {
     const first = getCache("redis-contract-first");
@@ -256,9 +287,12 @@ describe("Redis 缓存适配", () => {
 
   // 真实 Redis 验证首次写入、并发复用、租户隔离、TTL 与关闭后重建，不依赖模拟客户端。
   test.skipIf(!process.env.TEST_CACHE_REDIS_URL)("真实 Redis 完成缓存生命周期", async () => {
+    const connection = ensureRedisConnection();
+    expect(await connection?.ping()).toBe("PONG");
     const namespace = `cache-regression-${crypto.randomUUID()}`;
     const first = getCache(`${namespace}-a`, 1000);
     const second = getCache(`${namespace}-b`, 1000);
+    expect(getRedisConnection()).toBe(connection);
     await Promise.all([first.set("organization", { id: "org-a" }), second.set("organization", { id: "org-b" })]);
     expect(await first.get<{ id: string }>("organization")).toEqual({ id: "org-a" });
     expect(await second.get<{ id: string }>("organization")).toEqual({ id: "org-b" });

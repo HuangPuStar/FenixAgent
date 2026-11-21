@@ -1,5 +1,6 @@
 import { getModuleConfig } from "@fenix/platform-sdk/server";
 import * as z from "zod/v4";
+import type { MachineEditingConfig } from "./editing/editing-config";
 
 /**
  * Machine 模块的部署配置。
@@ -21,6 +22,8 @@ export interface MachineModuleConfig {
   readonly fileWsIdentityStrict: boolean;
   /** `/web/file-events` 文件变更事件订阅的并发连接上限（与 YJS 分池）。 */
   readonly fileEventsMaxClients: number;
+  /** Optional Office deployment; only URL and shared JWT secret are new deployment inputs. */
+  readonly fileEditing?: MachineEditingConfig;
 }
 
 /**
@@ -33,6 +36,7 @@ const MachineModuleConfigSchema: z.ZodType<MachineModuleConfig> = z.strictObject
   defaultMachineId: z.string().min(1).optional(),
   fileWsIdentityStrict: z.boolean(),
   fileEventsMaxClients: z.number().int().positive(),
+  fileEditing: z.object({ publicUrl: z.string(), jwtSecret: z.string(), baseUrl: z.string() }).optional(),
 });
 
 /**

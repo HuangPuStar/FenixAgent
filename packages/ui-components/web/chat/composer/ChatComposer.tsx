@@ -1,6 +1,6 @@
 import "./ChatComposer.css";
 
-import { type ReactNode, useRef } from "react";
+import { lazy, type ReactNode, Suspense, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { RemovableChip } from "../../components/RemovableChip";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -102,6 +102,7 @@ export interface ChatComposerProps extends ComposerStateOptions {
   mcps?: readonly McpOption[];
   /** 确定性会话标识，用于隔离 keep-alive Chat 的引用上下文。 */
   contextScope?: string;
+  fileQuoteSessionId?: string | null;
   /** 当前模型名称（通过 Chat Doc 同步） */
   modelName?: string;
   /** 可用会话模式列表 */
@@ -131,6 +132,12 @@ export interface ChatComposerProps extends ComposerStateOptions {
   // 与 `ComposerStateOptions` 逐字相同，2026-09-22 库内去重后由 `extends` 承接，本文件不再复述。
 }
 
+const FileQuoteDialog = lazy(() =>
+  import("./file-quote-dialog").then((module) => ({ default: module.FileQuoteDialog })),
+);
+
+import { useFileQuotes } from "./use-file-quotes";
+
 export function ChatComposer({
   onSubmit,
   isLoading = false,
@@ -143,6 +150,7 @@ export function ChatComposer({
   commands,
   mcps = [],
   contextScope,
+  fileQuoteSessionId,
   availableModes,
   currentModeId,
   onModeChange,
@@ -221,6 +229,7 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   // Handlers / 外部输入 — 见 ./composer-handlers.ts
   // ---------------------------------------------------------------------------
+  const fileQuotes = useFileQuotes(state, fileQuoteSessionId, disabled);
   const handlers = useComposerHandlers({
     state,
     commands,
@@ -236,6 +245,7 @@ export function ChatComposer({
     onNewSession,
     onNotice,
     subscribeExternal,
+    onFileSelection: fileQuotes.request,
     textareaRef,
     fileInputRef,
   });
@@ -319,6 +329,11 @@ export function ChatComposer({
               })
             : null}
 
+          {fileQuotes.pending && (
+            <Suspense fallback={<span role="status">{t("fileTree.preview.messages.loading")}</span>}>
+              <FileQuoteDialog quotes={fileQuotes} />
+            </Suspense>
+          )}
           <ComposerAssets
             images={images}
             files={attachments}

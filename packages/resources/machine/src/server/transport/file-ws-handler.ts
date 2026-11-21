@@ -30,7 +30,7 @@ import {
   removePending,
   sendToWs,
 } from "./file-ws-requests";
-import type { WsConnection } from "./ws-types";
+import type { FileCapabilities, WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-file-ws-handler");
 
@@ -86,6 +86,11 @@ export function handleFileWsRegister(wsId: string, msg: Record<string, unknown>)
     }
   }
 
+  const capabilities = msg.capabilities as Record<string, unknown> | undefined;
+  entry.capabilities = {
+    uploadOverwrite: capabilities?.uploadOverwrite === true,
+    contentVersion: capabilities?.contentVersion === true,
+  };
   entry.machineId = machineId;
   machineFileWsIndex.set(machineId, entry);
 
@@ -171,6 +176,7 @@ export function handleFileWsMessage(_ws: WsConnection, wsId: string, data: strin
         error: msg.error as string | undefined,
         errorCode: msg.error_code as string | undefined,
         statusCode: msg.status_code as number | undefined,
+        details: msg.status === "error" ? msg.data : undefined,
       });
       continue;
     }
@@ -343,4 +349,12 @@ export function stopFileWsSweep(): void {
     clearInterval(sweepTimer);
     sweepTimer = null;
   }
+}
+
+/** Read only capabilities declared by the current live connection; old nodes default to false. */
+export function getFileCapabilities(machineId: string): FileCapabilities {
+  const entry = machineFileWsIndex.get(machineId);
+  return entry?.ws.readyState === 1 && entry.capabilities
+    ? { ...entry.capabilities }
+    : { uploadOverwrite: false, contentVersion: false };
 }

@@ -45,7 +45,8 @@
     },
     "contextMenu": {
       "delete": "Delete"
-    }
+    },
+    "unsaved": "Unsaved"
   },
   "guide": {
     "title": "Connect a local Machine",

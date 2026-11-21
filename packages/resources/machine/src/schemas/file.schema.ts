@@ -34,6 +34,7 @@ export const FileContentSchema = WebOkSchema(
     path: z.string().describe("文件相对路径。"),
     content: z.string().describe("文件文本内容。"),
     size: z.number().describe("文件大小，单位为字节。"),
+    version: z.string().optional().describe("SHA-256 content version of returned bytes."),
     encoding: z.string().describe("文本编码；当前通常为 utf-8。"),
     type: z
       .enum(["text", "binary"])
@@ -47,6 +48,7 @@ export const FileUploadItemSchema = z.object({
   name: z.string().describe("上传文件名称。"),
   path: z.string().describe("上传完成后的文件路径。"),
   size: z.number().describe("上传文件大小，单位为字节。"),
+  version: z.string().optional(),
 });
 
 /** 文件上传响应 */
@@ -62,12 +64,17 @@ export const FileWriteResultSchema = WriteOkSchema(
     name: z.string().describe("写入的文件名称。"),
     path: z.string().describe("写入后的文件路径。"),
     size: z.number().describe("写入后文件大小，单位为字节。"),
+    version: z.string().optional(),
   }),
 ).describe("写入文件成功结果。");
 
 /** 写入文件请求体 */
 export const WriteFileRequestSchema = z.object({
   content: z.string().describe("要写入文件的文本内容；允许为空字符串。"),
+  expectedVersion: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
   createOnly: z.boolean().optional().describe("仅创建新文件；同名路径已存在时返回 409，不覆盖内容。"),
 });
 

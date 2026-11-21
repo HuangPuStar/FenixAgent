@@ -2,6 +2,8 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { createApiWorkspaceRoutes } from "./routes/api/workspaces";
 import type { WebFileEventsRouteDependencies, WebMachineRouteDependencies } from "./routes/dependencies";
+import { createOfficeProtocolRoutes } from "./routes/protocols/office";
+import { createWebFileEditingRoutes } from "./routes/web/file-editing";
 import { createWebFileEventsRoutes } from "./routes/web/file-events";
 import { createWebFsRoutes } from "./routes/web/fs";
 import { createWebRegistryRoutes } from "./routes/web/registry";
@@ -26,6 +28,16 @@ function routeDependencies(host: ServerRouteHost): WebMachineRouteDependencies {
 /** `/web/environments/:id/files/*` 文件浏览与读写（挂宿主 `web` 聚合槽）。 */
 export function createMachineWebFsRoutes(host: ServerRouteHost) {
   return createWebFsRoutes(routeDependencies(host));
+}
+
+/** Authenticated editing sessions reuse Machine's web protocol authentication. */
+export function createMachineWebFileEditingRoutes(host: ServerRouteHost) {
+  return createWebFileEditingRoutes(routeDependencies(host));
+}
+
+/** Document-provider callbacks are contributed to the root app protocol slot. */
+export function createMachineOfficeProtocolRoutes() {
+  return createOfficeProtocolRoutes();
 }
 
 /** `/web/file-events` 文件变更事件 WebSocket（挂宿主 `web` 聚合槽）。 */

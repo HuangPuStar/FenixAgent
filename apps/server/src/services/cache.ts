@@ -112,14 +112,7 @@ export function getCache(namespace: string, defaultTtlMs?: number): Keyv {
 
   let kv: Keyv;
 
-  if (!_redis) {
-    const result = buildRedisConnection();
-    if (result) {
-      _redis = result.redis;
-      _cacheConnect = result.cacheConnect;
-      _backend = result.backend;
-    }
-  }
+  ensureRedisConnection();
 
   if (_cacheConnect) {
     // 传配置而非外部客户端，让官方适配器负责并发握手、超时清理和失败后的连接替换。
@@ -186,7 +179,20 @@ export async function closeCache(): Promise<void> {
   }
 }
 
-/** 获取底层 Redis 连接（供 yjs provider 等直接使用） */
+/** 只查询已创建的 Redis 客户端，不触发初始化；关闭后返回 null。 */
 export function getRedisConnection(): Redis | Cluster | null {
+  return _redis;
+}
+
+/** 按需创建或复用共享 Redis 客户端，网络连接仍由客户端惰性建立。 */
+export function ensureRedisConnection(): Redis | Cluster | null {
+  if (!_redis) {
+    const result = buildRedisConnection();
+    if (result) {
+      _redis = result.redis;
+      _cacheConnect = result.cacheConnect;
+      _backend = result.backend;
+    }
+  }
   return _redis;
 }

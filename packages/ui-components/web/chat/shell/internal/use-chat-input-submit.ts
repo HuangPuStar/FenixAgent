@@ -8,8 +8,8 @@
  * - 补上提交链路上三处「消息被静默丢弃」的失败反馈：会话创建失败、显式发送失败、会话就绪后的自动补发失败。
  *   三者原先只有 `console.error`，用户既看不到提示也拿不回已缓存的 prompt（`pendingSendRef` 已被清空）。
  *   文案同样经 `onNotice` 抛出（沿用上面那条纯化约定，hook 自身不引 i18n）。
- * - 其余顺序与失败语义逐字保留：正文 + 附件引用 → 图片 ContentBlock → 空提交拦截 →
- *   quoteContext / 场景提示词 / 上下文队列 unshift → 无活跃会话时缓存 prompt 并等待会话就绪（10s 超时保护）。
+ * - 正文、附件、图片和本轮引用组成有效提交；场景提示词与后台上下文不单独触发发送。
+ *   无活跃会话时缓存 prompt 并等待会话就绪（10s 超时保护）。
  * - 源在提交路径上还会写 `userCancelledRef.current = false`；该 ref 在源与包内均为只写状态（无读取点），
  *   故未随提交链路搬入 hook，留在 `ChatInterface` 内维护。
  * - 待发送队列（peri steer）：`queueSubmitActive` 为真时，本次提交不改走 `onSendPrompt`，而是经
@@ -181,11 +181,12 @@ export function useChatInputSubmit({
         .filter((attachment) => !draftText.includes(`@./${attachment.path}`))
         .map((attachment) => `@./${attachment.path}`);
       const text = [draftText, ...attachmentReferences].filter(Boolean).join("\n");
+      const quoteContext = message.quoteContext?.trim();
 
       // 队列可用时，turn 运行中也要收下这次提交（入队，不打断执行）；
       // 队列不可用时保持原行为：运行中直接忽略提交。
       const enqueueIntent = Boolean(queueSubmitActive && onEnqueuePrompt);
-      if ((!text && images.length === 0) || (isLoading && !enqueueIntent)) return;
+      if ((!text && images.length === 0 && !quoteContext) || (isLoading && !enqueueIntent)) return;
 
       const contentBlocks: ContentBlock[] = [];
 
@@ -204,13 +205,13 @@ export function useChatInputSubmit({
         }
       }
 
-      if (contentBlocks.length === 0) return;
-
       // 引用属于本次提交，直接随 prompt 原子传递；仍使用 system-reminder 协议供 Agent 识别，
       // 但 Chat 历史投影会隐藏这类内部上下文。
-      if (message.quoteContext) {
-        contentBlocks.unshift({ type: "text", text: `<system-reminder>\n${message.quoteContext}\n</system-reminder>` });
+      if (quoteContext) {
+        contentBlocks.unshift({ type: "text", text: `<system-reminder>\n${quoteContext}\n</system-reminder>` });
       }
+
+      if (contentBlocks.length === 0) return;
 
       // 注入场景提示词（仅第一条消息，隐藏不显示）
       if (scenePrompt && !scenePromptUsedRef.current) {

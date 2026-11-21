@@ -1,12 +1,13 @@
 // 上传容量边界：本地和远程均允许恰好 92MB，超限整批拒绝。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
 import { createWebFsRoutes } from "../routes/web/fs";
+import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE } from "../services/file-types";
 import { remoteUploadFiles } from "../services/remote-file-service";
 import {
@@ -44,6 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setLocalUploadBeforeWriteHookForTest();
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
   unlockMachineWorkspaceRoot();
@@ -63,6 +65,125 @@ function workspaceDir(): string {
 }
 
 describe("本地环境（无 machine 配置）", () => {
+  // 旧文本 PUT 保存可执行脚本后仍须能运行，不能因原子替换退回私有创建权限。
+  test("旧文本 PUT 保留已有脚本执行权限", async () => {
+    const save = (content: string) =>
+      fsRoutes.handle(
+        new Request(`http://localhost/environments/${ENV_ID}/fs/run.sh`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        }),
+      );
+    expect((await save("#!/bin/sh\nexit 9\n")).status).toBe(200);
+    const path = join(workspaceDir(), "run.sh");
+    await chmod(path, 0o755);
+    expect((await save("#!/bin/sh\nexit 0\n")).status).toBe(200);
+    expect((await stat(path)).mode & 0o777).toBe(0o755);
+    expect(Bun.spawnSync([path]).exitCode).toBe(0);
+  });
+  // 已有文本 PUT 允许 100 MiB 字符，复用安全写入不能把旧接口缩到上传的 92 MiB。
+  test("旧文本 PUT 保留超过 92 MiB 的写入能力", async () => {
+    const content = "x".repeat(92 * MB + 1);
+    const response = await fsRoutes.handle(
+      new Request(`http://localhost/environments/${ENV_ID}/fs/user/large.txt`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect((await stat(join(workspaceDir(), "user/large.txt"))).size).toBe(content.length);
+  });
+  // 文本条件保存和上传共用执行点校验，目标变成外部链接时必须冲突且不得写链接目标。
+  test("文本条件保存拒绝被外部符号链接替换的目标", async () => {
+    const url = `http://localhost/environments/${ENV_ID}/fs/user/condition.txt`;
+    const save = (body: object) =>
+      fsRoutes.handle(
+        new Request(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await save({ content: "" })).status).toBe(200);
+    await writeFile(join(workspaceRoot, "outside.txt"), "private");
+    await rm(join(workspaceDir(), "user/condition.txt"));
+    await symlink(join(workspaceRoot, "outside.txt"), join(workspaceDir(), "user/condition.txt"));
+    const response = await save({
+      content: "replacement",
+      expectedVersion: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { type: "version_conflict", code: "version_conflict" } });
+    expect(await readFile(join(workspaceRoot, "outside.txt"), "utf8")).toBe("private");
+  });
+  // 任意写入故障都必须携带覆盖批次进度，避免客户端把先前成功文件视作全部失败。
+  test("覆盖上传的未知执行错误保留批次进度", async () => {
+    let count = 0;
+    setLocalUploadBeforeWriteHookForTest(async () => {
+      if (++count === 2) throw new Error("Injected write failure");
+    });
+    const form = new FormData();
+    for (const name of ["a.txt", "b.txt", "c.txt"]) form.append("files", new File(["saved"], name));
+    const response = await fsRoutes.handle(
+      new Request(`http://localhost/environments/${ENV_ID}/fs/user?overwrite=true`, { method: "POST", body: form }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      data: { completedFiles: [{ path: "user/a.txt" }], failedFile: "user/b.txt", remainingFiles: ["user/c.txt"] },
+    });
+  });
+  // 编辑快照延续文本格式边界，不能把二进制扩展的内容当成可保存文本。
+  test("版本化文本预览支持 CSV TSV 和 Markdown 派生格式", async () => {
+    for (const extension of ["png", "csv", "tsv", "mdx", "markdown"]) {
+      const path = `http://localhost/environments/${ENV_ID}/fs/user/edit.${extension}`;
+      const saved = await fsRoutes.handle(
+        new Request(path, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "\ufeff你好" }),
+        }),
+      );
+      expect(saved.status).toBe(200);
+      const read = await fsRoutes.handle(new Request(`${path}?mode=text&includeVersion=true`));
+      expect(read.status).toBe(extension === "png" ? 400 : 200);
+      if (extension !== "png")
+        expect(await read.json()).toMatchObject({
+          data: { content: "\ufeff你好", size: 9, version: expect.stringMatching(/^[a-f0-9]{64}$/) },
+        });
+    }
+  });
+  // 覆盖开关和逐文件条件必须走既有上传端点，不能因相同大小编辑而静默覆盖。
+  test("显式覆盖支持内容版本并拒绝无覆盖开关的条件", async () => {
+    const send = async (content: string, query = "", conditions?: unknown) => {
+      const form = new FormData();
+      form.append("files", new File([content], "edit.txt"));
+      if (conditions !== undefined) form.append("fileConditions", JSON.stringify(conditions));
+      return fsRoutes.handle(
+        new Request(`http://localhost/environments/${ENV_ID}/fs/user?${query}`, { method: "POST", body: form }),
+      );
+    };
+    expect((await send("first")).status).toBe(200);
+    const read = await fsRoutes.handle(
+      new Request(`http://localhost/environments/${ENV_ID}/fs/user/edit.txt?mode=text&includeVersion=true`),
+    );
+    expect(await read.json()).toMatchObject({
+      data: { version: "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e" },
+    });
+    const expectedVersion = "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e";
+    expect((await send("saved", "overwrite=true", [{ expectedVersion }])).status).toBe(200);
+    const conflict = await send("third", "overwrite=true", [{ expectedVersion }]);
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      error: { type: "version_conflict" },
+      data: { completedFiles: [], failedFile: "user/edit.txt", remainingFiles: [] },
+    });
+    expect((await send("third", "overwrite=false", [{ expectedVersion }])).status).toBe(400);
+    expect((await send("third", "overwrite=invalid")).status).toBe(400);
+    expect((await send("third", "overwrite=true", [{ unknown: "bad" }])).status).toBe(400);
+    expect(await readFile(join(workspaceDir(), "user/edit.txt"), "utf8")).toBe("saved");
+  });
   // 同名文件上传返回可供前端 ApiError 分类的409 code，并保留已上传原字节。
   test("上传冲突响应携带 path_conflict code", async () => {
     expect((await fsRoutes.handle(uploadRequest(1, "same.txt"))).status).toBe(200);

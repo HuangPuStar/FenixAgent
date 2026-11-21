@@ -24,7 +24,9 @@ import {
 import {
   type AgentFileScope,
   type FileErrorType,
+  type FileReadOptions,
   FileServiceError,
+  type FileUploadOptions,
   type FileWriteOptions,
   REMOTE_UPLOAD_LIMIT_MESSAGE,
   type ReadMode,
@@ -71,10 +73,21 @@ function isWorkspaceRootTarget(path: string): boolean {
 /** upload 入参整批校验（D16 逃逸修复，W2 语义随迁）：relativePath 与 file.name
  *  （multipart filename 可伪造 `../`，同源漏洞）任一非法即整批拒绝，避免部分
  *  文件已落盘后才发现越界；file.name 无回退目标，空名也拒绝。 */
-function validateUploadInputs(dir: string, files: UploadFileInput[]): void {
+function validateUploadInputs(dir: string, files: UploadFileInput[], options?: FileUploadOptions): void {
   if (dir) assertSafePath(dir);
   if (files.length === 0) throw new ValidationError("未提供任何文件");
+  const targets = new Set<string>();
+  if (options?.overwrite !== undefined && typeof options.overwrite !== "boolean")
+    throw new ValidationError("overwrite must be boolean");
   for (const file of files) {
+    if (file.expectedVersion !== undefined && (!options?.overwrite || !/^[a-f0-9]{64}$/.test(file.expectedVersion)))
+      throw new ValidationError("File conditions require explicit overwrite and a content version");
+    const target = (normalizeUploadRelativePath(file.relativePath) || file.name)
+      .split(/[\\/]+/)
+      .filter((part) => part && part !== ".")
+      .join("/");
+    if (targets.has(target)) throw new ValidationError("Duplicate upload target");
+    targets.add(target);
     if (normalizeUploadRelativePath(file.relativePath) === null) {
       throw new ValidationError(
         "Invalid relativePath: must be a relative path without '..' segments or control characters",
@@ -99,6 +112,13 @@ export function mapFileError(err: unknown): FileServiceError {
   if (err instanceof FileServiceError) return err;
   if (err instanceof Error && "code" in err && (err.code === "EEXIST" || err.code === "ENOTEMPTY")) {
     return new FileServiceError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+  }
+  if (err instanceof Error && "code" in err) {
+    if (err.code === "VERSION_CONFLICT")
+      return new FileServiceError("文件内容或类型已变化，请刷新后重试", "version_conflict", 409);
+    if (err.code === "OPERATION_CONFLICT" || err.code === "EINVAL")
+      return new FileServiceError("文件保存条件或操作标识无效", "validation_error", 400);
+    if (err.code === "EFBIG") return new FileServiceError(REMOTE_UPLOAD_LIMIT_MESSAGE, "payload_too_large", 413);
   }
   if (err instanceof BusyError) return new FileServiceError("文件服务繁忙，请稍后重试", "busy", 429);
   if (err instanceof AppError) {
@@ -133,13 +153,13 @@ export function mapFileError(err: unknown): FileServiceError {
 export interface AgentFileService {
   tree(path?: string): Promise<TreeResult>;
   list(path: string): Promise<FileEntry[]>;
-  read(path: string, mode: ReadMode): Promise<ReadResult>;
+  read(path: string, mode: ReadMode, options?: FileReadOptions): Promise<ReadResult>;
   write(path: string, content: string, options?: FileWriteOptions): Promise<WriteResult>;
-  upload(dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult>;
+  upload(dir: string, files: UploadFileInput[], options?: FileUploadOptions): Promise<UploadResult>;
   delete(path: string, options?: FileWriteOptions): Promise<void>;
   mkdir(path: string, options?: FileWriteOptions): Promise<void>;
   rename(oldPath: string, newPath: string, options?: FileWriteOptions): Promise<void>;
-  stat(path: string): Promise<StatResult>;
+  stat(path: string, options?: FileReadOptions): Promise<StatResult>;
   downloadZip(path: string): Promise<NodeJS.ReadableStream>;
 }
 
@@ -158,8 +178,8 @@ class AgentFileServiceImpl implements AgentFileService {
       throw mapFileError(err);
     }
   }
-  private writeOptions(options?: FileWriteOptions): FileWriteOptions {
-    return { ...options, actorId: this.scope.actorId, source: this.scope.source };
+  private writeOptions<T extends FileWriteOptions>(options?: T): T & FileWriteOptions {
+    return { ...options, actorId: this.scope.actorId, source: this.scope.source } as T & FileWriteOptions;
   }
   async tree(path?: string): Promise<TreeResult> {
     const connectionWaitDeadline = performance.now() + TREE_CONNECTION_WAIT_MS;
@@ -174,9 +194,9 @@ class AgentFileServiceImpl implements AgentFileService {
     const validate = () => assertSafePath(path);
     return this.run((b) => b.list(this.scope.environmentId, path), validate);
   }
-  async read(path: string, mode: ReadMode): Promise<ReadResult> {
+  async read(path: string, mode: ReadMode, options?: FileReadOptions): Promise<ReadResult> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.read(this.scope.environmentId, path, mode), validate);
+    return this.run((b) => b.read(this.scope.environmentId, path, mode, options), validate);
   }
   async write(path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
     const validate = () => {
@@ -185,8 +205,8 @@ class AgentFileServiceImpl implements AgentFileService {
     };
     return this.run((b) => b.write(this.scope.environmentId, path, content, this.writeOptions(options)), validate);
   }
-  async upload(dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult> {
-    const validate = () => validateUploadInputs(dir, files);
+  async upload(dir: string, files: UploadFileInput[], options?: FileUploadOptions): Promise<UploadResult> {
+    const validate = () => validateUploadInputs(dir, files, options);
     return this.run((b) => {
       // 整批校验后再写入，避免超限文件导致部分落盘。
       const oversized = files.find((f) => f.content.byteLength > b.uploadMaxBytes);
@@ -214,9 +234,9 @@ class AgentFileServiceImpl implements AgentFileService {
     };
     return this.run((b) => b.rename(this.scope.environmentId, oldPath, newPath, this.writeOptions(options)), validate);
   }
-  async stat(path: string): Promise<StatResult> {
+  async stat(path: string, options?: FileReadOptions): Promise<StatResult> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.stat(this.scope.environmentId, path), validate);
+    return this.run((b) => b.stat(this.scope.environmentId, path, options), validate);
   }
   async downloadZip(path: string): Promise<NodeJS.ReadableStream> {
     const validate = () => assertSafePath(path);

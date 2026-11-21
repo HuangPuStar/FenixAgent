@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -144,7 +145,41 @@ test("下载独立可执行文件并在无 Bun、Node 的 PATH 下连接平台",
   await chmod(downloaded, 0o755);
   const emptyPath = join(directory, "empty-path");
   await mkdir(emptyPath);
+  const workspace = join(directory, "native-workspace");
+  await mkdir(workspace);
+  const environmentId = "standalone-file-environment";
+  await Bun.write(join(directory, ".workspace-registry.json"), JSON.stringify({ [environmentId]: workspace }));
+  const original = Buffer.from("before");
+  await Bun.write(join(workspace, "document.bin"), original);
+  const initialVersion = createHash("sha256").update(original).digest("hex");
   const registered = Promise.withResolvers<unknown>();
+  const fileChannel = Promise.withResolvers<{ send(data: string): unknown }>();
+  const fileResults = new Map<string, ReturnType<typeof Promise.withResolvers<Record<string, unknown>>>>();
+  let nextRequest = 0;
+  const fileOperation = async (operation: string, params: Record<string, unknown>) => {
+    const requestId = `standalone-file-${++nextRequest}`;
+    const pending = Promise.withResolvers<Record<string, unknown>>();
+    fileResults.set(requestId, pending);
+    const timer = setTimeout(
+      () => pending.reject(new Error(`Standalone file operation timed out: ${operation}`)),
+      3000,
+    );
+    try {
+      (await fileChannel.promise).send(
+        JSON.stringify({
+          type: "file_op",
+          request_id: requestId,
+          operation,
+          params: { environmentId, ...params },
+          op_id: requestId,
+        }),
+      );
+      return await pending.promise;
+    } finally {
+      clearTimeout(timer);
+      fileResults.delete(requestId);
+    }
+  };
   let machineRegistration: unknown;
   const server = Bun.serve<{ path: string }>({
     hostname: "127.0.0.1",
@@ -157,6 +192,10 @@ test("下载独立可执行文件并在无 Bun、Node 的 PATH 下连接平台",
     websocket: {
       message(ws, message) {
         const data = JSON.parse(String(message));
+        if (data.type === "file_op_result") {
+          fileResults.get(data.request_id)?.resolve(data);
+          return;
+        }
         if (data.type !== "register") return;
         if (ws.data.path === "/acp/ws") {
           machineRegistration = data;
@@ -170,6 +209,7 @@ test("下载独立可执行文件并在无 Bun、Node 的 PATH 下连接平台",
             }),
           );
         } else if (ws.data.path === "/acp/file-ws") {
+          fileChannel.resolve(ws);
           registered.resolve(data);
         }
       },
@@ -188,8 +228,37 @@ test("下载独立可执行文件并在无 Bun、Node 的 PATH 下连接平台",
   });
   const timeout = setTimeout(() => registered.reject(new Error("runtime registration timed out")), 10000);
   try {
-    expect(await registered.promise).toEqual({ type: "register", machine_id: machine.id });
+    expect(await registered.promise).toEqual({
+      type: "register",
+      machine_id: machine.id,
+      capabilities: { uploadOverwrite: true, contentVersion: true },
+    });
     expect(machineRegistration).toMatchObject({ type: "register", machine_id: machine.id, protocol_version: 2 });
+    expect(await fileOperation("upload", { files: [{ name: "document.bin", content: "" }] })).toMatchObject({
+      status: "error",
+      error_code: "path_conflict",
+      status_code: 409,
+    });
+    const binary = Buffer.from([0, 255, 128, 127, 1, 2, 3]);
+    const version = createHash("sha256").update(binary).digest("hex");
+    expect(
+      await fileOperation("upload", {
+        overwrite: true,
+        files: [{ name: "document.bin", content: binary.toString("base64"), expectedVersion: initialVersion }],
+      }),
+    ).toMatchObject({ status: "ok", data: { files: [{ path: "document.bin", size: binary.length, version }] } });
+    expect(Buffer.from(await Bun.file(join(workspace, "document.bin")).arrayBuffer())).toEqual(binary);
+    expect(await fileOperation("read_binary", { path: "document.bin", includeVersion: true })).toMatchObject({
+      status: "ok",
+      data: { data: binary.toString("base64"), size: binary.length, version },
+    });
+    expect(
+      await fileOperation("upload", {
+        overwrite: true,
+        files: [{ name: "document.bin", content: "AA==", expectedVersion: initialVersion }],
+      }),
+    ).toMatchObject({ status: "error", error_code: "version_conflict", status_code: 409 });
+    expect(Buffer.from(await Bun.file(join(workspace, "document.bin")).arrayBuffer())).toEqual(binary);
   } finally {
     clearTimeout(timeout);
     child.kill("SIGKILL");

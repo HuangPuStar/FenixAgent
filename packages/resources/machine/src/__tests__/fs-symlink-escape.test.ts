@@ -141,6 +141,23 @@ describe("不误伤", () => {
     });
     expect(writeRes.status).toBe(200);
     expect(await readFile(join(envDir(), "docs", "new.txt"), "utf-8")).toBe("data");
+    const snapshot = await fsHandle("/fs/user/link2/new.txt?mode=text&includeVersion=true");
+    expect(await snapshot.json()).toMatchObject({
+      data: { content: "data", version: "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7" },
+    });
+    const saved = await fsHandle("/fs/user/link2/new.txt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "edited",
+        expectedVersion: "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7",
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({
+      data: { path: "user/link2/new.txt", size: 6, version: expect.stringMatching(/^[a-f0-9]{64}$/) },
+    });
+    expect(await readFile(join(envDir(), "docs", "new.txt"), "utf-8")).toBe("edited");
   });
 
   test("WORKSPACE_ROOT 本身为 symlink 时读写正常", async () => {

@@ -14,6 +14,7 @@ export * from "./server/agent-config-port";
 export type { MachineModuleConfig } from "./server/config";
 export { getMachineConfig } from "./server/config";
 export { getMachineDatabase, type MachineDatabase } from "./server/db";
+export { type MachineEditingConfig, parseMachineEditingConfig } from "./server/editing/editing-config";
 export * from "./server/environment-port";
 export * from "./server/facades/machine-file-facade";
 export * from "./server/facades/machine-registry-facade";

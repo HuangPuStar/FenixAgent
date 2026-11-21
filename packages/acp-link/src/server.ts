@@ -423,6 +423,7 @@ export function createAcpClient(config: ServerConfig): AcpServerHandle {
                     JSON.stringify({
                       type: "register",
                       machine_id: msg.machine_id,
+                      capabilities: { uploadOverwrite: true, contentVersion: true },
                     }),
                   );
                 }

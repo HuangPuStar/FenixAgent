@@ -3,8 +3,9 @@ import "./composer-assets.css";
 import { FileText, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
-import { createQuotePreview } from "../lib/context-queue";
+import type { SerializedChatQuote } from "../lib/context-queue";
 import type { FileAttachment, UserMessageImage } from "../types";
+import { QuoteContent } from "./quote-content";
 import { QuoteTruncatedBadge } from "./quote-truncated-badge";
 
 /**
@@ -25,10 +26,8 @@ import { QuoteTruncatedBadge } from "./quote-truncated-badge";
  */
 
 /** 输入岛中待发送的单条聊天引用。 */
-export interface ComposerQuote {
+export interface ComposerQuote extends SerializedChatQuote {
   id: string;
-  text: string;
-  omittedCharacterCount: number;
 }
 
 interface ComposerAssetsProps {
@@ -109,16 +108,18 @@ export function ComposerAssets({
             <Quote />
           </span>
           <strong className={labelClass}>
-            {t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}
+            {quote.source
+              ? quote.source.path.split("/").pop()
+              : t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}
           </strong>
-          <span
-            className="chat-composer-quote-tooltip absolute left-0 z-20 hidden max-h-30 overflow-hidden rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-left text-xs leading-normal text-slate-600 [overflow-wrap:anywhere] group-hover:block group-focus-within:block"
+          <div
+            className="chat-composer-quote-tooltip absolute left-0 z-20 hidden max-h-60 min-w-64 overflow-auto rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-left text-xs leading-normal text-slate-600 [overflow-wrap:anywhere] group-hover:block group-focus-within:block"
             data-slot="chat-composer-quote-preview"
             role="tooltip"
           >
-            {createQuotePreview(quote.text)}
+            <QuoteContent quote={quote} />
             <QuoteTruncatedBadge omittedCharacterCount={quote.omittedCharacterCount} />
-          </span>
+          </div>
           {quote.omittedCharacterCount > 0 && (
             // 引用被截断时右上角的溢出角标（源 `.chat-composer-asset.is-quote > small`）。
             <small

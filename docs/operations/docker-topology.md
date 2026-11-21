@@ -89,7 +89,7 @@
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（只有开关，见 §7；.example 是生成物）
-    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
+    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/  onlyoffice/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
     ├── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
@@ -385,6 +385,7 @@ Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init
 | 开关（`FENIX_FEATURE_<NAME>`） | 目录 | 平台能力 | 关键配置 |
 | --- | --- | --- | --- |
 | `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL` / `KNOWLEDGE_RUNTIME_AUTH_MODE`；MySQL（`ragflow-mysql`）、Valkey 与对象存储（`ragflow-rustfs`）**都是本栈自带**，不依赖别的目录，也没有对应开关（§5） |
+| `ONLYOFFICE` | `docker/onlyoffice/` | 工作区 Office 在线编辑，可选 | 主服务配置 `ONLYOFFICE_PUBLIC_URL` / `ONLYOFFICE_JWT_SECRET`，回源复用 `RCS_BASE_URL`；文档服务目录只配置同一 JWT 密钥，详见 [编辑运维](./office-editing.md) |
 | `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*`；库是栈内的 `litellm-postgres`（本栈自带，库与角色由镜像首启建好） |
 | `HINDSIGHT` | `docker/hindsight/` | memory：长期记忆 | `HINDSIGHT_MCP_URL`、`DASHSCOPE_API_KEY` |
 | `OTEL_COLLECTOR` | `docker/otel-collector/` | 平台标准观测采集与有界持久队列 | `OO_OTLP_ENDPOINT` / `OO_AUTH_HEADER` / 真实主机身份；不自动启用 OO |
@@ -418,6 +419,7 @@ Atlas 镜像做 schema 收敛）、`mysql-init`（`init-mysql.sh`）与 `s3-init
 ```bash
 # ── 依赖开关：一个开关对应一个 docker/<name>/，未写即关闭 ──
 FENIX_FEATURE_RAGFLOW=false
+FENIX_FEATURE_ONLYOFFICE=false
 FENIX_FEATURE_LITELLM=false
 FENIX_FEATURE_HINDSIGHT=false
 FENIX_FEATURE_NPM_REGISTRY=false
@@ -454,7 +456,7 @@ FENIX_FEATURE_REDIS=false
 - `docker/deploy.env.example` 是**生成物**（`bun run scripts/generate-env-example.ts`，与 `.env.example`、
   `docker/main/.env.example` 同批产出）；开关清单以脚本发现的目录为准，模板只负责把
   清单落成文件，不手工维护。
-  上面这份示例的开关名单与生成物一致（16 个：15 个目录开关 + `REDIS`），核对方式：
+  上面这份示例的开关名单与生成物一致（17 个：16 个目录开关 + `REDIS`），核对方式：
   `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 得到的键名集合与上面的名单相同。
 - **配置文件解析**（脚本行为，见 §9）：默认读与脚本同目录的 `docker/deploy.env`；它不存在而同目录恰好只有
   一份 `*.env` 时用那一份（部署方常按机器命名，如 `prod.env`）；有多份则报错列出、要求 `--config` 指定，不替你猜。

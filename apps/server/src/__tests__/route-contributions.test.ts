@@ -328,6 +328,13 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "DELETE /channels/langbot/routes/:id",
     "GET /channels/langbot/conversations",
     // machine（`/file-events` 是 WS 升级，method 记为 WS）
+    "GET /environments/:id/file-editing-capabilities",
+    "POST /environments/:id/office-edit-sessions",
+    "GET /office-edit-sessions/:id",
+    "POST /office-edit-sessions/:id/save",
+    "POST /office-edit-sessions/:id/overwrite",
+    "POST /office-edit-sessions/:id/close",
+    "DELETE /office-edit-sessions/:id",
     "GET /environments/:id/fs/tree",
     "GET /environments/:id/fs",
     "GET /environments/:id/fs/*",
@@ -621,6 +628,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     // channel（入站 Webhook 与 IM 连接 token 认证的 MCP 面：都不走会话守卫，挂在 app 槽）
     "POST /hooks/langbot/:channelId",
     "POST /mcp/im",
+    // machine：提供方协议独立于浏览器会话认证。
+    "GET /office/documents/:token",
+    "POST /office/callbacks/:token",
     // workflow
     "ALL /workflow-ui/",
     "ALL /workflow-ui/:path",

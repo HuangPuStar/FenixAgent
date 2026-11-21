@@ -148,7 +148,13 @@ export function publishFileChanged(
     });
     return;
   }
-  enqueueBatch(envId, { path: change.path, kind: change.kind, source: change.source, actor_id: change.actorId });
+  enqueueBatch(envId, {
+    path: change.path,
+    kind: change.kind,
+    source: change.source,
+    actor_id: change.actorId,
+    to: change.to,
+  });
 }
 
 /**

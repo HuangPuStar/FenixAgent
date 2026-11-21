@@ -100,7 +100,7 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     [authState, userId],
   );
 
-  const { slots, activeRestartVersion } = useChatAreaSlots(
+  const { slots } = useChatAreaSlots(
     agentId,
     sessionId ?? null,
     JSON.stringify([organizationId, userId]),
@@ -125,9 +125,9 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
           style={{ display: visible ? undefined : "none" }}
         >
           <ChatWorkspaceArtifacts
+            key={JSON.stringify([organizationId, userId])}
             agentId={activeAgentId}
             sessionId={sessionId ?? null}
-            agentRestartVersion={activeRestartVersion}
             modulesConfig={modulesConfig}
           >
             <div className="agent-chat-area flex h-auto min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
