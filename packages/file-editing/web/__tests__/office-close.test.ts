@@ -123,6 +123,55 @@ test("an invalidated Office discard leaves a replacement environment guard uncha
   expect(await newLeave).toBe(false);
 });
 
+// 清理成功到外层继续执行之间发生重连时，旧请求不得清草稿或批准新的离开确认。
+test.each([
+  "save",
+  "discard",
+] as const)("late Office %s completion cannot settle a replacement guard", async (choice) => {
+  client.readText = async ({ path }) => ({
+    path,
+    name: path,
+    content: "original",
+    size: 8,
+    version: "v1",
+    encoding: "utf8",
+  });
+  await store.ensureLoaded("notes.txt");
+  const cleanup = deferred<void>();
+  const entered = deferred<void>();
+  const finish = () => {
+    entered.resolve();
+    return cleanup.promise;
+  };
+  client.closeOffice = finish;
+  client.discardOffice = finish;
+  store.markOfficeDirty("office.docx", true);
+  const oldLeave = store.beforeLeave();
+  const resolving = store.resolveGuard(choice);
+  await entered.promise;
+  let newLeave: Promise<boolean> | undefined;
+  let allowed: boolean | undefined;
+  cleanup.resolve();
+  queueMicrotask(() => {
+    store.suspend();
+    store.connect("env");
+    store.updateContent("notes.txt", "new unsaved draft");
+    newLeave = store.beforeLeave();
+    void newLeave.then((result) => {
+      allowed = result;
+    });
+  });
+  await resolving;
+  await Promise.resolve();
+  expect(await oldLeave).toBe(false);
+  expect(allowed).toBeUndefined();
+  expect(store.buffer("office.docx")).toBeDefined();
+  expect(store.buffer("notes.txt")).toMatchObject({ dirty: true, content: "new unsaved draft" });
+  expect(store.getSnapshot().guard).toMatchObject({ busy: false, error: null });
+  await store.resolveGuard("cancel");
+  expect(await newLeave).toBe(false);
+});
+
 // 保存回执已清脏后关闭必须直接结束会话，不能再弹出未保存提示。
 test("saved Office closes without an unsaved-changes prompt", async () => {
   store.markOfficeDirty("office.docx", true);

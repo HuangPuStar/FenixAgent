@@ -442,10 +442,9 @@ export class EditingStore {
         if (choice === "save" && this.buffer(path)?.dirty) throw new EditingError("busy", "unsavedChanges");
         if (buffer.kind === "office" && buffer.session) {
           const generation = this.buffer(path)?.generation;
-          if (!(await finishOfficeGuard(this, path, choice === "discard" || this.guardAction === "refresh"))) {
-            if (valid()) finish(false);
-            return;
-          }
+          const finished = await finishOfficeGuard(this, path, choice === "discard" || this.guardAction === "refresh");
+          if (!valid()) return;
+          if (!finished) return finish(false);
           if (choice === "save" && (this.buffer(path)?.dirty || this.buffer(path)?.generation !== generation))
             throw new EditingError("busy", "unsavedChanges");
         }
