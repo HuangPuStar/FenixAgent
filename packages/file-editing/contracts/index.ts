@@ -54,6 +54,11 @@ export class EditingError extends Error {
 /** Per-environment capabilities, including the actual machine's file protocol support. */
 export interface EditingCapabilities {
   readonly textMaxBytes: number;
+  /** Missing declarations cannot authorize text editing on older servers. */
+  readonly text?: {
+    readonly enabled: boolean;
+    readonly reason?: string;
+  };
   readonly office: {
     readonly enabled: boolean;
     readonly extensions: readonly string[];

@@ -36,6 +36,8 @@ interface FileTreeTabProps {
   headerActions?: ReactNode;
   onExternalFileChange?: (change: { kind: "paths" | "invalidate-all"; paths: readonly string[] }) => void;
   onManualRefresh?: () => void;
+  /** Reuse sizes already received by tree loading and file events. */
+  onFileSizes?: (sizes: Readonly<Record<string, number>>) => void;
   refreshVersion?: number;
   beforeMutation?: (paths: readonly string[], kind: "move" | "delete") => Promise<boolean>;
 }
@@ -49,6 +51,7 @@ export function FileTreeTab({
   headerActions,
   onExternalFileChange,
   onManualRefresh,
+  onFileSizes,
   refreshVersion = 0,
   beforeMutation,
 }: FileTreeTabProps) {
@@ -66,14 +69,18 @@ export function FileTreeTab({
   const downloadControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
-  const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>, sizes?: Record<string, number>) => {
-    const sorted = [...paths].sort((a, b) => (mtimes?.[b] ?? 0) - (mtimes?.[a] ?? 0));
-    treeDataRef.current = parsePathsToTree(sorted, mtimes, sizes);
-    const search = searchQueryRef.current.trim().toLocaleLowerCase();
-    if (search) setSearchExpandedPaths(collectDirectoryPaths(filterFileTree(treeDataRef.current, search)));
-    setStale(false);
-    setTreeVersion((version) => version + 1);
-  }, []);
+  const applyTree = useCallback(
+    (paths: string[], mtimes?: Record<string, number>, sizes?: Record<string, number>) => {
+      const sorted = [...paths].sort((a, b) => (mtimes?.[b] ?? 0) - (mtimes?.[a] ?? 0));
+      treeDataRef.current = parsePathsToTree(sorted, mtimes, sizes);
+      const search = searchQueryRef.current.trim().toLocaleLowerCase();
+      if (search) setSearchExpandedPaths(collectDirectoryPaths(filterFileTree(treeDataRef.current, search)));
+      setStale(false);
+      setTreeVersion((version) => version + 1);
+      onFileSizes?.(sizes ?? {});
+    },
+    [onFileSizes],
+  );
 
   const {
     loading,
