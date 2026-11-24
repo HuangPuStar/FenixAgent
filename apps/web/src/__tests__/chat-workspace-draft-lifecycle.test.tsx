@@ -125,7 +125,11 @@ beforeEach(async () => {
       const url = new URL(String(input), "https://localhost");
       const path = url.pathname.split("/fs/")[1];
       const data = url.pathname.endsWith("file-editing-capabilities")
-        ? { textMaxBytes: 2097152, office: { enabled: false, extensions: [], maxBytes: 96468992 } }
+        ? {
+            text: { enabled: true },
+            textMaxBytes: 2097152,
+            office: { enabled: false, extensions: [], maxBytes: 96468992 },
+          }
         : path === "tree"
           ? { paths: ["user/draft.txt"], mtimes: {}, sizes: {} }
           : path

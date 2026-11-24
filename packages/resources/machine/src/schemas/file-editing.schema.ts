@@ -19,6 +19,7 @@ export const EditingSessionSchema = EditingSessionStatusSchema.extend({
 /** Capabilities are resolved for the authenticated environment. */
 export const EditingCapabilitiesSchema = z.object({
   textMaxBytes: z.number(),
+  text: z.object({ enabled: z.boolean(), reason: z.string().optional() }).optional(),
   office: z.object({
     enabled: z.boolean(),
     extensions: z.array(z.string()),

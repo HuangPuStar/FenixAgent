@@ -66,6 +66,8 @@ let writes: { path: string; content: string }[];
 let leave: (() => Promise<boolean>) | null;
 let environment = "env-1";
 let current: { files: string[]; active: string | null };
+let treeSizes: Record<string, number>;
+let treeDelay: Promise<void> | undefined;
 const snapshot = (path: string) => ({
   path,
   name: path,
@@ -120,6 +122,7 @@ async function ready() {
   for (let index = 0; index < 10 && !host.querySelector(".cm-editor"); index++) await settle();
 }
 async function startEditing() {
+  await settle();
   act(() => button("Edit").click());
   await ready();
 }
@@ -173,14 +176,22 @@ beforeEach(async () => {
     send() {}
   };
   win.localStorage.clear();
-  const mockFetch = async (input: Parameters<typeof fetch>[0]) =>
-    String(input).includes("/fs/tree")
-      ? new Response(JSON.stringify({ success: true, data: { paths: [], mtimes: {}, sizes: {} } }), {
+  treeSizes = {};
+  treeDelay = undefined;
+  const mockFetch = async (input: Parameters<typeof fetch>[0]) => {
+    if (String(input).includes("/fs/tree")) {
+      await treeDelay;
+      return new Response(
+        JSON.stringify({ success: true, data: { paths: Object.keys(treeSizes), mtimes: {}, sizes: treeSizes } }),
+        {
           headers: { "content-type": "application/json" },
-        })
-      : String(input).includes(".txt")
-        ? new Response("Read-only preview", { headers: { "content-type": "text/plain" } })
-        : new Response("Preview unavailable", { status: 404 });
+        },
+      );
+    }
+    return String(input).includes(".txt")
+      ? new Response("Read-only preview", { headers: { "content-type": "text/plain" } })
+      : new Response("Preview unavailable", { status: 404 });
+  };
   globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect });
   ({ ArtifactsFilesWorkspace: Workspace } = await import("../components/artifacts-files-workspace"));
   host = document.createElement("div");
@@ -195,6 +206,7 @@ beforeEach(async () => {
   };
   client = {
     capabilities: async () => ({
+      text: { enabled: true },
       textMaxBytes: 2097152,
       office: { enabled: false, extensions: ["docx"], maxBytes: 96468992 },
     }),
@@ -222,6 +234,137 @@ afterAll(() => {
     if (value === undefined) delete globals[key];
     else globals[key] = value;
   }
+});
+
+// 旧沙盒和未声明文本能力的服务只提供预览，不能进入必然失败的版本化读取。
+test.each([false, undefined])("unsupported text capability %s keeps preview without editing", async (enabled) => {
+  client.capabilities = async () => ({
+    ...(enabled === undefined ? {} : { text: { enabled } }),
+    textMaxBytes: 2097152,
+    office: { enabled: false, extensions: [], maxBytes: 96468992 },
+  });
+  client.readText = async () => {
+    throw new Error("Unsupported runtime must stay in preview");
+  };
+  render(["note.txt"], "note.txt");
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]'))).toBe(false);
+  expect(host.querySelector('a[aria-label="Download"]')).not.toBeNull();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+// 能力未确认时不得抢先开放文本入口，确认支持后继续原来的编辑保存。
+test("text editing waits for confirmed runtime capabilities", async () => {
+  const pending = deferred<Awaited<ReturnType<EditingClient["capabilities"]>>>();
+  client.capabilities = () => pending.promise;
+  render(["note.txt"], "note.txt");
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]:not(:disabled)'))).toBe(false);
+  pending.resolve({
+    text: { enabled: true },
+    textMaxBytes: 2097152,
+    office: { enabled: false, extensions: [], maxBytes: 96468992 },
+  });
+  await startEditing();
+  expect(host.querySelector(".cm-editor")).not.toBeNull();
+});
+
+// 文件树已有尺寸超过文本限制时，应保留预览而不重复读取超大文件来尝试编辑。
+test.each([2097152, 2097153, 96468992])("known text size %s determines preview edit availability", async (size) => {
+  treeSizes = { "large.txt": size };
+  render(["large.txt"], "large.txt");
+  await settle();
+  const edit = host.querySelector('button[aria-label="Edit"]:not(:disabled)');
+  expect(Boolean(edit)).toBe(size <= 2097152);
+  expect(host.querySelector('a[aria-label="Download"]')).not.toBeNull();
+});
+
+// 刷新取得新尺寸后立即重算入口；缺少单个文件的尺寸时仍保留加载阶段的大小保护。
+test("tree refresh recomputes text editing availability without an extra file read", async () => {
+  treeSizes = { "large.txt": 96468992 };
+  render(["large.txt"], "large.txt");
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]'))).toBe(false);
+  treeSizes = { "large.txt": 8 };
+  act(() => button("Refresh", host).click());
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]:not(:disabled)'))).toBe(true);
+});
+
+// 迟到的尺寸更新只影响新的编辑入口，不能销毁已经输入的草稿。
+test("an oversized tree update cannot destroy an existing text draft", async () => {
+  treeSizes = { "note.txt": 8 };
+  render(["note.txt"], "note.txt");
+  await startEditing();
+  edit("unsaved draft");
+  treeSizes = { "note.txt": 96468992 };
+  act(() => button("Refresh", host).click());
+  await settle();
+  expect(host.querySelector(".cm-content")?.textContent).toBe("unsaved draft");
+  expect(writes).toHaveLength(0);
+});
+
+// 文本能力请求临时失败时应提供当前文件可操作的重试入口。
+test("text capability failure can retry in the current preview", async () => {
+  let fail = true;
+  client.capabilities = async () => {
+    if (fail) throw new Error("Capabilities temporarily unavailable");
+    return {
+      text: { enabled: true },
+      textMaxBytes: 2097152,
+      office: { enabled: false, extensions: [], maxBytes: 96468992 },
+    };
+  };
+  render(["note.txt"], "note.txt");
+  await settle();
+  expect(Boolean(host.querySelector('[role="alert"]'))).toBe(true);
+  fail = false;
+  act(() => button("Retry", host).click());
+  await startEditing();
+  expect(Boolean(host.querySelector(".cm-editor"))).toBe(true);
+});
+
+// A→B→A期间没有取得新树时，旧的尺寸不能重新开放可能已经增长的文件。
+test("returning to an environment waits for a fresh size snapshot", async () => {
+  treeSizes = { "note.txt": 8 };
+  render(["note.txt"], "note.txt");
+  await settle();
+  const pending = deferred<void>();
+  treeDelay = pending.promise;
+  environment = "env-2";
+  render(["note.txt"], "note.txt");
+  await settle();
+  environment = "env-1";
+  render(["note.txt"], "note.txt");
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]:not(:disabled)'))).toBe(false);
+  treeSizes = { "note.txt": 96468992 };
+  pending.resolve();
+  await settle();
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]'))).toBe(false);
+});
+
+// 干净文件增长超限后真正返回预览，后续缩小也不应未经操作自动进入编辑。
+test("a clean text editor returns to preview when its file grows beyond the limit", async () => {
+  let grown = false;
+  client.readText = async ({ path }) => {
+    if (grown) throw new EditingError("too-large", "textTooLarge");
+    return snapshot(path);
+  };
+  treeSizes = { "note.txt": 8 };
+  render(["note.txt"], "note.txt");
+  await startEditing();
+  grown = true;
+  treeSizes = { "note.txt": 96468992 };
+  act(() => button("Refresh", host).click());
+  await settle();
+  expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Retry")).toBe(false);
+  grown = false;
+  treeSizes = { "note.txt": 8 };
+  act(() => button("Refresh", host).click());
+  await settle();
+  expect(Boolean(host.querySelector(".cm-editor"))).toBe(false);
+  expect(Boolean(host.querySelector('button[aria-label="Edit"]:not(:disabled)'))).toBe(true);
 });
 
 // 手动刷新应读取 Agent 的最新内容，但不能静默覆盖本地尚未保存的草稿。
@@ -330,6 +473,7 @@ test("unsupported text falls back to preview and editor retry works", async () =
     throw new EditingError("too-large", "Text is too large");
   };
   render(["large.txt"], "large.txt");
+  await settle();
   act(() => button("Edit").click());
   await settle();
   expect(host.querySelector(".cm-editor")).toBeNull();
@@ -341,22 +485,30 @@ test("unsupported text falls back to preview and editor retry works", async () =
 });
 
 // 切环境后迟到的可用能力不得开启新环境不支持的 Office 编辑器。
-test("stale environment capability results cannot open Office", async () => {
+test.each(["file.docx", "note.txt"])("stale capability results cannot enable editing %s", async (path) => {
   const old = deferred<Awaited<ReturnType<EditingClient["capabilities"]>>>();
   let opens = 0;
   client.capabilities = async (id) =>
     id === "env-1"
       ? old.promise
-      : { textMaxBytes: 2097152, office: { enabled: false, extensions: ["docx"], maxBytes: 96468992 } };
+      : {
+          text: { enabled: false },
+          textMaxBytes: 2097152,
+          office: { enabled: false, extensions: ["docx"], maxBytes: 96468992 },
+        };
   client.openOffice = async () => {
     opens++;
     throw new Error("unexpected Office open");
   };
-  render(["file.docx"], "file.docx");
+  render([path], path);
   environment = "env-2";
-  render(["file.docx"], "file.docx");
+  render([path], path);
   await settle();
-  old.resolve({ textMaxBytes: 2097152, office: { enabled: true, extensions: ["docx"], maxBytes: 96468992 } });
+  old.resolve({
+    text: { enabled: true },
+    textMaxBytes: 2097152,
+    office: { enabled: true, extensions: ["docx"], maxBytes: 96468992 },
+  });
   await settle();
   expect(opens).toBe(0);
   expect([...host.querySelectorAll("button")].some((item) => item.textContent === "Edit")).toBe(false);
@@ -389,6 +541,7 @@ test("Office iframe survives tab switches and parent LRU eviction", async () => 
     },
   };
   client.capabilities = async () => ({
+    text: { enabled: true },
     textMaxBytes: 2097152,
     office: { enabled: true, extensions: ["docx"], maxBytes: 96468992 },
   });

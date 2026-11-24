@@ -52,6 +52,30 @@ test("editing control endpoints require authentication", async () => {
   );
 });
 
+// 新增文本能力经过真实响应schema保留，旧形状仍可读取并由新前端保守禁用编辑。
+test.each([
+  undefined,
+  { enabled: false, reason: "machine-upgrade-required" },
+])("capability responses preserve text declaration %j", async (text) => {
+  authenticate();
+  const capabilityRoutes = createWebFileEditingRoutes(
+    { authGuardPlugin: createStubSessionAuthGuardPlugin() },
+    {
+      ...facade,
+      capabilities: async () => ({
+        textMaxBytes: 2097152,
+        ...(text ? { text } : {}),
+        office: { enabled: false, extensions: [], maxBytes: 0 },
+      }),
+    },
+  );
+  const response = await capabilityRoutes.handle(
+    new Request("http://localhost/environments/e1/file-editing-capabilities"),
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).data.text).toEqual(text);
+});
+
 // 路由只转交已认证身份和稳定环境 ID，不接受浏览器伪造属主。
 test("office creation projects actor and rejects forged ownership fields", async () => {
   authenticate();

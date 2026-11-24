@@ -34,23 +34,18 @@ export function getMachineEditingService(): EditingService {
 export async function getMachineEditingCapabilities(actor: MachineFileActor, environmentId: string) {
   await machineFileFacade.open(actor, environmentId);
   const configured = !!getMachineConfig().fileEditing;
-  let enabled = configured;
-  let reason: string | undefined = configured ? undefined : "not-configured";
-  if (configured) {
-    const machineId = await getRemoteMachineId(environmentId);
-    if (machineId) {
-      const capabilities = getFileCapabilities(machineId);
-      enabled = capabilities.uploadOverwrite && capabilities.contentVersion;
-      if (!enabled) reason = "machine-upgrade-required";
-    }
-  }
+  const machineId = await getRemoteMachineId(environmentId);
+  const capabilities = machineId ? getFileCapabilities(machineId) : null;
+  const textEnabled = !capabilities || (capabilities.uploadOverwrite && capabilities.contentVersion);
+  const reason = textEnabled ? undefined : "machine-upgrade-required";
   return {
     textMaxBytes: EDITING_DEFAULTS.textMaxBytes,
+    text: { enabled: textEnabled, ...(reason ? { reason } : {}) },
     office: {
-      enabled,
+      enabled: configured && textEnabled,
       extensions: [...OFFICE_EDITABLE_EXTENSIONS],
       maxBytes: EDITING_DEFAULTS.maxFileBytes,
-      ...(reason ? { reason } : {}),
+      ...(!configured ? { reason: "not-configured" } : reason ? { reason } : {}),
     },
   };
 }

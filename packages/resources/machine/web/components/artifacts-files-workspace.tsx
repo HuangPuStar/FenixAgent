@@ -1,11 +1,5 @@
 import { type EditingCapabilities, type EditingClient, EditingError } from "@fenix/file-editing/contracts";
-import {
-  type EditableKind,
-  EditingDialogs,
-  EditingPane,
-  type FileEditingController,
-  useFileEditing,
-} from "@fenix/file-editing/web";
+import { EditingDialogs, EditingPane, type FileEditingController, useFileEditing } from "@fenix/file-editing/web";
 import { FILE_EDITING_NS } from "@fenix/file-editing/web/i18n";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import type { FileQuoteInput } from "@fenix/ui-components/chat/lib/file-quotes";
@@ -23,6 +17,7 @@ import { machineEditingClient } from "../api/file-editing";
 import { buildPreviewSourceUrl, readPreviewSource } from "../api/fs";
 import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
 import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
+import { classifyWorkspaceEditor, isTextWorkspaceFile } from "../lib/workspace-editor-capabilities";
 import { remapWorkspaceFilePath, type WorkspaceFilesChange } from "../lib/workspace-file-operations";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab } from "./FileTreeTab";
@@ -53,20 +48,6 @@ function readFileTreeWidth(): number {
   } catch {
     return FILE_TREE_DEFAULT_WIDTH;
   }
-}
-
-/** Classifies editable formats using the same file categories as the read-only preview. */
-export function classifyWorkspaceEditor(
-  path: string,
-  office?: EditingCapabilities["office"] | null,
-): EditableKind | null {
-  const extension = path.split(".").pop()?.toLowerCase() ?? "";
-  if (office?.enabled && office.extensions.some((value) => value.replace(/^\./, "").toLowerCase() === extension))
-    return "office";
-  const category = classifyFile(path);
-  return ["code", "markdown", "html", "latex"].includes(category) || extension === "csv" || extension === "tsv"
-    ? "text"
-    : null;
 }
 
 /** Router-free embeds use the same workspace; only router-backed hosts register a blocker. */
@@ -111,12 +92,20 @@ export function ArtifactsFilesWorkspace({
   const [environmentVisit, setEnvironmentVisit] = useState(envId);
   const [editingFiles, setEditingFiles] = useState<string[]>([]);
   const [capabilityRetry, setCapabilityRetry] = useState(0);
+  const [fileSizes, setFileSizes] = useState<{
+    environmentId: string | null;
+    sizes: Readonly<Record<string, number>>;
+  } | null>(null);
+  const updateFileSizes = useCallback(
+    (sizes: Readonly<Record<string, number>>) => setFileSizes({ environmentId: envId, sizes }),
+    [envId],
+  );
   const [capabilities, setCapabilities] = useState<{
     environmentId: string | null;
-    office: EditingCapabilities["office"] | null;
+    value: EditingCapabilities | null;
     error: Error | null;
     loading: boolean;
-  }>({ environmentId: envId, office: null, error: null, loading: !!envId });
+  }>({ environmentId: envId, value: null, error: null, loading: !!envId });
   const capabilityGeneration = useRef(0);
   const onSaved = useCallback(
     (file: { path: string }) => {
@@ -131,24 +120,25 @@ export function ArtifactsFilesWorkspace({
   useEffect(() => {
     setEnvironmentVisit(envId);
     setEditingFiles([]);
+    setFileSizes(null);
   }, [envId]);
   useEffect(() => {
     void capabilityRetry;
     const generation = ++capabilityGeneration.current;
     const abort = new AbortController();
-    setCapabilities({ environmentId: envId, office: null, error: null, loading: !!envId });
+    setCapabilities({ environmentId: envId, value: null, error: null, loading: !!envId });
     if (envId)
       void editingClient
         .capabilities(envId, abort.signal)
         .then((value) => {
           if (!abort.signal.aborted && generation === capabilityGeneration.current)
-            setCapabilities({ environmentId: envId, office: value.office, error: null, loading: false });
+            setCapabilities({ environmentId: envId, value, error: null, loading: false });
         })
         .catch((error: unknown) => {
           if (!abort.signal.aborted && generation === capabilityGeneration.current)
             setCapabilities({
               environmentId: envId,
-              office: null,
+              value: null,
               error: error instanceof Error ? error : new EditingError("unavailable", String(error)),
               loading: false,
             });
@@ -182,13 +172,31 @@ export function ArtifactsFilesWorkspace({
       return kept.length === paths.length ? paths : kept;
     });
   }, [effectiveFiles, activeFile]);
-  const office = capabilities.environmentId === envId ? capabilities.office : null;
+  const capability = capabilities.environmentId === envId ? capabilities.value : null;
+  useEffect(() => {
+    if (!capability) return;
+    const unavailable = Object.values(editing.buffers).filter((buffer) => {
+      if (buffer.kind !== "text" || buffer.dirty || buffer.saving) return false;
+      const size = fileSizes?.environmentId === envId ? fileSizes.sizes[buffer.path] : undefined;
+      return !capability.text?.enabled || (size !== undefined && size > capability.textMaxBytes);
+    });
+    if (!unavailable.length) return;
+    const paths = new Set(unavailable.map((buffer) => buffer.path));
+    setEditingFiles((current) =>
+      current.some((path) => paths.has(path)) ? current.filter((path) => !paths.has(path)) : current,
+    );
+    for (const buffer of unavailable) void editing.requestClose(buffer.path);
+  }, [capability, editing.buffers, editing.requestClose, envId, fileSizes]);
   const activeBuffer = activeFile ? editing.buffers[activeFile] : undefined;
   const editableKind =
     envId && activeFile && environmentReady
       ? activeBuffer?.session || activeBuffer?.dirty
         ? activeBuffer.kind
-        : classifyWorkspaceEditor(activeFile, office)
+        : classifyWorkspaceEditor(
+            activeFile,
+            capability,
+            fileSizes?.environmentId === envId ? fileSizes.sizes[activeFile] : undefined,
+          )
       : null;
   const isEditing = Boolean(
     activeFile && (editingFiles.includes(activeFile) || activeBuffer?.dirty || activeBuffer?.session),
@@ -292,7 +300,7 @@ export function ArtifactsFilesWorkspace({
         size="icon-sm"
         aria-label={tEditing(isEditing ? "preview" : "edit")}
         title={tEditing(isEditing ? "preview" : "edit")}
-        disabled={pendingOffice || !editableKind}
+        disabled={pendingOffice || !editableKind || (editableKind === "text" && fileSizes?.environmentId !== envId)}
         onClick={() => {
           if (!activeFile || !editableKind) return;
           if (isEditing) {
@@ -362,6 +370,7 @@ export function ArtifactsFilesWorkspace({
             onFilesChanged={filesChanged}
             onExternalFileChange={externalChange}
             onManualRefresh={manualRefresh}
+            onFileSizes={updateFileSizes}
             refreshVersion={treeRefresh}
             beforeMutation={beforeMutation}
             headerActions={<FileTreeLayoutToggle mode={treeLayout} onToggleMode={switchLayoutMode} />}
@@ -379,7 +388,8 @@ export function ArtifactsFilesWorkspace({
               onPreviewChangedFile={onOpenFile}
             />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              {((isEditing && fallbackError) || (capabilities.error && officeCandidate)) && (
+              {((isEditing && fallbackError) ||
+                (capabilities.error && activeFile && (officeCandidate || isTextWorkspaceFile(activeFile)))) && (
                 <div role="alert" className="flex items-center gap-2 border-b border-border p-3 text-sm text-red-500">
                   <span>
                     {tEditing(fallbackError?.message ?? capabilities.error?.message ?? "loadFailed", {
