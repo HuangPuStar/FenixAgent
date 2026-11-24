@@ -55,6 +55,7 @@ export const machineFileWsIndex = new Map<string, FileWsConnectionEntry>();
 // ────────────────────────────────────────────
 
 interface PendingRequest {
+  cleanupAbort?: () => void;
   resolve: (result: FileOpResult) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -94,6 +95,7 @@ export function removePending(requestId: string): PendingRequest | undefined {
   const pending = pendingRequests.get(requestId);
   if (!pending) return;
   clearTimeout(pending.timer);
+  pending.cleanupAbort?.();
   pendingRequests.delete(requestId);
   decrementPendingCount(pending.wsId);
   return pending;
@@ -104,7 +106,7 @@ export function rejectPendingForWsId(wsId: string, err: Error): void {
   for (const [requestId, pending] of pendingRequests) {
     if (pending.wsId !== wsId) continue;
     removePending(requestId);
-    if (pending.operation === "zip") {
+    if (["zip", "upload", "write"].includes(pending.operation)) {
       const entry = connections.get(wsId);
       if (entry) sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
     }
@@ -163,10 +165,13 @@ export interface FileOpResult {
   error?: string;
   errorCode?: string;
   statusCode?: number;
+  details?: unknown;
 }
 
 /** sendFileOpAndWait 可选参数（§7.2 / P2-18）：幂等键 + 审计字段，全部可选（向后兼容） */
 export interface FileOpOptions {
+  /** Local cancellation uses the existing file_op_cancel frame and is never serialized into params. */
+  signal?: AbortSignal;
   /** 仅 tree 使用的服务端单调时钟截止值；连接等待与既有重试共享，不进入机器协议帧。 */
   connectionWaitDeadline?: number;
   /** 领域幂等键：写操作必带、读可省；重试/迁移重发复用同值（机器端 10 分钟内按 (machine, env, op_id) 去重缓存为外部依赖） */
@@ -189,6 +194,7 @@ function sendFileOpOnce(
   timeoutMs: number,
   options?: FileOpOptions,
 ): Promise<FileOpResult> {
+  if (options?.signal?.aborted) return Promise.reject(new DOMException("File operation cancelled", "AbortError"));
   const entry = machineFileWsIndex.get(machineId);
   if (entry?.ws.readyState !== 1) {
     return Promise.reject(new Error(`No active file-ws connection for machine: ${machineId}`));
@@ -234,7 +240,8 @@ function sendFileOpOnce(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       removePending(requestId);
-      if (operation === "zip") sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
+      if (["zip", "upload", "write"].includes(operation))
+        sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
       reject(new Error(`file_op timeout: operation=${operation} requestId=${requestId}`));
     }, timeoutMs);
 
@@ -248,6 +255,17 @@ function sendFileOpOnce(
 
     pendingRequests.set(requestId, pending);
     incrementPendingCount(entry.wsId);
+    if (options?.signal) {
+      const signal = options.signal;
+      const abort = () => {
+        if (!removePending(requestId)) return;
+        if (["zip", "upload", "write"].includes(operation))
+          sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
+        reject(new DOMException("File operation cancelled", "AbortError"));
+      };
+      pending.cleanupAbort = () => signal.removeEventListener("abort", abort);
+      signal.addEventListener("abort", abort, { once: true });
+    }
 
     const frame: Record<string, unknown> = {
       type: "file_op",

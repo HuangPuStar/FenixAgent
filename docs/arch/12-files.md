@@ -591,3 +591,7 @@ sequenceDiagram
 
 - "文件 API 仅允许操作 user/ 子目录下的内容（本地环境）"——已修订为统一路径校验 + realpath 越界检查（§2.4），路由不再以 user 为前缀（user/ 作为路径前缀仍有效，见上表）。
 - 旧 File WS 描述（"远程机器通过 WebSocket 连接到服务端，发送注册消息完成注册，后续请求-响应"）——已被 §5/§6 生命线取代。
+
+## 在线编辑的增量契约
+
+既有上传增加显式 `overwrite` 与逐文件 `fileConditions.expectedVersion`；版本读取使用 `includeVersion=true`，原 ETag 不变。条件保存及安全替换复用本地与 acp-link 的上传执行面，未新增二进制写操作。内容版本、编辑包边界、外部文件变化与 Office 协议以 [工作区在线编辑](./workspace-file-editing.md) 为准。

@@ -181,7 +181,7 @@ export function DefaultAppShell() {
         onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
       />
       <div
-        className="agent-panel-body flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-(--color-canvas)"
+        className="agent-panel-body flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-(--color-canvas) has-[[data-page-fullscreen=true]]:z-50"
         ref={setPanelHost}
       >
         <Outlet />

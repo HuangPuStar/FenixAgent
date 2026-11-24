@@ -189,7 +189,7 @@ function getExtension(filePath: string): string {
 
 export function classifyFile(filePath: string): FileCategory {
   const ext = getExtension(filePath);
-  if (ext === "pdf") return "pdf";
+  if (ext === "pdf" || ext === ".pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (TABLE_EXTENSIONS.has(ext)) return "table";
   if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
@@ -224,7 +224,7 @@ export function getPreviewMimeType(filePath: string): string | undefined {
  */
 export function shouldLoadPreviewAsBlob(filePath: string): boolean {
   const category = classifyFile(filePath);
-  return category === "code" || category === "markdown" || category === "latex";
+  return category === "code" || category === "markdown" || category === "latex" || category === "pdf";
 }
 
 /**

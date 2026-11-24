@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import { type GitModuleConfig, parseGitModuleConfig } from "@fenix/git/server";
+import { parseMachineEditingConfig } from "@fenix/resource-machine/server";
 import type { AppConfig } from "../config";
 import { getBaseUrl } from "../config";
 import { readDeclaredEnv, type ServerEnv } from "../env-loader";
@@ -74,6 +75,12 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       defaultMachineId: config.defaultMachineId,
       fileWsIdentityStrict: config.fileWsIdentityStrict,
       fileEventsMaxClients: config.fileEventsMaxClients,
+      fileEditing:
+        parseMachineEditingConfig({
+          publicUrl: readDeclaredEnv<string | undefined>(env, "ONLYOFFICE_PUBLIC_URL"),
+          jwtSecret: readDeclaredEnv<string | undefined>(env, "ONLYOFFICE_JWT_SECRET"),
+          baseUrl: env.RCS_BASE_URL,
+        }) ?? undefined,
     },
     // 公共 Git 模块配置：连接拓扑放在**文件**里（路径由 env 给出），宿主只做「读文件 + 转发两枚凭据」，
     // URL 与 token 引用的合法性、默认超时/并发都由 `parseGitModuleConfig` 判定——宿主不解释连接语义。

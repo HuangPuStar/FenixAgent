@@ -453,7 +453,7 @@ const RMD_08_RELOCATED = [
   [
     "web/src/components/agent-panel/preview/native-pdf-plugin.ts",
     "apps/web/src/components/agent-panel/preview/native-pdf-plugin.ts",
-    "packages/ui-components/web/components/preview/native-pdf-plugin.ts",
+    "packages/ui-components/web/components/preview/pdf-plugin.ts",
   ],
   [
     "web/src/components/agent-panel/preview/overrides.css",

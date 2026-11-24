@@ -29,7 +29,14 @@ export interface WsConnection {
 }
 
 /** 单条 file-ws 连接的登记项（`/acp/file-ws` 端点，供远程文件操作使用）。 */
+/** Capabilities explicitly advertised by this connected machine runtime. */
+export interface FileCapabilities {
+  uploadOverwrite: boolean;
+  contentVersion: boolean;
+}
+
 export interface FileWsConnectionEntry {
+  capabilities?: FileCapabilities;
   /** 关联的 machine ID（注册帧之前为 null）。 */
   machineId: string | null;
   /** WS 连接。 */

@@ -25,6 +25,7 @@ interface FileTreeOperationsOptions {
   onChanged: (change: WorkspaceFilesChange) => void;
   onSelectionChange: (paths: string[]) => void;
   refreshTree: () => void;
+  beforeMutation?: (paths: readonly string[], kind: "move" | "delete") => Promise<boolean>;
 }
 
 type OperationTask = FileMutationTask;
@@ -56,6 +57,7 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
     operationKind: "delete" | "write",
     fallback: string,
     operation: (task: OperationTask) => Promise<boolean>,
+    guardPaths?: readonly string[],
   ): Promise<boolean> {
     const { envId, enabled } = optionsRef.current;
     if (!envId || !enabled) return false;
@@ -63,6 +65,14 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
     if (!task) return false;
     setKind(operationKind);
     try {
+      const beforeMutation = optionsRef.current.beforeMutation;
+      if (
+        guardPaths &&
+        beforeMutation &&
+        !(await beforeMutation(guardPaths, operationKind === "delete" ? "delete" : "move"))
+      )
+        return false;
+      if (!current(task)) return false;
       return await operation(task);
     } catch (error) {
       if (current(task)) {
@@ -109,18 +119,23 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   async function confirmDelete(): Promise<boolean> {
     if (!deleteConfirm) return false;
     const paths = [...deleteConfirm.paths];
-    return run("delete", t("fileTree.contextMenu.delete"), async (task) => {
-      const result = await unwrap(fsApi.batchDelete(task.envId, paths, task.controller.signal));
-      if (!current(task)) return false;
-      const failed = result.failed;
-      if (result.deleted.length) optionsRef.current.onChanged({ moved: [], deleted: result.deleted });
-      setDeleteConfirm(
-        failed.length
-          ? { paths: failed.map((item) => item.path), name: failed.map((item) => item.path).join("、") }
-          : null,
-      );
-      return complete(task, { moved: [], deleted: result.deleted }, failed, t("fileTree.deleteSucceeded"));
-    });
+    return run(
+      "delete",
+      t("fileTree.contextMenu.delete"),
+      async (task) => {
+        const result = await unwrap(fsApi.batchDelete(task.envId, paths, task.controller.signal));
+        if (!current(task)) return false;
+        const failed = result.failed;
+        if (result.deleted.length) optionsRef.current.onChanged({ moved: [], deleted: result.deleted });
+        setDeleteConfirm(
+          failed.length
+            ? { paths: failed.map((item) => item.path), name: failed.map((item) => item.path).join("、") }
+            : null,
+        );
+        return complete(task, { moved: [], deleted: result.deleted }, failed, t("fileTree.deleteSucceeded"));
+      },
+      paths,
+    );
   }
 
   function planFailure(failure: WorkspaceMoveFailure): OperationFailure {
@@ -135,37 +150,50 @@ export function useFileTreeOperations(options: FileTreeOperationsOptions) {
   }
 
   async function moveToDirectory(paths: string[], targetDir: string): Promise<boolean> {
-    return run("write", t("fileTree.moveFailed"), async (task) => {
-      const plan = planWorkspaceFileMoves(paths, targetDir, optionsRef.current.getTree());
-      if (!plan.moves.length && !plan.failed.length) return true;
-      const failed = plan.failed.map(planFailure);
-      const moved: WorkspaceFilesChange["moved"] = [];
-      for (const move of plan.moves) {
-        if (!current(task)) return false;
-        try {
-          await unwrap(fsApi.rename(task.envId, move.oldPath, move.newPath, task.controller.signal));
+    return run(
+      "write",
+      t("fileTree.moveFailed"),
+      async (task) => {
+        const plan = planWorkspaceFileMoves(paths, targetDir, optionsRef.current.getTree());
+        if (!plan.moves.length && !plan.failed.length) return true;
+        const failed = plan.failed.map(planFailure);
+        const moved: WorkspaceFilesChange["moved"] = [];
+        for (const move of plan.moves) {
           if (!current(task)) return false;
-          moved.push(move);
-          // 预览归父面板持有；逐项发布已确认结果，避免切换面板卸载树时丢失成功路径。
-          optionsRef.current.onChanged({ moved: [move], deleted: [] });
-        } catch (error) {
-          if (!current(task)) return false;
-          console.error("Workspace file move failed:", { path: move.oldPath, error });
-          failed.push({ path: move.oldPath, error: getFileOperationErrorMessage(error, t, t("fileTree.moveFailed")) });
+          try {
+            await unwrap(fsApi.rename(task.envId, move.oldPath, move.newPath, task.controller.signal));
+            if (!current(task)) return false;
+            moved.push(move);
+            // 预览归父面板持有；逐项发布已确认结果，避免切换面板卸载树时丢失成功路径。
+            optionsRef.current.onChanged({ moved: [move], deleted: [] });
+          } catch (error) {
+            if (!current(task)) return false;
+            console.error("Workspace file move failed:", { path: move.oldPath, error });
+            failed.push({
+              path: move.oldPath,
+              error: getFileOperationErrorMessage(error, t, t("fileTree.moveFailed")),
+            });
+          }
         }
-      }
-      return complete(task, { moved, deleted: [] }, failed, t("fileTree.moveSucceeded"));
-    });
+        return complete(task, { moved, deleted: [] }, failed, t("fileTree.moveSucceeded"));
+      },
+      paths,
+    );
   }
 
   async function renamePath(oldPath: string, newPath: string): Promise<boolean> {
     if (oldPath === newPath) return true;
-    return run("write", t("fileTree.renameFailed"), async (task) => {
-      await unwrap(fsApi.rename(task.envId, oldPath, newPath, task.controller.signal));
-      if (!current(task)) return false;
-      optionsRef.current.onChanged({ moved: [{ oldPath, newPath }], deleted: [] });
-      return complete(task, { moved: [{ oldPath, newPath }], deleted: [] }, [], t("fileTree.moveSucceeded"));
-    });
+    return run(
+      "write",
+      t("fileTree.renameFailed"),
+      async (task) => {
+        await unwrap(fsApi.rename(task.envId, oldPath, newPath, task.controller.signal));
+        if (!current(task)) return false;
+        optionsRef.current.onChanged({ moved: [{ oldPath, newPath }], deleted: [] });
+        return complete(task, { moved: [{ oldPath, newPath }], deleted: [] }, [], t("fileTree.moveSucceeded"));
+      },
+      [oldPath],
+    );
   }
 
   async function createPath(path: string, directory: boolean): Promise<boolean> {

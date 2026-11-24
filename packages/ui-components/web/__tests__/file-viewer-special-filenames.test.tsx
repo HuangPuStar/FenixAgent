@@ -5,6 +5,8 @@ import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
+import { pdfPreviewPlugin } from "../components/preview/pdf-plugin";
+import { classifyFile, withWorkspaceFileExtension } from "../components/preview/preview-source";
 import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
@@ -87,12 +89,17 @@ describe("特殊文件名预览", () => {
     "工单?123分析报告.PDF",
     "工单%23123分析报告.pdf",
     ".pdf",
-  ])("PDF %s 创建原生查看器", async (name) => {
-    const host = await mount(`user/${name}`);
-    const frame = host.querySelector("iframe");
-    expect(frame).not.toBeNull();
-    expect(frame?.title).toBe(name);
-    expect(frame?.src).toStartWith("data:");
+  ])("PDF %s 按原始文件名匹配 PDF.js 预览", async (name) => {
+    let loads = 0;
+    const plugin = withWorkspaceFileExtension(
+      pdfPreviewPlugin(async () => {
+        loads++;
+        throw new Error("Matching must not load PDF.js");
+      }),
+    );
+    expect(classifyFile(name)).toBe("pdf");
+    expect(await plugin.match({ source: new Blob(["pdf"]), name, extension: "invalid", mimeType: "" })).toBe(true);
+    expect(loads).toBe(0);
   });
 
   // 表格预览既要选中 office 插件，也要把正确扩展名传给其渲染分支。

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { FileQuoteInput } from "../lib/file-quotes";
 
 /**
  * 外部输入注入通道（纯化替代源实现的 window CustomEvent 总线）。
@@ -18,6 +19,7 @@ export type ComposerExternalEvent =
   | { type: "suggested-prompt"; prompt: string }
   | { type: "file-reference"; file: { name: string; path: string } }
   | { type: "quote"; quote: { text: string } }
+  | { type: "file-selection"; selection: FileQuoteInput | null }
   /**
    * 回填草稿（待发送队列「取回」用）：**追加到正文末尾**，已有内容时以换行分隔。
    *
@@ -38,6 +40,7 @@ export interface ComposerExternalHandlers {
   onFileReference: (file: { name: string; path: string }) => void;
   /** 聊天引用（源 `chat:quote`）：追加一条待发送引用，超限时按配额回调提示。 */
   onQuote: (quote: { text: string }) => void;
+  onFileSelection?: (selection: FileQuoteInput | null) => void;
   /** 回填草稿（待发送队列「取回」）：追加到已有正文之后。 */
   onRestoreDraft: (prompt: string) => void;
 }
@@ -65,6 +68,7 @@ export function useComposerExternalInput(
       if (event.type === "suggested-prompt") current.onSuggestedPrompt(event.prompt);
       else if (event.type === "file-reference") current.onFileReference(event.file);
       else if (event.type === "restore-draft") current.onRestoreDraft(event.prompt);
+      else if (event.type === "file-selection") current.onFileSelection?.(event.selection);
       else current.onQuote(event.quote);
     });
   }, [subscribe]);

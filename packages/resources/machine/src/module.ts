@@ -1,3 +1,6 @@
+import type { ModuleFactoryContext } from "@fenix/platform-sdk";
+import { machineEditingObservers } from "./server/editing/editing-observers";
+import { disposeMachineFileEditing } from "./server/editing/editing-runtime";
 import {
   destroyEnvironmentQueue,
   ensure as ensureEnvironmentQueue,
@@ -54,7 +57,11 @@ export interface MachineModule {
 }
 
 /** 创建 Machine 模块实例；返回的是包内既有单例的入口，重复调用不产生第二份运行期状态。 */
-export function createMachineModule(): MachineModule {
+export function createMachineModule(context?: Pick<ModuleFactoryContext, "registerCleanup">): MachineModule {
+  context?.registerCleanup(async () => {
+    await machineEditingObservers.dispose();
+    await disposeMachineFileEditing();
+  });
   return {
     id: "machine",
     fileWs: {

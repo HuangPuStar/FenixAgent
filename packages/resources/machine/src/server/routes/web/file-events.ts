@@ -4,6 +4,7 @@ import Elysia from "elysia";
 
 import { FileEventsSubscribeSchema } from "../../../schemas/file-events.schema";
 import { getMachineConfig } from "../../config";
+import { machineEditingObservers } from "../../editing/editing-observers";
 import { machineFileFacade } from "../../facades/machine-file-facade";
 import { subscribe } from "../../services/file-event-queue";
 import { FileServiceError } from "../../services/file-types";
@@ -169,6 +170,7 @@ async function subscribeEnvironment(state: FileEventsClientState, envId: string)
     logError(`[file-events] access check failed for environment ${envId}:`, err);
     return;
   }
+  if (!activeClients.has(state)) return;
   state.subscribedEnvironments.add(envId);
   const unsub = subscribe(envId, (frame) => {
     try {
@@ -179,6 +181,7 @@ async function subscribeEnvironment(state: FileEventsClientState, envId: string)
     }
   });
   state.unsubscribers.add(unsub);
+  state.unsubscribers.add(machineEditingObservers.retain({ ...state.auth, environmentId: envId }));
 }
 
 /** 关闭全部活跃客户端（服务 shutdown 与测试清理用） */
@@ -218,6 +221,15 @@ function toFileEventsAuth(authResult: MachineRequestAuthResult | null): FileEven
  * 必须来自宿主同一份实现，否则同一进程会出现两套身份解析规则（理由见 `../dependencies`）。
  */
 export function createWebFileEventsRoutes(deps: WebFileEventsRouteDependencies) {
+  const connections = new WeakMap<
+    object,
+    {
+      closed: boolean;
+      pending: number;
+      client: FileEventsClient | null;
+      ready: Promise<FileEventsClient | null>;
+    }
+  >();
   return new Elysia({ name: "web-file-events", prefix: "/file-events" }).ws("/", {
     detail: {
       tags: ["Files"],
@@ -227,47 +239,62 @@ export function createWebFileEventsRoutes(deps: WebFileEventsRouteDependencies) 
         "连接须携带有效 session（WS 升级不经过 sessionAuth 插件，端点内显式认证）；" +
         "订阅帧逐环境校验访问权，无权限显式返回 subscribe_error。",
     },
-    async open(ws) {
-      let authResult: MachineRequestAuthResult | null = null;
-      try {
-        authResult = await deps.authenticateRequest(ws.data.request);
-      } catch (err) {
-        if (err instanceof AppError && err.code === "RATE_LIMITED") {
-          adaptWs(ws).close(WS_CLOSE_RATE_LIMITED, "rate_limited");
-          return;
+    open(ws) {
+      const connection = {
+        closed: false,
+        pending: 0,
+        client: null as FileEventsClient | null,
+        ready: Promise.resolve<FileEventsClient | null>(null),
+      };
+      connections.set(ws.data, connection);
+      // open 的认证可异步完成；首个订阅帧必须等待同一认证结果，关闭后不能复活连接。
+      connection.ready = (async () => {
+        let authResult: MachineRequestAuthResult | null = null;
+        try {
+          authResult = await deps.authenticateRequest(ws.data.request);
+        } catch (err) {
+          if (err instanceof AppError && err.code === "RATE_LIMITED") {
+            adaptWs(ws).close(WS_CLOSE_RATE_LIMITED, "rate_limited");
+            return null;
+          }
+          if (err instanceof AppError && (err.statusCode === 401 || err.statusCode === 403)) {
+            adaptWs(ws).close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
+            return null;
+          }
+          logError("[file-events] Authentication failed", err);
+          adaptWs(ws).close(1011, "authentication unavailable");
+          return null;
         }
-        if (err instanceof AppError && (err.statusCode === 401 || err.statusCode === 403)) {
-          adaptWs(ws).close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
-          return;
-        }
-        logError("[file-events] Authentication failed", err);
-        adaptWs(ws).close(1011, "authentication unavailable");
+        if (connection.closed) return null;
+        const client = handleFileEventsOpen(
+          adaptWs(ws),
+          toFileEventsAuth(authResult),
+          getMachineConfig().fileEventsMaxClients,
+        );
+        connection.client = client;
+        return client;
+      })();
+    },
+    async message(ws, data) {
+      const connection = connections.get(ws.data);
+      if (!connection || connection.closed) return;
+      if (++connection.pending > 32) {
+        adaptWs(ws).close(WS_CLOSE_RATE_LIMITED, "rate_limited");
         return;
       }
-      const client = handleFileEventsOpen(
-        adaptWs(ws),
-        toFileEventsAuth(authResult),
-        getMachineConfig().fileEventsMaxClients,
-      );
-      if (client) {
-        // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-        (ws.data as any).__fileEventsClient = client;
-      }
-    },
-    message(ws, data) {
-      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      const client = (ws.data as any).__fileEventsClient as FileEventsClient | undefined;
-      if (client) {
-        // 订阅处理为异步（逐环境访问权校验），失败路径已在 handler 内收敛，此处不等待
-        void client.handleMessage(data as string | Record<string, unknown>);
+      try {
+        const client = await connection.ready;
+        if (!connection.closed && client) await client.handleMessage(data as string | Record<string, unknown>);
+      } finally {
+        connection.pending--;
       }
     },
     close(ws) {
-      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      const client = (ws.data as any).__fileEventsClient as FileEventsClient | undefined;
-      if (client) {
-        client.close();
-      }
+      const connection = connections.get(ws.data);
+      if (!connection) return;
+      connection.closed = true;
+      connection.client?.close();
+      connections.delete(ws.data);
     },
   });
 }

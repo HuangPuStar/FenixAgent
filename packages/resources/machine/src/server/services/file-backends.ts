@@ -1,20 +1,12 @@
 /** 本地与远程文件执行后端，共享条件写规则；门面负责授权并选择后端。 */
 
-import { spawn } from "node:child_process";
-import type { Stats } from "node:fs";
-import { lstat, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
-import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { uploadWorkspaceFileExclusive } from "@fenix/plugin-sdk/secure-workspace-upload";
 import type { FileOpOptions } from "../transport/file-ws-requests";
-import { buildDownloadZipEnv } from "./download-zip-env";
-import { type FileChangeKind, publishFileChanged } from "./file-event-limiter";
-import { normalizeUploadRelativePath } from "./file-path-validator";
+import { assertVersionMatch } from "./file-preconditions";
 import {
-  FileServiceError,
+  type FileReadOptions,
+  type FileUploadOptions,
   type FileWriteOptions,
-  LOCAL_UPLOAD_MAX_BYTES,
   REMOTE_UPLOAD_MAX_BYTES,
   type ReadMode,
   type ReadResult,
@@ -24,6 +16,7 @@ import {
   type UploadResult,
   type WriteResult,
 } from "./file-types";
+import { LocalBackend } from "./local-file-backend";
 import {
   getRemoteMachineId,
   remoteDeleteFile,
@@ -38,104 +31,9 @@ import {
   remoteWriteFile,
   remoteZip,
 } from "./remote-file-service";
-import {
-  computeReadFingerprint,
-  createFileStream,
-  deleteFile,
-  deleteNode,
-  type FileEntry,
-  getMimeType,
-  isTextExtension,
-  isTextFile,
-  listDirectory,
-  listPathsRecursive,
-  mkdirp,
-  readFileContent,
-  renamePath,
-  resolveWorkspacePath,
-  shouldHideEntry,
-  shouldHidePath,
-  writeFileContent,
-} from "./workspace-fs";
+import { type FileEntry, shouldHideEntry, shouldHidePath } from "./workspace-fs";
 
-let uploadBeforeWriteHook: ((destination: string) => Promise<void>) | undefined;
-
-/** 仅供上传竞态行为测试在 mkdir 与真实落点复检之间替换目录。 */
-export function setLocalUploadBeforeWriteHookForTest(hook?: (destination: string) => Promise<void>): void {
-  uploadBeforeWriteHook = hook;
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
-}
-
-function isWithinRoot(root: string, target: string): boolean {
-  const rel = relative(root, target);
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-}
-
-/**
- * 上传落盘前逐段拒绝 symlink，并在 mkdir 后重新校验父目录真实落点。
- * 第二次检查刻意紧邻 writeFile，避免只在批次开始时检查造成明显 TOCTOU 窗口。
- */
-async function assertUploadDestination(workspaceDir: string, destination: string): Promise<void> {
-  const workspaceRealPath = await realpath(workspaceDir);
-  const rel = relative(workspaceDir, destination);
-  if (!isWithinRoot(workspaceDir, destination)) throw new ValidationError("上传目标路径越出 workspace");
-
-  let current = workspaceDir;
-  for (const segment of rel.split(sep).slice(0, -1)) {
-    current = join(current, segment);
-    try {
-      if ((await lstat(current)).isSymbolicLink()) throw new ValidationError("上传目标路径包含 symbolic link");
-    } catch (error) {
-      if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
-      break;
-    }
-  }
-
-  const parentRealPath = await realpath(dirname(destination));
-  if (!isWithinRoot(workspaceRealPath, parentRealPath)) throw new ValidationError("上传目标路径越出 workspace");
-  try {
-    if ((await lstat(destination)).isSymbolicLink()) throw new ValidationError("上传目标文件是 symbolic link");
-  } catch (error) {
-    if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
-  }
-}
-
-// ── If-Match 条件写（W12b，§4.4 并发写）────────────────────────
-
-/** HTTP If-Match 单值弱比较：剥离 W/ 前缀与引号后按字符串相等判定（与读侧
- *  If-None-Match 的 etagMatches 同规约），保证"读到的 ETag 能原样写回比对"。 */
-function etagEquals(ifMatch: string, etag: string): boolean {
-  const normalize = (v: string) => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
-  return normalize(ifMatch) === normalize(etag);
-}
-
-/** If-Match 版本比对（§4.4）：当前版本（size+mtimeMs 派生 ETag，与读侧 read 指纹
- *  computeReadFingerprint 同源同规则）与消费者读取时携带的 ETag 不一致 → 409
- *  version_conflict + 当前版本回显（覆盖可感知性：消费者据此提示"文件已被修改"）。
- *  只保护"消费者-消费者"读改写——Agent 工具写入不走 HTTP、无 ETag，不参与比对
- *  （文档边界 §4.4）；mtime 缺失（远程弱指纹）时退化为 size-only 比对。 */
-function assertVersionMatch(
-  ifMatch: string | undefined,
-  displayPath: string,
-  size: number,
-  mtimeMs: number | undefined,
-): void {
-  if (ifMatch === undefined) return;
-  // HTTP If-Match 通配 `*`：表示"资源必须存在"，当前 stat 已证明存在 → 放行
-  if (ifMatch.trim() === "*") return;
-  const currentEtag = computeReadFingerprint(size, mtimeMs);
-  if (!etagEquals(ifMatch, currentEtag)) {
-    throw new FileServiceError(`文件已被修改 (${displayPath})，请刷新后重试`, "version_conflict", 409, {
-      etag: currentEtag,
-      mtimeMs: mtimeMs ?? 0,
-      size,
-    });
-  }
-}
-
+export { setLocalUploadBeforeWriteHookForTest } from "./local-file-backend";
 // ── BackEnd 统一执行接口（§2.3）─────────────────────────────────
 
 export interface BackEnd {
@@ -143,237 +41,14 @@ export interface BackEnd {
   readonly uploadMaxBytes: number;
   tree(envId: string, path?: string, connectionWaitDeadline?: number): Promise<TreeResult>;
   list(envId: string, path: string): Promise<FileEntry[]>;
-  read(envId: string, path: string, mode: ReadMode): Promise<ReadResult>;
+  read(envId: string, path: string, mode: ReadMode, options?: FileReadOptions): Promise<ReadResult>;
   write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult>;
-  upload(envId: string, dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult>;
+  upload(envId: string, dir: string, files: UploadFileInput[], options?: FileUploadOptions): Promise<UploadResult>;
   delete(envId: string, path: string, options?: FileWriteOptions): Promise<void>;
   mkdir(envId: string, path: string, options?: FileWriteOptions): Promise<void>;
   rename(envId: string, oldPath: string, newPath: string, options?: FileWriteOptions): Promise<void>;
-  stat(envId: string, path: string): Promise<StatResult>;
+  stat(envId: string, path: string, options?: FileReadOptions): Promise<StatResult>;
   downloadZip(envId: string, path: string): Promise<NodeJS.ReadableStream>;
-}
-
-/** 本地实现：包装 workspace-fs（opId/ifMatch 为契约占位，W12b 启用） */
-class LocalBackend implements BackEnd {
-  readonly uploadMaxBytes = LOCAL_UPLOAD_MAX_BYTES;
-
-  private async resolve(envId: string, path: string) {
-    const resolved = await resolveWorkspacePath(envId, path);
-    if (!resolved) throw new NotFoundError("环境不存在或路径越界");
-    return resolved;
-  }
-
-  private async statOr404(filePath: string, message: string) {
-    try {
-      return await stat(filePath);
-    } catch {
-      throw new NotFoundError(message);
-    }
-  }
-
-  /** 本地 If-Match 比对：stat 目标派生当前 ETag 后比对。目标不存在视为不匹配
-   *  （HTTP If-Match 语义：资源缺失即失败——消费者"读→保存"闭环中文件被删属冲突），
-   *  与不带 If-Match 时的 404 语义区分：只有显式条件写才升级为 409。 */
-  private async assertLocalIfMatch(absPath: string, displayPath: string, ifMatch: string | undefined): Promise<void> {
-    if (ifMatch === undefined) return;
-    let info: Stats;
-    try {
-      info = await stat(absPath);
-    } catch {
-      throw new FileServiceError(`文件已不存在 (${displayPath})，请刷新后重试`, "version_conflict", 409);
-    }
-    assertVersionMatch(ifMatch, displayPath, info.size, info.mtimeMs);
-  }
-
-  async tree(envId: string): Promise<TreeResult> {
-    const { workspaceDir } = await this.resolve(envId, ".");
-    const { entries, errors } = await listPathsRecursive(workspaceDir);
-    const mtimes: Record<string, number> = {};
-    const sizes: Record<string, number> = {};
-    for (const e of entries) {
-      if (e.mtime > 0) mtimes[e.path] = e.mtime;
-      if (e.size !== undefined) sizes[e.path] = e.size;
-    }
-    return { paths: entries.map((e) => e.path), mtimes, sizes, errors: errors.length > 0 ? errors : undefined };
-  }
-  async list(envId: string, path: string): Promise<FileEntry[]> {
-    const resolved = await this.resolve(envId, path);
-    const info = await stat(resolved.resolved);
-    if (!info.isDirectory()) throw new ValidationError("目标不是目录，请使用 read 接口");
-    return listDirectory(resolved.resolved, resolved.userDir, resolved.workspaceDir);
-  }
-
-  async read(envId: string, path: string, mode: ReadMode): Promise<ReadResult> {
-    const resolved = await this.resolve(envId, path);
-    const info = await this.statOr404(resolved.resolved, "文件不存在");
-    if (info.isDirectory()) throw new ValidationError("目标是目录，请使用 list 接口");
-    const lastDot = path.lastIndexOf(".");
-    const lastSlash = path.lastIndexOf("/");
-    const ext = lastDot > lastSlash ? path.substring(lastDot) : "";
-    const name = path.substring(lastSlash + 1);
-    // 本地二进制保持流式（大文件零内存占用，与现状 fs.ts 一致）
-    const binary = (): ReadResult => ({
-      type: "binary",
-      name,
-      path: resolved.displayPath,
-      size: info.size,
-      mtimeMs: info.mtimeMs,
-      mimeType: getMimeType(ext),
-      stream: createFileStream(resolved.resolved),
-    });
-    if (mode === "binary") return binary();
-    // text/auto 共用同一文本探测；差异只在探测失败的分支（§7.8）：
-    // text → 明确错误（不再静默回退二进制下载）；auto → 回退 binary
-    const textFile = isTextExtension(ext) || (!ext && (await isTextFile(resolved.resolved)));
-    if (!textFile) {
-      if (mode === "text") {
-        // 400：契约错误码表无"内容不可预览"类型（415 不在 §2.4 表），
-        // 取 400 validation_error 作为客户端可处理的通用拒绝
-        throw new FileServiceError("该文件不是文本文件，暂不支持预览", "validation_error", 400);
-      }
-      return binary();
-    }
-    const { content, size } = await readFileContent(resolved.resolved);
-    return { type: "text", name, path: resolved.displayPath, content, size, encoding: "utf-8", mtimeMs: info.mtimeMs };
-  }
-
-  /**
-   * 本地写操作成功后发布变更事件（W7，§4.3/§7.5）：与机器端事件走同一限频合并器
-   * （不得跳过，D20 本地路径兜底）。source/actorId 取自写选项（门面从认证上下文注入）；
-   * 远程路径不在此发布——机器端执行成功后自行推送 file_changed。
-   */
-  private publishLocal(
-    envId: string,
-    kind: FileChangeKind,
-    path: string,
-    options?: FileWriteOptions,
-    to?: string,
-  ): void {
-    const change: {
-      path: string;
-      kind: FileChangeKind;
-      source: "user" | "agent" | "api";
-      actorId?: string;
-      to?: string;
-    } = {
-      path,
-      kind,
-      source: options?.source ?? "user",
-    };
-    if (options?.actorId) change.actorId = options.actorId;
-    if (to) change.to = to;
-    publishFileChanged(envId, change);
-  }
-  async write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
-    const resolved = await this.resolve(envId, path);
-    await this.assertLocalIfMatch(resolved.resolved, path, options?.ifMatch);
-    if (options?.createOnly) await uploadWorkspaceFileExclusive(resolved.workspaceDir, path, Buffer.from(content));
-    else await writeFileContent(resolved.resolved, content);
-    const name = path.substring(path.lastIndexOf("/") + 1);
-    this.publishLocal(envId, "write", path, options);
-    return { name, path: resolved.displayPath, size: Buffer.byteLength(content) };
-  }
-  async upload(
-    envId: string,
-    dir: string,
-    files: UploadFileInput[],
-    options?: FileWriteOptions,
-  ): Promise<UploadResult> {
-    const { resolved, workspaceDir } = await this.resolve(envId, dir);
-    // 目标目录条件写比对：目录被删/被改（mtime 变）→ 409；新建目录不应带 If-Match
-    await this.assertLocalIfMatch(resolved, dir, options?.ifMatch);
-    const uploaded: UploadResult["files"] = [];
-    for (const file of files) {
-      const relPath = normalizeUploadRelativePath(file.relativePath) || file.name;
-      const destPath = join(resolved, relPath);
-      try {
-        await uploadWorkspaceFileExclusive(workspaceDir, relative(workspaceDir, destPath), file.content, async () => {
-          await uploadBeforeWriteHook?.(destPath);
-          await assertUploadDestination(workspaceDir, destPath);
-        });
-      } catch (error) {
-        if (isErrnoException(error) && ["ELOOP", "ENOTDIR"].includes(error.code ?? ""))
-          throw new ValidationError("上传目标路径包含 symbolic link");
-        throw error;
-      }
-      const displayPath = dir ? `${dir}/${relPath}` : relPath;
-      uploaded.push({ name: file.name, path: displayPath, size: file.content.byteLength });
-      this.publishLocal(envId, "upload", displayPath, options);
-    }
-    return { files: uploaded };
-  }
-  async delete(envId: string, path: string, options?: FileWriteOptions): Promise<void> {
-    const resolved = await this.resolve(envId, path);
-    await this.assertLocalIfMatch(resolved.resolved, path, options?.ifMatch);
-    const info = await this.statOr404(resolved.resolved, "文件不存在");
-    if (info.isDirectory()) await deleteNode(resolved.resolved);
-    else await deleteFile(resolved.resolved);
-    this.publishLocal(envId, "delete", path, options);
-  }
-  async mkdir(envId: string, path: string, options?: FileWriteOptions): Promise<void> {
-    const resolved = await this.resolve(envId, path);
-    await this.assertLocalIfMatch(resolved.resolved, path, options?.ifMatch);
-    await mkdirp(resolved.resolved);
-    this.publishLocal(envId, "mkdir", path, options);
-  }
-  async rename(envId: string, oldPath: string, newPath: string, options?: FileWriteOptions): Promise<void> {
-    const oldResolved = await this.resolve(envId, oldPath);
-    await this.assertLocalIfMatch(oldResolved.resolved, oldPath, options?.ifMatch);
-    await this.statOr404(oldResolved.resolved, "源路径不存在");
-    const newResolved = await this.resolve(envId, newPath);
-    await renamePath(oldResolved.resolved, newResolved.resolved);
-    this.publishLocal(envId, "rename", oldPath, options, newPath);
-  }
-  async stat(envId: string, path: string): Promise<StatResult> {
-    const resolved = await this.resolve(envId, path);
-    const info = await this.statOr404(resolved.resolved, "文件不存在");
-    return {
-      size: info.size,
-      isDirectory: info.isDirectory(),
-      modifiedAt: info.mtimeMs,
-      isText: info.isFile() ? await isTextFile(resolved.resolved) : undefined,
-    };
-  }
-  async downloadZip(envId: string, path: string): Promise<NodeJS.ReadableStream> {
-    const resolved = await this.resolve(envId, path);
-    const info = await this.statOr404(resolved.resolved, "路径不存在");
-    if (!info.isDirectory()) throw new ValidationError("目标不是目录");
-    const child = spawn("zip", ["-r", "-q", "-", "."], {
-      cwd: resolved.resolved,
-      // 按用途白名单构造环境（§5.4）：zip 会把宿主的 ZIPOPT/ZIP 当命令行选项，且不得拿到宿主密钥
-      env: buildDownloadZipEnv(),
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    // @types/node 22.20.1 缺陷：class EventEmitter 的实例方法声明在 interface 合并中，
-    // `class ChildProcess extends EventEmitter` 的类型丢失 on/once（运行时存在，
-    // Node 25 类型已修复）。最小断言恢复事件 API，不触碰 stdout/kill 等成员。
-    const childEvents = child as unknown as NodeJS.EventEmitter;
-    // 等待 spawn 确认（zip 缺失/不可执行时 error 先于 spawn 触发）：统一映射
-    // 503 file_service_unavailable（§2.4 契约）。不得把 error 留给已返回的流——
-    // headers 发出后无法再返回 JSON 错误，只能中断连接，消费者不可诊断
-    await new Promise<void>((resolveSpawn, reject) => {
-      childEvents.once("spawn", () => resolveSpawn());
-      childEvents.once("error", (err: Error) => {
-        // spawn 失败后 stdout 已无数据，显式销毁避免其 error 事件泄漏为未捕获错误；
-        // 原始错误只进诊断日志（err.message 含命令路径等部署细节，不得泄露给响应）
-        child.stdout.destroy();
-        console.error("downloadZip spawn zip 失败", err);
-        reject(new FileServiceError("目录打包服务暂不可用，请稍后重试", "file_service_unavailable", 503));
-      });
-    });
-    const stream = child.stdout;
-    // 客户端断开（Response body 被 destroy/abort）时流只触发 close 不触发 end，
-    // 此时必须 kill 子进程防悬空；正常打包完成先 end 再 close，不得误 kill
-    // 正常收尾的进程（zip 写完 stdout 后自然退出）
-    let endedNormally = false;
-    stream.once("end", () => {
-      endedNormally = true;
-    });
-    stream.once("close", () => {
-      if (!endedNormally) child.kill();
-    });
-    return stream;
-  }
 }
 
 /** 远程实现：包装 remote-file-service（machineId 由门面路由决策注入） */
@@ -416,40 +91,56 @@ class RemoteBackend implements BackEnd {
     const entries = await remoteListDir(this.machineId, envId, path);
     return entries.filter((entry) => !shouldHideEntry(entry.path, entry.name));
   }
-  async read(envId: string, path: string, mode: ReadMode): Promise<ReadResult> {
-    if (mode === "binary") return this.readBinary(envId, path);
+  async read(envId: string, path: string, mode: ReadMode, options?: FileReadOptions): Promise<ReadResult> {
+    if (mode === "binary") return this.readBinary(envId, path, options);
     try {
-      const r = await remoteReadFile(this.machineId, envId, path);
+      const r = await remoteReadFile(this.machineId, envId, path, options);
       // 远程数据源无 mtime（机器端补 mtime 属跨仓库增强）→ mtimeMs 缺省，
       // 路由层据 size 计算 size-only 弱指纹
-      return { type: "text", name: r.name, path: r.path, content: r.content, size: r.size, encoding: r.encoding };
+      return {
+        type: "text",
+        name: r.name,
+        path: r.path,
+        content: r.content,
+        size: r.size,
+        encoding: r.encoding,
+        ...(r.version ? { version: r.version } : {}),
+      };
     } catch (err) {
       // auto 模式：文本失败回退二进制（现状 fs.ts 语义）；text 模式失败向上抛（W13' 明确错误）
       if (mode !== "auto") throw err;
-      return this.readBinary(envId, path);
+      return this.readBinary(envId, path, options);
     }
   }
-  private async readBinary(envId: string, path: string): Promise<ReadResult> {
-    const r = await remoteReadBinaryFile(this.machineId, envId, path);
+  private async readBinary(envId: string, path: string, options?: FileReadOptions): Promise<ReadResult> {
+    const r = await remoteReadBinaryFile(this.machineId, envId, path, options);
     return {
       type: "binary",
       name: r.name,
       path: r.path,
       size: r.size,
       mimeType: r.mimeType,
+      ...(r.version ? { version: r.version } : {}),
       // 远程走 base64 单帧（现状语义）；流由内存缓冲构造，与现状 buffer 等价
       stream: Readable.from(Buffer.from(r.data, "base64")),
     };
   }
   async write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
     await this.assertRemoteIfMatch(envId, path, options?.ifMatch);
-    return remoteWriteFile(this.machineId, envId, path, content, this.remoteOptions(options), options?.createOnly);
+    return remoteWriteFile(
+      this.machineId,
+      envId,
+      path,
+      content,
+      { ...this.remoteOptions(options), expectedVersion: options?.expectedVersion },
+      options?.createOnly,
+    );
   }
   async upload(
     envId: string,
     dir: string,
     files: UploadFileInput[],
-    options?: FileWriteOptions,
+    options?: FileUploadOptions,
   ): Promise<UploadResult> {
     await this.assertRemoteIfMatch(envId, dir, options?.ifMatch);
     return remoteUploadFiles(
@@ -460,8 +151,9 @@ class RemoteBackend implements BackEnd {
         name: f.name,
         content: Buffer.from(f.content).toString("base64"),
         relativePath: f.relativePath ?? f.name,
+        ...(f.expectedVersion !== undefined ? { expectedVersion: f.expectedVersion } : {}),
       })),
-      this.remoteOptions(options),
+      { ...this.remoteOptions(options), overwrite: options?.overwrite, signal: options?.signal },
     );
   }
   async delete(envId: string, path: string, options?: FileWriteOptions): Promise<void> {
@@ -476,9 +168,14 @@ class RemoteBackend implements BackEnd {
     await this.assertRemoteIfMatch(envId, oldPath, options?.ifMatch);
     await remoteRename(this.machineId, envId, oldPath, newPath, this.remoteOptions(options));
   }
-  async stat(envId: string, path: string): Promise<StatResult> {
-    const r = await remoteStat(this.machineId, envId, path);
-    return { size: r.size, isDirectory: r.isDirectory, modifiedAt: r.modifiedAt };
+  async stat(envId: string, path: string, options?: FileReadOptions): Promise<StatResult> {
+    const r = await remoteStat(this.machineId, envId, path, options);
+    return {
+      size: r.size,
+      isDirectory: r.isDirectory,
+      modifiedAt: r.modifiedAt,
+      ...(r.version ? { version: r.version } : {}),
+    };
   }
   async downloadZip(envId: string, path: string): Promise<NodeJS.ReadableStream> {
     // 远程整包回传后解码，路由负责向浏览器输出文件流。

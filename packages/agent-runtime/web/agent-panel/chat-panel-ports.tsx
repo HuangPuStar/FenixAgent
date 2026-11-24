@@ -17,6 +17,7 @@ import { flushContext } from "@fenix/web-runtime/chat/context-queue";
 import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
 import { dispatchArtifactsPreviewFile } from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
+import { subscribeWorkspaceSelections } from "@fenix/web-runtime/lib/workspace-selection-events";
 import imageCompression from "browser-image-compression";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -215,9 +216,15 @@ export function useChatPanelPorts({
         handler({ type: "file-reference", file: { name: detail.name, path: detail.path } });
       };
       window.addEventListener("file-tree:reference", listener);
-      return () => window.removeEventListener("file-tree:reference", listener);
+      const stopSelections = subscribeWorkspaceSelections(agentId, sessionId ?? null, (selection) =>
+        handler({ type: "file-selection", selection }),
+      );
+      return () => {
+        window.removeEventListener("file-tree:reference", listener);
+        stopSelections();
+      };
     },
-    [agentId],
+    [agentId, sessionId],
   );
 
   // 详情抽屉：无 `sessionId` 时没有详情接口可查，源实现同样不给入口（任务行只读）；

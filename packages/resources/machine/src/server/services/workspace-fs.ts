@@ -25,6 +25,10 @@ import { getMachineHostPort } from "../host-port";
 const TEXT_EXTENSIONS = new Set([
   ".txt",
   ".md",
+  ".mdx",
+  ".markdown",
+  ".csv",
+  ".tsv",
   ".json",
   ".yaml",
   ".yml",

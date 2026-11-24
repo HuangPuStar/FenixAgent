@@ -32,6 +32,7 @@ include:
     - path: docker/dev/docker-compose.agent-sites.yml
     - path: docker/dev/docker-compose.ragflow.yml
     - path: docker/dev/docker-compose.opensandbox.yml
+    - path: docker/dev/docker-compose.onlyoffice.yml
 
 name: fenix
 

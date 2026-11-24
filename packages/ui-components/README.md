@@ -39,8 +39,8 @@ demo/                     Vite 展示页（非库产物）
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
 | `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由，且组件内直调全局 `fetch` 读该路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；取数改由**必填** prop `fetchPreview` 注入，包内不留全局 `fetch` 兜底（见「已知限制」第 14 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
 | `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
-| `web/components/preview/html-plugin.ts`、`web/components/preview/native-pdf-plugin.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML / PDF 文件的预览地址」「HTML / PDF 预览加载失败」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，接文案要在契约上新增参数；需要多语言的宿主应自行派生插件。`preview-source.ts` 的「文件预览加载失败 (<status>)」**已不在本条**（2026-09-23 第 19 轮改为抛结构化的 `PreviewSourceError`，文案由 `FileViewerPreview` 按语言取——见「已知限制」第 13 条） |
-| `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
+| `web/components/preview/html-plugin.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，接文案要在契约上新增参数；需要多语言的宿主应自行派生插件。`preview-source.ts` 的「文件预览加载失败 (<status>)」**已不在本条**（2026-09-23 第 19 轮改为抛结构化的 `PreviewSourceError`，文案由 `FileViewerPreview` 按语言取——见「已知限制」第 13 条） |
+| `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 保留第三方内容的边框与代码操作修正。`FileViewerPreview` 在右上角提供图标工具栏及宿主操作插槽，使用页面内全屏；宿主可注入共享全屏状态以保留模式切换时的选择 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动。2026-10-15 在其上扩了文档类口径：`latex` 类别、`PREVIEW_MAX_DOCUMENT_BYTES` 上限、按 BOM 的 `decodePreviewText`（见「已知限制」第 15 条） |
 | `web/components/preview/{markdown-math-plugin,DocumentPreview,latex-document,latex-inline,latex-parse-utils,latex-content}.*` | —（2026-10-15 新增能力，无源实现可搬） | markdown 的数学渲染包在既有 markdown 渲染链外层（`markdown-math-plugin` 复用 `@open-file-viewer` 的 `textPlugin` 产物 + KaTeX 自动渲染），不引入第二套 markdown 实现；`.tex` 的**结构**渲染没有可复用件，落在 `latex-document`（纯解析）+ `latex-content`（React + KaTeX，`DocumentPreview` 动态导入）。状态边界（空文件 / 字节上限 / 源码回退）统一由 `DocumentPreview` 提供，文案全走包内字典（见「已知限制」第 15 条） |
 | `web/lib/katex-math.ts`、`web/chat/primitives/message-plugins.ts` 的 `math` 注册 | —（2026-10-15 数学渲染批次，接入 `@streamdown/math`） | 聊天正文的数学走官方插件（`createMathPlugin`），单 `$` 判定、错误色、auto-render 定界符、`renderToString` 选项与 KaTeX 样式表引入点收敛到 `lib/katex-math.ts`，聊天与预览共用同一份（见「已知限制」第 15 条）；KaTeX 版本按 `rehype-katex` 的可支持范围统一在 0.16.47，全仓一份、无 overrides |
@@ -201,8 +201,7 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     - 移除条件：共享高度链与标题栏均不再依赖 `.acp-main-root` 时，才可删除该类名。
 12. **`html-plugin` 的标签与提示硬编码中文**：标签页「渲染预览」/「源码」、源码加载失败的兜底串「源码加载失败」，
     以及 `setError` 的两条提示（「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」）都写死在源码里。
-    `native-pdf-plugin` 同性质的两条（「无法获取 PDF 文件的预览地址」「PDF 预览加载失败」）一并计入本条。
-    - 影响范围：HTML / PDF 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
+    - 影响范围：HTML 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
     - 移除条件：插件工厂接受文案参数（`htmlPreviewPlugin(labels)`）并在 `FileViewerPreview` 里由 `t()` 注入——
       需要先定义这组标签的键位契约，属契约扩张，尚未做。
 13. **`preview-source.ts` 的错误是结构化的，文案归调用方**（2026-09-23 第 19 轮起；此前本条记的是「加载失败文案硬编码中文，
@@ -302,3 +301,7 @@ bun run preview    # 预览 demo 构建产物
 bun run typecheck  # tsc-rs -p tsconfig.json --noEmit --incremental false
 bun run test       # bun test
 ```
+
+## PDF 阅读与选区引用
+
+PDF 使用 Mozilla PDF.js 官方 PDFViewer，包含分页、缩放、旋转及原生文字层。`FileViewerPreview` 沿用宿主注入的字节读取；宿主 Vite 配置需注册 `@fenix/ui-components/vite/pdf-assets-plugin`，按精确版本本地发布 worker、CMap、字体与解码资源。该构建入口不从浏览器根入口导出。文字层选区附带页码，复用通用右键引用；扫描页不做 OCR。

@@ -14,13 +14,15 @@
     "lucide-react": "^1.16.0",
     "react-resizable-panels": "^4.11.1",
     "sonner": "^2.0.7",
-    "@fenix/plugin-sdk": "workspace:*"
+    "@fenix/plugin-sdk": "workspace:*",
+    "@fenix/file-editing": "workspace:*"
   },
   "peerDependencies": {
     "i18next": "^26.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-i18next": "^17.0.8"
+    "react-i18next": "^17.0.8",
+    "@tanstack/react-router": "^1.170.7"
   },
   "devDependencies": {
     "@fenix/resource-mcp": "workspace:*",
@@ -34,6 +36,7 @@
     "./server/schema": "./src/server/schema.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",
+    "./web/workspace": "./web/components/artifacts-files-workspace.tsx",
     "./web/i18n": "./web/i18n/index.ts",
     "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
     "./file-ws-close-log": "./src/server/transport/file-ws-close-log.ts",

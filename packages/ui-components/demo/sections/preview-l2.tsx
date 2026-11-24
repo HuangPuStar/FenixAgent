@@ -14,8 +14,7 @@ import { DEMO_NS } from "../i18n";
  *
  * 已知限制：不传 buildPreviewUrl 时走默认构建器，而它上面这条宿主路由是硬编码的，包内不定义该路由；
  * 不使用该约定的宿主必须自己注入。`fetchPreview` 没有默认值（包内刻意不留全局 `fetch` 兜底，§5.8），
- * 因此 demo 也必须显式给一个。非文本格式不由本层控制：pdf 走包内 native-pdf-plugin（浏览器原生
- * 渲染），docx / xlsx 等走官方 officePlugin，两者都会按文件类型自行决定是否以 Blob 取回原始字节。
+ * 因此 demo 也必须显式给一个。PDF 经宿主字节端口加载并交给官方 PDF.js 查看组件，docx / xlsx 等继续走 officePlugin。
  *
  * 示例数据是模块级静态常量，零网络、零路由；两个示例只差一个 URL 构建器与文件路径。
  */

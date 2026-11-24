@@ -18,6 +18,8 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Spinner } from "../../ui/spinner";
+import { SelectionContextMenu } from "../selection-context-menu";
+import type { TextSelection } from "../text-selection";
 import { type DocumentCategory, decodePreviewText, shouldRenderDocumentContent } from "./preview-source";
 
 /** 按需加载：KaTeX（JS + 字体样式表）不进预览面板的首屏静态图。 */
@@ -35,12 +37,14 @@ export interface DocumentPreviewProps {
   blob: Blob;
   /** markdown 渲染模式的既有预览器；latex 不使用（传进来也不会挂载）。 */
   markdownView: ReactNode;
+  active?: boolean;
+  onQuoteSelection?: (selection: TextSelection | null) => void;
 }
 
 /**
  * 文档类预览容器。调用方负责取数（加载中 / 取数失败在上层处理），这里只处理拿到字节之后的状态。
  */
-export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewProps) {
+export function DocumentPreview({ kind, blob, markdownView, active = true, onQuoteSelection }: DocumentPreviewProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const renderable = shouldRenderDocumentContent(blob.size);
   const [mode, setMode] = useState<PreviewMode>(renderable ? "render" : "source");
@@ -53,6 +57,10 @@ export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewPro
   const sourceTabId = `${panelId}-source`;
   // markdown 的渲染模式由预览器自己读 Blob；其余分支都要正文
   const needsText = mode === "source" || kind === "latex";
+  const changeMode = (next: PreviewMode) => {
+    if (next !== mode) onQuoteSelection?.(null);
+    setMode(next);
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是刻意的重触发信号（解码失败后点重试重新解码），规则看不到「依赖变化即重跑」的意图；移除它会丢掉重试语义。
   useEffect(() => {
@@ -85,7 +93,10 @@ export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewPro
         <button
           type="button"
           className="text-xs text-primary hover:underline"
-          onClick={() => setReloadKey((key) => key + 1)}
+          onClick={() => {
+            onQuoteSelection?.(null);
+            setReloadKey((key) => key + 1);
+          }}
         >
           {t("fileTree.preview.retry")}
         </button>
@@ -102,14 +113,14 @@ export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewPro
           disabled={!renderable}
           id={renderTabId}
           label={t("fileTree.preview.renderTab")}
-          onClick={() => setMode("render")}
+          onClick={() => changeMode("render")}
         />
         <TabButton
           active={mode === "source"}
           controls={panelId}
           id={sourceTabId}
           label={t("fileTree.preview.sourceTab")}
-          onClick={() => setMode("source")}
+          onClick={() => changeMode("source")}
         />
         {!renderable && <span className="ml-auto text-xs text-text-muted">{t("fileTree.preview.tooLarge")}</span>}
       </div>
@@ -128,7 +139,7 @@ export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewPro
             <Spinner size="sm" />
           </div>
         ) : mode === "render" ? (
-          <div className="flex-1 overflow-auto p-3">
+          <SelectionContextMenu className="flex-1 overflow-auto p-3" active={active} onQuote={onQuoteSelection}>
             <Suspense
               fallback={
                 <div className="flex items-center justify-center p-4" role="status">
@@ -138,11 +149,13 @@ export function DocumentPreview({ kind, blob, markdownView }: DocumentPreviewPro
             >
               <LazyLatexPreview text={text} />
             </Suspense>
-          </div>
+          </SelectionContextMenu>
         ) : (
-          <pre className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed whitespace-pre text-text-primary">
-            {text}
-          </pre>
+          <SelectionContextMenu className="flex min-h-0 flex-1 flex-col" active={active} onQuote={onQuoteSelection}>
+            <pre className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed whitespace-pre text-text-primary">
+              {text}
+            </pre>
+          </SelectionContextMenu>
         )}
       </div>
     </div>

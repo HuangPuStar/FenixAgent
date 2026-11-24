@@ -437,6 +437,7 @@
     "preview": {
       "download": "Download",
       "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
       "loading": "Loading...",
       "noFileSelected": "Select a file to preview",
       "retry": "Retry",
@@ -464,6 +465,20 @@
         "source": "Source",
         "remoteUrl": "Remote URL",
         "localFile": "Local file"
+      },
+      "pdf": {
+        "controls": "PDF reading controls",
+        "previous": "Previous page",
+        "next": "Next page",
+        "pageNumber": "Page number",
+        "zoomOut": "Zoom out",
+        "zoomIn": "Zoom in",
+        "fitWidth": "Fit width",
+        "rotate": "Rotate clockwise",
+        "page": "Page {{page}}",
+        "pages": "Pages {{first}}–{{last}}",
+        "encrypted": "This PDF is password protected. Download it to open with a password.",
+        "invalid": "Unable to read this PDF. Retry or download the original file."
       }
     },
     "refresh": "Refresh",
@@ -560,5 +575,24 @@
   "tree": {
     "loading": "Loading...",
     "showMore": "+{{count}} more"
+  },
+  "fileQuotes": {
+    "actions": "Selected text",
+    "copy": "Copy",
+    "copyFailed": "Could not copy the selected text",
+    "add": "Add to conversation…",
+    "title": "Add to conversation",
+    "comment": "Comment (optional)",
+    "commentPlaceholder": "Add an optional comment…",
+    "confirm": "Add",
+    "cancel": "Cancel",
+    "invalid": "This selection cannot be added. Check its source and comment.",
+    "limit": "The quote exceeds the conversation limit. Shorten the comment or remove another quote.",
+    "unsaved": "From unsaved changes",
+    "lines": "Lines {{start}}–{{end}}",
+    "source": "Source",
+    "slide": "Slide {{number}}",
+    "tooLarge": "Select a smaller range to add it to the conversation.",
+    "unavailable": "Could not read the selection. Select the text and try again."
   }
 }

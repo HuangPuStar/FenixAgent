@@ -1,0 +1,32 @@
+name: fenix-onlyoffice
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:10.0.0.1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports:
+      - "127.0.0.1:8088:80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?请配置与主服务相同的 ONLYOFFICE_JWT_SECRET}
+      # 回源由签名路径授权；部署侧须将出口限制到 RCS_BASE_URL 所在网段。
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    volumes:
+      - ./plugins/conversation-quote:/var/www/onlyoffice/documentserver/sdkjs-plugins/{F38A98E2-B103-4F85-A572-03DF251BB15F}:ro
+      - ./data/logs:/var/log/onlyoffice
+      - ./data/data:/var/www/onlyoffice/Data
+      - ./data/lib:/var/lib/onlyoffice
+      - ./data/db:/var/lib/postgresql
+    networks:
+      - fenix-server
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+networks:
+  fenix-server:
+    name: fenix-server
+    external: true

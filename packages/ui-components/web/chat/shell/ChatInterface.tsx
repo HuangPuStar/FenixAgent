@@ -517,6 +517,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                   commands={availableCommands.length > 0 ? availableCommands : undefined}
                   mcps={boundMcps}
                   contextScope={composerContextScope}
+                  fileQuoteSessionId={activeSessionId}
                   availableModes={availableModes}
                   currentModeId={currentModeId}
                   onModeChange={onSetMode}

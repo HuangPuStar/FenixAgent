@@ -437,6 +437,7 @@
     "preview": {
       "download": "下载",
       "fullscreen": "全屏",
+      "exitFullscreen": "退出全屏",
       "loading": "加载中...",
       "noFileSelected": "选择文件以预览",
       "retry": "重试",
@@ -464,6 +465,20 @@
         "source": "来源",
         "remoteUrl": "远程 URL",
         "localFile": "本地文件"
+      },
+      "pdf": {
+        "controls": "PDF 阅读控制",
+        "previous": "上一页",
+        "next": "下一页",
+        "pageNumber": "页码",
+        "zoomOut": "缩小",
+        "zoomIn": "放大",
+        "fitWidth": "适应宽度",
+        "rotate": "顺时针旋转",
+        "page": "第 {{page}} 页",
+        "pages": "第 {{first}}–{{last}} 页",
+        "encrypted": "此 PDF 已加密，请下载后使用密码打开。",
+        "invalid": "无法读取此 PDF，请重试或下载原文件。"
       }
     },
     "refresh": "刷新",
@@ -560,5 +575,24 @@
   "tree": {
     "loading": "加载中…",
     "showMore": "+{{count}} 更多"
+  },
+  "fileQuotes": {
+    "actions": "选中文字",
+    "copy": "复制",
+    "copyFailed": "复制选中文字失败",
+    "add": "添加到对话…",
+    "title": "添加到对话",
+    "comment": "评论（可选）",
+    "commentPlaceholder": "添加可选评论…",
+    "confirm": "添加",
+    "cancel": "取消",
+    "invalid": "无法添加此选区，请检查来源和评论。",
+    "limit": "引用超出当前对话额度，请缩短评论或移除其他引用。",
+    "unsaved": "来自未保存修改",
+    "lines": "第 {{start}}–{{end}} 行",
+    "source": "来源",
+    "slide": "第 {{number}} 张幻灯片",
+    "tooLarge": "请选择更小的区域后添加到对话。",
+    "unavailable": "无法读取选区，请重新选择文字后重试。"
   }
 }

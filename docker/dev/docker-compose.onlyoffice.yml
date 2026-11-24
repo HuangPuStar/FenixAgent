@@ -1,0 +1,31 @@
+# 可选开发组件：docker compose --profile onlyoffice up -d onlyoffice
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:10.0.0.1
+    profiles: ["onlyoffice"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports:
+      - "127.0.0.1:8088:80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:-}
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    volumes:
+      - ../../packages/file-editing/office-plugin:/var/www/onlyoffice/documentserver/sdkjs-plugins/{F38A98E2-B103-4F85-A572-03DF251BB15F}:ro
+      - ./data/onlyoffice/logs:/var/log/onlyoffice
+      - ./data/onlyoffice/data:/var/www/onlyoffice/Data
+      - ./data/onlyoffice/lib:/var/lib/onlyoffice
+      - ./data/onlyoffice/db:/var/lib/postgresql
+    networks:
+      - fenix-server
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+networks:
+  fenix-server:
+    name: fenix-server

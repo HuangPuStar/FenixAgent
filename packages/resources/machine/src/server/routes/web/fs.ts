@@ -24,9 +24,17 @@ import {
 } from "../../../schemas/file.schema";
 import { machineFileFacade } from "../../facades/machine-file-facade";
 import { contentDispositionAttachment } from "../../http/file-download";
-import { normalizeUploadRelativePath } from "../../services/agent-file-service";
-import type { FileWriteOptions, ReadMode } from "../../services/file-types";
-import { FileServiceError } from "../../services/file-types";
+import {
+  busyErrorResponse,
+  conditionalResponse,
+  etagMatches,
+  toFileError,
+  withOpId,
+  writeErrorResponse,
+  writeOptionsFrom,
+} from "../../http/file-route-helpers";
+import { parseUploadRequest } from "../../http/file-upload-request";
+import type { ReadMode } from "../../services/file-types";
 import { computeListFingerprint, computeReadFingerprint, computeTreeFingerprint } from "../../services/workspace-fs";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
@@ -54,103 +62,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     "batch-delete-request": BatchDeleteRequestSchema,
     "batch-delete-response": BatchDeleteResponseSchema,
   });
-
-  // ── 公共辅助 ────────────────────────────────────────────────────
-
-  /** FileServiceError → 统一错误响应参数（§2.4 错误码表）；busy 附 Retry-After: 1
-   * （瞬时容量问题，调用方按该头退避，不得自行重试）。409 version_conflict 附带
-   * currentVersion（§4.4 覆盖可感知性：当前 ETag/mtime 供消费者提示与重试）。
-   * 非门面错误返回 null（调用方重新抛出，交由全局错误处理，不吞未预期异常；
-   * 诊断日志在门面内已保留）。 */
-  function toFileError(err: unknown): {
-    status: number;
-    body: {
-      error: { type: string; code?: string; message: string };
-      currentVersion?: { etag: string; mtimeMs: number; size: number };
-    };
-    retryAfter?: string;
-  } | null {
-    if (!(err instanceof FileServiceError)) return null;
-    return {
-      status: err.statusCode,
-      body: {
-        error: { type: err.type, ...(err.type === "path_conflict" ? { code: err.type } : {}), message: err.message },
-        ...(err.currentVersion ? { currentVersion: err.currentVersion } : {}),
-      },
-      retryAfter: err.type === "busy" ? "1" : undefined,
-    };
-  }
-
-  /** busy 响应：429 + Retry-After: 1。Elysia 的 error() 无法附加自定义头，
-   * 此处用独立 Response 构造。 */
-  function busyErrorResponse(status: number, body: unknown): Response {
-    return new Response(JSON.stringify(body), {
-      status,
-      headers: { "Content-Type": "application/json", "Retry-After": "1" },
-    });
-  }
-
-  // ── 写端点 op_id / If-Match 契约（W12b，§7.2 幂等 + §4.4 条件写）──
-
-  /** 写端点统一选项解析：X-File-Op-Id（幂等键）+ If-Match（读时 ETag，条件写）。
-   *  两者均可选；都未提供时返回 undefined（行为与现状完全一致）。 */
-  function writeOptionsFrom(headers: Record<string, string | undefined>): FileWriteOptions | undefined {
-    const opId = headers["x-file-op-id"];
-    const ifMatch = headers["if-match"];
-    if (!opId && !ifMatch) return;
-    return { ...(opId ? { opId } : {}), ...(ifMatch ? { ifMatch } : {}) };
-  }
-
-  /** 响应回显 op_id（§7.2 契约：成功与错误响应均原样回显，消费者据此识别幂等重试；
-   *  未携带 X-File-Op-Id 时响应与现状完全一致）。const 类型参数保留字面量类型，
-   *  使返回结构能匹配 response schema 的 literal 字段（success/ok）。 */
-  function withOpId<const T extends object>(payload: T, opId: string | undefined): T | (T & { op_id: string }) {
-    return opId ? { ...payload, op_id: opId } : payload;
-  }
-
-  /** 写端点统一错误响应：FileServiceError → 统一错误码 + op_id 回显；busy 附 Retry-After；
-   *  非门面错误重新抛出（诊断日志在门面内已保留）。 */
-  function writeErrorResponse(
-    e: unknown,
-    opId: string | undefined,
-    errorFn: (status: number, value: unknown) => Response,
-  ): Response {
-    const fe = toFileError(e);
-    if (!fe) throw e;
-    const body = withOpId(fe.body, opId);
-    return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, body) : errorFn(fe.status, body);
-  }
-
-  // ── ETag 条件请求（§4.2，W13' 读侧）────────────────────────────
-
-  /** If-None-Match 比较（HTTP 条件请求语义）：支持 `*` 与逗号分隔多值列表；
-   *  单值弱比较——剥离 `W/` 前缀与引号后按字符串相等判定（`W/"x"` 与 `"x"` 视为命中）。 */
-  function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
-    if (!ifNoneMatch) return false;
-    const trimmed = ifNoneMatch.trim();
-    if (trimmed === "*") return true;
-    const normalize = (v: string) => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
-    return trimmed.split(",").some((part) => normalize(part) === normalize(etag));
-  }
-
-  /** 统一条件请求响应（tree/list/read 共用）：
-   *  先执行操作、后比对——304 不省服务端扫描（无状态设计，docs/arch/12-files.md §4.2 诚实边界）。
-   *  命中 If-None-Match → 304（无 body，响应头保留 ETag 供客户端更新缓存）；
-   *  未命中 → 200 + ETag + Cache-Control: no-cache（文件 API 一律不允许过期复用）。
-   *  set 取 Elysia 上下文（headers 值类型为 string|number，与 HTTPHeaders 一致）。 */
-  function conditionalResponse(
-    set: { headers: Record<string, string | number> },
-    etag: string,
-    ifNoneMatch: string | undefined,
-    payload: () => unknown,
-  ): Response | unknown {
-    set.headers.ETag = etag;
-    set.headers["Cache-Control"] = "no-cache";
-    if (etagMatches(ifNoneMatch, etag)) {
-      return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-cache" } });
-    }
-    return payload();
-  }
 
   // GET /:id/fs/tree — 递归扫描 workspace 树（黑名单过滤）
   app.get(
@@ -240,9 +151,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
       }
       try {
         const fs = await machineFileFacade.open(authCtx, params.id);
-        const result = await fs.read(rawFilePath, mode);
+        const includeVersion = queryRecord?.includeVersion;
+        if (includeVersion !== undefined && includeVersion !== "true" && includeVersion !== "false")
+          return error(400, { error: { type: "validation_error", message: "includeVersion must be boolean" } });
+        const result = await fs.read(rawFilePath, mode, { includeVersion: includeVersion === "true" });
         // read 指纹：size-mtimeMs；远程无 mtime → size-only 弱指纹（弱指纹注释见 computeReadFingerprint）
-        const etag = computeReadFingerprint(result.size, result.mtimeMs);
+        const etag = result.version ? `"${result.version}"` : computeReadFingerprint(result.size, result.mtimeMs);
         set.headers.ETag = etag;
         set.headers["Cache-Control"] = "no-cache";
         if (etagMatches(headers["if-none-match"], etag)) {
@@ -260,12 +174,14 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
               size: result.size,
               encoding: result.encoding,
               type: result.type,
+              ...(result.version ? { version: result.version } : {}),
             },
           };
         }
         // 二进制流响应（preview 或下载，含 §7.8 auto 回退 binary）：一律显式标记
         // X-File-Type: binary——消费者据此区分「JSON 文本响应」与「二进制流响应」；
         // preview 流与 auto 回退流无法经此头区分（区分回退来源需机器端错误码，二期）
+        if (result.version) set.headers["X-File-Version"] = result.version;
         set.headers["X-File-Type"] = "binary";
         if (preview) {
           set.headers["Content-Type"] = result.mimeType || "application/octet-stream";
@@ -318,58 +234,10 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         /* 已解码 */
       }
 
-      const formData = await request.formData();
-      const files = formData.getAll("files") as File[];
-      if (!files || files.length === 0)
-        return error(400, withOpId({ error: { type: "validation_error", message: "No files provided" } }, opId));
-
-      // 解析相对路径数组（文件夹上传时由前端传入）
-      const rawPaths = formData.get("relativePaths");
-      let relativePaths: string[] = [];
-      if (rawPaths && typeof rawPaths === "string") {
-        try {
-          const parsed: unknown = JSON.parse(rawPaths);
-          // 只接受数组；非数组 JSON（如 "null"/数字/字符串）视为未提供，
-          // 否则后续 for..of 对 null/数字迭代会抛 TypeError 变成 500。
-          relativePaths = Array.isArray(parsed) ? (parsed as string[]) : [];
-        } catch {
-          relativePaths = [];
-        }
-      }
-
-      // 整批校验 relativePaths 的全部条目（W2 语义随迁）：门面只校验与文件
-      // 一一对应的条目，未消费的多余条目若非法也必须整批拒绝（避免"部分文件
-      // 已落盘后才发现路径越界"）；规则单一来源仍是门面导出的校验函数。
-      for (const relPath of relativePaths) {
-        if (normalizeUploadRelativePath(relPath) === null) {
-          return error(
-            400,
-            withOpId(
-              {
-                error: {
-                  type: "validation_error",
-                  message: "Invalid relativePath: must be a relative path without '..' segments or control characters",
-                },
-              },
-              opId,
-            ),
-          );
-        }
-      }
-
       try {
-        const inputs = await Promise.all(
-          files.map(async (file, i) => ({
-            // Bun 对空 multipart filename 返回 undefined（而非空串），兜底为空串
-            // 使门面的空文件名校验（400）生效，避免 undefined.trim() 抛 TypeError 变 500
-            name: file.name ?? "",
-            content: Buffer.from(await file.arrayBuffer()),
-            // 数组短于文件列表时缺失项为 undefined → 门面回退 file.name
-            relativePath: relativePaths[i],
-          })),
-        );
+        const { inputs, overwrite } = await parseUploadRequest(request);
         const fs = await machineFileFacade.open(authCtx, params.id);
-        const result = await fs.upload(rawDirPath, inputs, options);
+        const result = await fs.upload(rawDirPath, inputs, { ...options, overwrite });
         return withOpId({ success: true, data: result }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -401,7 +269,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         /* 已解码 */
       }
 
-      const b = body as { content?: string; createOnly?: boolean };
+      const b = body as { content?: string; createOnly?: boolean; expectedVersion?: string };
       if (typeof b.content !== "string")
         return error(400, withOpId({ error: { type: "validation_error", message: "content field required" } }, opId));
 
@@ -413,7 +281,11 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
 
       try {
         const fs = await machineFileFacade.open(authCtx, params.id);
-        const result = await fs.write(rawFilePath, b.content, { ...options, createOnly: b.createOnly });
+        const result = await fs.write(rawFilePath, b.content, {
+          ...options,
+          createOnly: b.createOnly,
+          expectedVersion: b.expectedVersion,
+        });
         return withOpId({ success: true, data: result }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
