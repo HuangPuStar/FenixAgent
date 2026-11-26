@@ -180,10 +180,9 @@ describe("read 端点 ETag 条件请求", () => {
   });
 });
 
-describe("指纹纯函数弱指纹退化（远程数据源 mtime 缺失，§4.2 契约）", () => {
+describe("元数据指纹的缺省值", () => {
   test("read：无 mtime → size-only；有 mtime → size-mtimeMs", async () => {
-    // 远程无 mtime 时退化为 size-only 弱指纹（内容同大小变更不可感知，契约接受边界）；
-    // 有 mtime 时恢复强指纹；mtime=0 与缺省同义（不产生 "<size>-0" 强指纹假象）
+    // 缺失 mtime 的标识不能用于 HTTP 304；零值也不能伪装成有效修改时间。
     expect(computeReadFingerprint(3)).toBe('"3"');
     expect(computeReadFingerprint(3, 0)).toBe('"3"');
     expect(computeReadFingerprint(3, 12345)).toBe('"3-12345"');

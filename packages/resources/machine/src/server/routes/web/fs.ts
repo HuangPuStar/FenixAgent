@@ -154,12 +154,21 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         const includeVersion = queryRecord?.includeVersion;
         if (includeVersion !== undefined && includeVersion !== "true" && includeVersion !== "false")
           return error(400, { error: { type: "validation_error", message: "includeVersion must be boolean" } });
-        const result = await fs.read(rawFilePath, mode, { includeVersion: includeVersion === "true" });
-        // read 指纹：size-mtimeMs；远程无 mtime → size-only 弱指纹（弱指纹注释见 computeReadFingerprint）
-        const etag = result.version ? `"${result.version}"` : computeReadFingerprint(result.size, result.mtimeMs);
-        set.headers.ETag = etag;
-        set.headers["Cache-Control"] = "no-cache";
-        if (etagMatches(headers["if-none-match"], etag)) {
+        // 刷新地址会跨标签页复用；显式刷新和不可靠快照均不能用旧正文响应 304。
+        const forceRefresh = preview && queryRecord?.retry !== undefined;
+        const result = await fs.read(rawFilePath, mode, {
+          includeVersion: includeVersion === "true",
+          includeMtime: !forceRefresh,
+        });
+        let etag: string | undefined;
+        if (!forceRefresh) {
+          if (result.version) etag = `"${result.version}"`;
+          else if (result.mtimeMs !== undefined && Number.isFinite(result.mtimeMs) && result.mtimeMs > 0)
+            etag = computeReadFingerprint(result.size, result.mtimeMs);
+        }
+        if (etag) set.headers.ETag = etag;
+        set.headers["Cache-Control"] = etag ? "no-cache" : "no-store";
+        if (etag && etagMatches(headers["if-none-match"], etag)) {
           // 304：丢弃未消费的本地读流（createReadStream 已打开 fd），避免 fd 泄漏
           if ("stream" in result) (result.stream as { destroy?: () => void }).destroy?.();
           return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-cache" } });

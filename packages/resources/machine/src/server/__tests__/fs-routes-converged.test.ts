@@ -470,6 +470,8 @@ describe("远程环境（stub file-ws 在线）", () => {
               status: "ok",
               data: { entries: [{ name: "a.txt", path: "user/a.txt", type: "file", size: 3, modifiedAt: 1 }] },
             };
+          case "stat":
+            return { status: "ok", data: { size: 3, modifiedAt: 1, isDirectory: false } };
           case "read":
             return {
               status: "ok",

@@ -92,17 +92,45 @@ class RemoteBackend implements BackEnd {
     return entries.filter((entry) => !shouldHideEntry(entry.path, entry.name));
   }
   async read(envId: string, path: string, mode: ReadMode, options?: FileReadOptions): Promise<ReadResult> {
+    if (!options?.includeMtime || options.includeVersion) return this.readContent(envId, path, mode, options);
+    const before = await remoteStat(this.machineId, envId, path);
+    const result = await this.readContent(envId, path, mode, options);
+    let after: Awaited<ReturnType<typeof remoteStat>>;
+    try {
+      after = await remoteStat(this.machineId, envId, path);
+    } catch (error) {
+      if (result.type === "binary" && result.stream instanceof Readable) result.stream.destroy();
+      throw error;
+    }
+    // 分离的 stat/read 不是原子快照；只有前后元数据一致才能将修改时间绑定到正文。
+    if (
+      !before.isDirectory &&
+      !after.isDirectory &&
+      Number.isFinite(before.modifiedAt) &&
+      before.modifiedAt > 0 &&
+      before.modifiedAt === after.modifiedAt &&
+      before.size === result.size &&
+      after.size === result.size
+    )
+      return { ...result, mtimeMs: before.modifiedAt };
+    return result;
+  }
+  /** 读取远端正文，保留 auto 的文本探测与二进制回退语义。 */
+  private async readContent(
+    envId: string,
+    path: string,
+    mode: ReadMode,
+    options?: FileReadOptions,
+  ): Promise<ReadResult> {
     if (mode === "binary") return this.readBinary(envId, path, options);
     try {
       const r = await remoteReadFile(this.machineId, envId, path, options);
-      // 远程数据源无 mtime（机器端补 mtime 属跨仓库增强）→ mtimeMs 缺省，
-      // 路由层据 size 计算 size-only 弱指纹
       return {
         type: "text",
         name: r.name,
         path: r.path,
         content: r.content,
-        size: r.size,
+        size: Buffer.byteLength(r.content),
         encoding: r.encoding,
         ...(r.version ? { version: r.version } : {}),
       };
@@ -114,15 +142,16 @@ class RemoteBackend implements BackEnd {
   }
   private async readBinary(envId: string, path: string, options?: FileReadOptions): Promise<ReadResult> {
     const r = await remoteReadBinaryFile(this.machineId, envId, path, options);
+    const content = Buffer.from(r.data, "base64");
     return {
       type: "binary",
       name: r.name,
       path: r.path,
-      size: r.size,
+      size: content.byteLength,
       mimeType: r.mimeType,
       ...(r.version ? { version: r.version } : {}),
       // 远程走 base64 单帧（现状语义）；流由内存缓冲构造，与现状 buffer 等价
-      stream: Readable.from(Buffer.from(r.data, "base64")),
+      stream: Readable.from(content),
     };
   }
   async write(envId: string, path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
