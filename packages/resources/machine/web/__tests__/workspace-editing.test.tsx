@@ -24,6 +24,21 @@ import {
   writes,
 } from "./workspace-editing-fixture";
 
+// 收起或重新展开文件树不能重建正在编辑的实例，也不能清除未保存的草稿。
+test("collapsing the file tree preserves CodeMirror and its unsaved draft", async () => {
+  render(["draft.txt"], "draft.txt");
+  await startEditing();
+  edit("keep this draft");
+  const editor = host.querySelector(".cm-editor");
+
+  act(() => button("Collapse file tree").click());
+  expect(host.querySelector(".cm-editor")).toBe(editor);
+  act(() => button("Expand file tree").click());
+  expect(host.querySelector(".cm-editor")).toBe(editor);
+  expect(host.querySelector(".cm-content")?.textContent).toBe("keep this draft");
+  expect(writes).toEqual([]);
+});
+
 // 手动刷新应读取 Agent 的最新内容，但不能静默覆盖本地尚未保存的草稿。
 test("manual refresh updates a clean file and preserves dirty edits on external changes", async () => {
   let disk = "original";
@@ -341,6 +356,10 @@ test("Office iframe survives tab switches and parent LRU eviction", async () => 
   const frame = host.querySelector('iframe[title="test Office"]');
   expect(frame).not.toBeNull();
   act(() => markDirty());
+  act(() => button("Collapse file tree").click());
+  expect(host.querySelector('iframe[title="test Office"]')).toBe(frame);
+  act(() => button("Expand file tree").click());
+  expect(host.querySelector('iframe[title="test Office"]')).toBe(frame);
   render(["note.txt"], "note.txt");
   await startEditing();
   expect(host.querySelector('iframe[title="test Office"]')).toBe(frame);

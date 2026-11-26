@@ -166,15 +166,7 @@ export const ConversationScrollButtons = ({
   if (isAtBottom) return null;
 
   return (
-    <div
-      // 源实现那张 `conversation.css`（阶段三已迁空删除的历史表，与同目录同名伴随表无关）的
-      // `.chat-scroll-navigation`：贴底居中，预留宿主浮动产物面板宽度。
-      className={cn(
-        "absolute bottom-3 left-[calc((100%-var(--chat-floating-artifacts-width,0px))/2)] z-[24] flex -translate-x-1/2",
-        className,
-      )}
-      {...props}
-    >
+    <div className={cn("absolute bottom-3 left-1/2 z-[24] flex -translate-x-1/2", className)} {...props}>
       <ConversationScrollButton />
     </div>
   );

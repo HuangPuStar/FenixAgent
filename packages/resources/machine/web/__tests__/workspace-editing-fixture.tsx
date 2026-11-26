@@ -12,6 +12,48 @@ import { I18nextProvider } from "react-i18next";
 import { MACHINE_NS, machineResources } from "../i18n";
 
 const win = initializeHappyDomWindow(new Window({ url: "https://localhost" }));
+let workspaceWidth = 800;
+const originalOffsetWidth = Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, "offsetWidth")?.get;
+const originalOffsetLeft = Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, "offsetLeft")?.get;
+Object.defineProperty(win.HTMLElement.prototype, "offsetWidth", {
+  configurable: true,
+  get(this: HTMLElement) {
+    const panelSelector = '[data-slot="resizable-panel"]';
+    if (!this.matches(panelSelector)) return originalOffsetWidth?.call(this) ?? 0;
+
+    // happy-dom 不做布局。初始测量按像素分配，之后按面板库计算的比例分配。
+    const basis = Number.parseFloat(this.style.flexBasis);
+    if (basis > 0) return basis;
+    const panels = this.parentElement?.querySelectorAll<HTMLElement>(panelSelector) ?? [];
+    const other = [...panels].find((panel) => panel !== this);
+    const otherBasis = Number.parseFloat(other?.style.flexBasis ?? "");
+    if (otherBasis > 0) return workspaceWidth - otherBasis;
+    return (Number(this.style.flexGrow) / 100) * workspaceWidth;
+  },
+});
+Object.defineProperty(win.HTMLElement.prototype, "offsetLeft", {
+  configurable: true,
+  get(this: HTMLElement) {
+    if (this.parentElement?.dataset.slot !== "resizable-panel-group") return originalOffsetLeft?.call(this) ?? 0;
+    // 面板库按横向坐标识别分隔条两侧的面板。
+    let offset = 0;
+    for (
+      let sibling = this.previousElementSibling;
+      sibling instanceof HTMLElement;
+      sibling = sibling.previousElementSibling
+    ) {
+      offset += sibling.offsetWidth;
+    }
+    return offset;
+  },
+});
+// 面板库通过 ARIA 属性判断分隔条是否可用，happy-dom 缺少该属性反射。
+Object.defineProperty(win.HTMLElement.prototype, "ariaDisabled", {
+  configurable: true,
+  get(this: HTMLElement) {
+    return this.getAttribute("aria-disabled");
+  },
+});
 const globals = globalThis as Record<string, unknown>;
 const tracked = [
   "window",
@@ -189,6 +231,7 @@ beforeEach(async () => {
     send() {}
   };
   win.localStorage.clear();
+  workspaceWidth = 800;
   treeDelay = undefined;
   const mockFetch = async (input: Parameters<typeof fetch>[0]) => {
     if (String(input).includes("/fs/tree")) {
@@ -257,6 +300,11 @@ function setTreeDelay(value: Promise<void>) {
   treeDelay = value;
 }
 
+/** Simulate the width remaining after the host resizes the workspace. */
+function setWorkspaceWidth(width: number) {
+  workspaceWidth = width;
+}
+
 export {
   button,
   client,
@@ -274,6 +322,7 @@ export {
   setEnvironment,
   setTreeDelay,
   settle,
+  setWorkspaceWidth,
   snapshot,
   startEditing,
   Workspace,

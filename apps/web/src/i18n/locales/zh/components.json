@@ -15,10 +15,6 @@
     "tasks": "定时任务",
     "views": "发布视图",
     "trace": "调用链",
-    "floating": "浮动",
-    "docked": "固定",
-    "dock": "固定右侧工作区",
-    "float": "浮动右侧工作区",
     "close": "关闭右侧工作区"
   },
   "siteFrame": {

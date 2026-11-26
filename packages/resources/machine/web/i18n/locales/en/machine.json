@@ -23,12 +23,8 @@
     "downloadFailed": "Download failed",
     "closeTab": "Close tab",
     "moreTabs": "{{count}} more tabs",
-    "layout": {
-      "dock": "Dock file tree",
-      "float": "Float file tree",
-      "close": "Close file tree",
-      "open": "Show file tree"
-    },
+    "collapse": "Collapse file tree",
+    "expand": "Expand file tree",
     "dialog": {
       "renameTitle": "Rename",
       "renameDescription": "Enter a new file or folder name",

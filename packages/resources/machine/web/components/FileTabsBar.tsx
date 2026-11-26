@@ -5,7 +5,7 @@ import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { ChevronDown, FilePen } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MACHINE_NS } from "../i18n/namespace";
 
@@ -13,6 +13,8 @@ import { MACHINE_NS } from "../i18n/namespace";
 const MAX_VISIBLE_TABS = 5;
 
 interface FileTabsBarProps {
+  /** 文件树收起时的展开入口。 */
+  fileTreeAction?: ReactNode;
   /** 当前打开的文件路径列表，顺序按最近使用倒序（最前是最新的） */
   openFiles: string[];
   /** 当前激活的文件路径；无激活文件时为 null */
@@ -36,7 +38,7 @@ interface FileTabsBarProps {
  *   1. 变更文件 badge（✎N） → popover 展示本次会话被 Agent 修改的文件，点击项可预览
  *   2. 文件 tab 列表：最近打开的文件（伪多 tab，最多 5 个可见，超出折叠到 +N popover）
  *
- * 文件树 toggle 已移到主体区域右侧的常驻窄条中，不再占用 tab 栏空间。
+ * 文件树收起时，展开按钮在标签栏最左侧。
  * 关闭按钮 hover 才显示，避免视觉噪音；激活 tab 有 surface-2 背景区分。
  *
  * 归属（2026-09-24，台账 `ce-standards-todo.md` D2）：由宿主
@@ -45,6 +47,7 @@ interface FileTabsBarProps {
  * 两条文案随之从宿主 `components` / `agentPanel` 字典迁进本包（键的最终所在地 = 包的 owner）。
  */
 export function FileTabsBar({
+  fileTreeAction,
   openFiles,
   activeFile,
   changedFiles,
@@ -63,7 +66,7 @@ export function FileTabsBar({
 
   return (
     <div className="flex items-center gap-1 h-10 px-2 border-b border-border/40 flex-shrink-0 bg-surface-1/50">
-      {/* 1. 文件树 toggle 按钮（文件树浮层由 ArtifactsPanel 渲染） */}
+      {fileTreeAction}
       {/* 2. 变更文件 badge + popover（无变更时不渲染） */}
       {changedFiles.length > 0 && (
         <Popover open={changedOpen} onOpenChange={setChangedOpen}>
@@ -117,7 +120,7 @@ export function FileTabsBar({
         </Popover>
       )}
 
-      {/* 分隔符：左侧操作区与 tab 区视觉分隔（始终展示，让 toggle / 变更 badge 与 tab 列表视觉分组）。 */}
+      {/* 分隔左侧操作区与标签。 */}
       <span className="mx-0.5 h-3 w-px shrink-0 bg-black/8" />
 
       {/* 3. 文件 tab 列表 + 折叠 */}

@@ -30,11 +30,6 @@ interface ArtifactsPanelProps {
   active?: boolean;
   /** ProdView 模块配置，控制面板 tab 的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
-  /** 面板相对 Chat 的布局方式。窄屏由父级强制传入 floating。 */
-  layoutMode?: "floating" | "docked";
-  /** 窄屏不展示布局切换，避免提供不可执行的操作。 */
-  canDock?: boolean;
-  onLayoutModeChange?: (mode: "floating" | "docked") => void;
   onClose?: () => void;
 }
 
@@ -87,9 +82,6 @@ function ArtifactsPanelView({
   changedFiles = [],
   active = true,
   modulesConfig,
-  layoutMode = "floating",
-  canDock = true,
-  onLayoutModeChange,
   onClose,
 }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
@@ -183,7 +175,7 @@ function ArtifactsPanelView({
   );
 
   return (
-    <div className="artifacts-workspace relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-1">
+    <div className="artifacts-workspace relative flex h-full min-w-0 flex-col overflow-hidden bg-surface-1">
       {/* 一级 tab：显示哪些、什么顺序由 `availableModes`（`modulesConfig` 推出的白名单）决定，显示的
           tab 永远可点；未绑定 site 时点 Sites 会进入空状态，提示用户去 Agent 配置里绑定 */}
       <TopModeTabs
@@ -191,9 +183,6 @@ function ArtifactsPanelView({
         pendingDiffCount={pendingDiffCount}
         onChange={handleTopChange}
         availableModes={availableModes}
-        layoutMode={layoutMode}
-        canDock={canDock}
-        onLayoutModeChange={onLayoutModeChange}
         onClose={onClose ? handleClose : undefined}
       />
 
