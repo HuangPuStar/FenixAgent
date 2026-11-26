@@ -145,12 +145,11 @@ export function FileEditor({
         const keyboard = event.clientX === 0 && event.clientY === 0 && event.button === 0;
         const position = keyboard ? range.from : view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (position === null || position < range.from || position > range.to) return null;
+        const start = view.state.doc.lineAt(range.from).number;
+        const end = view.state.doc.lineAt(range.to - 1).number;
         return {
           text: view.state.sliceDoc(range.from, range.to),
-          location: tUI("fileQuotes.lines", {
-            start: view.state.doc.lineAt(range.from).number,
-            end: view.state.doc.lineAt(range.to > range.from ? range.to - 1 : range.to).number,
-          }),
+          location: start === end ? tUI("fileQuotes.line", { line: start }) : tUI("fileQuotes.lines", { start, end }),
         };
       }}
     >

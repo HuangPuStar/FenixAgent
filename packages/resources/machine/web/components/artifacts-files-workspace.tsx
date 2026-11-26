@@ -1,4 +1,9 @@
-import { type EditingCapabilities, type EditingClient, EditingError } from "@fenix/file-editing/contracts";
+import {
+  EDITING_DEFAULTS,
+  type EditingCapabilities,
+  type EditingClient,
+  EditingError,
+} from "@fenix/file-editing/contracts";
 import { EditingDialogs, EditingPane, type FileEditingController, useFileEditing } from "@fenix/file-editing/web";
 import { FILE_EDITING_NS } from "@fenix/file-editing/web/i18n";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
@@ -10,7 +15,7 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { usePageFullscreen } from "@fenix/ui-components/ui/use-page-fullscreen";
 import { useBlocker, useRouter } from "@tanstack/react-router";
-import { Eye, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { machineEditingClient } from "../api/file-editing";
@@ -292,27 +297,53 @@ export function ArtifactsFilesWorkspace({
     activeFile &&
     (classifyFile(activeFile) === "office" ||
       (classifyFile(activeFile) === "table" && !/\.(csv|tsv)$/i.test(activeFile)));
-  const pendingOffice = officeCandidate && capabilities.loading;
+  const pendingOffice = officeCandidate && (capabilities.environmentId !== envId || capabilities.loading);
+  const textCandidate = !!activeFile && isTextWorkspaceFile(activeFile);
+  const pendingText =
+    textCandidate &&
+    (capabilities.environmentId !== envId || capabilities.loading || fileSizes?.environmentId !== envId);
+  const fileSize = activeFile && fileSizes?.environmentId === envId ? fileSizes.sizes[activeFile] : undefined;
+  let editDisabledReason: string | null = null;
+  if (
+    textCandidate &&
+    ((fileSize !== undefined && fileSize > (capability?.textMaxBytes ?? EDITING_DEFAULTS.textMaxBytes)) ||
+      fallbackError?.code === "too-large")
+  ) {
+    editDisabledReason = tEditing("textTooLarge");
+  } else if (fallbackError) {
+    editDisabledReason = tEditing(fallbackError.message, { defaultValue: fallbackError.message });
+  } else if (pendingOffice || pendingText) {
+    editDisabledReason = tEditing("loading");
+  } else if (!editableKind) {
+    editDisabledReason = officeCandidate
+      ? (capabilities.error?.message ?? tEditing("officeUnavailable"))
+      : tEditing("unsupportedFormat");
+  }
+  // Disabled buttons ignore pointer events, so the wrapper owns the hover explanation.
   const previewActions =
-    (!isEditing || fallbackError) && (editableKind || pendingOffice) ? (
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={tEditing(isEditing ? "preview" : "edit")}
-        title={tEditing(isEditing ? "preview" : "edit")}
-        disabled={pendingOffice || !editableKind || (editableKind === "text" && fileSizes?.environmentId !== envId)}
-        onClick={() => {
-          if (!activeFile || !editableKind) return;
-          if (isEditing) {
-            void returnToPreview(activeFile);
-            return;
-          }
-          setEditingFiles((paths) => [...new Set([...paths, activeFile])]);
-          void editing.ensureLoaded(activeFile, editableKind);
-        }}
+    (!isEditing || fallbackError) &&
+    activeFile &&
+    (!textCandidate || capability?.text?.enabled === true || pendingText || capabilities.error) ? (
+      <span
+        className={editDisabledReason ? "inline-flex cursor-not-allowed text-text-muted" : "inline-flex"}
+        title={editDisabledReason ?? undefined}
       >
-        {isEditing ? <Eye aria-hidden="true" /> : <Pencil aria-hidden="true" />}
-      </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={tEditing("edit")}
+          aria-description={editDisabledReason ?? undefined}
+          title={editDisabledReason ? undefined : tEditing("edit")}
+          disabled={!!editDisabledReason}
+          onClick={() => {
+            if (!activeFile || !editableKind || editDisabledReason) return;
+            setEditingFiles((paths) => [...new Set([...paths, activeFile])]);
+            void editing.ensureLoaded(activeFile, editableKind);
+          }}
+        >
+          <Pencil aria-hidden="true" />
+        </Button>
+      </span>
     ) : null;
   const quoteContext = useRef({ active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false });
   quoteContext.current = { active, activeFile, dirty: activeFile ? editing.buffers[activeFile]?.dirty : false };
@@ -341,7 +372,7 @@ export function ArtifactsFilesWorkspace({
   }, [activeFile, active, envId, isEditing, previewRefresh, onQuoteSelection]);
   const preview = (
     <PreviewTab
-      active={active && !isEditing}
+      active={active && (!isEditing || !!fallbackError)}
       key={`${envId}:${activeFile}:${previewRefresh}`}
       envId={envId}
       filePath={environmentReady ? activeFile : null}

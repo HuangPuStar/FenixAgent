@@ -35,6 +35,8 @@ export const fileEditingResources = {
     frontmatter: "YAML metadata",
     bufferBudget: "Draft storage is full. Save or close another file first.",
     textTooLarge: "Text editing is limited to 2 MiB.",
+    unsupportedFormat: "This file type does not support editing.",
+    officeUnavailable: "Office editing is unavailable in this environment.",
     fileDeleted: "This file was deleted. Your draft is still available.",
     sessionExpired:
       "The document session is no longer available. Refresh the editor to reopen the file. Copy any unsaved content you need before refreshing.",
@@ -79,6 +81,8 @@ export const fileEditingResources = {
     frontmatter: "YAML 元数据",
     bufferBudget: "草稿空间已满，请先保存或关闭其他文件。",
     textTooLarge: "文本编辑上限为 2 MiB。",
+    unsupportedFormat: "此文件类型不支持编辑。",
+    officeUnavailable: "当前环境暂不支持 Office 文档编辑。",
     fileDeleted: "文件已被删除，草稿仍保留。",
     sessionExpired: "文档会话已失效。请先复制需要保留的未保存内容，再刷新编辑器重新打开文件。",
     saveFailed: "文档保存失败。",

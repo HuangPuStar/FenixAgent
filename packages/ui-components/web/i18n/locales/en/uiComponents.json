@@ -589,6 +589,7 @@
     "invalid": "This selection cannot be added. Check its source and comment.",
     "limit": "The quote exceeds the conversation limit. Shorten the comment or remove another quote.",
     "unsaved": "From unsaved changes",
+    "line": "Line {{line}}",
     "lines": "Lines {{start}}–{{end}}",
     "source": "Source",
     "slide": "Slide {{number}}",
