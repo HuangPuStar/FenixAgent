@@ -3,7 +3,7 @@
  *
  * 为什么这块壳逻辑单独一个文件、且留在宿主：它是宿主页面布局与宿主偏好的装配，不是聊天域实现——
  * - 面板本体 `./artifacts/ArtifactsPanel` 是宿主页面的跨包装配层（包不得反向引用 apps）；
- * - 偏好键（`fenix:artifacts-width` / `fenix:artifacts-layout`）与两个 window 事件
+ * - 偏好键（`fenix:artifacts-width`）与两个 window 事件
  *   （`artifacts:select-site` / `artifacts:preview-file`）都是宿主页面壳的契约；
  * - `modulesConfig` 是分享页（`@fenix/resource-prod-view/web`）注入的面板开关。
  * 它此前与聊天槽位同住在 `ChatArea.tsx`：2026-09-25 随台账 `ce-standards-todo.md` D1 把聊天域实现迁入
@@ -30,7 +30,6 @@ import {
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
 import {
-  type CSSProperties,
   lazy,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -56,12 +55,9 @@ interface ChatWorkspaceArtifactsProps {
   children: ReactNode;
 }
 
-type ArtifactsLayoutMode = "floating" | "docked";
-
 const ARTIFACTS_MIN_WIDTH = 356;
 const ARTIFACTS_DEFAULT_WIDTH = 520;
-const ARTIFACTS_MAX_WIDTH_RATIO = 0.75;
-const COMPACT_LAYOUT_QUERY = "(max-width: 1050px)";
+const CHAT_MIN_WIDTH = 320;
 
 function readArtifactsWidth(): number {
   try {
@@ -72,16 +68,8 @@ function readArtifactsWidth(): number {
   }
 }
 
-function readArtifactsLayout(): ArtifactsLayoutMode {
-  try {
-    return localStorage.getItem("fenix:artifacts-layout") === "docked" ? "docked" : "floating";
-  } catch {
-    return "floating";
-  }
-}
-
 /**
- * 工件面板容器：折叠、浮动/停靠切换、拖拽改宽与偏好持久化。
+ * 工件面板容器：固定并排、折叠、拖拽改宽与偏好持久化。
  *
  * 首次访问即从 `localStorage` 读取偏好（`useState(readArtifactsWidth)` 语义与迁移前逐字一致）；
  * 存储不可用（隐私模式）时降级为默认值，不影响布局可用性。
@@ -91,9 +79,8 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
 
   const artifactsCollapsedRef = useRef(true);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
-  const [artifactsLayout, setArtifactsLayout] = useState<ArtifactsLayoutMode>(readArtifactsLayout);
   const [artifactsWidth, setArtifactsWidth] = useState(readArtifactsWidth);
-  const [compactLayout, setCompactLayout] = useState(() => window.matchMedia(COMPACT_LAYOUT_QUERY).matches);
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{ pointerId: number; clientX: number; width: number } | null>(null);
 
@@ -149,30 +136,28 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
     return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
   }, [agentId, expandArtifacts]);
 
-  // 小屏只允许浮动模式。模式选择被保留，回到大屏时恢复用户偏好。
   useEffect(() => {
-    const mq = window.matchMedia(COMPACT_LAYOUT_QUERY);
-    const handler = (event: MediaQueryListEvent) => setCompactLayout(event.matches);
-    setCompactLayout(mq.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const measure = () => {
+      // 隐藏的保活页面宽度为零，不能覆盖当前可见布局和用户的宽度偏好。
+      if (workspace.clientWidth > 0) setWorkspaceWidth(workspace.clientWidth);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(workspace);
+    return () => observer.disconnect();
   }, []);
 
-  const effectiveLayout: ArtifactsLayoutMode = compactLayout ? "floating" : artifactsLayout;
-  const workspaceStyle: CSSProperties & { "--chat-floating-artifacts-width": string } = {
-    "--chat-floating-artifacts-width":
-      effectiveLayout === "floating" && !artifactsCollapsed ? `${artifactsWidth}px` : "0px",
-  };
+  // 极窄容器中降低两侧下限，避免固定列越出容器后盖住或裁掉输入区。
+  const maxArtifactsWidth = workspaceWidth - Math.min(CHAT_MIN_WIDTH, workspaceWidth / 2);
+  const minArtifactsWidth = Math.min(ARTIFACTS_MIN_WIDTH, maxArtifactsWidth);
 
   const clampArtifactsWidth = useCallback(
-    (width: number) => {
-      const workspaceWidth = workspaceRef.current?.clientWidth ?? window.innerWidth;
-      const viewportAllowance = effectiveLayout === "docked" ? workspaceWidth - 720 : workspaceWidth - 32;
-      const maxWidth = Math.min(viewportAllowance, workspaceWidth * ARTIFACTS_MAX_WIDTH_RATIO);
-      return Math.max(ARTIFACTS_MIN_WIDTH, Math.min(width, Math.max(ARTIFACTS_MIN_WIDTH, maxWidth)));
-    },
-    [effectiveLayout],
+    (width: number) => Math.max(minArtifactsWidth, Math.min(width, maxArtifactsWidth)),
+    [minArtifactsWidth, maxArtifactsWidth],
   );
+  const visibleArtifactsWidth = clampArtifactsWidth(artifactsWidth);
 
   const updateArtifactsWidth = useCallback(
     (width: number) => {
@@ -204,15 +189,6 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
     resizeStartRef.current = null;
   }, []);
 
-  const setLayout = useCallback((layout: ArtifactsLayoutMode) => {
-    setArtifactsLayout(layout);
-    try {
-      localStorage.setItem("fenix:artifacts-layout", layout);
-    } catch {
-      // Storage is an enhancement only; the selected mode still applies for this session.
-    }
-  }, []);
-
   const toggleArtifacts = useCallback(() => {
     setArtifactsCollapsed((collapsed) => {
       artifactsCollapsedRef.current = !collapsed;
@@ -224,7 +200,6 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
     <div
       ref={workspaceRef}
       className="agent-chat-workspace relative flex h-full w-full flex-1 min-w-0 min-h-0 gap-0 overflow-hidden bg-white"
-      style={workspaceStyle}
     >
       {children}
       {hasPanelModules && (
@@ -246,14 +221,11 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
           {/* 折叠态走 `hidden` 工具类（原为同目录 CSS 的 `.is-collapsed { display: none }`）：显示开关只
               需一个扁平工具类，留在 CSS 里属伪深层。 */}
           <aside
-            // 末尾留空格再拼 `${…}`：Tailwind 的扫描器按原文取候选词，紧贴的 `min-w-80${` 会被当成一个
-            // 非法词丢掉（`min-w-80` 不再生成任何声明，且静态检查与构建期都不报错）。
-            className={`artifacts-shell relative z-30 min-h-0 shrink-0 min-w-80 has-[[data-page-fullscreen=true]]:z-50 ${artifactsCollapsed ? "hidden" : ""}`}
-            data-layout={effectiveLayout}
+            className={`artifacts-shell relative z-30 min-h-0 min-w-0 shrink-0 border-l border-border-subtle has-[[data-page-fullscreen=true]]:z-50 ${artifactsCollapsed ? "hidden" : ""}`}
+            data-layout="docked"
             style={{
-              width: artifactsWidth,
-              maxWidth: `${ARTIFACTS_MAX_WIDTH_RATIO * 100}%`,
-              flexBasis: effectiveLayout === "docked" ? artifactsWidth : undefined,
+              width: visibleArtifactsWidth,
+              flexBasis: visibleArtifactsWidth,
             }}
             aria-label={t("showArtifacts")}
           >
@@ -265,14 +237,14 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
               tabIndex={0}
               aria-orientation="vertical"
               aria-label={t("resizeArtifacts")}
-              aria-valuemin={ARTIFACTS_MIN_WIDTH}
-              aria-valuemax={720}
-              aria-valuenow={Math.round(artifactsWidth)}
+              aria-valuemin={Math.round(minArtifactsWidth)}
+              aria-valuemax={Math.round(maxArtifactsWidth)}
+              aria-valuenow={Math.round(visibleArtifactsWidth)}
               onPointerDown={(event) => {
                 resizeStartRef.current = {
                   pointerId: event.pointerId,
                   clientX: event.clientX,
-                  width: artifactsWidth,
+                  width: visibleArtifactsWidth,
                 };
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
@@ -282,7 +254,7 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
               onKeyDown={(event) => {
                 if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
                 event.preventDefault();
-                updateArtifactsWidth(artifactsWidth + (event.key === "ArrowLeft" ? 16 : -16));
+                updateArtifactsWidth(visibleArtifactsWidth + (event.key === "ArrowLeft" ? 16 : -16));
               }}
             />
             {/* 文件草稿归环境，Agent 进程重启不能重建编辑器或销毁尚未同步的 Office iframe。 */}
@@ -294,9 +266,6 @@ export function ChatWorkspaceArtifacts({ agentId, sessionId, modulesConfig, chil
               sessionId={sessionId}
               changedFiles={changedFiles}
               modulesConfig={modulesConfig}
-              layoutMode={effectiveLayout}
-              canDock={!compactLayout}
-              onLayoutModeChange={setLayout}
               onClose={toggleArtifacts}
             />
           </aside>

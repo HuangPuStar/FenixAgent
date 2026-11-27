@@ -12,7 +12,7 @@
 // 后者的历史是：伴随表 `artifacts-workspace.css` 原由 `ChatArea.tsx` 副作用导入，进的是懒加载 chunk
 // （preload helper 在运行期把 <link> append 到 head 末尾，与 index.html 静态 <link> 的级联先后正好相反）；
 // 2026-09-28 该表退役——几何撤回消费方 `className`（刻度已在 `@theme` 按 px 落地），伪元素、
-// `[data-layout=…]` 属性选择器、跨元素覆写与 1050px 非标准断点收进 `src/index.css` 的「宿主壳残余样式」段，
+// tab 选中态与手柄伪元素收进 `src/index.css` 的「宿主壳残余样式」段，
 // 变成**静态且在前**。多一个样式导入点、或在宿主 `src/` 里留下一份同名表，都可能翻转级联且不会报错。
 
 import { describe, expect, test } from "bun:test";
@@ -77,16 +77,12 @@ describe("工件面板一簇的落点", () => {
     expect(importers).toEqual(["main.tsx"]);
   });
 
-  // 业务意图：工件面板的残余规则必须整体落在 `index.css` 的「宿主壳残余样式」段——属性选择器与跨元素
-  // 覆写要在那里压过工具类；同时撤回 `className` 的几何不得回流成 CSS 声明（同一属性只由一边声明）。
+  // 业务意图：拖动手柄与 tab 下划线共用唯一静态样式入口，已由工具类声明的几何不重复写入 CSS。
   test("工件面板的残余规则落在 index.css，撤回的几何不得回流", () => {
     const css = stripComments(readFileSync(resolve(host, "index.css"), "utf-8"));
 
-    expect(css).toContain('.artifacts-shell[data-layout="floating"]');
-    expect(css).toContain('.artifacts-shell[data-layout="docked"] .artifacts-workspace');
     expect(css).toContain(".artifacts-shell__resizer::after");
     expect(css).toContain(".artifacts-mode-tab.is-active::after");
-    expect(css).toContain("@media (max-width: 1050px)");
     expect(css).not.toContain("min-width: 320px");
     expect(css).not.toContain("border-radius: 12px");
     expect(css).not.toContain("height: 44px");

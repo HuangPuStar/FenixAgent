@@ -15,10 +15,6 @@
     "tasks": "Tasks",
     "views": "Views",
     "trace": "Trace",
-    "floating": "Floating",
-    "docked": "Docked",
-    "dock": "Dock right workspace",
-    "float": "Float right workspace",
     "close": "Close right workspace"
   },
   "siteFrame": {

@@ -1,5 +1,5 @@
 import { cn } from "@fenix/ui-components/lib/cn";
-import { Activity, Calendar, Eye, FilesIcon, Globe, PanelRight, PanelRightDashed, X } from "lucide-react";
+import { Activity, Calendar, Eye, FilesIcon, Globe, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 
@@ -11,9 +11,6 @@ interface TopModeTabsProps {
   onChange: (mode: TopMode) => void;
   /** 可用模式白名单与显示顺序；由 `ArtifactsPanel` 按 `modulesConfig` 算出（本组件不读配置）。 */
   availableModes: TopMode[];
-  layoutMode?: "floating" | "docked";
-  canDock?: boolean;
-  onLayoutModeChange?: (mode: "floating" | "docked") => void;
   onClose?: () => void;
 }
 
@@ -40,16 +37,7 @@ const MODE_META: Record<TopMode, { icon: typeof FilesIcon; labelKey: string }> =
  * `--radius-*` / `--text-*`）已在 `@theme` 按 px 落地，工具类写的就是设计值。仍留在 CSS 的只剩伪元素
  * 下划线、滚动条隐藏与非标准断点（见 `src/index.css` 的「宿主壳残余样式」段）。
  */
-export function TopModeTabs({
-  topMode,
-  pendingDiffCount = 0,
-  onChange,
-  availableModes,
-  layoutMode = "floating",
-  canDock = true,
-  onLayoutModeChange,
-  onClose,
-}: TopModeTabsProps) {
+export function TopModeTabs({ topMode, pendingDiffCount = 0, onChange, availableModes, onClose }: TopModeTabsProps) {
   const { t } = useTranslation(NS.COMPONENTS);
 
   return (
@@ -94,22 +82,6 @@ export function TopModeTabs({
         })}
       </div>
       <div className="artifacts-mode-bar__actions flex shrink-0 items-center gap-0.5">
-        {canDock && onLayoutModeChange && (
-          <button
-            type="button"
-            className="artifacts-layout-button inline-flex items-center justify-center h-7.5 gap-1.25 px-1.75 rounded-md text-xs text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary"
-            onClick={() => onLayoutModeChange(layoutMode === "floating" ? "docked" : "floating")}
-            aria-label={t(layoutMode === "floating" ? "panelMode.dock" : "panelMode.float")}
-            title={t(layoutMode === "floating" ? "panelMode.dock" : "panelMode.float")}
-          >
-            {layoutMode === "floating" ? (
-              <PanelRightDashed className="size-3.75" aria-hidden />
-            ) : (
-              <PanelRight className="size-3.75" aria-hidden />
-            )}
-            <span>{t(layoutMode === "floating" ? "panelMode.floating" : "panelMode.docked")}</span>
-          </button>
-        )}
         {onClose && (
           <button
             type="button"

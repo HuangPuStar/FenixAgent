@@ -199,8 +199,8 @@ export function computeListFingerprint(
 
 /**
  * read 指纹："<size>-<mtimeMs>"（标准文件指纹）。
- * mtimeMs 缺失（远程数据源无 mtime，机器端补全属跨仓库增强）时退化为 size-only
- * 弱指纹 "<size>"——同一大小内容变更无法感知，属 §4.2 接受的边界。
+ * mtimeMs 缺失时退化为 size-only 标识 "<size>"，无法感知同大小内容变更；
+ * HTTP 读取不得将该退化标识用于 304，必须改用 no-store。
  * 返回值即 HTTP ETag 标准格式（带引号）。
  */
 export function computeReadFingerprint(size: number, mtimeMs?: number): string {

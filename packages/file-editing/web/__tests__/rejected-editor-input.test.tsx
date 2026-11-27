@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { UI_COMPONENTS_NS, uiComponentsResources } from "@fenix/ui-components/i18n";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { EditorView } from "codemirror";
 import { Window } from "happy-dom";
@@ -43,7 +44,14 @@ const originals = new Map(
   ]),
 );
 const i18n = createInstance();
-void i18n.init({ lng: "en", initAsync: false, resources: { en: { [FILE_EDITING_NS]: fileEditingResources.en } } });
+void i18n.init({
+  lng: "en",
+  initAsync: false,
+  resources: {
+    en: { [FILE_EDITING_NS]: fileEditingResources.en, [UI_COMPONENTS_NS]: uiComponentsResources.en },
+    zh: { [FILE_EDITING_NS]: fileEditingResources.zh, [UI_COMPONENTS_NS]: uiComponentsResources.zh },
+  },
+});
 let root: Root;
 let host: HTMLElement;
 let controller: FileEditingController;
@@ -65,6 +73,7 @@ function Probe({
   );
 }
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   const browser = win as unknown as Record<string, unknown>;
   Object.assign(globals, {
     window: win,
@@ -103,15 +112,34 @@ beforeEach(() => {
   };
 });
 
-// 编辑面板必须把选区回调传至真实源码编辑器，不能仅让预览入口可用。
-test("source editing pane exposes the captured editor selection to its host", async () => {
-  const received: string[] = [];
+// 单行只显示一个行号；包含末尾换行、反向选中及跨行时均保留正确的引用内容与行号。
+test.each([
+  { language: "zh", anchor: 6, head: 12, text: "second", location: "第 2 行" },
+  { language: "zh", anchor: 6, head: 13, text: "second\n", location: "第 2 行" },
+  { language: "zh", anchor: 12, head: 6, text: "second", location: "第 2 行" },
+  { language: "zh", anchor: 0, head: 13, text: "first\nsecond\n", location: "第 1–2 行" },
+  { language: "en", anchor: 6, head: 12, text: "second", location: "Line 2" },
+  { language: "en", anchor: 6, head: 13, text: "second\n", location: "Line 2" },
+  { language: "en", anchor: 12, head: 6, text: "second", location: "Line 2" },
+  { language: "en", anchor: 0, head: 13, text: "first\nsecond\n", location: "Lines 1–2" },
+])("source quote location uses $location for $language selection $anchor to $head", async (selection) => {
+  await i18n.changeLanguage(selection.language);
+  const content = "first\nsecond\nthird";
+  client.readText = async ({ path }) => ({
+    path,
+    name: path,
+    content,
+    size: content.length,
+    version: "v1",
+    encoding: "utf8",
+  });
+  const received: { text: string; location?: string }[] = [];
   act(() =>
     root.render(
       <Probe
         path="code.ts"
         onQuoteSelection={(selection) => {
-          if (selection) received.push(selection.text);
+          if (selection) received.push(selection);
         }}
       />,
     ),
@@ -120,12 +148,12 @@ test("source editing pane exposes the captured editor selection to its host", as
   const dom = host.querySelector<HTMLElement>(".cm-editor");
   const view = dom && EditorView.findFromDOM(dom);
   if (!view) throw new Error("Missing source editor");
-  act(() => view.dispatch({ selection: { anchor: 0, head: 4 } }));
+  act(() => view.dispatch({ selection: { anchor: selection.anchor, head: selection.head } }));
   act(() => view.contentDOM.dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
   const quote = document.querySelector<HTMLButtonElement>('[data-selection-action="quote"]');
   expect(quote).not.toBeNull();
   act(() => quote?.click());
-  expect(received).toEqual(["orig"]);
+  expect(received).toEqual([{ text: selection.text, location: selection.location }]);
 });
 afterEach(async () => {
   act(() => root.unmount());

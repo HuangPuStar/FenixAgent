@@ -45,6 +45,15 @@ const originalFetch = globalThis.fetch;
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 let Workspace: typeof import("../pages/agent-panel/chat-workspace-artifacts").ChatWorkspaceArtifacts;
+let workspaceWidth = 1200;
+let notifyWorkspaceResize = () => {};
+const clientWidthDescriptor = Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, "clientWidth");
+Object.defineProperty(win.HTMLElement.prototype, "clientWidth", {
+  configurable: true,
+  get() {
+    return this.classList.contains("agent-chat-workspace") ? workspaceWidth : 0;
+  },
+});
 
 async function until(check: () => boolean, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
@@ -81,6 +90,8 @@ afterEach(async () => {
   await win.happyDOM.abort();
 });
 afterAll(() => {
+  if (clientWidthDescriptor) Object.defineProperty(win.HTMLElement.prototype, "clientWidth", clientWidthDescriptor);
+  else Reflect.deleteProperty(win.HTMLElement.prototype, "clientWidth");
   for (const [key, value] of originals) {
     if (value === undefined) delete globals[key];
     else globals[key] = value;
@@ -88,6 +99,9 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  workspaceWidth = 1200;
+  win.localStorage.clear();
+  win.localStorage.setItem("fenix:artifacts-layout", "floating");
   const browser = win as unknown as Record<string, unknown>;
   for (const key of keys) globals[key] = browser[key];
   Object.assign(globals, {
@@ -101,6 +115,14 @@ beforeEach(async () => {
     const value = browser[key];
     if (typeof value === "function") globals[key] = value.bind(win);
   }
+  globals.ResizeObserver = class implements ResizeObserver {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      if (target.classList.contains("agent-chat-workspace")) notifyWorkspaceResize = () => this.callback([], this);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
   class Observer {
     observe() {}
     unobserve() {}
@@ -145,6 +167,54 @@ beforeEach(async () => {
   root = createRoot(host);
   await act(async () => root?.render(<Probe />));
   await until(() => Boolean(host?.querySelector(".artifacts-workspace")));
+});
+
+// 历史浮动偏好不能让内容面板盖住聊天，工作区始终以固定列展示。
+test("artifacts always use a docked column even with a saved floating preference", async () => {
+  act(() => host?.querySelector<HTMLButtonElement>('button[aria-label="Show artifacts panel"]')?.click());
+  const panel = host?.querySelector<HTMLElement>(".artifacts-shell");
+  expect(panel?.getAttribute("data-layout")).toBe("docked");
+  expect(host?.querySelector('button[aria-label="Float workspace"]')).toBeNull();
+});
+
+// 拖宽右侧内容只需给聊天保留 320px，不能继续受 720px 或 75% 的旧上限限制。
+test.each([
+  { width: 1200, expected: 880 },
+  { width: 2000, expected: 1680 },
+])("resizing artifacts at $width pixels can leave only 320 pixels for chat", ({ width, expected }) => {
+  workspaceWidth = width;
+  act(() => notifyWorkspaceResize());
+  act(() => host?.querySelector<HTMLButtonElement>('button[aria-label="Show artifacts panel"]')?.click());
+  const separator = host?.querySelector<HTMLElement>('[role="separator"][aria-orientation="vertical"]');
+  if (!separator) throw new Error("Missing artifacts resize handle");
+  for (let index = 0; index < 100; index++)
+    act(() => separator.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  const panel = host?.querySelector<HTMLElement>(".artifacts-shell");
+  expect(Number.parseFloat(panel?.style.width ?? "")).toBe(expected);
+  expect(separator.getAttribute("aria-valuemax")).toBe(String(expected));
+});
+
+// 容器变窄时内容列必须让出聊天宽度，变宽后恢复用户拖动选择而不是永久覆盖偏好。
+test("workspace resizing clamps the panel and restores its preferred width", () => {
+  act(() => host?.querySelector<HTMLButtonElement>('button[aria-label="Show artifacts panel"]')?.click());
+  const separator = host?.querySelector<HTMLElement>('[role="separator"][aria-orientation="vertical"]');
+  if (!separator) throw new Error("Missing artifacts resize handle");
+  for (let index = 0; index < 25; index++)
+    act(() => separator.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  const panel = host?.querySelector<HTMLElement>(".artifacts-shell");
+  expect(Number.parseFloat(panel?.style.width ?? "")).toBe(880);
+  workspaceWidth = 760;
+  act(() => notifyWorkspaceResize());
+  expect(Number.parseFloat(panel?.style.width ?? "")).toBe(440);
+  expect(win.localStorage.getItem("fenix:artifacts-width")).toBe("880");
+  workspaceWidth = 1200;
+  act(() => notifyWorkspaceResize());
+  expect(Number.parseFloat(panel?.style.width ?? "")).toBe(880);
+  workspaceWidth = 600;
+  act(() => notifyWorkspaceResize());
+  expect(Number.parseFloat(panel?.style.width ?? "")).toBe(300);
+  expect(separator.getAttribute("aria-valuemin")).toBe("300");
+  expect(separator.getAttribute("aria-valuemax")).toBe("300");
 });
 
 // 同一环境的 Agent 重连只重置聊天进程，真实工件面板中的未保存文件必须保留原编辑器和草稿。

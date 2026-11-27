@@ -57,9 +57,11 @@ export interface FileUploadOptions extends FileWriteOptions {
 /** Content versions are opt-in to avoid hashing ordinary previews and directory trees. */
 export interface FileReadOptions {
   includeVersion?: boolean;
+  /** 请求与正文核对一致的修改时间，供 HTTP 条件缓存使用。 */
+  includeMtime?: boolean;
 }
 export type ReadMode = "text" | "binary" | "auto";
-/** mtimeMs：ETag 派生用（§4.2 read 指纹）；远程数据源无 mtime → 缺省（路由层退化为 size-only 弱指纹） */
+/** mtimeMs 仅携带与正文核对一致的修改时间；缺失且无内容版本时，HTTP 读取禁止缓存。 */
 export type ReadResult =
   | {
       type: "text";
